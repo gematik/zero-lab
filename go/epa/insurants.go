@@ -225,7 +225,7 @@ func (p *Proxy) HandleEntitleInsurant(w http.ResponseWriter, r *http.Request) {
 	rm := PatientRecordMetadata{
 		InsurantID: insurantID,
 		Provider:   session.ProviderNumber,
-		EntitledAt: time.Now(),
+		EntitledAt: p.now(),
 		ValidTo:    validTo,
 	}
 	p.recordsLock.Lock()

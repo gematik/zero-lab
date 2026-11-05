@@ -54,8 +54,8 @@ func TestMemBusPubSub(t *testing.T) {
 func TestBusRevokerPropagation(t *testing.T) {
 	bus := kv.NewMemBus()
 	store := kv.NewMemory() // shared durable store, as two replicas share one Postgres
-	a := newBusRevoker(bus, store, time.Hour)
-	b := newBusRevoker(bus, store, time.Hour)
+	a := newBusRevoker(bus, store, time.Hour, time.Now)
+	b := newBusRevoker(bus, store, time.Hour, time.Now)
 
 	a.Revoke("sid-1")
 	if !a.IsRevoked("sid-1") {
@@ -80,7 +80,7 @@ func TestBusRevokerStartupLoad(t *testing.T) {
 	if err := store.Set(context.Background(), revokedPrefix+"sid-old", []byte{'1'}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	r := newBusRevoker(kv.NewMemBus(), store, time.Hour)
+	r := newBusRevoker(kv.NewMemBus(), store, time.Hour, time.Now)
 	if !r.IsRevoked("sid-old") {
 		t.Error("startup did not load the durable revoked-set")
 	}
@@ -88,7 +88,7 @@ func TestBusRevokerStartupLoad(t *testing.T) {
 
 func TestBusRevokerBackstopWrite(t *testing.T) {
 	store := kv.NewMemory()
-	r := newBusRevoker(kv.NewMemBus(), store, time.Hour)
+	r := newBusRevoker(kv.NewMemBus(), store, time.Hour, time.Now)
 	r.Revoke("sid-x")
 	if _, found, _ := store.Get(context.Background(), revokedPrefix+"sid-x"); !found {
 		t.Error("Revoke did not persist to the durable backstop")
@@ -98,7 +98,7 @@ func TestBusRevokerBackstopWrite(t *testing.T) {
 func TestBusRevokerReconcileCatchesMissed(t *testing.T) {
 	// Simulate a dropped NOTIFY: the revocation lands in the durable set but not via the bus. Reconcile applies it.
 	store := kv.NewMemory()
-	r := newBusRevoker(kv.NewMemBus(), store, time.Hour)
+	r := newBusRevoker(kv.NewMemBus(), store, time.Hour, time.Now)
 	if err := store.Set(context.Background(), revokedPrefix+"sid-missed", []byte{'1'}, time.Hour); err != nil {
 		t.Fatal(err)
 	}

@@ -44,10 +44,10 @@ type sessionCookieClaims struct {
 }
 
 // OpenSessionCookie decrypts a pep session snapshot (JWE dir+A256GCM) with any of the given 32-byte keys
-// (primary first, optional previous for rotation) and returns the identity when it decrypts and is unexpired.
+// (primary first, optional previous for rotation) and returns the identity when it decrypts and is unexpired at now.
 // This is the validation half of pep/proxy's stateless snapshot, kept in pep so the verifier — and zaddy in
 // forward_auth — can gate on the session cookie without the kv.
-func OpenSessionCookie(token string, keys [][]byte) (identity map[string]any, sid string, ok bool) {
+func OpenSessionCookie(token string, keys [][]byte, now time.Time) (identity map[string]any, sid string, ok bool) {
 	sealed, err := jose.ParseEncryptedCompact(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
 		return nil, "", false
@@ -61,7 +61,7 @@ func OpenSessionCookie(token string, keys [][]byte) (identity map[string]any, si
 		if json.Unmarshal(payload, &c) != nil {
 			return nil, "", false
 		}
-		if time.Now().Unix() >= c.Expiry {
+		if now.Unix() >= c.Expiry {
 			return nil, "", false
 		}
 		return c.Identity, c.SID, true
@@ -105,7 +105,7 @@ func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 		ctx.Deny(ErrSessionRequired)
 		return
 	}
-	identity, _, ok := OpenSessionCookie(c.Value, keys)
+	identity, _, ok := OpenSessionCookie(c.Value, keys, ctx.Now())
 	if !ok {
 		ctx.Deny(ErrSessionRequired)
 		return

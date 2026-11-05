@@ -95,6 +95,10 @@ type ClientConfig struct {
 	// programmatically. When nil, a client with a default timeout is created. The configured
 	// User-Agent is layered onto the client's transport either way.
 	HTTPClient *http.Client `yaml:"-"`
+
+	// Clock is the time tokens are judged at. Not serialized; supplied programmatically. When nil, the
+	// system clock.
+	Clock func() time.Time `yaml:"-"`
 }
 
 // Client is a relying party of the gematik IDP-Dienst.
@@ -106,6 +110,14 @@ type Client struct {
 	baseURL     string
 	httpClient  *http.Client
 	trust       CertificateTrust
+}
+
+// now is the time the client judges tokens at.
+func (c *Client) now() time.Time {
+	if c.config.Clock != nil {
+		return c.config.Clock()
+	}
+	return time.Now()
 }
 
 // NewClientFromConfig creates a Client and fetches the discovery document, so the IDP-Dienst has to be
@@ -307,7 +319,7 @@ func (c *Client) verifyIDToken(ctx context.Context, login openid.Login, raw stri
 		Issuer:   c.Metadata.Issuer,
 		ClientID: c.config.ClientID,
 		Nonce:    login.Nonce,
-		Now:      time.Now(),
+		Now:      c.now(),
 		Skew:     idTokenSkew,
 	})
 }

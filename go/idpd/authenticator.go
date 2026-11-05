@@ -94,6 +94,7 @@ type Authenticator struct {
 	signerFunc  ChallengeSignerFunc
 	httpClient  *http.Client
 	trust       CertificateTrust
+	clock       func() time.Time
 }
 
 // AuthenticatorConfig selects the IDP-Dienst instance and the signer of an Authenticator.
@@ -106,6 +107,17 @@ type AuthenticatorConfig struct {
 	// HTTPClient is used for metadata and key fetches; a redirect-suppressing copy of it drives the
 	// challenge flow. When nil, a client with a default timeout is created.
 	HTTPClient *http.Client
+
+	// Clock is the time challenges are judged at. When nil, the system clock.
+	Clock func() time.Time
+}
+
+// now is the time the authenticator judges challenges at.
+func (a *Authenticator) now() time.Time {
+	if a.clock != nil {
+		return a.clock()
+	}
+	return time.Now()
 }
 
 // NewAuthenticator creates a new Authenticator
@@ -131,6 +143,7 @@ func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
 		signerFunc:  config.SignerFunc,
 		httpClient:  httpClient,
 		trust:       config.Trust,
+		clock:       config.Clock,
 	}, nil
 }
 
@@ -210,7 +223,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	if challengePayload.Exp == 0 {
 		return nil, errors.New("challenge without exp")
 	}
-	if err := openid.ValidateLifetime(token.PayloadJSON, time.Now(), challengeSkew); err != nil {
+	if err := openid.ValidateLifetime(token.PayloadJSON, a.now(), challengeSkew); err != nil {
 		return nil, fmt.Errorf("challenge: %w", err)
 	}
 

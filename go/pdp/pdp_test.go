@@ -38,7 +38,7 @@ func TestLoadConfigFileMergesProviders(t *testing.T) {
 		t.Fatalf("write config file: %v", err)
 	}
 
-	cfg, err := LoadConfigFile(cfgPath)
+	cfg, err := LoadConfigFile(cfgPath, "")
 	if err != nil {
 		t.Fatalf("LoadConfigFile: %v", err)
 	}
@@ -52,13 +52,13 @@ func TestLoadConfigFileRefusesAnOutdatedKey(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte("authorization_server:\n  issuer: https://as.example\n  gematik_idp: []\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadConfigFile(cfgPath); err == nil {
+	if _, err := LoadConfigFile(cfgPath, ""); err == nil {
 		t.Error("an outdated key")
 	}
 }
 
 func TestTheE2EConfigHasOnlyKnownKeys(t *testing.T) {
-	if _, err := LoadConfigFile(filepath.Join("e2e", "testdata", "pdp.e2e.yaml")); err != nil {
+	if _, err := LoadConfigFile(filepath.Join("e2e", "testdata", "pdp.e2e.yaml"), ""); err != nil {
 		t.Error(err)
 	}
 }

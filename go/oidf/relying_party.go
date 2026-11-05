@@ -38,7 +38,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -78,14 +77,18 @@ type RelyingPartyConfig struct {
 	// When empty, defaultOPScopes is used.
 	Scopes []string `yaml:"scopes,omitempty"`
 
-	// APIKeyPath names the file holding the key of the gematik environments that gate on one
-	// (*.dev.gematik.solutions). Relative paths resolve like the key paths.
-	APIKeyPath string `yaml:"api_key_path,omitempty"`
+	// APIKey is the key of the gematik environments that gate on one (*.dev.gematik.solutions). Not serialized;
+	// the program supplies it, the library reads no environment.
+	APIKey string `yaml:"-"`
 
 	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created. The relying party's
 	// authenticated calls layer mutual TLS onto a copy of it.
 	HTTPClient *http.Client `yaml:"-"`
+
+	// Clock is the time statements and tokens are judged and signed at. Not serialized; supplied programmatically. When nil, the
+	// system clock.
+	Clock func() time.Time `yaml:"-"`
 }
 
 // KeyConfig sources one key. Provide exactly one of KeyPEMPath (a PEM private-key file), JWKPath (a JWK
@@ -204,15 +207,6 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 		return nil, fmt.Errorf("build mTLS client cert: %w", err)
 	}
 
-	var apiKey string
-	if cfg.APIKeyPath != "" {
-		data, err := os.ReadFile(rp.absPath(cfg.APIKeyPath))
-		if err != nil {
-			return nil, fmt.Errorf("api_key_path: %w", err)
-		}
-		apiKey = strings.TrimSpace(string(data))
-	}
-
 	baseClient := cfg.HTTPClient
 	if baseClient == nil {
 		baseClient = &http.Client{Timeout: defaultHTTPTimeout}
@@ -230,7 +224,7 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return &tlsCert, nil
 		},
-	}), apiKey)
+	}), cfg.APIKey)
 	rp.httpClient = &mtlsClient
 
 	rp.entityStatement = &EntityStatement{
@@ -242,7 +236,7 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 	rp.entityStatement.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{sigPublicKey}}}
 	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{encPublicKey, clientPublicKey}}}
 
-	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor, WithHTTPClient(baseClient), WithAPIKey(apiKey))
+	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor, WithHTTPClient(baseClient), WithAPIKey(cfg.APIKey), WithClock(rp.now))
 	if err != nil {
 		return nil, err
 	}
@@ -286,11 +280,19 @@ func (rp *RelyingParty) entityStatementForRequest() *EntityStatement {
 	return &es
 }
 
+// now is the time the relying party judges and signs at.
+func (rp *RelyingParty) now() time.Time {
+	if rp != nil && rp.cfg != nil && rp.cfg.Clock != nil {
+		return rp.cfg.Clock()
+	}
+	return time.Now()
+}
+
 // SignEntityStatement returns the entity statement, with the hooks applied, as a JWT signed with the signing
 // key. It is backdated one hour and valid for 23 hours from now.
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 	es := rp.entityStatementForRequest()
-	now := time.Now()
+	now := rp.now()
 	return rp.signClaims("entity-statement+jwt", entityStatementClaims{
 		Issuer:         es.Issuer,
 		Subject:        es.Subject,
@@ -362,7 +364,7 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, _ *http.Request) {
 // ServeSignedJwks is the HTTP handler of signed_jwks_uri: the encryption and client keys of the relying party as
 // a signed JWT, backdated one hour and valid for 23 hours from now.
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
-	now := time.Now()
+	now := rp.now()
 	signed, err := rp.signClaims("jwk-set+json", signedJwksClaims{
 		Issuer:    rp.entityStatement.Subject,
 		IssuedAt:  now.Add(-1 * time.Hour).Unix(), // backdate token to avoid clock skew

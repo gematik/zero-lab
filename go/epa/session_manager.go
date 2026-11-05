@@ -41,6 +41,7 @@ type sessionManager struct {
 	authenticator     Authenticator
 	vauVerifier       vau.CertVerifier
 	vauVerify         vau.VerifyMode
+	now               func() time.Time
 	sessions          map[ProviderNumber]*Session
 	// opening holds a lock per provider, so a login waits only for another login at the same provider.
 	opening map[ProviderNumber]*sync.Mutex
@@ -103,7 +104,7 @@ func (sm *sessionManager) gate(provider ProviderNumber) *sync.Mutex {
 
 // loginAt opens a VAU session at provider and authorizes it.
 func (sm *sessionManager) loginAt(provider ProviderNumber) (*Session, error) {
-	options := []ClientOption{WithTimeout(sm.timeout), WithVAUVerification(sm.vauVerifier, sm.vauVerify)}
+	options := []ClientOption{WithTimeout(sm.timeout), WithVAUVerification(sm.vauVerifier, sm.vauVerify), WithClock(sm.now)}
 	if sm.certPool == nil {
 		options = append(options, WithInsecureSkipVerify())
 	} else {

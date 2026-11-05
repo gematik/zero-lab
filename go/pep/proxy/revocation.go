@@ -58,8 +58,8 @@ type busRevoker struct {
 	ttl   time.Duration
 }
 
-func newBusRevoker(bus kv.Bus, store kv.Store, ttl time.Duration) *busRevoker {
-	r := &busRevoker{local: newMemRevoker(ttl), bus: bus, store: store, ttl: ttl}
+func newBusRevoker(bus kv.Bus, store kv.Store, ttl time.Duration, now func() time.Time) *busRevoker {
+	r := &busRevoker{local: newMemRevoker(ttl, now), bus: bus, store: store, ttl: ttl}
 	r.reconcile() // startup: load the durable set so a fresh replica isn't blind to recent revocations
 	if ch, err := bus.Subscribe(context.Background(), revokeChannel); err != nil {
 		slog.Error("revocation bus subscribe failed; relying on the periodic reconcile", "error", err)
@@ -114,10 +114,11 @@ type memRevoker struct {
 	mu  sync.Mutex
 	ttl time.Duration
 	m   map[string]time.Time // sid -> entry expiry
+	now func() time.Time
 }
 
-func newMemRevoker(ttl time.Duration) *memRevoker {
-	return &memRevoker{ttl: ttl, m: make(map[string]time.Time)}
+func newMemRevoker(ttl time.Duration, now func() time.Time) *memRevoker {
+	return &memRevoker{ttl: ttl, m: make(map[string]time.Time), now: now}
 }
 
 func (r *memRevoker) Revoke(sid string) {
@@ -125,7 +126,7 @@ func (r *memRevoker) Revoke(sid string) {
 		return
 	}
 	r.mu.Lock()
-	r.m[sid] = time.Now().Add(r.ttl)
+	r.m[sid] = r.now().Add(r.ttl)
 	r.mu.Unlock()
 }
 
@@ -136,7 +137,7 @@ func (r *memRevoker) IsRevoked(sid string) bool {
 	if !ok {
 		return false
 	}
-	if time.Now().After(exp) {
+	if r.now().After(exp) {
 		delete(r.m, sid)
 		return false
 	}

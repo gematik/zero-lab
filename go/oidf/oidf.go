@@ -106,7 +106,7 @@ func readBounded(r io.Reader) ([]byte, error) {
 }
 
 // verifyStatement verifies a signed federation document against keys and checks its lifetime, returning its claims.
-func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet, options openid.VerifyOptions) ([]byte, error) {
+func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet, options openid.VerifyOptions, now time.Time) ([]byte, error) {
 	signed, err := readBounded(r)
 	if err != nil {
 		return nil, err
@@ -115,7 +115,7 @@ func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet, options openid.Verif
 	if err != nil {
 		return nil, err
 	}
-	if err := openid.ValidateLifetime(payload, time.Now().Add(statementClockTolerance), 0); err != nil {
+	if err := openid.ValidateLifetime(payload, now.Add(statementClockTolerance), 0); err != nil {
 		return nil, err
 	}
 	return payload, nil
@@ -137,6 +137,15 @@ type OpenidFederation struct {
 	jwks         *jose.JSONWebKeySet
 	entity       *FederationEntityMetadata
 	httpClient   *http.Client
+	clock        func() time.Time
+}
+
+// now is the time the federation judges statements at.
+func (f *OpenidFederation) now() time.Time {
+	if f.clock != nil {
+		return f.clock()
+	}
+	return time.Now()
 }
 
 // OpenidProvider names an OpenID provider by its issuer.
@@ -159,6 +168,14 @@ type Option func(*federationOptions)
 type federationOptions struct {
 	httpClient *http.Client
 	apiKey     string
+	clock      func() time.Time
+}
+
+// WithClock sets the time statements are judged at; the default is the system clock.
+func WithClock(now func() time.Time) Option {
+	return func(o *federationOptions) {
+		o.clock = now
+	}
 }
 
 // WithAPIKey supplies the key for the gematik environments that gate on one; see [AddAPIKeyTransport].
@@ -198,6 +215,7 @@ func NewOpenidFederation(fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...
 		fedMasterURL: fedMasterURL,
 		jwks:         jwks,
 		httpClient:   &decorated,
+		clock:        o.clock,
 	}
 	es, err := federation.fetchMasterEntityStatement()
 	if err != nil {
@@ -235,7 +253,7 @@ func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
 	}
 	defer r.Body.Close()
 
-	payload, err := verifyStatement(r.Body, f.jwks, trustAnchorKeys)
+	payload, err := verifyStatement(r.Body, f.jwks, trustAnchorKeys, f.now())
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +283,7 @@ func (f *OpenidFederation) fetchMasterEntityStatement() (*EntityStatement, error
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %s", f.fedMasterURL, resp.Status)
 	}
 
-	payload, err := verifyStatement(resp.Body, f.jwks, trustAnchorKeys)
+	payload, err := verifyStatement(resp.Body, f.jwks, trustAnchorKeys, f.now())
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +311,7 @@ func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet, 
 		return nil, &oidcErr
 	}
 
-	payload, err := verifyStatement(resp.Body, jwks, options)
+	payload, err := verifyStatement(resp.Body, jwks, options, f.now())
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +384,7 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKe
 		return nil, fmt.Errorf("unable to fetch jwks from '%s': %s", jwksURL, resp.Status)
 	}
 
-	jwksBytes, err := verifyStatement(resp.Body, op.Jwks.Keys, memberKeys)
+	jwksBytes, err := verifyStatement(resp.Body, op.Jwks.Keys, memberKeys, f.now())
 	if err != nil {
 		return nil, fmt.Errorf("unable to verify jwks: %w", err)
 	}

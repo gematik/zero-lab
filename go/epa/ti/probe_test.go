@@ -110,7 +110,7 @@ func TestProberCallersShareOneRunPerEnvironment(t *testing.T) {
 			time.Sleep(3 * time.Second)
 			return []byte(probeReportJSON), nil
 		})
-		prober := NewProber(runner)
+		prober := NewProber(runner, time.Now)
 
 		var wg sync.WaitGroup
 		for range 10 {
@@ -141,7 +141,7 @@ func TestProberReusesAResultForAMinuteThenRunsAgain(t *testing.T) {
 			runs.Add(1)
 			return []byte(probeReportJSON), nil
 		})
-		prober := NewProber(runner)
+		prober := NewProber(runner, time.Now)
 
 		probe := func() {
 			t.Helper()
@@ -170,7 +170,7 @@ func TestProberReusesAFailedRunToo(t *testing.T) {
 			runs.Add(1)
 			return nil, errors.New("ti is gone")
 		})
-		prober := NewProber(runner)
+		prober := NewProber(runner, time.Now)
 
 		for range 3 {
 			if _, err := prober.Probe(t.Context(), "dev"); err == nil {
@@ -193,7 +193,7 @@ func TestProberRunOutlivesTheCallerThatStartedIt(t *testing.T) {
 				return []byte(probeReportJSON), nil
 			}
 		})
-		prober := NewProber(runner)
+		prober := NewProber(runner, time.Now)
 
 		leaving, leave := context.WithCancel(t.Context())
 		first := make(chan error, 1)

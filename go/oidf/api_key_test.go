@@ -25,8 +25,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"net/http"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -100,15 +98,5 @@ func TestMutualTLSKeepsTheBaseClientsTrust(t *testing.T) {
 	}
 	if base.TLSClientConfig.GetClientCertificate != nil {
 		t.Error("the base transport was changed")
-	}
-}
-
-// The key comes from the file the relying party's configuration names, or the start fails loudly.
-func TestAnAPIKeyFileThatCannotBeReadStopsTheRelyingParty(t *testing.T) {
-	stub := newFederationStub(t)
-	cfg := testRelyingPartyConfig(t, stub)
-	cfg.APIKeyPath = filepath.Join(t.TempDir(), "absent")
-	if _, err := NewRelyingParty(cfg, ""); err == nil || !strings.Contains(err.Error(), "api_key_path") {
-		t.Errorf("err = %v", err)
 	}
 }

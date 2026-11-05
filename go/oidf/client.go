@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/go-jose/go-jose/v4"
 
@@ -135,7 +134,7 @@ func (c *RelyingPartyClient) verifyIDToken(login openid.Login, response *openid.
 	if err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}
-	checks := openid.IDTokenChecks{Issuer: c.op.Issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: time.Now()}
+	checks := openid.IDTokenChecks{Issuer: c.op.Issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: c.rp.now()}
 	if err := checks.Validate(payload); err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}

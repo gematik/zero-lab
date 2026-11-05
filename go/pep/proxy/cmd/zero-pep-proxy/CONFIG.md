@@ -25,8 +25,8 @@ oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its fed
 - `${VAR}` placeholders expand from the environment (keep secrets in a `.env` / mounted file).
 - Relative paths in the OIDF config (`key_pem_path`, `cert_pem_path`, …) resolve against the providers file's
   own directory — not the process working directory, and not `-w`.
-- `api_key_path` in the OIDF config names the file holding the key of the gematik environments that gate on one
-  (`*.dev.gematik.solutions`). The `API_KEY` variable is no longer read.
+- `API_KEY` in the environment is the key of the gematik federation environments that gate on one
+  (`*.dev.gematik.solutions`); zero-pep-proxy reads it and hands it to the OIDF relying party.
 
 ## 2. Environment variables (everything that is not a provider)
 

@@ -79,7 +79,7 @@ type epaTestConfig struct {
 // is not installed.
 func (cfg epaTestConfig) loadIdentity(t *testing.T) (*ti.Identity, *ti.Binary) {
 	t.Helper()
-	runner, err := ti.NewBinary()
+	runner, err := ti.NewBinary(os.Getenv("EPA_TI_BIN"))
 	if err != nil {
 		t.Skipf("ti tool not found — skipping epa integration test (%v)", err)
 	}
@@ -152,7 +152,7 @@ func loadEPAConfig(t *testing.T) epaTestConfig {
 // providePNFromShellEnv reads the VSDM HMAC material from the shell environment (never from .env)
 // at call time. It is only ever invoked by TestEPA_Entitle, which gates on VSDM presence.
 func providePNFromShellEnv(provideHCV epa.ProvideHCVFunc) epa.ProvidePNFunc {
-	return func(insurantID string) (string, error) {
+	return func(insurantID string, now time.Time) (string, error) {
 		hmacKey := os.Getenv("VSDM_HMAC_KEY")
 		hmacKid := os.Getenv("VSDM_HMAC_KID")
 		if hmacKey == "" || hmacKid == "" {
@@ -162,7 +162,7 @@ func providePNFromShellEnv(provideHCV epa.ProvideHCVFunc) epa.ProvidePNFunc {
 		if err != nil {
 			return "", err
 		}
-		return pn(insurantID)
+		return pn(insurantID, now)
 	}
 }
 
@@ -297,7 +297,7 @@ func TestEPA_Entitle(t *testing.T) {
 
 			provideHCV := func(string) ([]byte, error) { return epa.CalculateHCV("20241023", "Berliner Str.___") }
 			entitle := func() error {
-				auditEvidence, err := providePNFromShellEnv(provideHCV)(pc.insurantID)
+				auditEvidence, err := providePNFromShellEnv(provideHCV)(pc.insurantID, time.Now())
 				if err != nil {
 					return err
 				}

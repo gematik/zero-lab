@@ -65,6 +65,15 @@ type Config struct {
 	// itself (no Caddy). Empty = forward_auth-only, unchanged. gate: snapshot routes require the snapshot fast
 	// path (SnapshotKeyPath).
 	Routes []Route
+
+	// Clock is the time sessions, snapshots, revocations and tokens are judged at; nil means the system
+	// clock.
+	Clock func() time.Time
+}
+
+// clockSetter is a Backend that keeps the server's clock for the token expiries it records.
+type clockSetter interface {
+	setClock(now func() time.Time)
 }
 
 // defaultSnapshotTTL is the snapshot lifetime, and — when the fast path is on — the session lifetime: the
@@ -104,17 +113,28 @@ func New(cfg Config) (*Server, error) {
 	if snapTTL <= 0 {
 		snapTTL = defaultSnapshotTTL
 	}
+	now := cfg.Clock
+	if now == nil {
+		now = time.Now
+	}
+	if b, ok := cfg.Backend.(clockSetter); ok {
+		b.setClock(now)
+	}
 	snap, err := newSnapshotter(cfg.SnapshotKeyPath, cfg.SnapshotPreviousKeyPath, snapTTL)
 	if err != nil {
 		return nil, err
 	}
+	if snap != nil {
+		snap.now = now
+	}
 
-	var rev revoker = newMemRevoker(snapTTL)
+	var rev revoker = newMemRevoker(snapTTL, now)
 	if cfg.Bus != nil {
-		rev = newBusRevoker(cfg.Bus, cfg.Store, snapTTL)
+		rev = newBusRevoker(cfg.Bus, cfg.Store, snapTTL, now)
 	}
 
 	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
+	sessions.now = now
 	s := &Server{
 		sessions: sessions,
 		cookie:   newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),
@@ -133,7 +153,7 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	if len(cfg.Routes) > 0 {
-		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend}
+		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now}
 		if snap != nil {
 			deps.cookieName = s.snapCookie.Name // the snapshot gate validates the -SNAP cookie
 			deps.snapshotKeys = snap.decKeys

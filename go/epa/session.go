@@ -55,6 +55,14 @@ func WithCertPool(certPool *x509.CertPool) ClientOption {
 	}
 }
 
+// WithClock sets the time sessions are opened and tokens and entitlements are dated at; the default is
+// the system clock.
+func WithClock(now func() time.Time) ClientOption {
+	return func(c *Client) {
+		c.now = now
+	}
+}
+
 // WithTimeout sets the timeout of the HTTP client, overriding that of [WithHTTPClient].
 func WithTimeout(timeout time.Duration) ClientOption {
 	return func(c *Client) {
@@ -124,6 +132,14 @@ type Client struct {
 	Timeout            time.Duration
 	vauVerifier        vau.CertVerifier
 	vauVerify          vau.VerifyMode
+	now                func() time.Time
+}
+
+func (c *Client) clock() time.Time {
+	if c.now == nil {
+		return time.Now()
+	}
+	return c.now()
 }
 
 // WithVAUVerification checks the VAU's CertData and host keys with verifier when a
@@ -264,7 +280,7 @@ func (c *Client) OpenSession() (*Session, error) {
 	return &Session{
 		Client:     c,
 		VAUChannel: vauChannel,
-		OpenedAt:   time.Now(),
+		OpenedAt:   c.clock(),
 	}, nil
 }
 

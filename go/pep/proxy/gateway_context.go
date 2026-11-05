@@ -26,6 +26,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gematik/zero-lab/go/pep"
 )
@@ -48,11 +49,12 @@ type gatewayContext struct {
 	r     *http.Request
 	state *gatewayState
 	deny  func(pep.Context, pep.Error)
+	now   func() time.Time
 }
 
-func newGatewayContext(w http.ResponseWriter, r *http.Request) *gatewayContext {
+func newGatewayContext(w http.ResponseWriter, r *http.Request, now func() time.Time) *gatewayContext {
 	st := &gatewayState{}
-	c := &gatewayContext{w: w, r: r, state: st}
+	c := &gatewayContext{w: w, r: r, state: st, now: now}
 	c.deny = func(_ pep.Context, err pep.Error) {
 		st.denied = true
 		st.denyErr = err
@@ -63,6 +65,7 @@ func newGatewayContext(w http.ResponseWriter, r *http.Request) *gatewayContext {
 func (c *gatewayContext) Writer() http.ResponseWriter { return c.w }
 func (c *gatewayContext) Request() *http.Request      { return c.r }
 func (c *gatewayContext) Deny(err pep.Error)          { c.deny(c, err) }
+func (c *gatewayContext) Now() time.Time              { return c.now() }
 func (c *gatewayContext) Slogger() *slog.Logger       { return slog.Default() }
 func (c *gatewayContext) SetClaims(raw []byte)        { c.state.claimsRaw = raw }
 

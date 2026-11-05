@@ -55,8 +55,8 @@ func TestBusRevokerPostgres(t *testing.T) {
 	}
 	defer busB.Close()
 
-	a := newBusRevoker(busA, store, time.Hour)
-	b := newBusRevoker(busB, store, time.Hour)
+	a := newBusRevoker(busA, store, time.Hour, time.Now)
+	b := newBusRevoker(busB, store, time.Hour, time.Now)
 	time.Sleep(300 * time.Millisecond) // let both listeners establish LISTEN before the first NOTIFY
 
 	a.Revoke("sid-pg")

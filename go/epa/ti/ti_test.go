@@ -226,7 +226,7 @@ func TestBinaryVersion(t *testing.T) {
 	if _, err := exec.LookPath("ti"); err != nil && os.Getenv("EPA_TI_BIN") == "" {
 		t.Skip("no ti binary (EPA_TI_BIN or PATH)")
 	}
-	b, err := NewBinary()
+	b, err := NewBinary(os.Getenv("EPA_TI_BIN"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -80,7 +80,7 @@ func (s *Server) IntrospectionEndpoint(w http.ResponseWriter, r *http.Request) e
 		return oauthErr(http.StatusBadRequest, "invalid_request", "missing token parameter")
 	}
 
-	token, err := s.verifyOwnToken(tokenRaw, time.Now())
+	token, err := s.verifyOwnToken(tokenRaw, s.now())
 	if err != nil || token.JTI == "" {
 		return writeJSON(w, http.StatusOK, IntrospectionResponse{Active: false})
 	}

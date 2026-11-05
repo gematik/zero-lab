@@ -30,7 +30,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 	"uuid"
 
 	"github.com/gematik/zero-lab/go/openid"
@@ -79,7 +78,7 @@ func redirectWithError(w http.ResponseWriter, r *http.Request, redirectURI strin
 func (s *Server) bindAuthzRequest(r *http.Request) (*Session, *Product, *Error) {
 	session := &Session{
 		ID:        uuid.NewV4().String(),
-		CreatedAt: time.Now(),
+		CreatedAt: s.now(),
 	}
 	var responseType string
 	var scope string

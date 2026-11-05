@@ -62,15 +62,15 @@ func TestOpenSessionCookie(t *testing.T) {
 	key := bytes.Repeat([]byte{7}, 32)
 	tok := mintTestCookie(t, key, map[string]any{"sub": "u1"}, time.Now().Add(time.Hour).Unix())
 
-	id, sid, ok := OpenSessionCookie(tok, [][]byte{key})
+	id, sid, ok := OpenSessionCookie(tok, [][]byte{key}, time.Now())
 	if !ok || id["sub"] != "u1" || sid != "s1" {
 		t.Fatalf("open failed: id=%v sid=%q ok=%v", id, sid, ok)
 	}
-	if _, _, ok := OpenSessionCookie(tok, [][]byte{bytes.Repeat([]byte{9}, 32)}); ok {
+	if _, _, ok := OpenSessionCookie(tok, [][]byte{bytes.Repeat([]byte{9}, 32)}, time.Now()); ok {
 		t.Error("opened with the wrong key")
 	}
 	expired := mintTestCookie(t, key, map[string]any{"sub": "u1"}, time.Now().Add(-time.Hour).Unix())
-	if _, _, ok := OpenSessionCookie(expired, [][]byte{key}); ok {
+	if _, _, ok := OpenSessionCookie(expired, [][]byte{key}, time.Now()); ok {
 		t.Error("opened an expired cookie")
 	}
 }
@@ -88,6 +88,7 @@ func (c *testContext) Request() *http.Request                { return c.r }
 func (c *testContext) Deny(err Error)                        { c.denied = true; c.denyErr = err }
 func (c *testContext) WithDeny(func(Context, Error)) Context { return c }
 func (c *testContext) Slogger() *slog.Logger                 { return slog.Default() }
+func (c *testContext) Now() time.Time                        { return time.Now() }
 func (c *testContext) UnmarshalClaims(v any) error           { return json.Unmarshal(c.claimsRaw, v) }
 func (c *testContext) SetClaims(raw []byte)                  { c.claimsRaw = raw }
 

@@ -41,6 +41,17 @@ import (
 // list to the chooser; it also serves its entity statement at /.well-known/openid-federation.
 type providerBackend struct {
 	set *providers.Set
+	now func() time.Time
+}
+
+func (b *providerBackend) setClock(now func() time.Time) { b.now = now }
+
+// clock is the time token expiries are recorded at.
+func (b *providerBackend) clock() time.Time {
+	if b.now != nil {
+		return b.now()
+	}
+	return time.Now()
 }
 
 // NewProviderBackend returns the Backend that drives the providers of set directly and keeps their tokens
@@ -125,7 +136,7 @@ func (b *providerBackend) Complete(ctx context.Context, sess *Session, code stri
 	sess.AccessToken = tr.AccessToken
 	sess.RefreshToken = tr.RefreshToken
 	if tr.ExpiresIn > 0 {
-		sess.AccessTokenExpiresAt = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
+		sess.AccessTokenExpiresAt = b.clock().Add(time.Duration(tr.ExpiresIn) * time.Second)
 	}
 	return nil
 }

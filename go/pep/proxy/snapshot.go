@@ -51,6 +51,7 @@ type snapshotter struct {
 	encKey  []byte   // primary key — encrypt + decrypt
 	decKeys [][]byte // primary first, optional previous (decrypt only, for rotation overlap)
 	ttl     time.Duration
+	now     func() time.Time
 }
 
 func newSnapshotter(keyPath, prevKeyPath string, ttl time.Duration) (*snapshotter, error) {
@@ -61,7 +62,7 @@ func newSnapshotter(keyPath, prevKeyPath string, ttl time.Duration) (*snapshotte
 	if err != nil {
 		return nil, fmt.Errorf("snapshot key: %w", err)
 	}
-	s := &snapshotter{encKey: key, decKeys: [][]byte{key}, ttl: ttl}
+	s := &snapshotter{encKey: key, decKeys: [][]byte{key}, ttl: ttl, now: time.Now}
 	if prevKeyPath != "" {
 		prev, err := loadBase64Key(prevKeyPath)
 		if err != nil {
@@ -89,7 +90,7 @@ func loadBase64Key(path string) ([]byte, error) {
 }
 
 func (s *snapshotter) mint(sid string, identity map[string]any) (string, error) {
-	now := time.Now()
+	now := s.now()
 	payload, err := json.Marshal(snapshotClaims{
 		SID: sid, Identity: identity, IssuedAt: now.Unix(), Expiry: now.Add(s.ttl).Unix(),
 	})
@@ -114,7 +115,7 @@ func (s *snapshotter) mint(sid string, identity map[string]any) (string, error) 
 // open decrypts and validates a snapshot via the shared pep validation (so the verifier and zaddy use the
 // same code). It returns (claims, true) only when the token decrypts and is unexpired.
 func (s *snapshotter) open(token string) (*snapshotClaims, bool) {
-	identity, sid, ok := pep.OpenSessionCookie(token, s.decKeys)
+	identity, sid, ok := pep.OpenSessionCookie(token, s.decKeys, s.now())
 	if !ok {
 		return nil, false
 	}

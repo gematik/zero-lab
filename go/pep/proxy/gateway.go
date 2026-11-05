@@ -31,6 +31,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gematik/zero-lab/go/pep"
 )
@@ -42,6 +43,8 @@ type gatewayDeps struct {
 	backend        Backend
 	cookieName     string
 	snapshotKeys   [][]byte
+	// now is the time requests are judged at; nil means the system clock.
+	now func() time.Time
 }
 
 // Gateway gates and reverse-proxies the configured routes. Gating runs as a pep.Enforcer chain (the gate,
@@ -53,6 +56,9 @@ type Gateway struct {
 }
 
 func newGateway(routes []Route, deps gatewayDeps) (*Gateway, error) {
+	if deps.now == nil {
+		deps.now = time.Now
+	}
 	validated, err := validateRoutes(routes)
 	if err != nil {
 		return nil, err
@@ -91,7 +97,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.proxy.ServeHTTP(w, r)
 		return
 	}
-	gctx := newGatewayContext(w, r)
+	gctx := newGatewayContext(w, r, g.deps.now)
 	served := false
 	g.policyFor(rt).Apply(gctx, func(pep.Context) {
 		served = true

@@ -240,7 +240,11 @@ func main() {
 		snapshotTTL = d
 	}
 
-	routes, err := proxy.RoutesFromConfig()
+	routes, err := proxy.RoutesFromConfig(proxy.RouteSources{
+		RoutesPath:     os.Getenv("PEP_ROUTES_PATH"),
+		APIUpstream:    os.Getenv("PEP_API_UPSTREAM"),
+		WebappUpstream: os.Getenv("PEP_WEBAPP_UPSTREAM"),
+	})
 	if err != nil {
 		log.Fatalf("gateway routes: %v", err)
 	}

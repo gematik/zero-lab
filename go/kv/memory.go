@@ -33,6 +33,7 @@ type memoryStore struct {
 	mu     sync.Mutex
 	items  map[string]memEntry
 	closed bool
+	now    func() time.Time
 }
 
 type memEntry struct {
@@ -47,15 +48,27 @@ func (e memEntry) expired(now time.Time) bool {
 // NewMemory returns an in-memory Store — the default backend for tests and development. It is single-replica
 // only: nothing in it reaches another process, so nonce, replay and session state in it holds for this
 // process alone, and it is lost on exit. Several replicas need the Postgres backend (kv/postgres).
-func NewMemory() Store {
-	return &memoryStore{items: make(map[string]memEntry)}
+func NewMemory(opts ...MemoryOption) Store {
+	s := &memoryStore{items: make(map[string]memEntry), now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
-func ttlExpiry(ttl time.Duration) time.Time {
+// MemoryOption adjusts the store [NewMemory] returns.
+type MemoryOption func(*memoryStore)
+
+// WithMemoryClock sets the time records expire by; the default is the system clock.
+func WithMemoryClock(now func() time.Time) MemoryOption {
+	return func(s *memoryStore) { s.now = now }
+}
+
+func (s *memoryStore) ttlExpiry(ttl time.Duration) time.Time {
 	if ttl <= 0 {
 		return time.Time{}
 	}
-	return time.Now().Add(ttl)
+	return s.now().Add(ttl)
 }
 
 func (s *memoryStore) Get(_ context.Context, key string) ([]byte, bool, error) {
@@ -68,7 +81,7 @@ func (s *memoryStore) Get(_ context.Context, key string) ([]byte, bool, error) {
 	if !ok {
 		return nil, false, nil
 	}
-	if e.expired(time.Now()) {
+	if e.expired(s.now()) {
 		delete(s.items, key)
 		return nil, false, nil
 	}
@@ -81,7 +94,7 @@ func (s *memoryStore) Set(_ context.Context, key string, value []byte, ttl time.
 	if s.closed {
 		return ErrClosed
 	}
-	s.items[key] = memEntry{value: clone(value), expiresAt: ttlExpiry(ttl)}
+	s.items[key] = memEntry{value: clone(value), expiresAt: s.ttlExpiry(ttl)}
 	return nil
 }
 
@@ -91,10 +104,10 @@ func (s *memoryStore) SetIfAbsent(_ context.Context, key string, value []byte, t
 	if s.closed {
 		return false, ErrClosed
 	}
-	if e, ok := s.items[key]; ok && !e.expired(time.Now()) {
+	if e, ok := s.items[key]; ok && !e.expired(s.now()) {
 		return false, nil
 	}
-	s.items[key] = memEntry{value: clone(value), expiresAt: ttlExpiry(ttl)}
+	s.items[key] = memEntry{value: clone(value), expiresAt: s.ttlExpiry(ttl)}
 	return true, nil
 }
 
@@ -105,7 +118,7 @@ func (s *memoryStore) SetMany(_ context.Context, entries ...Entry) error {
 		return ErrClosed
 	}
 	for _, e := range entries {
-		s.items[e.Key] = memEntry{value: clone(e.Value), expiresAt: ttlExpiry(e.TTL)}
+		s.items[e.Key] = memEntry{value: clone(e.Value), expiresAt: s.ttlExpiry(e.TTL)}
 	}
 	return nil
 }
@@ -121,7 +134,7 @@ func (s *memoryStore) Take(_ context.Context, key string) ([]byte, bool, error) 
 		return nil, false, nil
 	}
 	delete(s.items, key)
-	if e.expired(time.Now()) {
+	if e.expired(s.now()) {
 		return nil, false, nil
 	}
 	return clone(e.value), true, nil
@@ -143,7 +156,7 @@ func (s *memoryStore) Keys(_ context.Context, prefix string) ([]string, error) {
 	if s.closed {
 		return nil, ErrClosed
 	}
-	now := time.Now()
+	now := s.now()
 	var out []string
 	for k, e := range s.items {
 		if !e.expired(now) && strings.HasPrefix(k, prefix) {
@@ -160,7 +173,7 @@ func (s *memoryStore) Cleanup(_ context.Context) (int, error) {
 	if s.closed {
 		return 0, ErrClosed
 	}
-	now := time.Now()
+	now := s.now()
 	n := 0
 	for k, e := range s.items {
 		if e.expired(now) {

@@ -58,7 +58,7 @@ func TestProbeAnswersPerEnvironmentOfTheProxies(t *testing.T) {
 		{Name: "r1", Env: epa.EnvRef},
 	}
 	rec := httptest.NewRecorder()
-	probeHandler(ti.NewProber(probeRunner{}), infos).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/probe", nil))
+	probeHandler(ti.NewProber(probeRunner{}, time.Now), infos).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/probe", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a failed run must not be an HTTP error: %d %s", rec.Code, rec.Body)
 	}
@@ -104,7 +104,7 @@ func TestRouterPrecedence(t *testing.T) {
 		AdmissionStatement: &epa.Admission{RegistrationNumber: "test"},
 	}}
 
-	router, err := buildRouter([]*epa.Proxy{proxy}, infos, ti.NewProber(probeRunner{}))
+	router, err := buildRouter([]*epa.Proxy{proxy}, infos, ti.NewProber(probeRunner{}, time.Now))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -115,10 +115,11 @@ func serve(ctx context.Context, srv *http.Server) error {
 
 func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 	configFile := expandHome(opts.configFile)
-	config, err := pdp.LoadConfigFile(configFile)
+	config, err := pdp.LoadConfigFile(configFile, os.Getenv("PDP_OPENID_PROVIDERS_PATH"))
 	if err != nil {
 		return nil, nil, fmt.Errorf("load config file: %w", err)
 	}
+	config.OIDFAPIKey = os.Getenv("API_KEY")
 	slog.Debug("Loaded config file", "config_file", configFile)
 
 	store, nonceKeys, err := openStore(os.Getenv("DATABASE_URL"), os.Getenv(storeKeyPathEnv))

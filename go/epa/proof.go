@@ -40,8 +40,8 @@ import (
 )
 
 type (
-	// ProvidePNFunc returns the Prüfziffer (proof of audit evidence) for an insurant's KVNR.
-	ProvidePNFunc func(insurantID string) (string, error)
+	// ProvidePNFunc returns the Prüfziffer (proof of audit evidence) for an insurant's KVNR, dated now.
+	ProvidePNFunc func(insurantID string, now time.Time) (string, error)
 	// ProvideHCVFunc returns the hash check value (hcv) for an insurant's KVNR.
 	ProvideHCVFunc func(insurantID string) ([]byte, error)
 )
@@ -58,12 +58,12 @@ func ProvidePNByHMAC(hmacKeyHex string, hmacKeyKid string) (ProvidePNFunc, error
 		return nil, errors.New("hmacKeyKid: must be 2 characters long")
 	}
 
-	return func(insurantID string) (string, error) {
+	return func(insurantID string, now time.Time) (string, error) {
 		if len(insurantID) != 10 {
 			return "", errors.New("insurantId must be 10 characters long")
 		}
 
-		iat := strconv.FormatInt(time.Now().Unix(), 10)
+		iat := strconv.FormatInt(now.Unix(), 10)
 
 		proofData := make([]byte, 0, 10+10+2+1+24)
 		proofData = append(proofData, []byte(insurantID)...)
@@ -131,7 +131,7 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 		return nil, fmt.Errorf("deriving AES key: %w", err)
 	}
 
-	return func(insurantID string) (string, error) {
+	return func(insurantID string, now time.Time) (string, error) {
 		if len(insurantID) != 10 {
 			return "", errors.New("insurantId must be 10 characters long")
 		}
@@ -143,7 +143,7 @@ func CalculatePNv2(hmacKeyHex string, hmacKeyKid string, provideHcv ProvideHCVFu
 
 		// A_27323 - VSDM-FD: relative Zeit (Zeit-offset) Prüfziffer Version 2
 		const iatOffset = 1735689600
-		iat := time.Now().Unix()
+		iat := now.Unix()
 		rIAT8 := (iat - iatOffset) >> 3
 		rIATBytes := make([]byte, 3)
 		rIATBytes[0] = byte((rIAT8 >> 16) & 0xFF)

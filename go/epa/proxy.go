@@ -78,6 +78,7 @@ type Proxy struct {
 	statusGuard    *statusGuard
 	records        map[string]PatientRecordMetadata
 	recordsLock    sync.RWMutex
+	now            func() time.Time
 }
 
 // ProxyConfig configures a Proxy. It comes from the configuration file, and [ProxyConfig.Init]
@@ -114,7 +115,7 @@ type ProxyConfig struct {
 	// Authenticator answers the IDP-Dienst's challenges; Init sets it up over the
 	// identity, callers of NewProxyWithSecurityFunctions bring their own.
 	Authenticator Authenticator `yaml:"-"`
-	// TI is the tool; nil means EPA_TI_BIN or `ti` on the PATH.
+	// TI is the tool; nil means `ti` on the PATH.
 	TI *ti.Binary `yaml:"-"`
 
 	// CertPool is the TLS root pool used when connecting to ePA aggregators.
@@ -122,6 +123,9 @@ type ProxyConfig struct {
 	// demos, wrong for anything real. Callers should populate this from the
 	// gematik TI roots (`ti pki roots bundle`).
 	CertPool *x509.CertPool `yaml:"-"`
+	// Clock is the time sessions, entitlements and status results are dated and judged at; nil means the
+	// system clock.
+	Clock func() time.Time `yaml:"-"`
 
 	vauVerifier vau.CertVerifier
 }
@@ -189,7 +193,7 @@ func (pc *ProxyConfig) Init() error {
 	// certificate.
 	runner := pc.TI
 	if runner == nil {
-		runner, err = ti.NewBinary()
+		runner, err = ti.NewBinary("")
 		if err != nil {
 			return err
 		}
@@ -290,6 +294,10 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		mux:           http.NewServeMux(),
 		records:       make(map[string]PatientRecordMetadata),
 		recordsLock:   sync.RWMutex{},
+		now:           config.Clock,
+	}
+	if p.now == nil {
+		p.now = time.Now
 	}
 
 	p.sessionManager = &sessionManager{
@@ -301,9 +309,10 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		vauVerifier:       config.vauVerifier,
 		vauVerify:         config.vauVerifyMode(),
 		sessions:          make(map[ProviderNumber]*Session),
+		now:               p.now,
 	}
 
-	p.statusGuard = newStatusGuard(AllProviders, p.checkProviderStatus)
+	p.statusGuard = newStatusGuard(AllProviders, p.checkProviderStatus, p.now)
 
 	for _, providerNumber := range AllProviders {
 		go p.sessionManager.WatchSession(providerNumber)
@@ -504,7 +513,7 @@ func (p *Proxy) entitle(session *Session, insurantID string) (time.Time, error) 
 		return time.Time{}, errors.New("no entitlement proof configured: set ProvidePoPP or ProvidePN+ProvideHCV")
 	}
 
-	auditEvidence, err := sf.ProvidePN(insurantID)
+	auditEvidence, err := sf.ProvidePN(insurantID, p.now())
 	if err != nil {
 		return time.Time{}, fmt.Errorf("getting proof of audit evidence: %w", err)
 	}
@@ -604,7 +613,7 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 	if validTo, err := p.entitle(session, insurantID); err != nil {
 		slog.Error("Failed to entitle", "provider", session.ProviderNumber, "error", err)
 	} else {
-		rm.EntitledAt = time.Now()
+		rm.EntitledAt = p.now()
 		rm.ValidTo = validTo
 	}
 

@@ -23,6 +23,7 @@ package cmd
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -69,7 +70,10 @@ var probePatientCmd = &cobra.Command{
 			return
 		}
 
-		err := proxyConfig.Init()
+		runner, err := tiBinary()
+		cobra.CheckErr(err)
+		proxyConfig.TI = runner
+		err = proxyConfig.Init()
 		cobra.CheckErr(err)
 		sf := proxyConfig.SecurityFunctions
 		authenticator := proxyConfig.Authenticator
@@ -116,7 +120,7 @@ var probePatientCmd = &cobra.Command{
 			slog.Info("Authorized", "env", env, "provider", provider, "subject", subject)
 
 			entitle := func() error {
-				auditEvidence, err := sf.ProvidePN(kvnr)
+				auditEvidence, err := sf.ProvidePN(kvnr, time.Now())
 				if err != nil {
 					return err
 				}

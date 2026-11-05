@@ -55,10 +55,11 @@ func staticSession(sess *Session) func(*http.Request) (*Session, bool) {
 	return func(*http.Request) (*Session, bool) { return sess, sess != nil }
 }
 
-func TestRoutesFromEnv(t *testing.T) {
-	t.Setenv("PEP_API_UPSTREAM", "http://rs:8080")
-	t.Setenv("PEP_WEBAPP_UPSTREAM", "http://app:8080")
-	got := routesFromEnv()
+func TestTheUpstreamShortcutsMakeTheTwoCommonRoutes(t *testing.T) {
+	got, err := RoutesFromConfig(RouteSources{APIUpstream: "http://rs:8080", WebappUpstream: "http://app:8080"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2 (%+v)", len(got), got)
 	}
@@ -332,7 +333,7 @@ func TestGatewayDPoPInjection(t *testing.T) {
 
 func TestGatewaySnapshotGate(t *testing.T) {
 	key := bytes.Repeat([]byte{3}, 32)
-	snap := &snapshotter{encKey: key, decKeys: [][]byte{key}, ttl: time.Hour}
+	snap := &snapshotter{encKey: key, decKeys: [][]byte{key}, ttl: time.Hour, now: time.Now}
 	cookie, err := snap.mint("sid-1", map[string]any{"sub": "u9"})
 	if err != nil {
 		t.Fatal(err)

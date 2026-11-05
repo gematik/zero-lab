@@ -67,7 +67,19 @@ type Server struct {
 	jwks             *jose.JSONWebKeySet
 	nonceService     *nonce.Service
 	dpopVerifier     *dpop.Verifier
+	clock            func() time.Time
 }
+
+func (s *Server) now() time.Time {
+	if s.clock == nil {
+		return time.Now()
+	}
+	return s.clock()
+}
+
+type clockFunc func() time.Time
+
+func (f clockFunc) Now() time.Time { return f() }
 
 // NewFromConfigFile builds a server from a YAML file holding a Config. Unlike pdp.LoadConfigFile it expands
 // no environment variables, and relative paths resolve against the working directory.
@@ -94,6 +106,7 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{
 		Metadata:  cfg.MetadataTemplate,
 		providers: cfg.Providers,
+		clock:     cfg.Clock,
 	}
 
 	issuerURL, err := url.Parse(cfg.Issuer)
@@ -142,7 +155,7 @@ func New(cfg Config) (*Server, error) {
 
 	s.initRelyingParty(cfg)
 
-	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, recordNonce(store))
+	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, recordNonce(store), nonce.WithClock(s.now))
 	if err != nil {
 		return nil, fmt.Errorf("nonce service: %w", err)
 	}
@@ -150,6 +163,7 @@ func New(cfg Config) (*Server, error) {
 	s.dpopVerifier, err = dpop.NewVerifier(dpop.Config{
 		MaxAge: 5 * time.Minute,
 		Replay: kv.NewReplayCache(store),
+		Clock:  clockFunc(s.now),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)

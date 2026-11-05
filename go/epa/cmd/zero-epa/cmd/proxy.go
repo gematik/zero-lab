@@ -27,6 +27,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"os"
 	"slices"
 	"sync"
 	"time"
@@ -50,10 +51,13 @@ var routerCmd = &cobra.Command{
 	Use:   "proxy",
 	Short: "Run ePA Client as Proxy",
 	Run: func(_ *cobra.Command, _ []string) {
+		runner, err := tiBinary()
+		cobra.CheckErr(err)
+
 		proxies := make([]*epa.Proxy, len(config.ProxyConfigs))
 		proxyInfos := make([]*epa.ProxyInfo, 0, len(config.ProxyConfigs))
 		for num, proxyConfig := range config.ProxyConfigs {
-			proxy, err := createProxy(&proxyConfig)
+			proxy, err := createProxy(&proxyConfig, runner)
 			cobra.CheckErr(err)
 			info, err := proxy.GetProxyInfo()
 			cobra.CheckErr(err)
@@ -61,10 +65,7 @@ var routerCmd = &cobra.Command{
 			proxies[num] = proxy
 		}
 
-		runner, err := ti.NewBinary()
-		cobra.CheckErr(err)
-
-		router, err := buildRouter(proxies, proxyInfos, ti.NewProber(runner))
+		router, err := buildRouter(proxies, proxyInfos, ti.NewProber(runner, time.Now))
 		cobra.CheckErr(err)
 
 		slog.Info("starting Proxy at " + listenAddr)
@@ -164,7 +165,13 @@ func probeHandler(prober *ti.Prober, proxyInfos []*epa.ProxyInfo) http.HandlerFu
 	}
 }
 
-func createProxy(proxyConfig *epa.ProxyConfig) (*epa.Proxy, error) {
+// tiBinary is the ti tool of EPA_TI_BIN, else `ti` on the PATH.
+func tiBinary() (*ti.Binary, error) {
+	return ti.NewBinary(os.Getenv("EPA_TI_BIN"))
+}
+
+func createProxy(proxyConfig *epa.ProxyConfig, runner *ti.Binary) (*epa.Proxy, error) {
+	proxyConfig.TI = runner
 	err := proxyConfig.Init()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize security functions: %w", err)

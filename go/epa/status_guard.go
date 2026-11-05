@@ -42,6 +42,7 @@ const (
 type statusGuard struct {
 	providers []ProviderNumber
 	check     func(ProviderNumber) ProviderVAUStatus
+	now       func() time.Time
 
 	mu     sync.Mutex
 	round  *statusRound
@@ -61,8 +62,8 @@ type failedStatus struct {
 	retryAt time.Time
 }
 
-func newStatusGuard(providers []ProviderNumber, check func(ProviderNumber) ProviderVAUStatus) *statusGuard {
-	return &statusGuard{providers: providers, check: check, failed: make(map[ProviderNumber]failedStatus)}
+func newStatusGuard(providers []ProviderNumber, check func(ProviderNumber) ProviderVAUStatus, now func() time.Time) *statusGuard {
+	return &statusGuard{providers: providers, check: check, now: now, failed: make(map[ProviderNumber]failedStatus)}
 }
 
 // Status returns the current round's result, in the order of the guard's providers, which
@@ -71,7 +72,7 @@ func newStatusGuard(providers []ProviderNumber, check func(ProviderNumber) Provi
 func (g *statusGuard) Status(ctx context.Context) ([]ProviderVAUStatus, error) {
 	g.mu.Lock()
 	round := g.round
-	if round == nil || (!round.expires.IsZero() && !time.Now().Before(round.expires)) {
+	if round == nil || (!round.expires.IsZero() && !g.now().Before(round.expires)) {
 		round = &statusRound{done: make(chan struct{})}
 		g.round = round
 		go g.runRound(round)
@@ -100,7 +101,7 @@ func (g *statusGuard) runRound(round *statusRound) {
 
 	round.providers = results
 	g.mu.Lock()
-	round.expires = time.Now().Add(statusResultLifetime)
+	round.expires = g.now().Add(statusResultLifetime)
 	g.mu.Unlock()
 	close(round.done)
 }
@@ -110,7 +111,7 @@ func (g *statusGuard) waitingStatus(provider ProviderNumber) (ProviderVAUStatus,
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	failed, ok := g.failed[provider]
-	if !ok || !time.Now().Before(failed.retryAt) {
+	if !ok || !g.now().Before(failed.retryAt) {
 		return ProviderVAUStatus{}, false
 	}
 	return failed.status, true
@@ -121,7 +122,7 @@ func (g *statusGuard) checkProvider(provider ProviderNumber) ProviderVAUStatus {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if status.Error != "" {
-		g.failed[provider] = failedStatus{status: status, retryAt: time.Now().Add(statusFailureBackoff)}
+		g.failed[provider] = failedStatus{status: status, retryAt: g.now().Add(statusFailureBackoff)}
 	} else {
 		delete(g.failed, provider)
 	}

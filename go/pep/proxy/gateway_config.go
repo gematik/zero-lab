@@ -68,26 +68,34 @@ type Route struct {
 	proxy    *httputil.ReverseProxy
 }
 
-// routesFromEnv builds the two common routes from env shortcuts: PEP_API_UPSTREAM (/api, dpop, stateful gate,
-// strip) and PEP_WEBAPP_UPSTREAM (/, identity, snapshot gate). Empty when neither is set.
-func routesFromEnv() []Route {
+// RouteSources names where the gateway routes come from; zero-pep-proxy fills it from PEP_ROUTES_PATH,
+// PEP_API_UPSTREAM and PEP_WEBAPP_UPSTREAM.
+type RouteSources struct {
+	// RoutesPath is a YAML routes file; when set it is authoritative and the upstreams are ignored.
+	RoutesPath string
+	// APIUpstream makes the /api route: DPoP injected, stateful gate, prefix stripped.
+	APIUpstream string
+	// WebappUpstream makes the / route: identity injected, snapshot gate.
+	WebappUpstream string
+}
+
+func shortcutRoutes(apiUpstream, webappUpstream string) []Route {
 	var routes []Route
-	if u := os.Getenv("PEP_API_UPSTREAM"); u != "" {
-		routes = append(routes, Route{PathPrefix: "/api", Upstream: u, Inject: InjectDPoP, Gate: GateSession, StripPrefix: true})
+	if apiUpstream != "" {
+		routes = append(routes, Route{PathPrefix: "/api", Upstream: apiUpstream, Inject: InjectDPoP, Gate: GateSession, StripPrefix: true})
 	}
-	if u := os.Getenv("PEP_WEBAPP_UPSTREAM"); u != "" {
-		routes = append(routes, Route{PathPrefix: "/", Upstream: u, Inject: InjectIdentity, Gate: GateSnapshot})
+	if webappUpstream != "" {
+		routes = append(routes, Route{PathPrefix: "/", Upstream: webappUpstream, Inject: InjectIdentity, Gate: GateSnapshot})
 	}
 	return routes
 }
 
-// RoutesFromConfig returns the gateway routes from PEP_ROUTES_PATH (a YAML file, authoritative when set) or
-// the PEP_API_UPSTREAM / PEP_WEBAPP_UPSTREAM env shortcuts. Empty = forward_auth-only (no gateway).
-func RoutesFromConfig() ([]Route, error) {
-	if p := os.Getenv("PEP_ROUTES_PATH"); p != "" {
-		return loadRoutes(p)
+// RoutesFromConfig returns the gateway routes of src. Empty = forward_auth-only (no gateway).
+func RoutesFromConfig(src RouteSources) ([]Route, error) {
+	if src.RoutesPath != "" {
+		return loadRoutes(src.RoutesPath)
 	}
-	return routesFromEnv(), nil
+	return shortcutRoutes(src.APIUpstream, src.WebappUpstream), nil
 }
 
 type routesFile struct {
@@ -95,7 +103,7 @@ type routesFile struct {
 }
 
 func loadRoutes(path string) ([]Route, error) {
-	b, err := os.ReadFile(path) //nolint:gosec // the path comes from PEP_ROUTES_PATH in the operator's environment, not a request
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read routes %q: %w", path, err)
 	}

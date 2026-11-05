@@ -57,6 +57,8 @@ type PEP struct {
 	// dpopNonceVerifier checks proofs for the enforcers that require a nonce; nil without a nonce source.
 	dpopNonceVerifier *dpop.Verifier
 	dpopNonces        dpop.NonceSource
+	// now is the time tokens, proofs and cookies are judged at.
+	now func() time.Time
 }
 
 // Builder configures a PEP. An option that fails records its error for Build to return.
@@ -88,6 +90,9 @@ func (b *Builder) Build() (*PEP, error) {
 	if b.p.slogger == nil {
 		b.p.slogger = slog.Default()
 	}
+	if b.p.now == nil {
+		b.p.now = time.Now
+	}
 	if b.p.accessTokenAcceptableSkew == 0 {
 		b.p.accessTokenAcceptableSkew = 1 * time.Minute
 	}
@@ -105,13 +110,13 @@ func (b *Builder) Build() (*PEP, error) {
 	if b.dpopReplay == nil {
 		b.dpopReplay = dpop.NewMemoryReplayCache(100_000, nil)
 	}
-	verifier, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay})
+	verifier, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay, Clock: clockFunc(b.p.now)})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
 	}
 	b.p.dpopVerifier = verifier
 	if b.dpopNonces != nil {
-		nonced, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay, Nonces: b.dpopNonces})
+		nonced, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay, Nonces: b.dpopNonces, Clock: clockFunc(b.p.now)})
 		if err != nil {
 			return nil, fmt.Errorf("dpop verifier with nonces: %w", err)
 		}
@@ -198,6 +203,18 @@ func (b *Builder) WithHTTPClient(client *http.Client) *Builder {
 	return b
 }
 
+// WithClock sets the time tokens, DPoP proofs and session cookies are judged at; the default is the
+// system clock.
+func (b *Builder) WithClock(now func() time.Time) *Builder {
+	b.p.now = now
+	return b
+}
+
+// clockFunc is a func() time.Time as a dpop.Clock.
+type clockFunc func() time.Time
+
+func (f clockFunc) Now() time.Time { return f() }
+
 // WithSlogger sets the logger of the PEP and of the contexts it creates.
 func (b *Builder) WithSlogger(slogger *slog.Logger) *Builder {
 	b.p.slogger = slogger
@@ -257,6 +274,8 @@ type Context interface {
 	Deny(err Error)
 	WithDeny(deny func(c Context, err Error)) Context
 	Slogger() *slog.Logger
+	// Now is the time the request is judged at.
+	Now() time.Time
 	UnmarshalClaims(claims any) error
 	// SetClaims sets the raw JSON claims that UnmarshalClaims reads. A token-verifying enforcer sets these
 	// from the verified token; a session-cookie enforcer sets them from the cookie identity.
@@ -296,6 +315,8 @@ func (c *pepContext) WithDeny(deny func(Context, Error)) Context {
 		deny:    deny,
 	}
 }
+
+func (c *pepContext) Now() time.Time { return c.pep.now() }
 
 func (c *pepContext) Slogger() *slog.Logger {
 	return c.slogger
@@ -480,7 +501,7 @@ func (p *PEP) VerifyAccessToken(tokenRaw string) (*AccessToken, error) {
 	}
 	payload, err := verifyJWS(tokenRaw, jwks)
 	if err == nil {
-		err = validateClaims(payload, time.Now(), p.accessTokenAcceptableSkew, p.resource)
+		err = validateClaims(payload, p.now(), p.accessTokenAcceptableSkew, p.resource)
 	}
 	if err != nil {
 		p.slogger.Warn("could not parse JWT", "error", err)

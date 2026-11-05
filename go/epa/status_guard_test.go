@@ -81,7 +81,7 @@ func TestStatusCallersWithinFiveSecondsShareOneResult(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		check := newCountingCheck()
 		check.took = time.Second
-		guard := newStatusGuard(guardedProviders, check.check)
+		guard := newStatusGuard(guardedProviders, check.check, time.Now)
 
 		var wg sync.WaitGroup
 		for range 10 {
@@ -106,7 +106,7 @@ func TestStatusCallersWithinFiveSecondsShareOneResult(t *testing.T) {
 func TestStatusChecksAHealthyProviderAgainOnceTheResultExpired(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		check := newCountingCheck()
-		guard := newStatusGuard(guardedProviders, check.check)
+		guard := newStatusGuard(guardedProviders, check.check, time.Now)
 
 		if _, err := guard.Status(t.Context()); err != nil {
 			t.Fatal(err)
@@ -124,7 +124,7 @@ func TestStatusChecksAHealthyProviderAgainOnceTheResultExpired(t *testing.T) {
 func TestStatusDoesNotTryAFailedProviderAgainForSixtySeconds(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		check := newCountingCheck(ProviderNumber2)
-		guard := newStatusGuard(guardedProviders, check.check)
+		guard := newStatusGuard(guardedProviders, check.check, time.Now)
 
 		for range 11 {
 			providers, err := guard.Status(t.Context())
@@ -148,7 +148,7 @@ func TestStatusDoesNotTryAFailedProviderAgainForSixtySeconds(t *testing.T) {
 func TestStatusTriesAFailedProviderAgainAfterSixtySecondsAndReportsItsRecovery(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		check := newCountingCheck(ProviderNumber2)
-		guard := newStatusGuard(guardedProviders, check.check)
+		guard := newStatusGuard(guardedProviders, check.check, time.Now)
 
 		if _, err := guard.Status(t.Context()); err != nil {
 			t.Fatal(err)
@@ -178,7 +178,7 @@ func TestStatusCheckOutlivesTheCallerThatStartedIt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		check := newCountingCheck()
 		check.took = 3 * time.Second
-		guard := newStatusGuard(guardedProviders, check.check)
+		guard := newStatusGuard(guardedProviders, check.check, time.Now)
 
 		leaving, leave := context.WithCancel(t.Context())
 		first := make(chan error, 1)
@@ -207,7 +207,7 @@ func TestProxyStatusAnswersThroughTheGuard(t *testing.T) {
 		proxy := &Proxy{
 			config:      &ProxyConfig{Name: "d1", SecurityFunctions: &SecurityFunctions{}},
 			Env:         EnvDev,
-			statusGuard: newStatusGuard(guardedProviders, check.check),
+			statusGuard: newStatusGuard(guardedProviders, check.check, time.Now),
 		}
 
 		var status ProxyStatus

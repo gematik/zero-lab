@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
@@ -57,6 +58,9 @@ type Config struct {
 	// NonceKeys seal the replay nonces; all replicas share them. Required with a Store; without one, nonces
 	// are sealed under a key of this process alone, as the in-memory store is its alone.
 	NonceKeys nonce.Keys `yaml:"-"`
+	// Clock is the time tokens, sessions, nonces and DPoP proofs are issued and judged at; nil means the
+	// system clock.
+	Clock func() time.Time `yaml:"-"`
 }
 
 // EndpointsConfig holds the paths the server mounts its endpoints at. An empty field takes its default.

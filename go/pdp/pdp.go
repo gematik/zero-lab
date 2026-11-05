@@ -41,14 +41,16 @@ type Config struct {
 	AuthzServerConfig authzserver.Config `yaml:"authorization_server"`
 	// ProvidersPath is the providers file, empty if there is none.
 	ProvidersPath string `yaml:"-"`
+	// OIDFAPIKey is the key of the gematik federation environments that gate on one; the program supplies it.
+	OIDFAPIKey string `yaml:"-"`
 }
 
 const defaultOpenidProvidersFile = "openid-providers.yaml"
 
 // LoadConfigFile reads pdp.yaml from path, expanding ${VAR} placeholders from the environment. An unknown key is
-// an error, so an outdated file stops the start. Providers come from PDP_OPENID_PROVIDERS_PATH, which must then
-// exist, else from openid-providers.yaml next to path if present; [New] loads them.
-func LoadConfigFile(path string) (*Config, error) {
+// an error, so an outdated file stops the start. Providers come from providersPath, which must then exist, else
+// from openid-providers.yaml next to path if present; [New] loads them.
+func LoadConfigFile(path, providersPath string) (*Config, error) {
 	cfg := new(Config)
 	cfg.BaseDir = filepath.Dir(path)
 	if err := loadYAML(path, cfg); err != nil {
@@ -57,14 +59,14 @@ func LoadConfigFile(path string) (*Config, error) {
 
 	cfg.AuthzServerConfig.BaseDir = cfg.BaseDir
 
-	cfg.ProvidersPath = os.Getenv("PDP_OPENID_PROVIDERS_PATH")
+	cfg.ProvidersPath = providersPath
 	explicit := cfg.ProvidersPath != ""
 	if !explicit {
 		cfg.ProvidersPath = filepath.Join(cfg.BaseDir, defaultOpenidProvidersFile)
 	}
-	if _, statErr := os.Stat(cfg.ProvidersPath); statErr != nil { //nolint:gosec // the path comes from the operator's environment or configuration file, not a request
+	if _, statErr := os.Stat(cfg.ProvidersPath); statErr != nil {
 		if explicit {
-			return nil, fmt.Errorf("PDP_OPENID_PROVIDERS_PATH %q: %w", cfg.ProvidersPath, statErr)
+			return nil, fmt.Errorf("providers file %q: %w", cfg.ProvidersPath, statErr)
 		}
 		cfg.ProvidersPath = ""
 	}
@@ -85,7 +87,7 @@ func loadProviders(config *Config) error {
 	set, err := providers.Build(entries, providers.Env{BaseDir: filepath.Dir(config.ProvidersPath)}, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(nil),
-		"oidf": oidf.Kind(func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
+		"oidf": oidf.Kind(config.OIDFAPIKey, func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
 	})
 	if err != nil {
 		return fmt.Errorf("providers %q: %w", config.ProvidersPath, err)

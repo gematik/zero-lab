@@ -58,6 +58,10 @@ type Config struct {
 	// HTTPClient is used for discovery, the key cache, and token exchange. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created.
 	HTTPClient *http.Client `yaml:"-"`
+
+	// Clock is the time tokens are judged at. Not serialized; supplied programmatically. When nil, the
+	// system clock.
+	Clock func() time.Time `yaml:"-"`
 }
 
 type client struct {
@@ -65,6 +69,14 @@ type client struct {
 	httpClient        *http.Client
 	discoveryDocument *DiscoveryDocument
 	keyCache          *keySetCache
+}
+
+// now is the time the client judges tokens at.
+func (c *client) now() time.Time {
+	if c.cfg.Clock != nil {
+		return c.cfg.Clock()
+	}
+	return time.Now()
 }
 
 // NewClient fetches the provider's discovery document and signing keys and returns a client for it, so the
@@ -148,7 +160,7 @@ func (c *client) verifyIDToken(ctx context.Context, login Login, response *Token
 			Issuer:   c.discoveryDocument.Issuer,
 			ClientID: c.cfg.ClientID,
 			Nonce:    login.Nonce,
-			Now:      time.Now(),
+			Now:      c.now(),
 			Skew:     skew,
 		}.Validate(payload)
 	}

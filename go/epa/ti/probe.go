@@ -95,6 +95,7 @@ func Probe(ctx context.Context, runner Runner, env string) (*ProbeReport, error)
 // result, a failed run's too, for a minute.
 type Prober struct {
 	runner Runner
+	now    func() time.Time
 
 	mu   sync.Mutex
 	runs map[string]*probeRun
@@ -109,9 +110,9 @@ type probeRun struct {
 	expires time.Time
 }
 
-// NewProber returns a Prober that runs runner.
-func NewProber(runner Runner) *Prober {
-	return &Prober{runner: runner, runs: make(map[string]*probeRun)}
+// NewProber returns a Prober that runs runner and keeps its results by the clock now.
+func NewProber(runner Runner, now func() time.Time) *Prober {
+	return &Prober{runner: runner, now: now, runs: make(map[string]*probeRun)}
 }
 
 // Probe returns the environment's current result, waiting for a run if there is none. A
@@ -120,7 +121,7 @@ func NewProber(runner Runner) *Prober {
 func (p *Prober) Probe(ctx context.Context, env string) (*ProbeReport, error) {
 	p.mu.Lock()
 	run := p.runs[env]
-	if run == nil || (!run.expires.IsZero() && !time.Now().Before(run.expires)) {
+	if run == nil || (!run.expires.IsZero() && !p.now().Before(run.expires)) {
 		run = &probeRun{done: make(chan struct{})}
 		p.runs[env] = run
 		go p.finish(context.WithoutCancel(ctx), run, env)
@@ -138,7 +139,7 @@ func (p *Prober) Probe(ctx context.Context, env string) (*ProbeReport, error) {
 func (p *Prober) finish(ctx context.Context, run *probeRun, env string) {
 	run.report, run.err = Probe(ctx, p.runner, env)
 	p.mu.Lock()
-	run.expires = time.Now().Add(proberResultLifetime)
+	run.expires = p.now().Add(proberResultLifetime)
 	p.mu.Unlock()
 	close(run.done)
 }

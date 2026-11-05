@@ -152,7 +152,7 @@ func TestLegacyVerdicts_SessionCookieOpensOnlyWhatWasEverMinted(t *testing.T) {
 			if !c.OldAccepted {
 				t.Fatal("the old code should have opened every case")
 			}
-			if _, _, ok := OpenSessionCookie(c.Token, [][]byte{key}); ok != want[c.Name] {
+			if _, _, ok := OpenSessionCookie(c.Token, [][]byte{key}, time.Now()); ok != want[c.Name] {
 				t.Fatalf("opened = %v, want %v", ok, want[c.Name])
 			}
 		})
@@ -176,7 +176,7 @@ func TestLegacySessionCookieFromOldMintStillOpens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity, sid, ok := OpenSessionCookie(fixture.Snapshot, [][]byte{key})
+	identity, sid, ok := OpenSessionCookie(fixture.Snapshot, [][]byte{key}, time.Now())
 	if !ok {
 		t.Fatal("a snapshot sealed by the old code does not open")
 	}
@@ -360,7 +360,7 @@ func FuzzOpenSessionCookie(f *testing.F) {
 	f.Add("eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..a.b.c")
 	key := bytes.Repeat([]byte{7}, 32)
 	f.Fuzz(func(_ *testing.T, token string) {
-		_, _, _ = OpenSessionCookie(token, [][]byte{key})
+		_, _, _ = OpenSessionCookie(token, [][]byte{key}, time.Now())
 	})
 }
 

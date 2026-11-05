@@ -115,7 +115,7 @@ func (s *Server) verifyClient(r *http.Request) (*Client, *ClientAssertionClaims,
 		return nil, nil, clientAuthError(err)
 	}
 
-	if err := verifyClientAssertion(assertion, client.Key(), s.Metadata.Issuer, time.Now()); err != nil {
+	if err := verifyClientAssertion(assertion, client.Key(), s.Metadata.Issuer, s.now()); err != nil {
 		return nil, nil, clientAuthError(err)
 	}
 
@@ -213,7 +213,7 @@ func (s *Server) tokenEndpointClientCredentials(w http.ResponseWriter, r *http.R
 
 	session := &Session{
 		ID:             uuid.NewV4().String(),
-		CreatedAt:      time.Now(),
+		CreatedAt:      s.now(),
 		ClientID:       client.ClientID,
 		Scopes:         strings.Split(scope, " "),
 		DPoPThumbprint: jkt,
@@ -353,7 +353,7 @@ func (s *Server) tokenEndpointRefreshToken(w http.ResponseWriter, r *http.Reques
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "DPoP key mismatch")
 	}
 	// Absolute lifetime: refresh never extends a session past its cap.
-	if !session.ExpiresAt.IsZero() && time.Now().After(session.ExpiresAt) {
+	if !session.ExpiresAt.IsZero() && s.now().After(session.ExpiresAt) {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "session expired")
 	}
 
@@ -378,13 +378,14 @@ func (s *Server) issueOrRefreshTokens(session *Session) (*TokenResponse, error) 
 		tokenType = "Bearer"
 	}
 
-	exp := time.Now().Add(session.AccessTokenDuration)
+	now := s.now()
+	exp := now.Add(session.AccessTokenDuration)
 	if session.ExpiresAt.Before(exp) {
 		exp = session.ExpiresAt
 	}
 	claims := map[string]any{
 		"jti":       session.ID,
-		"iat":       time.Now().Unix(),
+		"iat":       now.Unix(),
 		"client_id": session.ClientID,
 		// TODO: set proper subject
 		"sub": session.ClientID,
@@ -416,10 +417,10 @@ func (s *Server) issueOrRefreshTokens(session *Session) (*TokenResponse, error) 
 	return &TokenResponse{
 		AccessToken:      string(accessTokenBytes),
 		TokenType:        tokenType,
-		ExpiresIn:        int(time.Until(exp).Seconds()),
+		ExpiresIn:        int(exp.Sub(now).Seconds()),
 		Scope:            strings.Join(session.Scopes, " "),
 		RefreshToken:     rawRefresh,
-		RefreshExpiresIn: int(time.Until(session.ExpiresAt).Seconds()),
+		RefreshExpiresIn: int(session.ExpiresAt.Sub(now).Seconds()),
 	}, nil
 }
 

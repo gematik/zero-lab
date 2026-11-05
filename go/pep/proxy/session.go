@@ -109,13 +109,14 @@ type sessionStore struct {
 	ttl         time.Duration // idle timeout (sliding)
 	maxLifetime time.Duration // absolute timeout from CreatedAt
 	stateTTL    time.Duration // login-window TTL for the state index
+	now         func() time.Time
 }
 
 func newSessionStore(store kv.Store, ttl time.Duration) *sessionStore {
 	if ttl <= 0 {
 		ttl = defaultSessionTTL
 	}
-	return &sessionStore{store: store, ttl: ttl, maxLifetime: defaultSessionMaxLifetime, stateTTL: defaultStateTTL}
+	return &sessionStore{now: time.Now, store: store, ttl: ttl, maxLifetime: defaultSessionMaxLifetime, stateTTL: defaultStateTTL}
 }
 
 func sessionKey(id string) string  { return "pep:session:" + id }
@@ -132,7 +133,7 @@ func reportIntegrity(record string, err error) error {
 
 func (m *sessionStore) create() *Session {
 	token := randomToken()
-	return &Session{token: token, ID: hashToken(token), CreatedAt: time.Now()}
+	return &Session{token: token, ID: hashToken(token), CreatedAt: m.now()}
 }
 
 // rotate gives the session a fresh token + id, persists it under the new id, and deletes the old record —
@@ -216,7 +217,7 @@ func (m *sessionStore) byID(id string) (*Session, error) {
 	}
 	// Absolute timeout: a session past its max lifetime is treated as absent and garbage-collected on access,
 	// regardless of how recently the sliding idle TTL was refreshed.
-	if m.maxLifetime > 0 && !s.CreatedAt.IsZero() && time.Since(s.CreatedAt) > m.maxLifetime {
+	if m.maxLifetime > 0 && !s.CreatedAt.IsZero() && m.now().Sub(s.CreatedAt) > m.maxLifetime {
 		ctx := context.Background()
 		_ = m.store.Delete(ctx, sessionKey(id))
 		if s.State != "" {

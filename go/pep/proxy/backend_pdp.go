@@ -94,7 +94,18 @@ type pdpBackend struct {
 	meta      asMetadata
 	http      *http.Client
 	signer    sessionSigner
+	now       func() time.Time
 	providers []Provider // the AS's IdP list, cached at construction (the chooser + single-provider default)
+}
+
+func (b *pdpBackend) setClock(now func() time.Time) { b.now = now }
+
+// clock is the time assertions are issued and token expiries recorded at.
+func (b *pdpBackend) clock() time.Time {
+	if b.now != nil {
+		return b.now()
+	}
+	return time.Now()
 }
 
 // NewPDPBackend discovers the AS metadata and returns the backend (a confidential BFF client of the PDP).
@@ -140,7 +151,7 @@ func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string
 		return "", err
 	}
 
-	now := time.Now()
+	now := b.clock()
 	claims := map[string]any{
 		"iss": b.cfg.ClientID,
 		"sub": b.cfg.ClientID,
@@ -473,7 +484,7 @@ func (b *pdpBackend) FreshAccessToken(ctx context.Context, sess *Session) (strin
 	if !ok {
 		return "", fmt.Errorf("no token for %s", b.cfg.ASIssuer)
 	}
-	if e.ExpiresAt.IsZero() || time.Until(e.ExpiresAt) > 30*time.Second || e.RefreshToken == "" {
+	if e.ExpiresAt.IsZero() || e.ExpiresAt.Sub(b.clock()) > 30*time.Second || e.RefreshToken == "" {
 		return e.AccessToken, nil
 	}
 	tr, err := b.tokenRequest(ctx, sess, url.Values{
@@ -497,7 +508,7 @@ type tokenResponse struct {
 func (b *pdpBackend) storeTokens(sess *Session, tr *tokenResponse) {
 	var exp time.Time
 	if tr.ExpiresIn > 0 {
-		exp = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
+		exp = b.clock().Add(time.Duration(tr.ExpiresIn) * time.Second)
 	}
 	sess.SetTokens(b.cfg.ASIssuer, &TokenEntry{AccessToken: tr.AccessToken, RefreshToken: tr.RefreshToken, ExpiresAt: exp})
 }

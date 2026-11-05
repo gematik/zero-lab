@@ -323,7 +323,7 @@ func (failingStore) Set(context.Context, string, []byte, time.Duration) error {
 
 func TestARevocationThatFailsLogsNoSid(t *testing.T) {
 	logs := captureDebugLogs(t)
-	r := &busRevoker{local: newMemRevoker(time.Hour), bus: failingBus{}, store: failingStore{kv.NewMemory()}, ttl: time.Hour}
+	r := &busRevoker{local: newMemRevoker(time.Hour, time.Now), bus: failingBus{}, store: failingStore{kv.NewMemory()}, ttl: time.Hour}
 	const sid = "sid-token-hash-value"
 	r.Revoke(sid)
 	if !strings.Contains(logs.String(), "revocation") {

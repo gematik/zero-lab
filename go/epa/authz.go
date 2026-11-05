@@ -141,7 +141,7 @@ func (s *Session) CreateClientAttest() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	now := time.Now()
+	now := s.clock()
 	jws, err := identity.SignJWT(context.Background(),
 		map[string]any{"typ": "JWT"},
 		map[string]any{

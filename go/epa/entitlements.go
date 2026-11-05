@@ -67,7 +67,7 @@ func (s *Session) SetEntitlementPN(insurantID string, auditEvidence string, hcv 
 		return errors.New("no open VAU channel")
 	}
 
-	iat := time.Now().Add(-60 * time.Second)
+	iat := s.clock().Add(-60 * time.Second)
 	jwt, err := identity.SignJWT(context.Background(),
 		map[string]any{"typ": "JWT"},
 		map[string]any{

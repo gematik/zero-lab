@@ -215,14 +215,14 @@ func TestAnIntegrityFailureIsAnInvalidSessionAndLoggedAtErrorLevel(t *testing.T)
 func TestBusRevokerOnASealedStoreRecoversTheSidFromItsKey(t *testing.T) {
 	raw := kv.NewMemory()
 	sealed := kv.NewSealed(raw, testRing(t, 3), "pep/session")
-	r := newBusRevoker(kv.NewMemBus(), sealed, time.Hour)
+	r := newBusRevoker(kv.NewMemBus(), sealed, time.Hour, time.Now)
 	r.Revoke("sid-x")
 
 	stored, found, _ := raw.Get(context.Background(), revokedPrefix+"sid-x")
 	if !found || bytes.Equal(stored, []byte{'1'}) {
 		t.Fatalf("stored %q found=%v, want a sealed record", stored, found)
 	}
-	fresh := newBusRevoker(kv.NewMemBus(), sealed, time.Hour)
+	fresh := newBusRevoker(kv.NewMemBus(), sealed, time.Hour, time.Now)
 	if !fresh.IsRevoked("sid-x") {
 		t.Fatal("a fresh replica did not load the revocation")
 	}
@@ -234,7 +234,7 @@ func TestBusRevokerOnASealedStoreLoadsUnsealedRecordsFromBeforeTheUpgrade(t *tes
 	if err := raw.Set(context.Background(), revokedPrefix+"sid-old", []byte{'1'}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	r := newBusRevoker(kv.NewMemBus(), kv.NewSealed(raw, testRing(t, 3), "pep/session"), time.Hour)
+	r := newBusRevoker(kv.NewMemBus(), kv.NewSealed(raw, testRing(t, 3), "pep/session"), time.Hour, time.Now)
 	if !r.IsRevoked("sid-old") {
 		t.Fatal("a revocation from before the upgrade was lost")
 	}

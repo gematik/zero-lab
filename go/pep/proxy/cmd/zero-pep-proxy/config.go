@@ -48,7 +48,7 @@ func loadProviders(path, publicURL string) (*providers.Set, error) {
 	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
-		"oidf": oidf.Kind(nil),
+		"oidf": oidf.Kind(os.Getenv("API_KEY"), nil),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("providers %q: %w", path, err)
@@ -100,6 +100,7 @@ func providersFromEnv(publicURL string) *providers.Set {
 		if err := loadYAML(rpPath, config); err != nil {
 			log.Fatalf("load oidf relying party: %v", err)
 		}
+		config.APIKey = os.Getenv("API_KEY")
 		rp, err := oidf.NewRelyingParty(config, filepath.Dir(rpPath))
 		if err != nil {
 			log.Fatalf("load oidf relying party: %v", err)

@@ -104,7 +104,7 @@ func TestSnapshotDisabledWhenNoKey(t *testing.T) {
 }
 
 func TestMemRevoker(t *testing.T) {
-	r := newMemRevoker(time.Hour)
+	r := newMemRevoker(time.Hour, time.Now)
 	if r.IsRevoked("a") {
 		t.Error("not revoked yet")
 	}
@@ -112,7 +112,7 @@ func TestMemRevoker(t *testing.T) {
 	if !r.IsRevoked("a") {
 		t.Error("should be revoked")
 	}
-	expired := newMemRevoker(-time.Minute)
+	expired := newMemRevoker(-time.Minute, time.Now)
 	expired.Revoke("b")
 	if expired.IsRevoked("b") {
 		t.Error("expired revocation entry should self-evict")

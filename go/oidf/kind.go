@@ -60,14 +60,16 @@ func (rp *RelyingParty) Providers(_ context.Context) ([]providers.Info, error) {
 	return infos, nil
 }
 
-// Kind is the kind of a federation's relying party, one [RelyingPartyConfig]. built, if not nil, gets the relying
-// party, for a program that serves its entity statement too.
-func Kind(built func(*RelyingParty)) providers.Kind {
+// Kind is the kind of a federation's relying party, one [RelyingPartyConfig], with apiKey as its
+// [RelyingPartyConfig.APIKey]. built, if not nil, gets the relying party, for a program that serves its entity
+// statement too.
+func Kind(apiKey string, built func(*RelyingParty)) providers.Kind {
 	return func(decode providers.Decode, env providers.Env) (providers.Built, error) {
 		config := new(RelyingPartyConfig)
 		if err := decode(config); err != nil {
 			return providers.Built{}, err
 		}
+		config.APIKey = apiKey
 		rp, err := NewRelyingParty(config, env.BaseDir)
 		if err != nil {
 			return providers.Built{}, err

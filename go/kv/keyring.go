@@ -114,7 +114,7 @@ func LoadKeyring(path string) (*Keyring, error) {
 		return nil, fmt.Errorf("kv: key file %q: %w", path, err)
 	}
 	k := &Keyring{ring: ring, path: path, now: time.Now, fileMod: info.ModTime(), fileSize: info.Size()}
-	k.checkedAt.Store(time.Now().UnixNano())
+	k.checkedAt.Store(k.now().UnixNano())
 	return k, nil
 }
 
