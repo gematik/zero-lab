@@ -158,6 +158,14 @@ type Option func(*federationOptions)
 
 type federationOptions struct {
 	httpClient *http.Client
+	apiKey     string
+}
+
+// WithAPIKey supplies the key for the gematik environments that gate on one; see [AddAPIKeyTransport].
+func WithAPIKey(apiKey string) Option {
+	return func(o *federationOptions) {
+		o.apiKey = apiKey
+	}
 }
 
 // WithHTTPClient supplies the base HTTP client; the federation API key and the refusal of redirects are layered onto a
@@ -183,7 +191,7 @@ func NewOpenidFederation(fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...
 	}
 	// layer the federation API key onto the chosen client without mutating the caller's
 	decorated := *httpClient
-	decorated.Transport = AddAPIKeyTransport(transportOrDefault(httpClient.Transport))
+	decorated.Transport = AddAPIKeyTransport(transportOrDefault(httpClient.Transport), o.apiKey)
 	decorated.CheckRedirect = refuseRedirect
 
 	federation := &OpenidFederation{

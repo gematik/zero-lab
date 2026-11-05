@@ -38,6 +38,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -76,6 +77,10 @@ type RelyingPartyConfig struct {
 	// Scopes requested from the OpenID provider's authorization endpoint (which identity claims it returns).
 	// When empty, defaultOPScopes is used.
 	Scopes []string `yaml:"scopes,omitempty"`
+
+	// APIKeyPath names the file holding the key of the gematik environments that gate on one
+	// (*.dev.gematik.solutions). Relative paths resolve like the key paths.
+	APIKeyPath string `yaml:"api_key_path,omitempty"`
 
 	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created. The relying party's
@@ -199,6 +204,15 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 		return nil, fmt.Errorf("build mTLS client cert: %w", err)
 	}
 
+	var apiKey string
+	if cfg.APIKeyPath != "" {
+		data, err := os.ReadFile(rp.absPath(cfg.APIKeyPath))
+		if err != nil {
+			return nil, fmt.Errorf("api_key_path: %w", err)
+		}
+		apiKey = strings.TrimSpace(string(data))
+	}
+
 	baseClient := cfg.HTTPClient
 	if baseClient == nil {
 		baseClient = &http.Client{Timeout: defaultHTTPTimeout}
@@ -216,7 +230,7 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return &tlsCert, nil
 		},
-	}))
+	}), apiKey)
 	rp.httpClient = &mtlsClient
 
 	rp.entityStatement = &EntityStatement{
@@ -228,7 +242,7 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 	rp.entityStatement.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{sigPublicKey}}}
 	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{encPublicKey, clientPublicKey}}}
 
-	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor, WithHTTPClient(baseClient))
+	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor, WithHTTPClient(baseClient), WithAPIKey(apiKey))
 	if err != nil {
 		return nil, err
 	}
@@ -664,6 +678,11 @@ func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTri
 		base = http.DefaultTransport.(*http.Transport)
 	}
 	t := base.Clone()
+	// The base's trust stays: a client with its own RootCAs must not fall back to the system's for mutual TLS.
+	if t.TLSClientConfig != nil {
+		tlsConfig.RootCAs = t.TLSClientConfig.RootCAs
+		tlsConfig.MinVersion = t.TLSClientConfig.MinVersion
+	}
 	t.TLSClientConfig = tlsConfig
 	return t
 }

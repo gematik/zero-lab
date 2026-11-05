@@ -24,30 +24,33 @@ package oidf
 import (
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 )
 
+// gatedDomain holds the gematik environments that gate on x-authorization. The dot keeps
+// xdev.gematik.solutions out.
+const gatedDomain = ".dev.gematik.solutions"
+
 type addAPIKeyTransport struct {
-	t http.RoundTripper
+	t      http.RoundTripper
+	apiKey string
 }
 
-// AddAPIKeyTransport wraps t so that requests to hosts ending in dev.gematik.solutions carry the
-// API_KEY environment variable as x-authorization, which those gematik environments gate on. Without
-// API_KEY the request goes out unchanged and an error is logged. A nil t means http.DefaultTransport.
-func AddAPIKeyTransport(t http.RoundTripper) http.RoundTripper {
-	return &addAPIKeyTransport{t}
+// AddAPIKeyTransport wraps t so that https requests to hosts below dev.gematik.solutions carry apiKey as
+// x-authorization. Without a key they go out unchanged and an error is logged. A nil t means
+// http.DefaultTransport.
+func AddAPIKeyTransport(t http.RoundTripper, apiKey string) http.RoundTripper {
+	return &addAPIKeyTransport{t, apiKey}
 }
 
 func (adt *addAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// see if domain ends with .dev.gematik.solutions
-	// if so, add the api key
-	if strings.HasSuffix(req.URL.Host, "dev.gematik.solutions") {
-		apiKey := os.Getenv("API_KEY")
-		if apiKey != "" {
-			req.Header.Add("x-authorization", apiKey)
+	if req.URL.Scheme == "https" && strings.HasSuffix(strings.ToLower(req.URL.Hostname()), gatedDomain) {
+		if adt.apiKey != "" {
+			// A RoundTripper must not change the request it was given.
+			req = req.Clone(req.Context())
+			req.Header.Set("x-authorization", adt.apiKey)
 		} else {
-			slog.Error("no API_KEY set", "host", req.URL.Host)
+			slog.Error("no federation API key configured", "host", req.URL.Host)
 		}
 	}
 	if adt.t == nil {
