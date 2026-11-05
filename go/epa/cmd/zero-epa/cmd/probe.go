@@ -25,15 +25,15 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/gematik/zero-lab/go/epa"
 )
 
+var probeProxy = ""
+
 func init() {
 	rootCmd.AddCommand(probeCmd)
-	probeCmd.PersistentFlags().StringP("proxy", "p", "", "Specify the proxy to use")
-	cobra.CheckErr(viper.BindPFlag("proxy", probeCmd.PersistentFlags().Lookup("proxy")))
+	probeCmd.PersistentFlags().StringVarP(&probeProxy, "proxy", "p", "", "Specify the proxy to use")
 
 	probeCmd.AddCommand(probePatientCmd)
 }
@@ -53,7 +53,7 @@ var probePatientCmd = &cobra.Command{
 	Run: func(_ *cobra.Command, args []string) {
 		kvnr := args[0]
 
-		proxyName := viper.GetString("proxy")
+		proxyName := probeProxy
 
 		slog.Debug("Starting probe", "kvnr", kvnr, "proxy", proxyName)
 

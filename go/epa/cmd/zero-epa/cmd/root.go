@@ -29,17 +29,16 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/phsym/console-slog"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/gematik/zero-lab/go/epa"
 )
 
 var (
-	verbose = false
-	workdir = ""
-	config  *epa.Config
+	verbose    = false
+	workdir    = ""
+	configFile = ""
+	config     *epa.Config
 )
 
 var rootCmd = &cobra.Command{
@@ -51,10 +50,7 @@ var rootCmd = &cobra.Command{
 			logLevel = slog.LevelDebug
 		}
 		if os.Getenv("PRETTY_LOGS") != "false" {
-			logger := slog.New(
-				console.NewHandler(os.Stderr, &console.HandlerOptions{Level: logLevel}),
-			)
-			slog.SetDefault(logger)
+			slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})))
 		} else {
 			slog.SetLogLoggerLevel(logLevel)
 		}
@@ -71,12 +67,12 @@ var rootCmd = &cobra.Command{
 		}
 
 		var err error
-		config, err = epa.LoadConfigFile(viper.GetString("config_file"))
+		config, err = epa.LoadConfigFile(configFile)
 		if err != nil {
-			slog.Error(fmt.Sprintf("load config file %q", viper.GetString("config_file")), "error", err)
+			slog.Error(fmt.Sprintf("load config file %q", configFile), "error", err)
 			os.Exit(1)
 		}
-		slog.Debug("Loaded configuration", "file", viper.GetString("config_file"), "baseDir", config.BaseDir)
+		slog.Debug("Loaded configuration", "file", configFile, "baseDir", config.BaseDir)
 	},
 	Run: func(cmd *cobra.Command, _ []string) {
 		cobra.CheckErr(cmd.Help())
@@ -92,11 +88,8 @@ func Execute() {
 }
 
 func init() {
-	viper.AutomaticEnv()
-	viper.SetEnvPrefix("PDP")
-	persistendFlags := rootCmd.PersistentFlags()
-	persistendFlags.StringVarP(&workdir, "workdir", "w", "", "working directory")
-	persistendFlags.BoolVarP(&verbose, "verbose", "v", false, "verbose output")
-	persistendFlags.StringP("config-file", "f", "zero-epa.yaml", "config file, relative to working directory")
-	cobra.CheckErr(viper.BindPFlag("config_file", persistendFlags.Lookup("config-file")))
+	persistentFlags := rootCmd.PersistentFlags()
+	persistentFlags.StringVarP(&workdir, "workdir", "w", "", "working directory")
+	persistentFlags.BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	persistentFlags.StringVarP(&configFile, "config-file", "f", "zero-epa.yaml", "config file, relative to working directory")
 }

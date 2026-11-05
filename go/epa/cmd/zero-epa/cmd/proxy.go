@@ -22,26 +22,26 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"slices"
 	"sync"
+	"time"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/epa/portal"
 	"github.com/gematik/zero-lab/go/epa/ti"
 )
 
+var listenAddr = ""
+
 func init() {
-	routerCmd.Flags().StringP("addr", "a", ":8082", "Address to listen on")
-	cobra.CheckErr(viper.BindPFlag("addr", routerCmd.Flags().Lookup("addr")))
+	routerCmd.Flags().StringVarP(&listenAddr, "addr", "a", ":8082", "Address to listen on")
 
 	rootCmd.AddCommand(routerCmd)
 }
@@ -64,41 +64,37 @@ var routerCmd = &cobra.Command{
 		runner, err := ti.NewBinary()
 		cobra.CheckErr(err)
 
-		e, err := buildRouter(proxies, proxyInfos, ti.NewProber(runner))
+		router, err := buildRouter(proxies, proxyInfos, ti.NewProber(runner))
 		cobra.CheckErr(err)
 
-		addr := viper.GetString("addr")
-		slog.Info("starting Proxy at " + addr)
-
-		log.Fatal(e.Start(addr))
+		slog.Info("starting Proxy at " + listenAddr)
+		server := &http.Server{Addr: listenAddr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
+		log.Fatal(server.ListenAndServe())
 	},
 }
 
 // buildRouter mounts the proxies under /api and the developer portal as
 // catch-all. proxies and proxyInfos are parallel slices; the first proxy is
 // additionally reachable without the /api/proxies/{name} prefix.
-func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo, prober *ti.Prober) (*echo.Echo, error) {
+func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo, prober *ti.Prober) (http.Handler, error) {
 	if len(proxies) != len(proxyInfos) {
 		return nil, fmt.Errorf("got %d proxies but %d proxy infos", len(proxies), len(proxyInfos))
 	}
 
-	e := echo.New()
-	e.Use(middleware.Recover())
+	mux := http.NewServeMux()
 
 	for num, proxy := range proxies {
 		if num == 0 {
-			api := e.Group("/api")
-			api.Any("/*", echo.WrapHandler(http.StripPrefix("/api", proxy)))
+			mux.Handle("/api/", http.StripPrefix("/api", proxy))
 		}
 
 		proxyRouteName := "/api/proxies/" + proxyInfos[num].Name //nolint:gosec // buildRouter returned above unless both slices have the same length, and num ranges over proxies
-		proxyRoute := e.Group(proxyRouteName)
-		proxyRoute.Any("/*", echo.WrapHandler(http.StripPrefix(proxyRouteName, proxy)))
+		mux.Handle(proxyRouteName+"/", http.StripPrefix(proxyRouteName, proxy))
 
 		slog.Info("Registered proxy", "name", proxyInfos[num].Name, "route", proxyRouteName) //nolint:gosec // buildRouter returned above unless both slices have the same length, and num ranges over proxies
 	}
 
-	e.GET("/api/proxies", func(c echo.Context) error {
+	mux.HandleFunc("GET /api/proxies", func(w http.ResponseWriter, _ *http.Request) {
 		var infos []*epa.ProxyInfo
 		for _, proxy := range proxies {
 			info, err := proxy.GetProxyInfo()
@@ -108,18 +104,25 @@ func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo, prober *ti.P
 			}
 			infos = append(infos, info)
 		}
-		return c.JSON(http.StatusOK, infos)
+		writeJSON(w, infos)
 	})
 
-	e.GET("/api/probe", probeHandler(prober, proxyInfos))
+	mux.Handle("GET /api/probe", probeHandler(prober, proxyInfos))
 
 	webPortal, err := portal.New(proxyInfos)
 	if err != nil {
 		return nil, err
 	}
-	e.GET("/*", echo.WrapHandler(webPortal))
+	mux.Handle("/", webPortal)
 
-	return e, nil
+	return mux, nil
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("Failed to encode response", "error", err)
+	}
 }
 
 // probeEntry is one environment in the answer of GET /api/probe: its report, or why there
@@ -133,7 +136,7 @@ type probeEntry struct {
 // probeHandler answers with the probe of each environment the proxies use, in their order.
 // Like the proxies' status, a failed run appears in its entry rather than as an HTTP error,
 // so that one environment's trouble leaves the others readable.
-func probeHandler(prober *ti.Prober, proxyInfos []*epa.ProxyInfo) echo.HandlerFunc {
+func probeHandler(prober *ti.Prober, proxyInfos []*epa.ProxyInfo) http.HandlerFunc {
 	var envs []string
 	for _, info := range proxyInfos {
 		if env := string(info.Env); !slices.Contains(envs, env) {
@@ -141,13 +144,13 @@ func probeHandler(prober *ti.Prober, proxyInfos []*epa.ProxyInfo) echo.HandlerFu
 		}
 	}
 
-	return func(c echo.Context) error {
+	return func(w http.ResponseWriter, r *http.Request) {
 		entries := make([]probeEntry, len(envs))
 		var wg sync.WaitGroup
 		for i, env := range envs {
 			wg.Go(func() {
 				entries[i].Environment = env
-				report, err := prober.Probe(c.Request().Context(), env)
+				report, err := prober.Probe(r.Context(), env)
 				if err != nil {
 					slog.Error("Failed to probe the TI services", "env", env, "error", err)
 					entries[i].Error = err.Error()
@@ -157,7 +160,7 @@ func probeHandler(prober *ti.Prober, proxyInfos []*epa.ProxyInfo) echo.HandlerFu
 			})
 		}
 		wg.Wait()
-		return c.JSON(http.StatusOK, entries)
+		writeJSON(w, entries)
 	}
 }
 

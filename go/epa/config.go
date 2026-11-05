@@ -26,8 +26,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 
-	"github.com/stretchr/testify/assert/yaml"
+	"go.yaml.in/yaml/v3"
 )
 
 // Config is the content of a configuration file: the proxies to run.
@@ -35,6 +36,26 @@ type Config struct {
 	BaseDir      string        `yaml:"-"` // set to the base directory of config files when loading
 	ProxyConfigs []ProxyConfig `yaml:"proxies"`
 }
+
+// Redacted is a copy to show: the secrets a proxy's configuration may hold are replaced.
+func (c *Config) Redacted() *Config {
+	redacted := *c
+	redacted.ProxyConfigs = make([]ProxyConfig, len(c.ProxyConfigs))
+	for i, proxy := range c.ProxyConfigs {
+		if proxy.AuthnP12Password != "" {
+			proxy.AuthnP12Password = redactedValue
+		}
+		if proxy.VsdmHmacKeyHex != "" {
+			proxy.VsdmHmacKeyHex = redactedValue
+		}
+		redacted.ProxyConfigs[i] = proxy
+	}
+	return &redacted
+}
+
+const redactedValue = "[redacted]"
+
+var proxyName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // Validate reports the first thing wrong with the configuration.
 func (c *Config) Validate() error {
@@ -103,6 +124,8 @@ func (c *ProxyConfig) Validate() error {
 	switch {
 	case c.Name == "":
 		return errors.New("name is required")
+	case !proxyName.MatchString(c.Name):
+		return errors.New("name may hold only A-Z a-z 0-9 . _ - (at most 64), as it is part of the proxy's route")
 	case c.Timeout <= 0:
 		return errors.New("timeout must be greater than zero")
 	case c.VsdmHmacKeyHex == "":

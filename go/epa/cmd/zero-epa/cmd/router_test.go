@@ -31,8 +31,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/labstack/echo/v4"
-
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/epa/epatest"
 	"github.com/gematik/zero-lab/go/epa/ti"
@@ -59,11 +57,8 @@ func TestProbeAnswersPerEnvironmentOfTheProxies(t *testing.T) {
 		{Name: "d2", Env: epa.EnvDev},
 		{Name: "r1", Env: epa.EnvRef},
 	}
-	e := echo.New()
-	e.GET("/api/probe", probeHandler(ti.NewProber(probeRunner{}), infos))
-
 	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/probe", nil))
+	probeHandler(ti.NewProber(probeRunner{}), infos).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/probe", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a failed run must not be an HTTP error: %d %s", rec.Code, rec.Body)
 	}
@@ -109,7 +104,7 @@ func TestRouterPrecedence(t *testing.T) {
 		AdmissionStatement: &epa.Admission{RegistrationNumber: "test"},
 	}}
 
-	e, err := buildRouter([]*epa.Proxy{proxy}, infos, ti.NewProber(probeRunner{}))
+	router, err := buildRouter([]*epa.Proxy{proxy}, infos, ti.NewProber(probeRunner{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +112,7 @@ func TestRouterPrecedence(t *testing.T) {
 	get := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
+		router.ServeHTTP(rec, req)
 		return rec
 	}
 

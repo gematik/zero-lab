@@ -48,14 +48,15 @@ func TestProxyConfigValidateChecksEachSetting(t *testing.T) {
 		change func(*ProxyConfig)
 		want   string
 	}{
-		"no name":                 {func(c *ProxyConfig) { c.Name = "" }, "name is required"},
-		"no env":                  {func(c *ProxyConfig) { c.Env = "" }, "env must be"},
-		"unknown env":             {func(c *ProxyConfig) { c.Env = "staging" }, "env must be"},
-		"no timeout":              {func(c *ProxyConfig) { c.Timeout = 0 }, "timeout"},
-		"negative timeout":        {func(c *ProxyConfig) { c.Timeout = -time.Second }, "timeout"},
-		"unknown vau_cert_verify": {func(c *ProxyConfig) { c.VAUCertVerify = "sometimes" }, "vau_cert_verify"},
-		"no hmac key":             {func(c *ProxyConfig) { c.VsdmHmacKeyHex = "" }, "vsdm_hmac_key_hex"},
-		"no hmac key id":          {func(c *ProxyConfig) { c.VsdmHmacKeyID = "" }, "vsdm_hmac_key_id"},
+		"no name":                  {func(c *ProxyConfig) { c.Name = "" }, "name is required"},
+		"a name unfit for a route": {func(c *ProxyConfig) { c.Name = "a/{b}" }, "name may hold only"},
+		"no env":                   {func(c *ProxyConfig) { c.Env = "" }, "env must be"},
+		"unknown env":              {func(c *ProxyConfig) { c.Env = "staging" }, "env must be"},
+		"no timeout":               {func(c *ProxyConfig) { c.Timeout = 0 }, "timeout"},
+		"negative timeout":         {func(c *ProxyConfig) { c.Timeout = -time.Second }, "timeout"},
+		"unknown vau_cert_verify":  {func(c *ProxyConfig) { c.VAUCertVerify = "sometimes" }, "vau_cert_verify"},
+		"no hmac key":              {func(c *ProxyConfig) { c.VsdmHmacKeyHex = "" }, "vsdm_hmac_key_hex"},
+		"no hmac key id":           {func(c *ProxyConfig) { c.VsdmHmacKeyID = "" }, "vsdm_hmac_key_id"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := validProxy()
@@ -119,5 +120,18 @@ func TestLoadConfigFileValidatesAndSetsTheBaseDir(t *testing.T) {
 	}
 	if _, err := LoadConfigFile(path); err == nil || !strings.Contains(err.Error(), "validate config") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestRedactedShowsNoSecretAndLeavesTheConfigAlone(t *testing.T) {
+	proxy := validProxy()
+	proxy.AuthnP12Password = "p12-password-value"
+	config := &Config{ProxyConfigs: []ProxyConfig{proxy}}
+	shown := config.Redacted()
+	if got := shown.ProxyConfigs[0]; got.VsdmHmacKeyHex != redactedValue || got.AuthnP12Password != redactedValue || got.Name != "p" {
+		t.Errorf("shown = %+v", got)
+	}
+	if config.ProxyConfigs[0].VsdmHmacKeyHex != "secret-key-value" || config.ProxyConfigs[0].AuthnP12Password != "p12-password-value" {
+		t.Error("the configuration itself was changed")
 	}
 }

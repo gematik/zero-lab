@@ -27,8 +27,7 @@ import (
 	"log/slog"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v3"
 
 	"github.com/gematik/zero-lab/go/epa"
 )
@@ -41,14 +40,14 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Print the loaded configuration",
 	Run: func(cmd *cobra.Command, _ []string) {
-		fmt.Printf("Config file: %s\n", viper.GetString("config_file"))
-		config, err := epa.LoadConfigFile(viper.GetString("config_file"))
+		fmt.Printf("Config file: %s\n", configFile)
+		config, err := epa.LoadConfigFile(configFile)
 		if err != nil {
-			slog.Error(fmt.Sprintf("load config file %q", viper.GetString("config_file")), "error", err)
+			slog.Error(fmt.Sprintf("load config file %q", configFile), "error", err)
 			return
 		}
 		fmt.Printf("Base dir: %s\n", config.BaseDir)
-		if err := yaml.NewEncoder(cmd.OutOrStdout()).Encode(config); err != nil {
+		if err := yaml.NewEncoder(cmd.OutOrStdout()).Encode(config.Redacted()); err != nil {
 			slog.Error("encode config", "error", err)
 		}
 	},
