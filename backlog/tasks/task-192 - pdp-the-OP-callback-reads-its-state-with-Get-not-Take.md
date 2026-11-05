@@ -1,10 +1,10 @@
 ---
 id: TASK-192
 title: 'pdp: the OP callback reads its state with Get, not Take'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T22:59:00Z'
-updated_date: '2026-11-05T18:30:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - go
   - security
@@ -29,3 +29,9 @@ A replay of the callback with another code overwrites the authorization code. Fo
 <!-- SECTION:NOTES:BEGIN -->
 The OP callback's state is single use: Take on the index, and the saved session no longer carries it, or saving would index it again. A request with neither code nor error does not consume it.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The OP callback's state is single use and the saved session no longer carries it.
+<!-- SECTION:FINAL_SUMMARY:END -->

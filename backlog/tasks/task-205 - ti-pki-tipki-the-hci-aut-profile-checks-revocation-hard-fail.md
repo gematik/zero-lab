@@ -1,10 +1,10 @@
 ---
 id: TASK-205
 title: 'ti-pki, tipki: the hci-aut profile checks revocation hard-fail'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T17:42:00Z'
-updated_date: '2026-11-03T17:49:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - ti-pki
   - tipki
@@ -30,3 +30,9 @@ hci-aut was the one profile on soft-fail, so an SMC-B whose OCSP answer could no
 <!-- SECTION:NOTES:BEGIN -->
 The corpus changed in 4 of 6104 verdicts, all hci-aut under a configured soft-fail with the responder unavailable: 3 went from valid to invalid, and 1 stayed invalid with ocsp_unavailable in place of role_oid_missing. A configured disabled still disables.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The hci-aut profile checks revocation hard-fail in ti-pki and tipki.
+<!-- SECTION:FINAL_SUMMARY:END -->

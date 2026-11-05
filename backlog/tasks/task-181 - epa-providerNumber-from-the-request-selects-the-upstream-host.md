@@ -1,10 +1,10 @@
 ---
 id: TASK-181
 title: 'epa: providerNumber from the request selects the upstream host'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
-updated_date: '2026-11-05T18:57:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - go
   - security
@@ -29,3 +29,9 @@ proxy.go forwards {providerNumber} after strconv.Atoi only, not against AllProvi
 <!-- SECTION:NOTES:BEGIN -->
 Only AllProviders are reached; another number is 404 before any session or login, which also keeps ResolveBaseURL from panicking. The nolint lines naming this task are gone. Clients get generic text, the log the detail.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Only AllProviders are reached and the request picks the path only; another number is 404 before any login.
+<!-- SECTION:FINAL_SUMMARY:END -->

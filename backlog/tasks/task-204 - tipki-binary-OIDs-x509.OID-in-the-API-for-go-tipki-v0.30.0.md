@@ -1,10 +1,10 @@
 ---
 id: TASK-204
 title: 'tipki: binary OIDs (x509.OID) in the API, for go/tipki v0.30.0'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T17:16:00Z'
-updated_date: '2026-11-03T17:23:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - tipki
 dependencies: []
@@ -31,3 +31,9 @@ tipki carries OIDs as dotted strings, so a wrong value only fails at runtime and
 <!-- SECTION:NOTES:BEGIN -->
 x509.OID throughout tipki's API and tables; oid.Parse is strict, since x509.ParseOID reads 1.2.030 as 1.2.30; oid.MustParse for source. encoding/asn1 values from the standard library (extension IDs, EKU, OCSP) are compared with EqualASN1OID, not converted. TSL location markers stay text: they are matched against text in the list. Not tagged. idpd still pins tipki by pseudo-version until just sync at the tag.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/tipki takes and returns binary OIDs (x509.OID), released as v0.30.0.
+<!-- SECTION:FINAL_SUMMARY:END -->

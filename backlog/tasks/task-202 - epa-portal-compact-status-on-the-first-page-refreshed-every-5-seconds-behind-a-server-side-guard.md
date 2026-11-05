@@ -3,10 +3,10 @@ id: TASK-202
 title: >-
   epa portal: compact status on the first page, refreshed every 5 seconds behind
   a server-side guard
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T16:49:00Z'
-updated_date: '2026-11-03T16:56:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - epa
 dependencies: []
@@ -33,3 +33,9 @@ The first page's status takes much room and loads once. Show TI services and all
 <!-- SECTION:NOTES:BEGIN -->
 statusGuard in go/epa/status_guard.go sits between GET /status and the providers. Checked with stub API in Chrome Canary and a node harness for the refresh rules; not yet against live providers. The guard covers the status endpoint only.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The epa portal's first page shows a compact status, refreshed every 5 seconds behind a server-side guard.
+<!-- SECTION:FINAL_SUMMARY:END -->

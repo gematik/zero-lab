@@ -1,10 +1,10 @@
 ---
 id: TASK-206
 title: 'tipki: finding codes as typed constants'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T17:59:00Z'
-updated_date: '2026-11-03T18:06:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - tipki
 dependencies: []
@@ -29,3 +29,9 @@ Finding.Code is a plain string and codes are literals where a finding is made, s
 <!-- SECTION:NOTES:BEGIN -->
 ErrorCode, named after ti-pki's, with constants for all 25 codes. Finding and OCSPError carry it. TSLError keeps its string codes: a separate family, not findings. CodeProfileNotDetected and CodeProfileAmbiguous are declared for ti-pki's list but no finding uses them. A literal still compiles, so TestNoFindingIsMadeWithALiteralCode reads the source. Rust's list goes into the corpus (PROF-032).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+tipki's finding codes are typed constants, released as v0.31.0.
+<!-- SECTION:FINAL_SUMMARY:END -->

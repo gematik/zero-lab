@@ -1,10 +1,10 @@
 ---
 id: TASK-201
 title: 'epa portal: show on the first page whether the TI services answer (ti probe)'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T14:00:00Z'
-updated_date: '2026-11-03T14:34:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - epa
 dependencies: []
@@ -31,3 +31,9 @@ The first page of the ePA middleware shows the VAU status per proxy, but not whe
 <!-- SECTION:NOTES:BEGIN -->
 ti.Probe and ti.Prober in go/epa/ti, GET /api/probe in zero-epa, a card on the first page. Environments come from the configured proxies, so dev and ref on epa.t20r.cloud. esc() in portal.js now escapes quotes, because its results also go into attributes. The first page's card still needs a look in a browser.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The epa portal's first page shows whether the TI services answer, through ti probe.
+<!-- SECTION:FINAL_SUMMARY:END -->

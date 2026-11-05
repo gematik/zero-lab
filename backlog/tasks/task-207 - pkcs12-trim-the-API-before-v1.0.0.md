@@ -1,10 +1,10 @@
 ---
 id: TASK-207
 title: 'pkcs12: trim the API before v1.0.0'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T18:25:00Z'
-updated_date: '2026-11-03T18:37:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - pkcs12
 dependencies: []
@@ -31,3 +31,9 @@ Outside the module only Decode was called directly (ehca, idpd); the interop ada
 
 EncodeOptions takes x509.OID, as tipki does; the encoder resolves it against the ciphers and digests it may write, since x509.OID has no way back to encoding/asn1.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+pkcs12's public API is trimmed for v1.0.0, released as v1.0.0-rc.1.
+<!-- SECTION:FINAL_SUMMARY:END -->

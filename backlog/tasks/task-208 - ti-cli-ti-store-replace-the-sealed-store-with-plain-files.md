@@ -1,10 +1,10 @@
 ---
 id: TASK-208
 title: 'ti-cli, ti-store: replace the sealed store with plain files'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T19:45:00Z'
-updated_date: '2026-11-05T18:30:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - ti-cli
   - ti-store
@@ -213,3 +213,9 @@ AC #5 settled by b25988b: the comfort ID and the generated ID are one file per H
 
 spec/store and its README row removed on chore/go-consolidation, whose merge closes this task.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti keeps plain files instead of the sealed store (PR #85); spec/store went with this branch.
+<!-- SECTION:FINAL_SUMMARY:END -->

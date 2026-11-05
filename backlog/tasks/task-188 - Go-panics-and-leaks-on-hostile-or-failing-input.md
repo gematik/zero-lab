@@ -1,10 +1,10 @@
 ---
 id: TASK-188
 title: 'Go: panics and leaks on hostile or failing input'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T15:42:00Z'
-updated_date: '2026-11-05T18:57:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - go
   - security
@@ -31,3 +31,9 @@ Fixed outside epa. Open for go/epa.
 
 go/epa: Decrypt on both sides refuses a message shorter than header, IV and tag; the handshake returns errors where it called log.Fatalf (9 places); the forwarding closes response bodies. Tests: short messages, and Message2 damaged at 100 positions never exits the process.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Hostile or failing input returns an error in pdp, pep, openid, oidf and epa, with tests; the VAU handshake no longer calls log.Fatalf.
+<!-- SECTION:FINAL_SUMMARY:END -->

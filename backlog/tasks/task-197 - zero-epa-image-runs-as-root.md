@@ -1,10 +1,10 @@
 ---
 id: TASK-197
 title: zero-epa image runs as root
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T09:20:00Z'
-updated_date: '2026-11-05T19:13:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - security
   - go
@@ -33,3 +33,9 @@ Prepared, not committed: the image runs as 65532:65532 with a passwd entry; /var
 
 Maintainer, 2026-11-05, image built from the branch: zero-epa probe patient against dev as 65532 with the identity mounted read-only: VAU certificates and host keys verified (chain and signature valid), authorized, entitled, consent read. The run was the image itself rather than just epa-connect-test, which tests the host's build. A first run showed /tmp not writable; /tmp now belongs to the user too. The UID and fsGroup are in the Dockerfile; the deployment manifests live outside this repository.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The zero-epa image runs as 65532 with its cache, home and /tmp; proven against dev with the image.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-199
 title: 'ti-pki: OID tables against gemSpec_OID 3.26.0'
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-10-28 08:25
-updated_date: '2026-11-03T17:23:00Z'
+updated_date: '2026-11-05T19:19:00Z'
 labels:
   - ti-pki
   - spec
@@ -33,3 +33,9 @@ rust/ti-pki/src/oid.rs states its tables are complete as of gemSpec_OID V3.25.0 
 <!-- SECTION:NOTES:BEGIN -->
 3.26.0 differs from the draft C_12646 the tables had applied: oid_zeta-prv-approv is present, ZETA Guard is C.FD.AUT only. Followed the released table and dropped the note. Spec spellings left as they are in ours: oid_mobile_einrichtung_rettungsdienst (spec has a stray space) and Komponentenzertifikate (spec: Komponenten-zertifikate).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-pki's OID tables follow gemSpec_OID 3.26.0.
+<!-- SECTION:FINAL_SUMMARY:END -->
