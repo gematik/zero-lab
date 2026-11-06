@@ -134,8 +134,8 @@ impl TrustStore {
         self
     }
 
-    /// [`with_ca_types`](Self::with_ca_types) for tests in downstream crates, which stand in
-    /// for a verified TSL.
+    /// The certificate types a verified TSL would state for its CAs, for tests in downstream
+    /// crates that stand in for one; the loader sets them from a verified TSL otherwise.
     #[must_use]
     #[cfg(feature = "test-util")]
     pub fn with_tsl_ca_types_for_tests(
