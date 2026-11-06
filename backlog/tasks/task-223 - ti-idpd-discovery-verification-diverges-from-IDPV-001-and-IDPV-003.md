@@ -1,9 +1,10 @@
 ---
 id: TASK-223
 title: 'ti-idpd: discovery verification diverges from IDPV-001 and IDPV-003'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-05T22:03:00Z'
+updated_date: '2026-11-06T06:19:00Z'
 labels:
   - ti-idpd
   - security
