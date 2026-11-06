@@ -1,7 +1,7 @@
 ---
 id: TASK-97
 title: 'TLS server verification as core hooks: TI-PKI and hardened Web-PKI'
-status: To Do
+status: In Progress
 assignee: []
 created_date: 2026-10-15 05:20
 updated_date: '2026-11-06T07:36:00Z'
