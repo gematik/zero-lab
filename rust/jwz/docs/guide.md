@@ -73,16 +73,19 @@ accepted.
 Profiles are data. Widen one with another, or narrow one by changing its fields:
 
 ```rust
-use jwz::jwa::Registry;
+use jwz::jwa::{KeyEncryptionAlgorithm, Registry};
 use jwz::profile::Profile;
 
 let registry = Registry::standard();
 let mut mine = Profile::strict();
 // Narrower: only tokens that say they are access tokens (RFC 9068).
 mine.policy.typ = Some("at+jwt".into());
-// Wider: also accept what another profile accepts.
+// Wider: also accept what another profile accepts, such as AES key wrap, which strict
+// leaves out.
 let both = mine.clone().with(&Profile::rfc7518_interop(&registry));
-assert!(both.policy.signature_algorithms.len() > mine.policy.signature_algorithms.len());
+let a128kw = KeyEncryptionAlgorithm::A128KW;
+assert!(!mine.policy.key_encryption_algorithms.contains(&a128kw));
+assert!(both.policy.key_encryption_algorithms.contains(&a128kw));
 ```
 
 `with` is a union: a token one profile accepts is accepted by every combination

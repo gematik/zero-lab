@@ -371,6 +371,8 @@ test:
     cargo nextest run -p jwz --features {{JWZ_FEATURES}}
     cargo test --workspace --exclude jwz --all-features --doc
     cargo test -p jwz --features {{JWZ_FEATURES}} --doc
+    # The examples in jwz's docs hold for what a user gets by default, too.
+    cargo test -p jwz --doc
 
 # The tests with default features, where code only a feature makes used fails
 test-defaults:
@@ -463,6 +465,7 @@ check-jwz:
     cargo nextest run -p jwz --features {{JWZ_FEATURES}}
     cargo nextest run -p ti-jwz --all-features
     cargo test -p jwz --features {{JWZ_FEATURES}} --doc
+    cargo test -p jwz --doc
     cargo test -p ti-jwz --all-features --doc
     cargo hack check -p jwz --each-feature --exclude-features rsa --no-dev-deps
     cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
