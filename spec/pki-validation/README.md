@@ -34,6 +34,11 @@ the inner channels of the VAU and ZETA/ASL, Certificate Transparency, and the se
 
 ## Profiles
 
+Being a TI service does not decide the profile; the certificate a service presents does. The ePA
+Aktensysteme and KIM present TI certificates and take `ti`. The IDP-Dienst, the E-Rezept, the
+FHIR-Directory and the TSL download points are reached over the internet with public certificates and
+take `web`.
+
 - **`ti`**: a server of the TI, whose certificate is a C.FD.TLS-S or C.ZD.TLS-S of the TI's component PKI.
   Trust is the TI's alone: the roots walked from the compiled-in anchor and the CAs of the verified TSL, as
   [`spec/pki-path`](../pki-path/README.md) builds them. No public root takes part.
