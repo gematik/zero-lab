@@ -24,6 +24,7 @@ task.
 | ti-report | – |
 | jwz | std, jws, jwe, jwt, crypto-rustcrypto, hmac |
 | ti-jwz | legacy |
+| ti-jwks | – |
 | ti-idpd | – |
 | ti-directory | – |
 

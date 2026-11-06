@@ -15,6 +15,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cache
 
+#### added
+- `CacheControl`: the freshness a `Cache-Control` field grants (RFC 9111 §5.2), doubtful
+  values counting as stale; fuzzed (`just fuzz-ti-cache`).
+- `CachePolicy::origin_freshness`: the origin's lifetime decides freshness within
+  `FreshnessBounds`; off by default, so existing users keep `max_age`.
+- `Cache::force`: `expire` at most once per `CachePolicy::min_forced_interval` and key.
+
 #### changed
 - Renamed from `ti-store`, as it holds only the HTTP cache since the sealed store left: the
   package and crate are `ti-cache` and `ti_cache`. `ti-pki`'s re-exports keep their names.
@@ -126,6 +133,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   without the output, profile, HTTP and Konnektor options every command shares; `-h` and
   `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
   longer turns the help of `ti` without arguments into an error.
+
+### ti-jwks
+
+#### added
+- New crate (TASK-18): JWK Sets from a `jwks_uri`. `JwksSource::keys(kid, alg)` returns
+  the keys that fit a token; the set is kept in a ti-cache `Cache` with `policy()`: the
+  origin's `Cache-Control: max-age` within 5 min–24 h (1 h without), revalidation with
+  `ETag`/`Last-Modified`, no stale set on origin failure, an unknown `kid` refreshing the
+  set at most once a minute. `https` only, redirects refused, 64 KiB and 100 keys at most.
+  `http::Transport` for any client, a blocking one with the `ureq` feature.
 
 ### ti-idpd
 

@@ -15,7 +15,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │                            │                        │
  adapters   `ureq` / `os` features: the only code that does I/O
               │
- engines    ti-idpd  ti-directory  ti-connector-client  ti-report       (sans I/O)
+ engines    ti-idpd  ti-directory  ti-connector-client  ti-report  ti-jwks   (sans I/O)
               │
  core       ti-pki (+ load)  jwz (+ ti-jwz)         ti-pkcs12
               │
@@ -151,6 +151,7 @@ with `cargo fuzz tmin`; structure-aware targets with `arbitrary`.
 | ti-pkcs12 | `decode` with password, MAC and KDF parameters, legacy PBEs |
 | ti-connector-client | `.kon` files, SOAP responses and faults, service directory |
 | ti-idpd, ti-directory | discovery document, IDP keys and challenge, redirects, token responses |
+| ti-jwks | a `jwks_uri`'s answers: status, `Cache-Control`, the set within its limits |
 | ti-report | TSL view and certificate description (what ti-wasm hands to JavaScript) |
 
 ## 8. Dependencies
@@ -165,7 +166,7 @@ are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
 ti-cache, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
-ti-jwz, ti-idpd and ti-directory, with every feature but their adapters
+ti-jwz, ti-jwks, ti-idpd and ti-directory, with every feature but their adapters
 (the `ureq` transports, ti-types' `clap`) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
 or foreign code through `unsafe` (rpassword) belongs there. What counts is what
