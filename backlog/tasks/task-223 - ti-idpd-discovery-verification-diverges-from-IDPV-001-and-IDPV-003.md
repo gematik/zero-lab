@@ -1,10 +1,10 @@
 ---
 id: TASK-223
 title: 'ti-idpd: discovery verification diverges from IDPV-001 and IDPV-003'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-05T22:03:00Z'
-updated_date: '2026-11-06T06:25:00Z'
+updated_date: '2026-11-06T06:26:00Z'
 labels:
   - ti-idpd
   - security
@@ -32,3 +32,9 @@ On fix/ti-idpd-discovery-trust-order (../zero-lab-223), 8a432e33: discovery::par
 
 AC 2: maintainer decided to keep trust::Unverified and ti's --idp-unverified as the one exception; recorded in spec/pki-path/README.md IDPV-003 (22487601). ti-idpd, ti-directory, ti-cli tests: 283 passed. Branch not merged yet.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-idpd checks the discovery document's signer before its key verifies the document (IDPV-001): discovery::parse takes the CertificateTrust, and idpv_001_the_discovery_signer_is_checked_before_its_key_verifies_anything fails against the old order. IDPV-003: the maintainer kept trust::Unverified and ti's --idp-unverified as the one exception, recorded in spec/pki-path/README.md.
+<!-- SECTION:FINAL_SUMMARY:END -->
