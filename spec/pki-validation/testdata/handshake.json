@@ -1,0 +1,36 @@
+{
+ "_comment": "What a client offers and accepts under each profile (TLSV-010 to 013), by IANA name. An implementation offers exactly these, in any order; brainpool groups only where its TLS library has them.",
+ "ti": {
+  "versions": ["TLSv1.3", "TLSv1.2"],
+  "cipher_suites": [
+   "TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384",
+   "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+   "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+  ],
+  "groups": ["secp256r1", "secp384r1"],
+  "groups_if_available": ["brainpoolP256r1", "brainpoolP384r1", "brainpoolP256r1tls13", "brainpoolP384r1tls13"],
+  "signature_schemes": [
+   "ecdsa_secp256r1_sha256", "ecdsa_secp384r1_sha384",
+   "ecdsa_brainpoolP256r1tls13_sha256", "ecdsa_brainpoolP384r1tls13_sha384",
+   "rsa_pss_rsae_sha256", "rsa_pss_rsae_sha384", "rsa_pss_rsae_sha512",
+   "rsa_pkcs1_sha256", "rsa_pkcs1_sha384", "rsa_pkcs1_sha512"
+  ],
+  "tls12_only": ["rsa_pkcs1_sha256", "rsa_pkcs1_sha384", "rsa_pkcs1_sha512"]
+ },
+ "web": {
+  "versions": ["TLSv1.3", "TLSv1.2"],
+  "cipher_suites": [
+   "TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384",
+   "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+   "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+  ],
+  "groups": ["secp256r1", "secp384r1"],
+  "groups_if_available": ["brainpoolP256r1", "brainpoolP384r1", "brainpoolP256r1tls13", "brainpoolP384r1tls13"],
+  "signature_schemes": [
+   "ecdsa_secp256r1_sha256", "ecdsa_secp384r1_sha384",
+   "rsa_pss_rsae_sha256", "rsa_pss_rsae_sha384", "rsa_pss_rsae_sha512",
+   "rsa_pkcs1_sha256", "rsa_pkcs1_sha384", "rsa_pkcs1_sha512"
+  ],
+  "tls12_only": ["rsa_pkcs1_sha256", "rsa_pkcs1_sha384", "rsa_pkcs1_sha512"]
+ }
+}

@@ -1,0 +1,956 @@
+{
+ "trust": {
+  "ti": {
+   "profile": "ti",
+   "roots": [
+    "ti-root.pem"
+   ],
+   "tsl_cas": [
+    {
+     "cert": "ti-ca.pem",
+     "types": [
+      "C.FD.TLS-S",
+      "C.ZD.TLS-S",
+      "C.FD.TLS-C"
+     ]
+    }
+   ]
+  },
+  "ti-no-tsl": {
+   "profile": "ti",
+   "roots": [
+    "ti-root.pem"
+   ],
+   "tsl_cas": null
+  },
+  "web": {
+   "profile": "web",
+   "roots": [
+    "web-root.pem"
+   ]
+  }
+ },
+ "cases": [
+  {
+   "name": "ti-cn-and-san",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-030",
+    "TLSV-031",
+    "TLSV-032"
+   ]
+  },
+  {
+   "name": "ti-second-san",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "ALT.ti.test.",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-024",
+    "TLSV-031"
+   ]
+  },
+  {
+   "name": "ti-other-name",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "other.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-024",
+    "TLSV-031"
+   ]
+  },
+  {
+   "name": "ti-cn-only",
+   "trust": "ti",
+   "chain": [
+    "ti-cn-only.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-cn-only-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-031"
+   ]
+  },
+  {
+   "name": "ti-wildcard",
+   "trust": "ti",
+   "chain": [
+    "ti-wildcard.pem",
+    "ti-ca.pem"
+   ],
+   "host": "a.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-wildcard-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-024",
+    "TLSV-031"
+   ]
+  },
+  {
+   "name": "ti-wildcard-two-labels",
+   "trust": "ti",
+   "chain": [
+    "ti-wildcard.pem",
+    "ti-ca.pem"
+   ],
+   "host": "a.b.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-wildcard-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-024"
+   ]
+  },
+  {
+   "name": "ti-wildcard-no-label",
+   "trust": "ti",
+   "chain": [
+    "ti-wildcard.pem",
+    "ti-ca.pem"
+   ],
+   "host": "ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-wildcard-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-024"
+   ]
+  },
+  {
+   "name": "ti-zd",
+   "trust": "ti",
+   "chain": [
+    "ti-zd.pem",
+    "ti-ca.pem"
+   ],
+   "host": "zd.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-zd-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-030"
+   ]
+  },
+  {
+   "name": "ti-client-type",
+   "trust": "ti",
+   "chain": [
+    "ti-tls-c.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-tls-c-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "profile_type_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-030"
+   ]
+  },
+  {
+   "name": "ti-client-eku",
+   "trust": "ti",
+   "chain": [
+    "ti-client-eku.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-client-eku-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "key_usage_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-022"
+   ]
+  },
+  {
+   "name": "ti-expired",
+   "trust": "ti",
+   "chain": [
+    "ti-expired.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "expired",
+   "warnings": [],
+   "rules": [
+    "TLSV-021"
+   ]
+  },
+  {
+   "name": "ti-sha1",
+   "trust": "ti",
+   "chain": [
+    "ti-sha1.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-sha1-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "signature_algorithm_not_allowed",
+   "warnings": [],
+   "rules": [
+    "TLSV-023"
+   ]
+  },
+  {
+   "name": "ti-p521",
+   "trust": "ti",
+   "chain": [
+    "ti-p521.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-p521-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "key_not_admissible",
+   "warnings": [],
+   "rules": [
+    "TLSV-030"
+   ]
+  },
+  {
+   "name": "ti-revoked",
+   "trust": "ti",
+   "chain": [
+    "ti-revoked.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-revoked-revoked.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "ocsp_revoked",
+   "warnings": [],
+   "rules": [
+    "TLSV-032"
+   ]
+  },
+  {
+   "name": "ti-responder-good",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": "ocsp/ti-good-good.der",
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-032"
+   ]
+  },
+  {
+   "name": "ti-stale-staple",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-stale.der",
+   "responder_ocsp": "ocsp/ti-good-good.der",
+   "crl": null,
+   "expect": "valid",
+   "warnings": [
+    "provided_ocsp_response_not_valid"
+   ],
+   "rules": [
+    "TLSV-032"
+   ]
+  },
+  {
+   "name": "ti-wrong-hash-staple",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-wrong-hash.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "ocsp_unavailable",
+   "warnings": [
+    "provided_ocsp_response_not_valid"
+   ],
+   "rules": [
+    "TLSV-032"
+   ]
+  },
+  {
+   "name": "ti-no-responder",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "ocsp_unavailable",
+   "warnings": [],
+   "rules": [
+    "TLSV-032"
+   ]
+  },
+  {
+   "name": "ti-unknown",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": "ocsp/ti-good-unknown.der",
+   "crl": null,
+   "expect": "ocsp_unknown",
+   "warnings": [],
+   "rules": [
+    "TLSV-032"
+   ]
+  },
+  {
+   "name": "ti-no-tsl",
+   "trust": "ti-no-tsl",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "trust_material_unavailable",
+   "warnings": [],
+   "rules": [
+    "TLSV-033"
+   ]
+  },
+  {
+   "name": "ti-leaf-only",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-020"
+   ]
+  },
+  {
+   "name": "ti-extra-certificates",
+   "trust": "ti",
+   "chain": [
+    "ti-good.pem",
+    "web-ca.pem",
+    "ti-ca.pem",
+    "web-root.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-020"
+   ]
+  },
+  {
+   "name": "ti-public-certificate",
+   "trust": "ti",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem",
+    "web-root.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-p256-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "chain_incomplete",
+   "warnings": [],
+   "rules": [
+    "TLSV-001",
+    "TLSV-020",
+    "TLSV-030"
+   ]
+  },
+  {
+   "name": "web-p256",
+   "trust": "web",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-p256-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-040",
+    "TLSV-041",
+    "TLSV-043",
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-p384",
+   "trust": "web",
+   "chain": [
+    "web-p384.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-p384-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-041"
+   ]
+  },
+  {
+   "name": "web-rsa3072",
+   "trust": "web",
+   "chain": [
+    "web-rsa3072.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-rsa3072-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-041",
+    "TLSV-042"
+   ]
+  },
+  {
+   "name": "web-rsa2048",
+   "trust": "web",
+   "chain": [
+    "web-rsa2048.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-rsa2048-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "key_not_admissible",
+   "warnings": [],
+   "rules": [
+    "TLSV-041"
+   ]
+  },
+  {
+   "name": "web-p521",
+   "trust": "web",
+   "chain": [
+    "web-p521.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-p521-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "key_not_admissible",
+   "warnings": [],
+   "rules": [
+    "TLSV-041"
+   ]
+  },
+  {
+   "name": "web-weak-ca",
+   "trust": "web",
+   "chain": [
+    "web-under-weak-ca.pem",
+    "web-ca-1024.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "key_not_admissible",
+   "warnings": [],
+   "rules": [
+    "TLSV-042"
+   ]
+  },
+  {
+   "name": "web-cn-not-read",
+   "trust": "web",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem"
+   ],
+   "host": "other.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-p256-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-043"
+   ]
+  },
+  {
+   "name": "web-cn-only",
+   "trust": "web",
+   "chain": [
+    "web-cn-only.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-cn-only-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-043"
+   ]
+  },
+  {
+   "name": "web-wildcard",
+   "trust": "web",
+   "chain": [
+    "web-wildcard.pem",
+    "web-ca.pem"
+   ],
+   "host": "a.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-wildcard-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-024",
+    "TLSV-043"
+   ]
+  },
+  {
+   "name": "web-wildcard-two-labels",
+   "trust": "web",
+   "chain": [
+    "web-wildcard.pem",
+    "web-ca.pem"
+   ],
+   "host": "a.b.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-wildcard-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-024"
+   ]
+  },
+  {
+   "name": "web-wildcard-no-label",
+   "trust": "web",
+   "chain": [
+    "web-wildcard.pem",
+    "web-ca.pem"
+   ],
+   "host": "web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-wildcard-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-024"
+   ]
+  },
+  {
+   "name": "web-partial-wildcard",
+   "trust": "web",
+   "chain": [
+    "web-partial.pem",
+    "web-ca.pem"
+   ],
+   "host": "foo.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-partial-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-024"
+   ]
+  },
+  {
+   "name": "web-ip",
+   "trust": "web",
+   "chain": [
+    "web-ip.pem",
+    "web-ca.pem"
+   ],
+   "host": "192.0.2.1",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-ip-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-024"
+   ]
+  },
+  {
+   "name": "web-other-ip",
+   "trust": "web",
+   "chain": [
+    "web-ip.pem",
+    "web-ca.pem"
+   ],
+   "host": "192.0.2.2",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-ip-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "name_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-024"
+   ]
+  },
+  {
+   "name": "web-client-eku",
+   "trust": "web",
+   "chain": [
+    "web-client-eku.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-client-eku-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "key_usage_mismatch",
+   "warnings": [],
+   "rules": [
+    "TLSV-022"
+   ]
+  },
+  {
+   "name": "web-sha1",
+   "trust": "web",
+   "chain": [
+    "web-sha1.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-sha1-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "signature_algorithm_not_allowed",
+   "warnings": [],
+   "rules": [
+    "TLSV-023"
+   ]
+  },
+  {
+   "name": "web-long",
+   "trust": "web",
+   "chain": [
+    "web-long.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-long-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "validity_too_long",
+   "warnings": [],
+   "rules": [
+    "TLSV-045"
+   ]
+  },
+  {
+   "name": "web-expired",
+   "trust": "web",
+   "chain": [
+    "web-expired.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "expired",
+   "warnings": [],
+   "rules": [
+    "TLSV-021"
+   ]
+  },
+  {
+   "name": "web-revoked",
+   "trust": "web",
+   "chain": [
+    "web-revoked.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-revoked-revoked.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "revoked",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-responder",
+   "trust": "web",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": "ocsp/web-p256-good.der",
+   "crl": null,
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-crl-after-responder",
+   "trust": "web",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": "crl/web-ca-empty.der",
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-unknown-then-crl",
+   "trust": "web",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": "ocsp/web-p256-unknown.der",
+   "crl": "crl/web-ca-empty.der",
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-crl-only",
+   "trust": "web",
+   "chain": [
+    "web-crl-only.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": "crl/web-ca-empty.der",
+   "expect": "valid",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-crl-revoked",
+   "trust": "web",
+   "chain": [
+    "web-crl-revoked.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": "crl/web-ca-revoked.der",
+   "expect": "revoked",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-no-status-source",
+   "trust": "web",
+   "chain": [
+    "web-no-status.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "revocation_unavailable",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-sources-down",
+   "trust": "web",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "revocation_unavailable",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-ti-certificate",
+   "trust": "web",
+   "chain": [
+    "ti-good.pem",
+    "ti-ca.pem",
+    "ti-root.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/ti-good-good.der",
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "chain_incomplete",
+   "warnings": [],
+   "rules": [
+    "TLSV-001",
+    "TLSV-020",
+    "TLSV-040"
+   ]
+  }
+ ]
+}
