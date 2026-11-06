@@ -220,3 +220,4 @@ git checkout go/epa/v0.20.3
 | `upgrade` | `go get -u ./...` + tidy per module (deliberate dependency upgrade) |
 | `docker-build-<cmd>` / `docker-push-<cmd>` | Build / build+push the command's Docker image |
 | `update-roots` | Refresh the embedded TSL root certificates |
+| `tls-bench` | A cold and a cached TLS server verification per profile of `spec/pki-validation` (`tipki/titls`), on one core; fails when a median exceeds its budget (5 ms cold, 10 µs cached) |
