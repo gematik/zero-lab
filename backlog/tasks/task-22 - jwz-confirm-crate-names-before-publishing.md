@@ -3,8 +3,8 @@ id: TASK-22
 title: 'jwz: confirm crate names before publishing'
 status: To Do
 assignee: []
-created_date: '2026-10-10 05:58'
-updated_date: '2026-10-10 05:58'
+created_date: 2026-10-10 05:58
+updated_date: '2026-11-06T06:43:00Z'
 labels:
   - jwz
   - decision
@@ -23,3 +23,9 @@ jwz, jwz-brainpool and ti-jwz are publish = false until the crate names are conf
 <!-- AC:BEGIN -->
 - [ ] #1 Names confirmed; publish enabled; release-plz and tags configured
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Maintainer, 2026-11-06: jwz-brainpool goes into ti-jwz (TASK-225), so the names are jwz and ti-jwz; publish stays off. Record the confirmed names, remove jwz-brainpool from release-plz.toml.
+<!-- SECTION:PLAN:END -->
