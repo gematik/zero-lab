@@ -1,10 +1,10 @@
 ---
 id: TASK-98
 title: 'Go: TLS server verification hooks for TI-PKI and hardened Web-PKI'
-status: To Do
+status: In Progress
 assignee: []
 created_date: 2026-10-15 05:20
-updated_date: '2026-11-05T19:31:00Z'
+updated_date: '2026-11-06T14:01:00Z'
 labels:
   - go
   - spec
@@ -32,3 +32,15 @@ go/tipki implements both profiles of spec/pki-validation natively with the stand
 - [ ] #2 Every Go client of a TI endpoint uses the TI-PKI profile and every client of an internet endpoint the hardened Web-PKI profile; epa no longer skips verification
 - [ ] #3 Benchmarks with the same budget as TASK-97 for a cold and a cached verification
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Maintainer 2026-11-06: profiles in a subpackage of tipki; zero-epa downloads the TSL itself; all subtasks on one branch (spec/go-pki-validation).
+98.1 ti server check in go/tipki, ti corpus cases of spec/pki-validation.
+98.2 go/tipki/titls: web profile, tls.Config per profile (handshake.json), bounded verdict cache, atomic snapshot swap; web corpus cases.
+98.3 benchmarks with TASK-97's budgets, just recipe.
+98.4 go/tipki/fetch: idpd's FetchingTrust generalised (all envs incl. dev), used by idpd and epa as the ti snapshot source.
+98.5 every Go client on its profile: epa proxy and probe ti (TASK-229), internet clients web; inventory first.
+No new dependencies: standard library only. The ti tls.Config needs one InsecureSkipVerify (crypto/x509 refuses the TI's brainpool CAs) with a justified nolint, inside titls only, VerifyConnection doing the whole check.
+<!-- SECTION:PLAN:END -->
