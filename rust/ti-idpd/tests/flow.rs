@@ -690,8 +690,8 @@ fn idpv_001_the_discovery_signer_is_checked_before_its_key_verifies_anything() {
         answer: Err("revoked".into()),
         seen: RefCell::new(Vec::new()),
     };
-    let error = discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &refusing)
-        .unwrap_err();
+    let error =
+        discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &refusing).unwrap_err();
     assert!(
         matches!(&error, Error::Untrusted { which: IdpCertificate::DiscoverySigner, detail } if detail == "revoked"),
         "the signature was checked before the certificate: {error}"
@@ -705,8 +705,8 @@ fn idpv_001_the_discovery_signer_is_checked_before_its_key_verifies_anything() {
         answer: Ok(Checked::Verified),
         seen: RefCell::new(Vec::new()),
     };
-    let error = discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &trusting)
-        .unwrap_err();
+    let error =
+        discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &trusting).unwrap_err();
     assert!(
         matches!(
             error,
