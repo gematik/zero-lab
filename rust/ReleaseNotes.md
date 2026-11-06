@@ -134,6 +134,15 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
   longer turns the help of `ti` without arguments into an error.
 
+### ti-tls
+
+#### added
+- New crate (TASK-97): TLS server verification under `spec/pki-validation`. `TiVerifier` (the
+  `ti` profile through ti-pki) and `WebVerifier` (the `web` profile: the system's roots,
+  rustls-webpki paths, gematik's and the ZETA SDK's key, hash, name, validity and revocation
+  rules) as rustls verifiers; `client_config` offers TLS 1.3/1.2, AES-GCM with ECDHE, P-256 and
+  P-384 only. Verdicts are reused until their certificate, status or snapshot ends.
+
 ### ti-jwks
 
 #### added
@@ -391,6 +400,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   target `sds`.
 
 ### ti-pki
+
+#### added
+- `tls::ServerCheck`: a TLS server of the TI under the `ti` profile of `spec/pki-validation`
+  (TUC_PKI_018 with Tab_PKI_273, C.FD.TLS-S and C.ZD.TLS-S, the host in the commonName or a
+  `dNSName`, wildcards as RFC 9525 has them, OCSP stapled within the grace period or asked),
+  with the spec's result codes; `TrustStore::with_tsl_ca_types_for_tests` (`test-util`).
 
 #### changed
 - The `hci-aut` profile checks revocation hard-fail, like every other profile: an SMC-B whose OCSP

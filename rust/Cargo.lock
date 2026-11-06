@@ -1804,6 +1804,7 @@ dependencies = [
  "rustls-pki-types",
  "rustls-webpki",
  "serde_json",
+ "sha2",
  "ti-pki",
  "traceability",
  "x509-cert",

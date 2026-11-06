@@ -343,7 +343,10 @@ const CRL_DISTRIBUTION_POINTS: ObjectIdentifier = ObjectIdentifier::new_unwrap("
 #[derive(der::Sequence)]
 struct RsaPublicKey<'a> {
     modulus: der::asn1::UintRef<'a>,
-    #[allow(dead_code, reason = "part of the structure; only the modulus is judged")]
+    #[allow(
+        dead_code,
+        reason = "part of the structure; only the modulus is judged"
+    )]
     exponent: der::asn1::UintRef<'a>,
 }
 

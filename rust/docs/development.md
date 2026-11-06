@@ -502,6 +502,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `jwz-interop` | Design time (Go, Python 3): brainpool interop fixtures against Go josebp and Python jwcrypto, both directions, and their coverage table (`ti-jwz/interop`) |
 | `fuzz-jwz [seconds]` | Design time (nightly, cargo-fuzz): every jwz parser, `seconds` each (default 30), from the committed seeds |
 | `fuzz-ti-cache [seconds]` | Design time (nightly, cargo-fuzz): ti-cache's `Cache-Control` parser, `seconds` (default 30), from the committed seeds |
+| `fuzz-ti-tls [seconds]` | Design time (nightly, cargo-fuzz): the chain a server presents to ti-tls's web profile, `seconds` (default 30), from the committed seed |
 | `fuzz-ti-pki [seconds]` | Design time (nightly, cargo-fuzz): ti-pki's parsers of network bytes (the detached TSL signature, the TSL list, OCSP responses), `seconds` each, from the committed seeds |
 | `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser, its file check and redacted view, `seconds` each (default 30) |
 | `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser with its file check and redacted view, the service directory with its bindings and rewrite, and every Konnektor call on any answer, seeded from the recorded runs, `seconds` each (default 30) |

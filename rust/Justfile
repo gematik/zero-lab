@@ -569,6 +569,20 @@ fuzz-ti-directory seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
+# Fuzz what a server sends ti-tls, the certificate chain of a handshake (design time; nightly
+# and cargo-fuzz). Corpora start from ti-tls/fuzz/seeds and grow in ti-tls/fuzz/corpus.
+fuzz-ti-tls seconds="30":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd ti-tls/fuzz
+    for target in web_server; do
+        mkdir -p "corpus/$target"
+        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
+            -max_total_time={{seconds}} -max_len=16384 -print_final_stats=1 2>&1 \
+            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
+    done
+
 # Fuzz what an origin sends ti-cache, the Cache-Control field (design time; nightly and
 # cargo-fuzz). Corpora start from ti-cache/fuzz/seeds and grow in ti-cache/fuzz/corpus.
 fuzz-ti-cache seconds="30":

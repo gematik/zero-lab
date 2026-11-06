@@ -22,12 +22,19 @@ rustls-native-certs.workspace = true
 x509-cert.workspace = true
 der.workspace = true
 const-oid.workspace = true
-# rustls asks synchronously; the checks are async because OCSP may go to the network.
-futures-lite.workspace = true
+# The verdict cache's key: a hash of the presented chain.
+sha2.workspace = true
 
 [dev-dependencies]
 traceability.workspace = true
+futures-lite.workspace = true
+# MockTransport and the lab configuration for the ti verifier's tests.
+ti-pki = { workspace = true, features = ["brainpool", "rsa", "load", "test-util"] }
 serde_json.workspace = true
+
+[package.metadata.cargo-machete]
+# The package rustls-webpki is imported under its crate name, `webpki`.
+ignored = ["rustls-webpki"]
 
 [lints]
 workspace = true

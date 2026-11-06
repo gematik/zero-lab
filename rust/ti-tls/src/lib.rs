@@ -33,10 +33,13 @@
 #![forbid(unsafe_code)]
 
 pub mod algorithms;
+mod block;
 pub mod fetch;
 pub mod verdict;
+pub mod verifier;
 pub mod web;
 
 pub use fetch::{Fetch, Offline};
 pub use verdict::{Code, Verdict};
+pub use verifier::{TiVerifier, WebVerifier, client_config};
 pub use web::WebCheck;

@@ -13,7 +13,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
 ```text
  hosts      ti-cli (ureq, rustls/ring)   ti-wasm (wasm-bindgen)   servers (their own)
               │                            │                        │
- adapters   `ureq` / `os` features: the only code that does I/O
+ adapters   `ureq` / `os` features, ti-tls (rustls): the only code that does I/O or holds a TLS library
               │
  engines    ti-idpd  ti-directory  ti-connector-client  ti-report  ti-jwks   (sans I/O)
               │
@@ -152,6 +152,7 @@ with `cargo fuzz tmin`; structure-aware targets with `arbitrary`.
 | ti-connector-client | `.kon` files, SOAP responses and faults, service directory |
 | ti-idpd, ti-directory | discovery document, IDP keys and challenge, redirects, token responses |
 | ti-jwks | a `jwks_uri`'s answers: status, `Cache-Control`, the set within its limits |
+| ti-tls | the chain a TLS server presents, under the `web` profile (`fuzz-ti-tls`) |
 | ti-report | TSL view and certificate description (what ti-wasm hands to JavaScript) |
 
 ## 8. Dependencies

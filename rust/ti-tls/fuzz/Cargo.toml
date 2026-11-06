@@ -1,0 +1,28 @@
+# cargo-fuzz target for what a server sends ti-tls: the certificate chain of a handshake
+# (nightly; `just fuzz-ti-tls`). Outside the workspace so that libfuzzer never enters the
+# workspace's lock file and checks.
+[package]
+name = "ti-tls-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+futures-lite = "2.6.1"
+rustls-pki-types = "1.15.1"
+ti-pki = { path = "../../ti-pki" }
+ti-tls = { path = ".." }
+
+[[bin]]
+name = "web_server"
+path = "fuzz_targets/web_server.rs"
+test = false
+doc = false
+bench = false
