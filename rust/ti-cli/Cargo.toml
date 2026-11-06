@@ -36,9 +36,10 @@ pkcs8.workspace = true
 sec1.workspace = true
 der.workspace = true
 zeroize.workspace = true
-# rustls without a built-in provider (ring is passed in), the OS trust store via the
-# platform verifier.
-ureq = { workspace = true, features = ["rustls-no-provider", "platform-verifier"] }
+# rustls without a built-in provider (ring is passed in); the trust is ti-tls's.
+ureq = { workspace = true, features = ["rustls-no-provider"] }
+# Every https server verified under spec/pki-validation's web profile.
+ti-tls = { workspace = true, features = ["ureq"] }
 rustls.workspace = true
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "suggestions", "color", "env"] }
 clap_complete.workspace = true

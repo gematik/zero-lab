@@ -28,6 +28,15 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### security
+- Every https server is verified under the `web` profile of `spec/pki-validation` (TASK-97):
+  the OS roots or those of `--cacert`/`--capath`, end-entity keys ECDSA P-256/P-384 or
+  RSA ≥ 3000, no SHA-1, MD5 or SHA-224, serverAuth, at most 398 days of validity, and a
+  revocation status by OCSP or CRL, or no connection. The TSL download points, the IDP-Dienst
+  and the FHIR-Directory pass it (`cargo test -p ti-tls --features ureq --test real_world --
+  --ignored`). `-k` no longer reaches the IDP-Dienst and the FHIR-Directory, as documented: it
+  skips the check for downloads only. `-v` names the profile.
+
 #### added
 - `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
   one bundle file for a server or an air-gapped site, written whole and only once a consumer's

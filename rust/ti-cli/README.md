@@ -346,10 +346,15 @@ The HTTP options follow curl: `-k/--insecure`, `--cacert`, `--capath`, `-x/--pro
 variable with `ALL_PROXY` as fallback, and the operating system's proxy settings are not
 read. The client is ureq, blocking and without an async runtime: a command makes a few
 sequential requests. TLS is rustls with the ring provider passed explicitly, as in
-kartos, trusting the operating system's store unless `--cacert`/`--capath` (or the
-variables) name another, which then replaces it as in curl. `-k` affects only
-the transport, prints a warning and sets `insecure_transport` in JSON: trust material is
-verified cryptographically either way.
+kartos. Every https server is verified under the `web` profile of
+[`spec/pki-validation`](../../spec/pki-validation/README.md) (crate `ti-tls`): the operating
+system's roots, unless `--cacert`/`--capath` (or the variables) name others, which then
+replace them as in curl; on top, end-entity keys ECDSA P-256/P-384 or RSA ≥ 3000, no SHA-1,
+serverAuth, at most 398 days, and a revocation status by OCSP or CRL, or no connection. The
+TSL download points, the IDP-Dienst and the FHIR-Directory all present public certificates.
+`-k` affects only downloads, prints a warning and sets `insecure_transport` in JSON: trust
+material is verified cryptographically either way. The IDP-Dienst and the FHIR-Directory are
+always verified.
 
 ## License
 

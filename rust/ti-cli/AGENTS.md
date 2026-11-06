@@ -121,8 +121,12 @@ never on `message`. `hint` says what to do, when there is something.
 - The HTTP options and variables follow curl: `-x`/`HTTPS_PROXY`/`HTTP_PROXY`/
   `ALL_PROXY`, `--noproxy`/`NO_PROXY`, `--cacert`/`CURL_CA_BUNDLE`/`SSL_CERT_FILE`,
   `--capath`/`SSL_CERT_DIR`, `--connect-timeout`, `-m`, `--retry`, `-A`.
+- Every https server is verified under the `web` profile of `spec/pki-validation`: the OS
+  roots (or `--cacert`/`--capath` in their place), modern keys and hashes, and a revocation
+  status, so a server without OCSP or CRL answers is refused.
 - `-k` skips TLS checks for downloads only and sets `insecure_transport` in the report;
-  the trust material is still verified. Do not use it unless asked to.
+  the trust material is still verified. The IDP-Dienst and the FHIR-Directory are always
+  verified. Do not use it unless asked to.
 - Downloads are cached as plain files in the profile's cache directory, under `v1/`.
   `--offline` makes no request and works from the cache.
 - OCSP responses (`good`, `revoked`) are cached there too, for one hour and never past

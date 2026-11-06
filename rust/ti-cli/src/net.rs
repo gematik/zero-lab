@@ -129,18 +129,19 @@ impl NetArgs {
 impl fmt::Display for NetArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let trust = if self.insecure {
-            "NOT VERIFIED (-k)".to_owned()
+            "web profile, downloads NOT VERIFIED (-k)".to_owned()
         } else {
             let (files, dir) = self.ca_sources();
             if files.is_empty() && dir.is_none() {
-                "OS trust store".to_owned()
+                "web profile, OS roots".to_owned()
             } else {
-                files
+                let roots = files
                     .iter()
                     .chain(dir.iter())
                     .map(|p| p.display().to_string())
                     .collect::<Vec<_>>()
-                    .join(", ")
+                    .join(", ");
+                format!("web profile, roots {roots}")
             }
         };
         let proxy = match self.proxy.as_deref() {

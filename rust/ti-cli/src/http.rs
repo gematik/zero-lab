@@ -21,9 +21,11 @@
  * find details in the "Readme" file.
  */
 
-//! The HTTP client behind downloads and OCSP: blocking ureq on rustls with ring, the
-//! operating system's trust store, and the curl-like options of [`NetArgs`] applied the
-//! way curl applies them.
+//! The HTTP client behind downloads, OCSP and the IDP-Dienst: blocking ureq on rustls with
+//! ring, every https server verified under the `web` profile of `spec/pki-validation`
+//! (ti-tls) against the operating system's roots, and the curl-like options of [`NetArgs`]
+//! applied the way curl applies them. ti's endpoints, the TSL download points, the IDP-Dienst
+//! and the FHIR-Directory, all present public certificates.
 //!
 //! Blocking is deliberate: a command makes a handful of sequential requests, so an async
 //! runtime would add a large dependency tree for nothing. ti-pki's transport futures
@@ -37,7 +39,12 @@ use ti_pki::load::{
     ArtifactRequest, ArtifactResponse, PostRequest, ResponseMeta, Source, Transport,
     TransportError, TransportErrorKind,
 };
+use rustls::pki_types::CertificateDer;
+use ti_tls::ureq::UreqFetch;
+use ti_tls::{WebCheck, WebVerifier};
 use ureq::Agent;
+use ureq::config::ConfigBuilder;
+use ureq::typestate::AgentScope;
 use ureq::http::header::{
     ACCEPT, CACHE_CONTROL, CONTENT_TYPE, ETAG, HeaderMap, IF_MODIFIED_SINCE, IF_NONE_MATCH,
     LAST_MODIFIED,
@@ -55,39 +62,70 @@ const MAX_RETRY_DELAY: Duration = Duration::from_mins(10);
 /// Largest body read; the production TSL is under 1 MiB.
 const MAX_BODY: u64 = 32 * 1024 * 1024;
 
-/// The transport for downloads and OCSP.
+/// curl's settings for requests to `scheme` URLs: proxy, timeouts, user agent.
+fn builder(net: &NetArgs, scheme: &str) -> Result<ConfigBuilder<AgentScope>, CliError> {
+    Ok(Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_connect(Some(net.connect_timeout))
+        .timeout_global(Some(net.max_time))
+        .user_agent(net.user_agent())
+        .proxy(proxy(net, scheme)?))
+}
+
+/// The agent for plain HTTP: OCSP responders and CRL hosts.
+fn plain_agent(net: &NetArgs) -> Result<Agent, CliError> {
+    Ok(builder(net, "http")?.build().new_agent())
+}
+
+/// The rustls configuration of the `web` profile: `--cacert`/`--capath` as the roots in
+/// place of the system's, as curl and Go read `SSL_CERT_FILE`, and every other rule of the
+/// profile regardless.
+fn web_config(net: &NetArgs) -> Result<Arc<rustls::ClientConfig>, CliError> {
+    let (files, dir) = net.ca_sources();
+    let check = if files.is_empty() && dir.is_none() {
+        WebCheck::system()
+    } else {
+        let mut roots = Vec::new();
+        for path in files.iter().chain(ca_dir_files(dir.as_deref())?.iter()) {
+            roots.extend(
+                pem_certificates(path)?
+                    .iter()
+                    .map(|cert| CertificateDer::from(cert.der().to_vec())),
+            );
+        }
+        WebCheck::new(roots)
+    };
+    let verifier = WebVerifier::new(check, UreqFetch::new(plain_agent(net)?));
+    Ok(Arc::new(ti_tls::client_config(Arc::new(verifier))))
+}
+
+/// The transport for downloads and OCSP. `-k` skips the TLS check for downloads only: the
+/// TSL and roots.json are verified by their content, and the report says so.
 pub fn transport(net: &NetArgs, verbose: u8) -> Result<Http, CliError> {
-    let tls = tls_config(net)?;
-    let agent = |scheme| -> Result<Agent, CliError> {
-        Ok(Agent::config_builder()
-            .http_status_as_error(false)
-            .timeout_connect(Some(net.connect_timeout))
-            .timeout_global(Some(net.max_time))
-            .user_agent(net.user_agent())
-            .tls_config(tls.clone())
-            .proxy(proxy(net, scheme)?)
+    let tls = if net.insecure {
+        builder(net, "https")?
+            .tls_config(insecure_tls())
             .build()
-            .new_agent())
+            .new_agent()
+    } else {
+        ti_tls::ureq::agent(builder(net, "https")?, web_config(net)?)
     };
     Ok(Http {
-        tls: agent("https")?,
-        plain: agent("http")?,
+        tls,
+        plain: plain_agent(net)?,
         retries: net.retry,
         verbose,
     })
 }
 
-/// The agent for the IDP-Dienst flow: TLS, proxy, timeouts and user agent as for
-/// downloads, but redirects are not followed and no status is an error — a `302` is the
-/// flow's answer.
+/// The agent for the IDP-Dienst flow: proxy, timeouts and user agent as for downloads, the
+/// server always verified under `web` (`-k` does not reach it), redirects not followed and no
+/// status an error: a `302` is the flow's answer.
 pub fn idp_agent(net: &NetArgs) -> Result<Agent, CliError> {
-    let builder = Agent::config_builder()
-        .timeout_connect(Some(net.connect_timeout))
-        .timeout_global(Some(net.max_time))
-        .user_agent(net.user_agent())
-        .tls_config(tls_config(net)?)
-        .proxy(proxy(net, "https")?);
-    Ok(ti_idpd::ureq::UreqTransport::agent(builder))
+    Ok(ti_tls::ureq::agent(
+        builder(net, "https")?.max_redirects(0),
+        web_config(net)?,
+    ))
 }
 
 /// The IDP agent as a [`ti_idpd::http::Transport`] with one `-v` line per request.
@@ -137,24 +175,14 @@ impl ti_idpd::http::Transport for Logged<'_> {
     }
 }
 
-fn tls_config(net: &NetArgs) -> Result<TlsConfig, CliError> {
-    let (files, dir) = net.ca_sources();
-    let roots = if net.insecure || (files.is_empty() && dir.is_none()) {
-        RootCerts::PlatformVerifier
-    } else {
-        let mut certs = Vec::new();
-        for path in files.iter().chain(ca_dir_files(dir.as_deref())?.iter()) {
-            certs.extend(pem_certificates(path)?);
-        }
-        // Like curl: a CA option replaces the system store rather than adding to it.
-        RootCerts::new_with_certs(&certs)
-    };
-    Ok(TlsConfig::builder()
+/// `-k`: rustls without a check, for downloads only.
+fn insecure_tls() -> TlsConfig {
+    TlsConfig::builder()
         .provider(TlsProvider::Rustls)
         .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
-        .root_certs(roots)
-        .disable_verification(net.insecure)
-        .build())
+        .root_certs(RootCerts::new_with_certs(&[]))
+        .disable_verification(true)
+        .build()
 }
 
 fn pem_certificates(path: &Path) -> Result<Vec<Certificate<'static>>, CliError> {
