@@ -1,9 +1,10 @@
 ---
 id: TASK-229
 title: 'zero-epa: TLS verification skipped when no cert pool is set'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
+updated_date: '2026-11-06T16:48:00Z'
 labels:
   - epa
   - go

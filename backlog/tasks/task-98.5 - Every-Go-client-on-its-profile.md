@@ -1,9 +1,10 @@
 ---
 id: TASK-98.5
 title: Every Go client on its profile
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T14:01:00Z'
+updated_date: '2026-11-06T16:48:00Z'
 labels:
   - go
   - security
