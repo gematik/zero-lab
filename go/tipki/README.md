@@ -154,7 +154,8 @@ Package `titls` puts both profiles of the spec into a `crypto/tls` client config
 `ServerCheck` over a `TrustSource` the host swaps on each TSL reload, and `web` over the system's roots with
 the profile's key, name, validity and revocation rules (stapled OCSP, the responder, the CRL). It reuses
 accepted verdicts in a bounded cache and reaches responders and CRL hosts only through the host's
-`*http.Client`. Its package documentation lists what `crypto/tls` cannot offer as `handshake.json` has it.
+`*http.Client`. `NewWebHTTPClient` is the web profile as an `*http.Client`, for the libraries a host hands
+one. Its package documentation lists what `crypto/tls` cannot offer as `handshake.json` has it.
 
 Package `fetch` is the host-side piece for a workload with no producer to mount a bundle from: over the
 host's `*http.Client` it downloads an environment's roots and TSL from the fixed hosts, takes a list only

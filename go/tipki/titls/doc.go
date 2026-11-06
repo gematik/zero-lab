@@ -44,6 +44,8 @@
 //	check, err := titls.SystemWebCheck()
 //	config := titls.NewWebVerifier(check, titls.NewHTTPFetcher(client), titls.Options{}).ClientConfig()
 //
+// or, where a library takes an *http.Client, [NewWebHTTPClient] builds both and the transport around them.
+//
 // Accepted verdicts are reused for the same chain, host and profile, under ti also the same trust snapshot,
 // until the earliest of notAfter, the status's nextUpdate and the profile's window (TLSV-050, TLSV-051): at
 // most [DefaultCacheSize] of them unless configured; refusals never.
