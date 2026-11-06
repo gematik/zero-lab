@@ -35,21 +35,21 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
+use rustls::pki_types::CertificateDer;
 use ti_pki::load::{
     ArtifactRequest, ArtifactResponse, PostRequest, ResponseMeta, Source, Transport,
     TransportError, TransportErrorKind,
 };
-use rustls::pki_types::CertificateDer;
 use ti_tls::ureq::UreqFetch;
 use ti_tls::{WebCheck, WebVerifier};
 use ureq::Agent;
 use ureq::config::ConfigBuilder;
-use ureq::typestate::AgentScope;
 use ureq::http::header::{
     ACCEPT, CACHE_CONTROL, CONTENT_TYPE, ETAG, HeaderMap, IF_MODIFIED_SINCE, IF_NONE_MATCH,
     LAST_MODIFIED,
 };
 use ureq::tls::{Certificate, PemItem, RootCerts, TlsConfig, TlsProvider};
+use ureq::typestate::AgentScope;
 
 use crate::error::CliError;
 use crate::net::{NetArgs, redact};
