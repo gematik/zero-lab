@@ -1,0 +1,33 @@
+[package]
+name = "ti-tls"
+version = "0.1.0"
+description = "TLS server verification for gematik Telematikinfrastruktur (TI) clients under spec/pki-validation: TI servers through ti-pki, internet servers by the hardened Web-PKI profile, as rustls verifiers"
+keywords = ["tls", "rustls", "gematik", "telematik", "pki"]
+categories = ["cryptography", "network-programming"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+# The ti profile, the OCSP format and the signature algorithms (brainpool and RSA).
+ti-pki = { workspace = true, features = ["brainpool", "rsa"] }
+rustls.workspace = true
+rustls-webpki.workspace = true
+rustls-pki-types = { workspace = true, features = ["std"] }
+# The host system's default roots for the web profile.
+rustls-native-certs.workspace = true
+x509-cert.workspace = true
+der.workspace = true
+const-oid.workspace = true
+# rustls asks synchronously; the checks are async because OCSP may go to the network.
+futures-lite.workspace = true
+
+[dev-dependencies]
+traceability.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

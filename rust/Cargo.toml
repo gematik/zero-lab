@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-jwks", "ti-idpd", "ti-directory", "unsafe-audit", "traceability"]
+members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-report", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-jwks", "ti-tls", "ti-idpd", "ti-directory", "unsafe-audit", "traceability"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -28,6 +28,7 @@ jwz = { version = "0.1", path = "jwz", default-features = false }
 ti-jwz = { version = "0.1", path = "ti-jwz" }
 ti-idpd = { version = "0.1", path = "ti-idpd" }
 ti-jwks = { version = "0.1", path = "ti-jwks" }
+ti-tls = { version = "0.1", path = "ti-tls" }
 ti-directory = { version = "0.1", path = "ti-directory" }
 # Dev-only: the traceability tables (tests/traceability.rs); never published.
 traceability = { path = "traceability" }
@@ -85,6 +86,10 @@ rustls = { version = "0.23.46", default-features = false, features = ["std", "tl
 # The operating system's trust store for a Konnektor without a `.kon` trust store; the
 # version ureq's `platform-verifier` feature brings.
 rustls-platform-verifier = "0.7.1"
+# ti-tls: the web profile's paths over the host's roots, with ti-pki's signature algorithms
+# (no ring feature: rustls-webpki verifies nothing itself).
+rustls-webpki = { version = "0.103.16", default-features = false, features = ["alloc", "std"] }
+rustls-native-certs = "0.8.4"
 # Hidden password entry in ti-cli's interactive commands (connector config); host only,
 # never a core: it reaches the terminal through `unsafe` (termios, the Windows console).
 # Exact, with rtoolbox 0.0.6 in the lock file, which promises no compatibility.

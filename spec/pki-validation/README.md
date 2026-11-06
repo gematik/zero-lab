@@ -113,7 +113,7 @@ the inner channels of the VAU and ZETA/ASL, Certificate Transparency, and the se
 - **TLSV-041** The end entity's key is ECDSA on P-256 or P-384, or RSA of at least 3000 bits
   (`key_not_admissible`): the 120-bit level that gemSpec_Krypt requires of identities from an internet PKI
   (A_28976, after TR-02102-2) and of non-TI RSA keys (A_16176-01).
-- **TLSV-042** A CA's key is ECDSA on P-256, P-384 or P-521, or RSA of at least 2048 bits
+- **TLSV-042** A CA's key is ECDSA on P-256 or P-384, or RSA of at least 2048 bits
   (`key_not_admissible`). The lower RSA floor is the Web-PKI's today, as the ZETA SDK accepts it.
 - **TLSV-043** The name matches a `dNSName` subject alternative name as TLSV-024 compares them
   (A_27856-02); the commonName is not read.
