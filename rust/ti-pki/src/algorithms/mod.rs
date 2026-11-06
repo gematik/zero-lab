@@ -70,6 +70,23 @@ pub static ECDSA_P384_SHA384: &dyn SignatureVerificationAlgorithm = &Builtin {
     verify: p384_sha384,
 };
 
+/// ECDSA on NIST P-384 with SHA-256: no TI certificate has it, but CAs of the Web-PKI sign
+/// with it (D-Trust's EV CA, for one); for ti-tls's `web` profile, not in any set here.
+pub static ECDSA_P384_SHA256: &dyn SignatureVerificationAlgorithm = &Builtin {
+    name: "ECDSA P-384 SHA-256",
+    public_key_alg_id: rustls_pki_types::alg_id::ECDSA_P384,
+    signature_alg_id: rustls_pki_types::alg_id::ECDSA_SHA256,
+    verify: p384_sha256,
+};
+
+/// ECDSA on NIST P-256 with SHA-384, the other mixed pair of the Web-PKI; not in any set here.
+pub static ECDSA_P256_SHA384: &dyn SignatureVerificationAlgorithm = &Builtin {
+    name: "ECDSA P-256 SHA-384",
+    public_key_alg_id: rustls_pki_types::alg_id::ECDSA_P256,
+    signature_alg_id: rustls_pki_types::alg_id::ECDSA_SHA384,
+    verify: p256_sha384,
+};
+
 /// The NIST curves.
 pub static STANDARD: &AlgorithmSet = &[ECDSA_P256_SHA256, ECDSA_P384_SHA384];
 
@@ -217,6 +234,31 @@ pub(crate) use ecdsa_verify_fn;
 ecdsa_verify_fn!(p256_sha256, p256::NistP256);
 ecdsa_verify_fn!(p384_sha384, p384::NistP384);
 
+/// Defines `fn $name(public_key, message, signature)` for a curve verified with another hash
+/// than its own: the message is hashed with `$hash`, and the digest verified as a prehash
+/// (truncated or padded to the curve's size as SEC 1 has it).
+macro_rules! ecdsa_prehash_verify_fn {
+    ($name:ident, $curve:ty, $hash:ty) => {
+        fn $name(
+            public_key: &[u8],
+            message: &[u8],
+            signature: &[u8],
+        ) -> Result<(), rustls_pki_types::InvalidSignature> {
+            use ecdsa::signature::hazmat::PrehashVerifier as _;
+            use sha2::Digest as _;
+            let key = ecdsa::VerifyingKey::<$curve>::from_sec1_bytes(public_key)
+                .map_err(|_| rustls_pki_types::InvalidSignature)?;
+            let signature = ecdsa::Signature::<$curve>::from_der(signature)
+                .map_err(|_| rustls_pki_types::InvalidSignature)?;
+            key.verify_prehash(&<$hash>::digest(message), &signature)
+                .map_err(|_| rustls_pki_types::InvalidSignature)
+        }
+    };
+}
+
+ecdsa_prehash_verify_fn!(p384_sha256, p384::NistP384, sha2::Sha256);
+ecdsa_prehash_verify_fn!(p256_sha384, p256::NistP256, sha2::Sha384);
+
 #[cfg(test)]
 pub(crate) mod tests {
     use base64ct::{Base64, Encoding};
@@ -224,6 +266,52 @@ pub(crate) mod tests {
     use x509_cert::Certificate;
 
     use super::*;
+
+    fn unhex(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// RFC 5758 §3.2: ECDSA with SHA-256 on a P-384 key and with SHA-384 on a P-256 key, as
+    /// public CAs sign; the vectors are OpenSSL's, which verified them too. A changed message or
+    /// the curve's own hash does not verify.
+    #[test]
+    fn rfc_5758_3_2_ecdsa_verifies_with_a_hash_other_than_the_curves() {
+        let message = b"spec/pki-validation TLSV-023";
+        let p384_sha256 = (
+            unhex(
+                "0462833390ffb8bbec85b71655365b796b830b9ef9188e50cc724dfb8c8806583be4b87350bb572b2e0566527c935ce18c402b532fb5922bc06a541cfbf1c53ef39f5b78cd985299afca34edb34f247c3326f49a07a7ec659a525f3697a4f14bd7",
+            ),
+            unhex(
+                "306502306ca3af45348ed7f6399f0e7f573957cc11abda4cd5dc563ff4cee9f907102d00ed30e1b0411c6f93fac1089cd0faa188023100b2349c02c2c262bd1a57b76f1b24b93cb8b0a0ab6080297270ca587e8235575052e5cc641f2a8da7fcee72044a506ff5",
+            ),
+        );
+        let p256_sha384 = (
+            unhex(
+                "04a3302ef8e92d235b45334b43825edfb95a934189ba6f6e14486d03b61833e969d342a4660ec9f62a1ac21c13b4951624d44bc6cca72623e61803212b7cd82ae9",
+            ),
+            unhex(
+                "3046022100be93ba4ffb68f6373a71cfa76603d3f45ada437b26b2d304c13a5263aa6b66c302210092546f774e160a12dbe58e7c66353660402e42fd08726b867fbe9ef78e525cc8",
+            ),
+        );
+        for (algorithm, own_hash, (key, signature)) in [
+            (ECDSA_P384_SHA256, ECDSA_P384_SHA384, &p384_sha256),
+            (ECDSA_P256_SHA384, ECDSA_P256_SHA256, &p256_sha384),
+        ] {
+            assert!(
+                algorithm.verify_signature(key, message, signature).is_ok(),
+                "{algorithm:?}"
+            );
+            assert!(
+                algorithm
+                    .verify_signature(key, b"another", signature)
+                    .is_err()
+            );
+            assert!(own_hash.verify_signature(key, message, signature).is_err());
+        }
+    }
 
     /// Key algorithm, signature algorithm (both as `find` takes them), key, signed bytes,
     /// signature.

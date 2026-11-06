@@ -78,13 +78,15 @@ pub static TI_SCHEMES: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
 pub static WEB_SCHEMES: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
     all: WEB_CERTIFICATE_ALGORITHMS,
     mapping: &[
+        // TLS 1.2's ECDSA schemes name the hash, not the curve; TLS 1.3's bind the curve, and
+        // rustls takes the first entry for them.
         (
             SignatureScheme::ECDSA_NISTP256_SHA256,
-            &[algorithms::ECDSA_P256_SHA256],
+            &[algorithms::ECDSA_P256_SHA256, algorithms::ECDSA_P384_SHA256],
         ),
         (
             SignatureScheme::ECDSA_NISTP384_SHA384,
-            &[algorithms::ECDSA_P384_SHA384],
+            &[algorithms::ECDSA_P384_SHA384, algorithms::ECDSA_P256_SHA384],
         ),
         (SignatureScheme::RSA_PSS_SHA256, &[rsa::RSA_PSS_SHA256]),
         (SignatureScheme::RSA_PSS_SHA384, &[rsa::RSA_PSS_SHA384]),
@@ -95,11 +97,14 @@ pub static WEB_SCHEMES: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
     ],
 };
 
-/// The certificate signatures a `web` path may carry (TLSV-023): SHA-256 and up; SHA-1,
-/// MD5 and SHA-224 are not among them, so a path with one does not build.
+/// The certificate signatures a `web` path may carry (TLSV-023): SHA-256 and up, also across
+/// the curves as public CAs sign; SHA-1, MD5 and SHA-224 are not among them, so a path with one
+/// does not build.
 pub static WEB_CERTIFICATE_ALGORITHMS: &[&dyn SignatureVerificationAlgorithm] = &[
     algorithms::ECDSA_P256_SHA256,
     algorithms::ECDSA_P384_SHA384,
+    algorithms::ECDSA_P384_SHA256,
+    algorithms::ECDSA_P256_SHA384,
     rsa::RSA_PSS_SHA256,
     rsa::RSA_PSS_SHA384,
     rsa::RSA_PSS_SHA512,

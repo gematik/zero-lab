@@ -1807,6 +1807,7 @@ dependencies = [
  "sha2",
  "ti-pki",
  "traceability",
+ "ureq",
  "x509-cert",
 ]
 

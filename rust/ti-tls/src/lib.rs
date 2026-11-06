@@ -35,6 +35,8 @@
 pub mod algorithms;
 mod block;
 pub mod fetch;
+#[cfg(feature = "ureq")]
+pub mod ureq;
 pub mod verdict;
 pub mod verifier;
 pub mod web;
