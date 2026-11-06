@@ -1,9 +1,10 @@
 ---
 id: TASK-225
 title: 'ti-jwz: absorb jwz-brainpool as ti_jwz::brainpool'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T06:43:00Z'
+updated_date: '2026-11-06T06:43:00Z'
 labels:
   - jwz
   - ti-jwz
