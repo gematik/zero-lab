@@ -502,9 +502,10 @@ fn random_scalar<B: Backend>(
     len: usize,
     public_of: impl Fn(&[u8]) -> Result<Vec<u8>, CryptoError>,
 ) -> Result<(Secret, Vec<u8>), Error> {
-    // A random string is a valid scalar except with negligible probability; a handful
-    // of attempts only guards against a broken random source.
-    for _ in 0..8 {
+    // Rejection sampling: on P-256 nearly every random string is a scalar, but on
+    // brainpoolP256r1, whose order is about 0.66 · 2^256, a third are not. 64 draws fail
+    // together with probability 0.34^64, below 2^-99; only a broken source exhausts them.
+    for _ in 0..64 {
         let mut bytes = Zeroizing::new(vec![0u8; len]);
         backend.rng().fill(&mut bytes)?;
         if let Ok(public) = public_of(&bytes) {

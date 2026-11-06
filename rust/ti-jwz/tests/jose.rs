@@ -213,3 +213,40 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
 fn interop_standard() -> Policy {
     Profile::rfc7518_interop(&jwz::jwa::Registry::standard()).policy
 }
+
+/// A random source whose first `invalid` draws are scalars above brainpoolP256r1's order,
+/// then counting bytes, which are a valid scalar.
+struct HighFirst {
+    invalid: core::sync::atomic::AtomicUsize,
+}
+
+impl jwz::crypto::Rng for HighFirst {
+    fn fill(&self, dest: &mut [u8]) -> Result<(), jwz::crypto::CryptoError> {
+        use core::sync::atomic::Ordering;
+        let high = self
+            .invalid
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
+            .is_ok();
+        for (i, byte) in dest.iter_mut().enumerate() {
+            *byte = if high {
+                0xff
+            } else {
+                u8::try_from(i % 251).unwrap() + 1
+            };
+        }
+        Ok(())
+    }
+}
+
+/// brainpoolP256r1's order is about 0.66 · 2^256, so a third of all random strings are no
+/// scalar: key generation keeps drawing, and 20 draws in a row outside the order still end in a
+/// key.
+#[test]
+fn a_bp256r1_key_is_generated_however_many_draws_fall_outside_the_order() {
+    let rng = HighFirst { invalid: 20.into() };
+    let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::with_rng(Box::new(
+        rng,
+    ))));
+    let key = SoftwareKey::generate(BP256R1, &ti_jwz::brainpool::registry(), backend);
+    assert!(key.is_ok(), "{:?}", key.err());
+}
