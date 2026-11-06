@@ -29,7 +29,7 @@ notes = "No unsafe, no build script, no std, no I/O. Read all of src/: RFC 2104 
 who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
 criteria = "safe-to-deploy"
 version = "0.13.0"
-notes = "No unsafe, no build script, no std, no I/O. Read all of src/: PBKDF2 (RFC 8018) over any KeyInit + Update + FixedOutput PRF, with the block index as a big-endian u32. The optional mcf feature (not used here) verifies against as many bytes as the stored hash decodes to, so a stored hash with an empty or very short final field matches (almost) any password; worth reporting upstream, irrelevant to callers that only derive keys."
+notes = "No unsafe, no build script, no std, no I/O. Read all of src/: PBKDF2 (RFC 8018) over any KeyInit + Update + FixedOutput PRF, with the block index as a big-endian u32. The optional mcf feature (not used here) verifies against as many bytes as the stored hash decodes to, so a stored hash whose final field decodes to one byte matches about 1 in 256 wrong passwords (the parser refuses an empty one); reported upstream privately, irrelevant to callers that only derive keys."
 
 [[audits.rpassword]]
 who = "Sergej Suskov <108782+spilikin@users.noreply.github.com>"
