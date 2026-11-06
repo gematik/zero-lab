@@ -156,6 +156,12 @@ the profile's key, name, validity and revocation rules (stapled OCSP, the respon
 accepted verdicts in a bounded cache and reaches responders and CRL hosts only through the host's
 `*http.Client`. Its package documentation lists what `crypto/tls` cannot offer as `handshake.json` has it.
 
+Package `fetch` is the host-side piece for a workload with no producer to mount a bundle from: over the
+host's `*http.Client` it downloads an environment's roots and TSL from the fixed hosts, takes a list only
+under the SHA-256 the HTTPS host names, verifies everything as a bundle, refreshes hourly in the background
+and fails closed once the copy is 24 hours past its last good refresh or the list's `NextUpdate` has passed.
+Its `Source` is the `titls.TrustSource` it swaps on each change, and withdraws at that moment.
+
 ## Security posture
 
 - **Trust comes from verification only.** Trust starts at the pinned anchors, and a TSL counts only
@@ -192,6 +198,7 @@ This library has **not** undergone an independent third-party audit.
 tipki/      Certificates, profiles, TSL, chains, OCSP, Validator, ServerCheck
   oid/      The identifiers of gemSpec_OID
   titls/    TLS client configurations for the ti and web profiles of spec/pki-validation
+  fetch/    Download and background refresh of an environment's trust material
 ```
 
 ## Development
