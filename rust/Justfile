@@ -343,7 +343,12 @@ check: fmt clippy doc test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod
 # The feature matrix and the default-feature tests take most of the time and break only
 # when features or their gating change; `just release` runs them.
 # `check` plus every feature combination, the tests with default features and the CLI's cross targets
-check-full: check test-defaults features cli-check
+check-full: check test-defaults features cli-check tls-bench
+
+# A cold and a cached TLS server verification per profile of spec/pki-validation, release
+# build, each median within its budget (ti-tls/examples/tls_bench.rs)
+tls-bench:
+    cargo run -q --release --locked -p ti-tls --example tls_bench
 
 # The Linux and Windows builds of the CLI, linted in their cross containers
 cli-check: (cli-targets "check")

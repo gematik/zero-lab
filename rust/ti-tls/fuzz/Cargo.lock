@@ -863,7 +863,6 @@ version = "0.1.0"
 dependencies = [
  "const-oid",
  "der",
- "futures-lite",
  "rustls",
  "rustls-native-certs",
  "rustls-pki-types",
