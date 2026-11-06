@@ -2,12 +2,13 @@
 
 JOSE for Rust: JWS, JWE, JWK and JWT with an open algorithm registry, pluggable keys and
 crypto backends, and validation profiles as a policy layer. Pure Rust on the RustCrypto
-0.14 line by default, `no_std` + `alloc`; every crate builds for `wasm32-unknown-unknown`
-and is tested in headless Chrome.
+0.14 line by default, `no_std` + `alloc`; builds for `wasm32-unknown-unknown` and is
+tested in headless Chrome.
 
 Start with the guide (`jwz::guide` in the API documentation, [`docs/guide.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/guide.md)).
 
-Milestone 1:
+## What's in 0.1
+
 - `jwz::jwa`: the algorithm registry;
 - `jwz::crypto`: the backend traits (sync and async) and the RustCrypto backend
   (P-256 ES256 and ECDH, Ed25519, AES-GCM, AES Key Wrap, SHA-2, HMAC);
@@ -23,18 +24,42 @@ Milestone 1:
 - `jwz::profile`: `Policy` (the single acceptance check) and the `strict` and
   `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the `ChainValidator` seam.
 
-Brainpool (`ti_jwz::brainpool`) is checked against Go josebp and Python jwcrypto
-(`ti-jwz/interop`); every parser has a fuzz target (`fuzz/`, `just fuzz-jwz`). The
-Concat KDF is proven correct in F* (hax), parsing invariants with Kani: see
-[`docs/VERIFIED.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/VERIFIED.md); specification references and their tests:
-[`docs/traceability.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/traceability.md).
-Design: [`docs/adr/0001-jwz.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/adr/0001-jwz.md); dependencies:
-[`docs/dependencies.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/dependencies.md).
+## Design principles
 
-| Crate | What |
-| --- | --- |
-| `jwz` | the library |
-| `ti-jwz` | gematik TI profiles (gemSpec_Krypt V2.51.0) and, behind `legacy`, brainpoolP256r1 (`BP256R1`, `BP-256`) for existing TI interfaces |
+- **Strict by default.** Every parse takes a policy; the default accepts only modern
+  algorithms, and anything permissive is an explicit choice. `none` cannot be expressed,
+  and the token header never picks the algorithm: the key does.
+- **Trust in the types.** A `Jws<Unverified>` has no payload and a `Jwe<Encrypted>` no
+  plaintext; they appear only after verification or decryption.
+- **Keys as functions.** Signing and key agreement go through traits, sync and async, so
+  HSMs, smartcards and remote signers work without handing over key bytes.
+- **Open, pluggable crypto.** Algorithms live in an open registry and the primitives behind
+  backend traits; the default backend is pure Rust, and the core builds without any.
+- **Small and portable.** `no_std` + `alloc`, no network I/O, no `unsafe`
+  (`#![forbid(unsafe_code)]`), and `wasm32-unknown-unknown` as a first-class target.
+
+The reasoning is in the design record, [`docs/adr/0001-jwz.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/adr/0001-jwz.md).
+
+## How it is checked
+
+- **Specification tests:** the requirements, examples and known answers of RFC 7515, 7516,
+  7517, 7518, 7519, 7520, 7638, 8037 and 8725, and Wycheproof vectors for the primitives
+  behind the backend traits. Tests are named after the requirement they prove, and
+  every reference is traced to its tests in
+  [`docs/traceability.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/traceability.md).
+- **Fuzzing:** a fuzz target per parser (compact and JSON JWS and JWE, JWK, claims).
+- **Formal verification:** the Concat KDF is proven correct for every input in F* (via
+  hax), and the parsing invariants (base64url, compact splitting, policy composition) are
+  model-checked with Kani. Two compile-fail tests prove the type-state. Each result is
+  stamped with the hash of its inputs, and the build fails when an input changed after
+  the proof last ran. Scope and limits: [`docs/VERIFIED.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/VERIFIED.md).
+- **Mutation testing:** a release needs a minimum mutation score, measured on the code
+  as released.
+- **In the browser:** known answers and round trips in headless Chrome on
+  `wasm32-unknown-unknown`.
+- **Minimal, verified dependencies:** each one evaluated before it is added, and the
+  tree audited with `cargo vet` and `cargo deny`:
+  [`docs/dependencies.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/dependencies.md).
 
 ## Features
 
