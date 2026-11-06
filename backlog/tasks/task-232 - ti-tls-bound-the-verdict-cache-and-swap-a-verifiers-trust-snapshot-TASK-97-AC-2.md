@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-06T12:16:00Z'
+updated_date: '2026-11-06T14:30:00Z'
 labels:
   - ti-tls
   - security
@@ -25,3 +26,9 @@ TASK-97 AC 2 asks for a bounded verdict cache over an atomically swapped trust s
 - [ ] #1 the verdict cache has a size bound and drops expired entries on insert, with a test
 - [ ] #2 the ti verifier's trust snapshot can be replaced atomically while in use, with a test
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+TASK-98.2 review: the Go verifiers also stop reuse at the status's nextUpdate (TLSV-050) for ti and for CRL-based web verdicts; ti-tls's reusable_until does not. Align with the bound.
+<!-- SECTION:NOTES:END -->
