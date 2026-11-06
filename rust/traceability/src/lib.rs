@@ -51,7 +51,7 @@ use std::path::{Path, PathBuf};
 
 /// The rule prefixes of the specifications under `spec/`.
 const SPEC_PREFIXES: &[&str] = &[
-    "BUNDLE", "IDPV", "OCSP", "P12", "PATH", "PROF", "ROOTS", "TSLDET", "TSLSIG", "VALID",
+    "BUNDLE", "IDPV", "OCSP", "P12", "PATH", "PROF", "ROOTS", "TLSV", "TSLDET", "TSLSIG", "VALID",
 ];
 
 /// The kind of a reference; the table lists the kinds in this order.

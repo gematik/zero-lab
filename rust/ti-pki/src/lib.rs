@@ -148,6 +148,7 @@ pub mod roots;
 #[cfg(all(test, feature = "brainpool"))]
 mod testing;
 pub mod time;
+pub mod tls;
 pub mod trustdomain;
 pub mod truststore;
 pub mod tsl;

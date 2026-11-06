@@ -121,13 +121,28 @@ impl TrustStore {
     /// The certificate types a verified TSL states for its CAs. Only the loader sets
     /// them, from a TSL whose signature and signer verified.
     #[must_use]
-    #[cfg(any(feature = "load", all(test, feature = "brainpool")))]
+    #[cfg(any(
+        feature = "load",
+        feature = "test-util",
+        all(test, feature = "brainpool")
+    ))]
     pub(crate) fn with_ca_types(
         mut self,
         types: Vec<(Certificate, Vec<ObjectIdentifier>)>,
     ) -> Self {
         self.ca_types = Some(types);
         self
+    }
+
+    /// [`with_ca_types`](Self::with_ca_types) for tests in downstream crates, which stand in
+    /// for a verified TSL.
+    #[must_use]
+    #[cfg(feature = "test-util")]
+    pub fn with_tsl_ca_types_for_tests(
+        self,
+        types: Vec<(Certificate, Vec<ObjectIdentifier>)>,
+    ) -> Self {
+        self.with_ca_types(types)
     }
 
     /// The certificate types (Tab_PKI_405 OIDs) the verified TSL lets `ca` issue
