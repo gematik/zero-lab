@@ -1,9 +1,10 @@
 ---
 id: TASK-97.2
 title: 'TLS verification (b): ti-pki ServerVerifier and rustls adapter'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
+updated_date: '2026-11-06T07:49:00Z'
 labels:
   - ti-pki
   - security
