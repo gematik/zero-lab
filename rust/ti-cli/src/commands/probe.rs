@@ -57,7 +57,7 @@ use crate::error::{CliError, Exit};
 use crate::http;
 use crate::net::NetArgs;
 use crate::output::live::Live;
-use crate::output::{Line, Output, Tone, style};
+use crate::output::{Line, Output, Tone, style, warning};
 use crate::trust::Session;
 
 /// Every request is given up after this.
@@ -280,6 +280,8 @@ struct TlsInfo {
 /// environment's trust material loaded; otherwise why not.
 struct Agents {
     web: Agent,
+    /// With `-k`, the agent for every endpoint: no certificate is checked.
+    unchecked: Option<Agent>,
     ti: Result<Agent, String>,
 }
 
@@ -413,7 +415,7 @@ fn endpoints(env: Env) -> Result<Vec<Endpoint>, CliError> {
 }
 
 /// The HTTP options with the probe's limits: 3 s per request, OCSP included, no retries.
-/// `-k` does not reach the probe: whether a server is trustworthy is what it reports.
+/// `-k` reaches every endpoint, through an agent of its own ([`agents`]).
 fn probe_net(net: &NetArgs) -> NetArgs {
     NetArgs {
         insecure: false,
@@ -435,15 +437,22 @@ fn agents(
     out: &Output,
 ) -> Result<Agents, CliError> {
     let net = probe_net(&global.net);
+    // -k: no certificate is checked, so no trust material is loaded for ti either.
+    let unchecked = if global.net.insecure {
+        warning("-k: TLS certificates are not checked");
+        Some(http::unchecked_agent(&net)?)
+    } else {
+        None
+    };
     let web = ti_tls::ureq::agent(http::builder(&net, "https")?, http::web_config(&net)?);
-    let ti = if endpoints.iter().any(|e| e.tls == TlsProfile::Ti) {
+    let ti = if unchecked.is_none() && endpoints.iter().any(|e| e.tls == TlsProfile::Ti) {
         ti_config(env, &net, global, out)
             .and_then(|config| Ok(ti_tls::ureq::agent(http::builder(&net, "https")?, config)))
             .map_err(|error| error.to_string())
     } else {
         Err("no endpoint is verified under ti".into())
     };
-    Ok(Agents { web, ti })
+    Ok(Agents { web, unchecked, ti })
 }
 
 /// The rustls configuration of the `ti` profile for `env`.
@@ -513,6 +522,7 @@ fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
         return dns(endpoint);
     }
     let agent = match (endpoint.tls, &agents.ti) {
+        _ if let Some(unchecked) = &agents.unchecked => unchecked,
         (TlsProfile::Web, _) => &agents.web,
         (TlsProfile::Ti, Ok(agent)) => agent,
         (TlsProfile::Ti, Err(reason)) => {
@@ -592,7 +602,13 @@ fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
             };
         }
     };
-    let (verdict, detail, discovered) = judge(endpoint.kind, env, base, status, &body);
+    let (verdict, mut detail, discovered) = judge(endpoint.kind, env, base, status, &body);
+    // The answer is judged as without -k; the detail and `tls.verified` say nobody checked
+    // the certificate.
+    let unchecked = tls && agents.unchecked.is_some();
+    if unchecked {
+        detail.push_str(" · TLS not checked (-k)");
+    }
     Outcome {
         status: verdict,
         answered: true,
@@ -600,7 +616,7 @@ fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
         http_status: Some(status),
         duration,
         discovered,
-        verified: tls.then_some(true),
+        verified: (tls && !unchecked).then_some(true),
     }
 }
 
@@ -980,24 +996,48 @@ fn lines(rows: &[Row], tick: usize) -> Vec<String> {
             );
             continue;
         }
-        // Most practices book few Bestandsnetze: the ones not routed share one line.
-        let (silent, shown): (Vec<&Row>, Vec<&Row>) = group
-            .iter()
-            .partition(|r| r.outcome.as_ref().is_some_and(|o| !o.answered));
-        lines.extend(
-            shown
-                .iter()
-                .map(|r| format!("{INDENT}{}", line(r, &widths, tick, false))),
-        );
-        if !silent.is_empty() {
-            let warn = style::WARN;
-            lines.push(format!(
-                "{INDENT}{warn}! {}{warn:#}",
-                not_routed(silent.iter().map(|r| r.endpoint.name.as_str()))
-            ));
-        }
+        lines.push(format!("{INDENT}{}", compact(&group, tick)));
     }
     lines
+}
+
+/// The Bestandsnetze on one line: production lists dozens and most practices book few, so a
+/// row each would push the paths that matter off the screen. The names are grouped by result:
+/// those still running, those that answered, by status, and those not routed; the JSON report
+/// keeps each one's detail.
+fn compact(group: &[&Row], tick: usize) -> String {
+    let names = |pick: &dyn Fn(&Outcome) -> bool| {
+        group
+            .iter()
+            .filter(|r| r.outcome.as_ref().is_some_and(pick))
+            .map(|r| r.endpoint.name.as_str())
+            .collect::<Vec<_>>()
+    };
+    let (good, warn, bad, dim) = (style::GOOD, style::WARN, style::BAD, style::DIM);
+    let mut parts = Vec::new();
+    let running = group.iter().filter(|r| r.outcome.is_none()).count();
+    if running > 0 {
+        let frame = SPINNER[tick % SPINNER.len()];
+        parts.push(format!("{dim}{frame} {running} probing{dim:#}"));
+    }
+    for (tone, symbol, status) in [
+        (good, "✓", Status::Ok),
+        (warn, "!", Status::Warn),
+        (bad, "✗", Status::Fail),
+    ] {
+        let routed = names(&|o| o.answered && o.status == status);
+        if !routed.is_empty() {
+            parts.push(format!("{tone}{symbol} {}{tone:#}", routed.join(", ")));
+        }
+    }
+    let silent = names(&|o| !o.answered);
+    if !silent.is_empty() {
+        parts.push(format!(
+            "{warn}! {}{warn:#}",
+            not_routed(silent.into_iter())
+        ));
+    }
+    parts.join("  ")
 }
 
 /// The one line for the Bestandsnetze that did not answer.
@@ -1114,6 +1154,55 @@ mod tests {
                 assert!(valid, "{env:?}: {}", e.url);
             }
         }
+    }
+
+    /// Production lists 17 Bestandsnetze: they take one line, running or done, grouped by
+    /// result, so the table keeps the paths every practice needs on the screen.
+    #[test]
+    fn the_bestandsnetze_take_one_line() {
+        let all: HashMap<String, Vec<Endpoint>> = serde_json::from_str(ENDPOINTS).unwrap();
+        let mut rows: Vec<Row> = all["prod"]
+            .iter()
+            .map(|endpoint| Row {
+                endpoint: endpoint.clone(),
+                source: "builtin",
+                outcome: None,
+            })
+            .collect();
+        let netze: Vec<usize> = (0..rows.len())
+            .filter(|&i| rows[i].endpoint.access == Access::Bestandsnetz)
+            .collect();
+        assert!(netze.len() > 1);
+        let group_lines = |rows: &[Row]| {
+            let lines = lines(rows, 0);
+            let heading = lines
+                .iter()
+                .position(|l| l.contains("Bestandsnetze"))
+                .unwrap();
+            lines[heading + 1..].to_vec()
+        };
+        let running = group_lines(&rows);
+        assert_eq!(running.len(), 1, "{running:?}");
+        assert!(running[0].contains(&format!("{} probing", netze.len())));
+
+        let outcome = |status, answered| Outcome {
+            status,
+            answered,
+            detail: String::new(),
+            http_status: None,
+            duration: Duration::ZERO,
+            discovered: Vec::new(),
+            verified: None,
+        };
+        rows[netze[0]].outcome = Some(outcome(Status::Ok, true));
+        for &i in &netze[1..] {
+            rows[i].outcome = Some(outcome(Status::Warn, false));
+        }
+        let done = group_lines(&rows);
+        assert_eq!(done.len(), 1, "{done:?}");
+        assert!(done[0].contains(&rows[netze[0]].endpoint.name));
+        assert!(done[0].contains("not routed:"));
+        assert!(!done[0].contains("probing"));
     }
 
     /// Lowercase kebab-case names, `<service>-<n>` for numbered instances, the IDP named

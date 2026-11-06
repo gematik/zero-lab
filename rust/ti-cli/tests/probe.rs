@@ -380,14 +380,14 @@ fn unreachable_bestandsnetze_are_warnings_on_one_line() {
         (Some("warn"), Some(false))
     );
     let block = &text[text.find("\nBestandsnetze\n").expect(&text)..];
-    assert!(block.contains("\n  snk "), "{text}");
-    assert!(block.contains("\n  kzvwl "), "{text}");
-    assert!(block.contains("\n  ! not routed: demis, mdk\n"), "{text}");
-    assert!(!block.contains("\n  demis "), "{text}");
+    assert!(
+        block.contains("\nBestandsnetze\n  ✓ snk, kzvwl  ! not routed: demis, mdk\n\n"),
+        "{text}"
+    );
 }
 
-/// TLS server that presents `tls/self-signed.pem` and completes whatever handshake the client
-/// lets it.
+/// TLS server that presents `tls/self-signed.pem`, completes whatever handshake the client
+/// lets it, and answers `200 ok` to a client that took the certificate.
 fn serve_tls(listener: &TcpListener) {
     use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
     let pem = |text: &str| pem_rfc7468::decode_vec(text.as_bytes()).unwrap().1;
@@ -409,8 +409,21 @@ fn serve_tls(listener: &TcpListener) {
     for mut stream in listener.incoming().flatten() {
         let config = std::sync::Arc::clone(&config);
         std::thread::spawn(move || {
+            use std::io::{Read, Write};
             let mut conn = rustls::ServerConnection::new(config).unwrap();
-            let _ = conn.complete_io(&mut stream);
+            if conn.complete_io(&mut stream).is_err() {
+                return;
+            }
+            // A client that took the certificate gets an answer.
+            let mut tls = rustls::Stream::new(&mut conn, &mut stream);
+            let mut request = [0u8; 4096];
+            if tls.read(&mut request).is_ok() {
+                let _ = tls.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                );
+                tls.conn.send_close_notify();
+                let _ = tls.flush();
+            }
         });
     }
 }
@@ -466,4 +479,67 @@ fn a_certificate_the_profile_refuses_fails_the_probe_with_the_reason() {
         serde_json::json!({"profile": "web", "verified": false})
     );
     assert_eq!(report["access_paths"][0]["available"], true, "reached");
+}
+
+/// `-k` reaches every endpoint of the probe, `ti` ones too, and loads no TSL: a server whose
+/// certificate nobody checked answers and is judged as usual, its detail and `tls.verified`
+/// saying it was not checked.
+#[test]
+fn with_k_every_endpoint_answers_and_says_its_tls_was_not_checked() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || serve_tls(&listener));
+    let dir = std::env::temp_dir().join(format!("ti-probe-k-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let endpoints = dir.join("endpoints.json");
+    std::fs::write(
+        &endpoints,
+        format!(
+            r#"{{"dev": [
+                {{"name": "self-signed", "access": "internet", "kind": "http", "url": "https://127.0.0.1:{port}"}},
+                {{"name": "under-ti", "access": "internet", "kind": "http", "url": "https://127.0.0.1:{port}", "tls": "ti"}}
+            ]}}"#
+        ),
+    )
+    .unwrap();
+    // An empty cache: without -k the ti endpoint would need a TSL downloaded first.
+    let cache = dir.join("cache");
+    let out = Command::new(env!("CARGO_BIN_EXE_ti"))
+        .args(["--format", "json", "-k", "probe", "dev"])
+        .env("TI_CACHE_DIR", &cache)
+        .env("TI_PROBE_ENDPOINTS_PATH", &endpoints)
+        .env_remove("HTTPS_PROXY")
+        .env_remove("https_proxy")
+        .env_remove("ALL_PROXY")
+        .env_remove("all_proxy")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_conforms("probe", &out.stdout);
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    for probe in report["probes"].as_array().unwrap() {
+        assert_eq!(
+            (probe["status"].as_str(), probe["answered"].as_bool()),
+            (Some("ok"), Some(true)),
+            "{report}"
+        );
+        assert!(
+            probe["detail"]
+                .as_str()
+                .unwrap()
+                .ends_with("TLS not checked (-k)"),
+            "{report}"
+        );
+        assert_eq!(probe["tls"]["verified"], Value::Null, "{report}");
+    }
+    assert_eq!(report["probes"].as_array().unwrap().len(), 2, "{report}");
+    assert!(
+        String::from_utf8_lossy(&out.stderr)
+            .matches("warning: -k")
+            .count()
+            == 1,
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }

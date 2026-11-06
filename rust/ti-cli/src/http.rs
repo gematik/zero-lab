@@ -175,7 +175,15 @@ impl ti_idpd::http::Transport for Logged<'_> {
     }
 }
 
-/// `-k`: rustls without a check, for downloads only.
+/// An agent that checks no TLS certificate, for `-k` where a command lets it reach.
+pub(crate) fn unchecked_agent(net: &NetArgs) -> Result<Agent, CliError> {
+    Ok(builder(net, "https")?
+        .tls_config(insecure_tls())
+        .build()
+        .new_agent())
+}
+
+/// `-k`: rustls without a check.
 fn insecure_tls() -> TlsConfig {
     TlsConfig::builder()
         .provider(TlsProvider::Rustls)

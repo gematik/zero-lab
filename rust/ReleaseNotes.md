@@ -40,7 +40,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `ti` profile, against the environment's TSL and roots with OCSP; the IDP-Dienst, E-Rezept
   and the internet services under `web`. A refused certificate fails the probe as an answer
   (`TLS web: unknown issuer`), and the JSON gains `tls: {profile, verified}`. The endpoint
-  list takes `"tls": "ti"` per endpoint; `web` is the default. `-k` does not reach the probe.
+  list takes `"tls": "ti"` per endpoint; `web` is the default.
 
 #### added
 - `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
@@ -79,6 +79,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   link or open to group or others is refused.
 
 #### fixed
+- `ti probe` puts the Bestandsnetze on one line, the names grouped by result (TASK-235):
+  production lists 17, and a row each pushed the TI VPN and Internet off the screen and the
+  redrawn table into the scrollback. `--format json` keeps each one's detail.
+- `ti probe -k` checks no TLS certificate, ePA's included, and loads no TSL; answers are
+  judged as usual, the detail says `TLS not checked (-k)`, `tls.verified` is null, and a
+  warning names it.
+- `-k` warns "the TLS certificates of download servers are not checked".
 - `pki tsl show`, `pki tsl export` and `pki trust export` use the list their load verified
   against the TSL state. They read it back from the cache without asking the origin again, a
   stale entry could send that read there, and refuse any other list. `tsl export` writes the

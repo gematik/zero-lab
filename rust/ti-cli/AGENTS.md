@@ -584,7 +584,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   (the environment's TSL and roots, loaded or downloaded before the probes start, and
   OCSP) for `epa-1` and `epa-2`; `web` (the OS roots, or `--cacert`/`--capath`) for the
   rest, `idpd-ti` and `erx` included: being a TI service does not decide the profile.
-  `-k` does not reach the probe.
+  `-k` checks no certificate, ePA's included, and loads no TSL: every https endpoint is
+  judged as usual, the detail ending in `TLS not checked (-k)` and `tls.verified` null.
 - Each service is checked with its protocol: `oidc` (the IDP's OpenID discovery, JSON
   or signed), `zeta` (RFC 9728 protected-resource metadata of ZETA-protected services
   such as PoPP, VSDM and DiPag), `erp` (the E-Rezept Fachdienst's VAU certificate), `epa` (the

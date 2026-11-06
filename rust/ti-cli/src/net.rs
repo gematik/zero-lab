@@ -34,8 +34,9 @@ use clap::Args;
 #[derive(Clone, Debug, Args)]
 #[command(next_help_heading = "HTTP options")]
 pub struct NetArgs {
-    /// Skip TLS certificate checks for downloads (like curl -k); validation results are
-    /// unaffected, as trust material is verified cryptographically
+    /// Skip TLS certificate checks for downloads and for every endpoint of `probe` (like
+    /// curl -k); validation results are unaffected, as trust material is verified
+    /// cryptographically
     #[arg(short = 'k', long, global = true, hide_short_help = true)]
     pub insecure: bool,
     /// PEM file of CA certificates trusted instead of the OS store (like curl --cacert);

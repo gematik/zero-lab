@@ -321,7 +321,7 @@ impl Session {
         };
         let insecure = global.net.insecure && !offline;
         if insecure {
-            warning("-k: TLS certificates of downloads are not checked");
+            warning("-k: the TLS certificates of download servers are not checked");
         }
         let transport = if offline {
             None
