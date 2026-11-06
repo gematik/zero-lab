@@ -129,6 +129,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-idpd
 
+#### security
+- The discovery document's signer is checked before its key verifies the document
+  (IDPV-001): `discovery::parse` takes the `trust::CertificateTrust` and asks it about the
+  `x5c` certificate first, so a refused certificate stops the flow whatever the signature
+  says. `Discovery::signer_checked` records the answer (TASK-223).
+
 #### fixed
 - A `Location` with a `%` before a non-ASCII character no longer panics: the query is decoded
   byte by byte, and `%+F` is no longer read as an escape. Found by the new fuzz targets.

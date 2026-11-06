@@ -87,35 +87,23 @@ pub async fn authenticate<T: Transport>(
     now: u64,
     trust: &dyn CertificateTrust,
 ) -> Result<Authenticated, Error> {
-    let mut certificates = Vec::new();
-    let mut check = |which, der: &[u8], chain: &[Vec<u8>]| {
-        let checked = trust
-            .check(which, der, chain)
-            .map_err(|detail| Error::Untrusted { which, detail })?;
-        certificates.push(CheckedCertificate {
-            which,
-            der: der.to_vec(),
-            checked,
-        });
-        Ok::<_, Error>(())
-    };
     let send = |what: &'static str, request| {
         transport
             .send(&request)
             .map_err(|source| Error::Transport { what, source })
     };
+    // IDPV-001: the discovery signer is checked inside `parse`, before its key is used.
     let discovery = discovery::parse(
         idp,
         &send("discovery document", discovery::request(idp))?,
         now,
+        trust,
     )?;
-    // IDPV-001, gemSpec_IDP_Frontend A_20617: a refused certificate stops the flow
-    // before the card signs anything.
-    check(
-        IdpCertificate::DiscoverySigner,
-        &discovery.signer_der,
-        &discovery.signer_chain_der,
-    )?;
+    let mut certificates = vec![CheckedCertificate {
+        which: IdpCertificate::DiscoverySigner,
+        der: discovery.signer_der.clone(),
+        checked: discovery.signer_checked,
+    }];
     let metadata = &discovery.metadata;
     let puk_idp_sig = discovery::parse_key(
         "PuK_IDP_SIG",
@@ -127,7 +115,15 @@ pub async fn authenticate<T: Transport>(
     // IDPV-002: `puk_idp_sig`'s own certificate is checked before its key verifies the
     // challenge.
     let sig_chain = discovery::key_certificates("PuK_IDP_SIG", &puk_idp_sig)?;
-    check(IdpCertificate::TokenSigner, &sig_chain[0], &sig_chain[1..])?;
+    let which = IdpCertificate::TokenSigner;
+    let checked = trust
+        .check(which, &sig_chain[0], &sig_chain[1..])
+        .map_err(|detail| Error::Untrusted { which, detail })?;
+    certificates.push(CheckedCertificate {
+        which,
+        der: sig_chain[0].clone(),
+        checked,
+    });
     let puk_idp_enc = discovery::parse_key(
         "PuK_IDP_ENC",
         &send(

@@ -28,6 +28,7 @@
 
 use libfuzzer_sys::fuzz_target;
 use ti_idpd::http::Response;
+use ti_idpd::trust::Unverified;
 use ti_idpd::{Env, Idp, discovery};
 
 /// The capture time of the seeds: the reference IDP's discovery document is valid then.
@@ -43,7 +44,7 @@ fn ok(body: &[u8]) -> Response {
 
 fuzz_target!(|data: &[u8]| {
     let idp = Idp::for_env(Env::Ref);
-    if let Ok(found) = discovery::parse(&idp, &ok(data), NOW) {
+    if let Ok(found) = discovery::parse(&idp, &ok(data), NOW, &Unverified) {
         assert_eq!(found.metadata.issuer.trim_end_matches('/'), idp.base_url());
     }
 });

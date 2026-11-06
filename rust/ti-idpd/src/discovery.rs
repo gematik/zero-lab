@@ -39,6 +39,7 @@ use ti_pki::Certificate;
 use crate::Idp;
 use crate::error::{Error, IdpError};
 use crate::http::{Request, Response};
+use crate::trust::{CertificateTrust, Checked, IdpCertificate};
 
 /// The brainpool-capable backend every verification and encryption here runs on.
 pub(crate) type Backend = Extended<RustCrypto>;
@@ -89,6 +90,8 @@ pub struct Discovery {
     pub signer_der: Vec<u8>,
     /// The rest of the `x5c`, issuer first; usually empty.
     pub signer_chain_der: Vec<Vec<u8>>,
+    /// What the trust check made of the signer.
+    pub signer_checked: Checked,
     /// The signer's `kid`, `puk_disc_sig`.
     pub kid: Option<String>,
 }
@@ -101,15 +104,21 @@ pub fn request(idp: &Idp) -> Request {
     ))
 }
 
-/// The document in `response`, its signature verified with the certificate it carries
-/// and its validity checked at `now` (seconds since the epoch).
+/// The document in `response`: the certificate it carries goes to `trust` first, then
+/// that certificate's key verifies the signature and the validity is checked at `now`
+/// (seconds since the epoch).
 ///
 /// # Errors
 ///
-/// [`Error::Idp`] or [`Error::Status`] for a non-200; [`Error::Jose`] if the JWS does
-/// not parse under the TI profile or does not verify; [`Error::Malformed`] for a
-/// payload that is not the metadata.
-pub fn parse(idp: &Idp, response: &Response, now: u64) -> Result<Discovery, Error> {
+/// [`Error::Idp`] or [`Error::Status`] for a non-200; [`Error::Untrusted`] when `trust`
+/// refuses the signer; [`Error::Jose`] if the JWS does not parse under the TI profile or
+/// does not verify; [`Error::Malformed`] for a payload that is not the metadata.
+pub fn parse(
+    idp: &Idp,
+    response: &Response,
+    now: u64,
+    trust: &dyn CertificateTrust,
+) -> Result<Discovery, Error> {
     expect_ok("discovery document", response)?;
     let token = std::str::from_utf8(&response.body)
         .map_err(|e| Error::malformed("discovery document", e))?
@@ -130,6 +139,12 @@ pub fn parse(idp: &Idp, response: &Response, now: u64) -> Result<Discovery, Erro
         .ok_or_else(|| Error::malformed("discovery document", "empty x5c"))?;
     let certificate =
         Certificate::from_der(leaf).map_err(|e| Error::malformed("discovery document x5c", e))?;
+    // IDPV-001, gemSpec_IDP_Frontend A_20617: the signer passes before its key verifies
+    // anything, so a refused certificate stops here whatever the signature says.
+    let which = IdpCertificate::DiscoverySigner;
+    let signer_checked = trust
+        .check(which, leaf, &chain[1..])
+        .map_err(|detail| Error::Untrusted { which, detail })?;
     let kid = jws.header().kid().map(str::to_owned);
     let key = verifier_from_certificate(&certificate, jws.algorithm(), &registry)?;
     let verified = jws
@@ -158,6 +173,7 @@ pub fn parse(idp: &Idp, response: &Response, now: u64) -> Result<Discovery, Erro
         metadata,
         signer_der: leaf.clone(),
         signer_chain_der: chain[1..].to_vec(),
+        signer_checked,
         kid,
     })
 }

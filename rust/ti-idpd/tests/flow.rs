@@ -129,6 +129,9 @@ enum Behaviour {
     ChallengeSignedByOtherKey,
     ChallengeExpired,
     DiscoveryWithoutX5c,
+    /// The discovery document names its signer's certificate in `x5c`, but another key
+    /// signed it.
+    DiscoverySignedByOtherKey,
     IdpSigWithoutX5c,
     /// `PuK_IDP_SIG`'s `x5c` is a certificate for another key.
     IdpSigX5cOfOtherKey,
@@ -173,12 +176,16 @@ impl FakeIdp {
         if self.behaviour != Behaviour::DiscoveryWithoutX5c {
             params = params.x5c(&[&self.disc_cert]);
         }
-        jws::sign(
-            Self::metadata().to_string().as_bytes(),
-            params,
-            &self.disc_sig,
-        )
-        .unwrap()
+        let other;
+        let signer: &dyn Signer = if self.behaviour == Behaviour::DiscoverySignedByOtherKey {
+            other = SoftwareKey::generate(jwz_brainpool::BP256R1, &ti_jwz::registry(), backend())
+                .unwrap()
+                .with_kid("puk_disc_sig");
+            &other
+        } else {
+            &self.disc_sig
+        };
+        jws::sign(Self::metadata().to_string().as_bytes(), params, signer).unwrap()
     }
 
     fn challenge(&self) -> String {
@@ -441,6 +448,7 @@ fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate()
         &idp.send(&discovery::request(&Idp::new("https://idp.test")))
             .unwrap(),
         NOW,
+        &Unverified,
     )
     .unwrap()
     .metadata;
@@ -556,6 +564,7 @@ fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
         &idp.send(&discovery::request(&Idp::new("https://idp.test")))
             .unwrap(),
         NOW,
+        &Unverified,
     )
     .unwrap_err();
     assert!(
@@ -569,6 +578,7 @@ fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
         &idp.send(&discovery::request(&Idp::new("https://idp.test")))
             .unwrap(),
         NOW,
+        &Unverified,
     )
     .unwrap_err();
     assert!(
@@ -665,6 +675,48 @@ fn idpv_001_a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
         "the IDP's puk_disc_sig certificate is not trusted: revoked"
     );
     assert!(idp.posted.borrow().is_empty());
+}
+
+/// The discovery signer's certificate is judged before its key verifies the document: a
+/// refused one stops the flow even where the signature would have failed, and a trusted
+/// one does not excuse a bad signature.
+#[test]
+fn idpv_001_the_discovery_signer_is_checked_before_its_key_verifies_anything() {
+    let idp = FakeIdp::new(Behaviour::DiscoverySignedByOtherKey);
+    let response = idp
+        .send(&discovery::request(&Idp::new("https://idp.test")))
+        .unwrap();
+    let refusing = Recording {
+        answer: Err("revoked".into()),
+        seen: RefCell::new(Vec::new()),
+    };
+    let error = discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &refusing)
+        .unwrap_err();
+    assert!(
+        matches!(&error, Error::Untrusted { which: IdpCertificate::DiscoverySigner, detail } if detail == "revoked"),
+        "the signature was checked before the certificate: {error}"
+    );
+    assert_eq!(
+        refusing.seen.borrow().as_slice(),
+        [(IdpCertificate::DiscoverySigner, idp.disc_cert.clone())]
+    );
+
+    let trusting = Recording {
+        answer: Ok(Checked::Verified),
+        seen: RefCell::new(Vec::new()),
+    };
+    let error = discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &trusting)
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            Error::Jose {
+                what: "discovery document signature",
+                ..
+            }
+        ),
+        "{error}"
+    );
 }
 
 /// Without an `x5c`, or with the certificate of another key, `puk_idp_sig` is refused
