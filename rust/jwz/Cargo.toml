@@ -9,8 +9,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-publish.workspace = true
+publish = ["crates-io"]
 homepage = "https://github.com/gematik/zero-lab/blob/main/rust/jwz/README.md"
+# The crate as released; docs/guide.md is the crate documentation (src/lib.rs includes it).
+include = ["src/", "docs/guide.md", "README.md", "LICENSE"]
 
 [features]
 default = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto"]

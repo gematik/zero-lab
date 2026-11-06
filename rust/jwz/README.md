@@ -5,7 +5,7 @@ crypto backends, and validation profiles as a policy layer. Pure Rust on the Rus
 0.14 line by default, `no_std` + `alloc`; every crate builds for `wasm32-unknown-unknown`
 and is tested in headless Chrome.
 
-Start with the guide (`jwz::guide` in the API documentation, [`docs/guide.md`](docs/guide.md)).
+Start with the guide (`jwz::guide` in the API documentation, [`docs/guide.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/guide.md)).
 
 Milestone 1:
 - `jwz::jwa`: the algorithm registry;
@@ -26,10 +26,10 @@ Milestone 1:
 Brainpool (`ti_jwz::brainpool`) is checked against Go josebp and Python jwcrypto
 (`ti-jwz/interop`); every parser has a fuzz target (`fuzz/`, `just fuzz-jwz`). The
 Concat KDF is proven correct in F* (hax), parsing invariants with Kani: see
-[`docs/VERIFIED.md`](docs/VERIFIED.md); specification references and their tests:
-[`docs/traceability.md`](docs/traceability.md).
-Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
-[`docs/dependencies.md`](docs/dependencies.md).
+[`docs/VERIFIED.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/VERIFIED.md); specification references and their tests:
+[`docs/traceability.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/traceability.md).
+Design: [`docs/adr/0001-jwz.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/adr/0001-jwz.md); dependencies:
+[`docs/dependencies.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/dependencies.md).
 
 | Crate | What |
 | --- | --- |

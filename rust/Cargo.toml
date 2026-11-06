@@ -12,7 +12,7 @@ rust-version = "1.96"
 license = "EUPL-1.2"
 repository = "https://github.com/gematik/zero-lab"
 authors = ["gematik GmbH"]
-# Until the registry/crates.io decision; flipped here once for every crate.
+# Off until a crate is released to crates.io; a released crate sets its own (jwz).
 publish = false
 
 [workspace.dependencies]

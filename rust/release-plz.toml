@@ -4,3 +4,7 @@ git_release_enable = false
 publish = false            # flipped once the registry decision is made
 # Release notes are ReleaseNotes.md in the gematik template, which release-plz cannot write.
 changelog_update = false
+
+[[package]]
+name = "jwz"
+publish = true
