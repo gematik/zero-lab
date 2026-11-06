@@ -1,7 +1,7 @@
 ---
 id: TASK-97.3
 title: 'TLS verification (c): benchmarks with a budget'
-status: Done
+status: In Progress
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
 updated_date: '2026-11-06T08:36:00Z'
@@ -24,6 +24,12 @@ TASK-97 part (c).
 <!-- AC:BEGIN -->
 - [x] #1 just tls-bench measures a cold and a cached verification per profile and fails over the budget
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on the branch; set Done with the merge.
+<!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
