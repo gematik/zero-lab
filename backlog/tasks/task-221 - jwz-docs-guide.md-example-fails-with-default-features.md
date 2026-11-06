@@ -1,10 +1,10 @@
 ---
 id: TASK-221
 title: 'jwz: docs/guide.md example fails with default features'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-05T21:54:00Z'
-updated_date: '2026-11-06T07:10:00Z'
+updated_date: '2026-11-06T07:28:00Z'
 labels:
   - jwz
   - tests
@@ -34,3 +34,9 @@ Rewrite the guide example so it holds under every feature set (interop accepts e
 <!-- SECTION:NOTES:BEGIN -->
 3582e270: the example asserts A128KW (interop has it, strict not), true under every feature set; just test and check-jwz run cargo test -p jwz --doc with defaults; the old example fails there at guide line 75, the new one passes.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The guide's profile example holds with default features (A128KW in interop, not in strict); just test also runs jwz's doc tests with defaults.
+<!-- SECTION:FINAL_SUMMARY:END -->

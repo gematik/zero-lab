@@ -1,10 +1,10 @@
 ---
 id: TASK-220
 title: 'jwz: RFC 7517 deviations in JWK Sets and key use'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-05T21:54:00Z'
-updated_date: '2026-11-06T07:10:00Z'
+updated_date: '2026-11-06T07:28:00Z'
 labels:
   - jwz
 dependencies: []
@@ -33,3 +33,9 @@ Fix all four, tests named after the section: 5 a key missing required members, w
 <!-- SECTION:NOTES:BEGIN -->
 87e836a9: all four fixed. Jwk::allows(KeyPurpose) checked by SoftwareKey, SoftwareAgreementKey, SymmetricKey and JWE encryption; key_ops duplicates and use/key_ops conflicts refused at parse; JwkSet skips unreadable keys (UnsupportedKeyType, MissingMember, InvalidMember, Base64), a duplicate member or a non-object entry still fails the set. The old test asserting the opposite of §5 was replaced. Tests rfc_7517_4_2_, rfc_7517_4_3_, rfc_7517_5_.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+All four RFC 7517 deviations fixed with tests named after their sections: sets skip unreadable keys (§5), key_ops unique and consistent with use (§4.3), use/key_ops bind a key via Jwk::allows(KeyPurpose) in every key constructor and JWE encryption (§4.2).
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-225
 title: 'ti-jwz: absorb jwz-brainpool as ti_jwz::brainpool'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T06:43:00Z'
-updated_date: '2026-11-06T07:10:00Z'
+updated_date: '2026-11-06T07:28:00Z'
 labels:
   - jwz
   - ti-jwz
@@ -36,3 +36,9 @@ Brainpool is TI-only (ADR 0001: not for new components), so it moves next to the
 <!-- SECTION:NOTES:BEGIN -->
 On refactor/ti-jwz-brainpool (680cee6e): one commit, git sees 24 renames. ti_jwz::brainpool behind legacy; tests gated on legacy, the interop example has required-features; recipes, browser stamp (just jwz-recheck: passed), docs, ADR 0001 amended, release notes folded into ti-jwz. check-jwz green; ti-idpd, ti-directory, ti-cli 283 passed.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+jwz-brainpool is the module ti_jwz::brainpool behind legacy; the crate is gone. Callers, recipes, browser stamp, docs and ADR 0001 follow; just check green.
+<!-- SECTION:FINAL_SUMMARY:END -->
