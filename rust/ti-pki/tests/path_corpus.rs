@@ -29,7 +29,6 @@ use core::time::Duration;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
-use ti_pki::load::Bundle;
 use ti_pki::path::ValidityModel;
 use ti_pki::{
     Certificate, PathOptions, Timestamp, TrustStore, algorithms, build_chain, validate_path,
@@ -177,10 +176,13 @@ fn path_001_the_corpus_is_what_ti_pki_says() {
     );
 }
 
-/// BUNDLE-001: what ti-pki reads or refuses, on which `go/tipki` must agree.
+/// BUNDLE-001: what ti-pki reads or refuses, on which `go/tipki` must agree. The bundle is the
+/// loading layer's, so this needs `load` where the chains above do not; `just test` runs it.
+#[cfg(feature = "load")]
 #[test]
 fn bundle_001_values_are_read_or_refused_as_stated() {
     use base64ct::{Base64, Encoding};
+    use ti_pki::load::Bundle;
     let vectors: Value =
         serde_json::from_slice(&std::fs::read(testdata().join("bundle.json")).unwrap()).unwrap();
     for vector in vectors.as_array().unwrap() {
