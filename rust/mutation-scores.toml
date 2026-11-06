@@ -9,7 +9,6 @@
 
 [thresholds]
 "jwz" = 0.8
-"jwz-brainpool" = 0.8
 "ti-connector-client" = 0.8
 "ti-idpd" = 0.8
 "ti-jwz" = 0.8

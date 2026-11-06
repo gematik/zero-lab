@@ -24,15 +24,15 @@
 //! brainpoolP256r1 for jwz: the JWS algorithm `BP256R1` and the JWK curve `BP-256`, as
 //! gematik uses them on existing TI interfaces (IDP discovery documents and tokens,
 //! VAU handshakes, SMC-B and HBA keys). Legacy support only: new components use P-256
-//! and must not depend on this crate (`just brainpool-absent <crate>` checks that).
+//! and leave ti-jwz's `legacy` feature off (`just brainpool-absent <crate>` checks that).
 //!
 //! Neither identifier is registered with IANA; they are gematik's (gemSpec_IDP_Dienst
 //! V2.2.0, A_20591-01, A_20695-01, A_20327-02), mirrored by `go/brainpool/josebp` in this
 //! repository. Brainpool JWE uses the standard `ECDH-ES` names with an `epk` on `BP-256`;
-//! jwz-brainpool supports encrypting to a `BP-256` key (as `go/gemidp` does for the IDP),
+//! this module supports encrypting to a `BP-256` key (as `go/gemidp` does for the IDP),
 //! not yet decrypting.
 //!
-//! The crate is names plus primitives: [`register`] adds the names to a registry, and
+//! The module is names plus primitives: [`register`] adds the names to a registry, and
 //! [`Bp256`] implements jwz's [`Ecdsa`] and [`Ecdh`] traits, which [`backend`] adds to any
 //! base backend through [`Extended`]. Parsing, headers, policies, the Concat KDF and the
 //! key types all stay in jwz and are the same code as for P-256.
@@ -51,19 +51,17 @@
 //! use jwz::keys::SoftwareKey;
 //! use jwz::profile::Profile;
 //!
-//! let registry = jwz_brainpool::registry();
-//! let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
-//! let key = SoftwareKey::generate(jwz_brainpool::BP256R1, &registry, backend)?;
+//! let registry = ti_jwz::brainpool::registry();
+//! let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
+//! let key = SoftwareKey::generate(ti_jwz::brainpool::BP256R1, &registry, backend)?;
 //! let token = jws::sign(b"legacy", HeaderParams::new(), &key)?;
 //!
 //! let mut policy = Profile::strict().policy;
-//! policy.signature_algorithms.push(jwz_brainpool::BP256R1);
+//! policy.signature_algorithms.push(ti_jwz::brainpool::BP256R1);
 //! let verified = Jws::parse(&token, &policy, &registry)?.verify(&key)?;
 //! assert_eq!(verified.payload(), b"legacy");
 //! # Ok::<(), jwz::Error>(())
 //! ```
-#![no_std]
-#![forbid(unsafe_code)]
 #![cfg_attr(
     not(test),
     deny(
@@ -73,8 +71,6 @@
         clippy::indexing_slicing
     )
 )]
-
-extern crate alloc;
 
 mod es256;
 

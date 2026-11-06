@@ -10,4 +10,4 @@ Apache-2.0.
 | `ecdh_brainpoolP256r1_test.json` | BP-256 ECDH of `Bp256`; public keys in the canonical uncompressed SubjectPublicKeyInfo only (other encodings are X.509 parsing tests, not ECDH) |
 
 Refresh: download the same files from a newer commit, update the hash above, run
-`cargo test -p jwz-brainpool --test wycheproof`.
+`cargo test -p ti-jwz --features legacy --test wycheproof`.

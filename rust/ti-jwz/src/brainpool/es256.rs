@@ -31,7 +31,7 @@ use jwz::jwa::SignatureAlgorithm;
 use jwz::jwk::{EcKey, Jwk, KeyMaterial, Secret};
 use jwz::keys::{JwsKey, Signature};
 
-use crate::{BP_256, Bp256};
+use super::{BP_256, Bp256};
 
 /// A brainpoolP256r1 key for the JWS algorithm `ES256` (ECDSA with SHA-256, `r || s`):
 /// ePA's AUT signatures. Bound to `ES256`, like every jwz key to its algorithm; usable
@@ -53,7 +53,7 @@ impl BrainpoolEs256Key {
     /// [`CryptoError::InvalidKey`] for a point not on brainpoolP256r1.
     pub fn from_point(point: &[u8]) -> Result<Self, jwz::Error> {
         // Refuses points not on the curve and the identity.
-        crate::PublicKey::from_sec1_bytes(point).map_err(|_| CryptoError::InvalidKey)?;
+        super::PublicKey::from_sec1_bytes(point).map_err(|_| CryptoError::InvalidKey)?;
         Ok(BrainpoolEs256Key {
             public: point.to_vec(),
             secret: None,

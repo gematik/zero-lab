@@ -136,7 +136,7 @@ pub async fn respond(
     puk_idp_enc: &Jwk,
     metadata: &Metadata,
 ) -> Result<Request, Error> {
-    if signer.algorithm() != jwz_brainpool::BP256R1 {
+    if signer.algorithm() != ti_jwz::brainpool::BP256R1 {
         return Err(Error::SignerAlgorithm {
             found: signer.algorithm().as_str().to_owned(),
             needed: "BP256R1",

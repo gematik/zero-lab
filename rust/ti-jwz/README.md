@@ -9,10 +9,23 @@ gemSpec_IDP_Dienst V2.2.0:
   and other existing interfaces. Brainpool JWE is encryption only (to the IDP's `BP-256`
   key); decrypting it is not supported yet.
 - `ti_jwz::registry()`: the registry to parse with (brainpool names with `legacy`).
+- `ti_jwz::brainpool` (feature `legacy`): the JWS algorithm `BP256R1` and the JWK curve
+  `BP-256`. `brainpool::registry()` (or `register`) adds the names;
+  `brainpool::backend(base)` adds BP-256 ECDSA and ECDH to any jwz backend. JWS, keys and
+  policies are jwz's own code, the same as for P-256. Neither identifier is
+  IANA-registered; both are gematik's (gemSpec_IDP_Dienst V2.2.0, A_20591-01, A_20695-01,
+  A_20327-02) and match `go/brainpool/josebp`. Checked against the Wycheproof
+  brainpoolP256r1 ECDSA and ECDH vectors, and against Go josebp and Python jwcrypto
+  (`just jwz-interop`).
+
+**Brainpool is legacy only: new components use P-256 and leave `legacy` off.**
+`just brainpool-absent <crate>` fails if a crate's dependency tree contains brainpool; run
+it for every new component.
 
 ePA's `ES256` signatures on brainpool keys pass `ti()`: the curve is the key's, chosen
-with `jwz_brainpool::BrainpoolEs256Key`. No RSA, no HMAC, no CBC-HMAC. Every rule cites
-its source in the crate documentation.
+with `brainpool::BrainpoolEs256Key`, so a token cannot move ES256 onto brainpool by
+itself. No RSA, no HMAC, no CBC-HMAC. Every rule cites its source in the crate
+documentation.
 
 ## License
 

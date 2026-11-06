@@ -220,20 +220,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `concat_kdf` refuses an OtherInfo longer than `usize` (reachable only on 32-bit
   targets), which the F* proof showed the 32-bit length checks alone do not exclude.
 
-### jwz-brainpool
-
-#### added
-- New crate: gematik's `BP256R1` and `BP-256` for jwz, legacy only: `register`/`registry`,
-  `Bp256` (ECDSA and ECDH on bp256), `backend` (any jwz backend plus BP-256),
-  `BrainpoolEs256Key` for ePA's `ES256` on brainpool keys; JWE encryption to `BP-256`
-  keys (decryption not yet supported). Interop fixtures against Go josebp and Python
-  jwcrypto in both directions (`just jwz-interop`, checked by `cargo test`).
-
 ### ti-jwz
 
 #### added
 - New crate: the gematik TI profiles for jwz, `ti()` and (feature `legacy`) `ti_legacy()`
   (adds `BP256R1`), with `registry()`.
+- Module `brainpool` (feature `legacy`): gematik's `BP256R1` and `BP-256` for jwz, legacy
+  only: `register`/`registry`, `Bp256` (ECDSA and ECDH on bp256), `backend` (any jwz
+  backend plus BP-256), `BrainpoolEs256Key` for ePA's `ES256` on brainpool keys; JWE
+  encryption to `BP-256` keys (decryption not yet supported). Interop fixtures against Go
+  josebp and Python jwcrypto in both directions (`just jwz-interop`, checked by
+  `cargo test`). It was the crate jwz-brainpool until TASK-225: brainpool is TI-only, so
+  it lives with the TI profiles, and jwz stays a JOSE library without it.
 
 ### ti-xmldsig
 

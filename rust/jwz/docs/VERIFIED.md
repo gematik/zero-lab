@@ -67,13 +67,13 @@ E0599 exactly, and run with every `cargo test`.
 
 ## 4. In the browser
 
-`tests/browser.rs` of jwz and jwz-brainpool, `just jwz-browser`: wasm32-unknown-unknown in
+`tests/browser.rs` of jwz and ti-jwz, `just jwz-browser`: wasm32-unknown-unknown in
 headless Chrome (Chrome for Testing), random numbers from `Crypto.getRandomValues`.
 
 - jwz: RFC 7515 A.3 (ES256), RFC 8037 A.4 (EdDSA) and RFC 7520 §5.8 (A128KW, A128GCM)
   known answers; generated ES256 and EdDSA keys sign and verify, and differ; ECDH-ES,
   ECDH-ES+A256KW and A256KW round trips; claims with a caller's clock.
-- jwz-brainpool: every Go josebp and Python jwcrypto JWS of the interop fixtures
+- ti-jwz's brainpool: every Go josebp and Python jwcrypto JWS of the interop fixtures
   verifies; the browser makes the same tokens as the native build, byte for byte; ePA's
   ES256 on a generated brainpool key.
 
@@ -87,7 +87,7 @@ browser run, because the same code is already tested natively.
   7515/7516/7520 vectors, `fuzz/` (`just fuzz-jwz`).
 - The cryptographic primitives (ECDSA, EdDSA, ECDH, AES-GCM, AES-KW, HMAC): RustCrypto,
   checked through jwz's backend traits against Wycheproof (`tests/wycheproof.rs`).
-- Interoperability of brainpool tokens: `jwz-brainpool/tests/interop.rs` against Go
+- Interoperability of brainpool tokens: `ti-jwz/tests/interop.rs` against Go
   josebp and Python jwcrypto.
 
 Specification references and the tests named after them: `docs/traceability.md`.

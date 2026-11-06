@@ -12,7 +12,7 @@ Brainpool JWE is encryption only: jwz encrypts, jwcrypto decrypts.
 
 `just jwz-interop` (design time; needs Go and Python 3) regenerates jwz's tokens, has both
 oracles make theirs and check jwz's, and rewrites the coverage table. `cargo test -p
-jwz-brainpool --test interop` (build time, part of `just check`) needs neither: it fails
+ti-jwz --features legacy --test interop` (build time, part of `just check`) needs neither: it fails
 when jwz's tokens changed since the oracles checked them, when an oracle refused one, or
 when jwz refuses an oracle's token. The keys (`keys.json`) are made once with
-`cargo run -p jwz-brainpool --example interop -- keys`.
+`cargo run -p ti-jwz --features legacy --example interop -- keys`.

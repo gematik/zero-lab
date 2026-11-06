@@ -273,7 +273,7 @@ fn login_card(
 ) -> Result<Report, CliError> {
     let directory = directory(target, Needs::Idp)?;
     let identity = Identity::load(identity_args, global, out)?;
-    let signer = identity.signer(jwz_brainpool::BP256R1)?;
+    let signer = identity.signer(ti_jwz::brainpool::BP256R1)?;
     let transport = http::Logged::new(&global.net, out)?;
     out.verbose(
         1,

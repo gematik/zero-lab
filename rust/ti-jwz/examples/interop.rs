@@ -24,9 +24,9 @@
 //! Design-time generator of the brainpool interop fixtures (`just jwz-interop` runs it
 //! with the oracles):
 //!
-//!     cargo run -p jwz-brainpool --example interop -- keys      # once
-//!     cargo run -p jwz-brainpool --example interop -- tokens    # jwz.json
-//!     cargo run -p jwz-brainpool --example interop -- coverage  # COVERAGE.md
+//!     cargo run -p ti-jwz --features legacy --example interop -- keys      # once
+//!     cargo run -p ti-jwz --features legacy --example interop -- tokens    # jwz.json
+//!     cargo run -p ti-jwz --features legacy --example interop -- coverage  # COVERAGE.md
 
 #[path = "../tests/support/interop.rs"]
 mod interop;
@@ -68,12 +68,12 @@ fn keys() -> Result<(), String> {
             path.display()
         ));
     }
-    let registry = jwz_brainpool::registry();
+    let registry = ti_jwz::brainpool::registry();
     let backend = deterministic_backend();
     let mut keys = Map::new();
     for name in ["bp256r1", interop::ES256_BRAINPOOL, "ecdh-bp256"] {
         let mut jwk =
-            SoftwareKey::generate(jwz_brainpool::BP256R1, &registry, Arc::clone(&backend))
+            SoftwareKey::generate(ti_jwz::brainpool::BP256R1, &registry, Arc::clone(&backend))
                 .map_err(|e| e.to_string())?
                 .to_jwk();
         // No `alg`: each implementation states the algorithm when it uses a key.

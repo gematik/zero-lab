@@ -36,7 +36,7 @@
 //!
 //! # Registering an algorithm from another crate
 //!
-//! `jwz-brainpool` registers gematik's brainpool signature algorithm like this:
+//! `ti_jwz::brainpool` registers gematik's brainpool signature algorithm like this:
 //!
 //! ```
 //! use jwz::jwa::{

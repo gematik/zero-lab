@@ -95,7 +95,7 @@ pub fn authenticate(
         (None, None) => return Err(CliError::Environment("--env or --idp-url".into())),
     };
     let identity = Identity::load(&args.identity, global, out)?;
-    let signer = identity.signer(jwz_brainpool::BP256R1)?;
+    let signer = identity.signer(ti_jwz::brainpool::BP256R1)?;
     let transport = http::Logged::new(&global.net, out)?;
     out.verbose(1, format_args!("IDP-Dienst {}", idp.base_url()));
     let trust = IdpTrust::new(args.idp_unverified, args.env, global, out);

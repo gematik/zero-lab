@@ -46,7 +46,7 @@ use serde_json::json;
 pub type Backend = jwz::crypto::Extended<RustCrypto>;
 
 pub fn backend() -> Arc<Backend> {
-    Arc::new(jwz_brainpool::backend(RustCrypto::new()))
+    Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()))
 }
 
 fn manifest(path: &str) -> PathBuf {
@@ -257,8 +257,8 @@ pub fn idp_signer(kid: &str) -> (SoftwareKey<Backend>, Vec<u8>) {
     material.d = Some(Secret::new(scalar));
     let key = SoftwareKey::from_jwk(
         &Jwk::new(KeyMaterial::Ec(material)),
-        jwz_brainpool::BP256R1,
-        &jwz_brainpool::registry(),
+        ti_jwz::brainpool::BP256R1,
+        &ti_jwz::brainpool::registry(),
         backend(),
     )
     .unwrap()
@@ -285,7 +285,7 @@ impl FakeIdp {
     pub fn start(answer: Answer) -> FakeIdp {
         let (disc_sig, disc_cert) = idp_signer("puk_disc_sig");
         let (idp_sig, idp_sig_cert) = idp_signer("puk_idp_sig");
-        let mut idp_enc = SoftwareAgreementKey::generate(jwz_brainpool::BP_256, backend())
+        let mut idp_enc = SoftwareAgreementKey::generate(ti_jwz::brainpool::BP_256, backend())
             .unwrap()
             .public_jwk();
         idp_enc.kid = Some("puk_idp_enc".into());

@@ -140,7 +140,7 @@ knows. Another crate can add an algorithm in two steps:
    [`crypto::Extended`](crate::crypto::Extended) and add an `Ecdsa` or `Ecdh` provider
    for the new curve.
 
-`jwz-brainpool` does both for brainpoolP256r1, in under 400 lines. Its source is the
+`ti_jwz::brainpool` does both for brainpoolP256r1, in under 400 lines. Its source is the
 worked example. A new name is still refused until a profile allows it: registering
 makes a name known, a profile makes it acceptable.
 

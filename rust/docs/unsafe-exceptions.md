@@ -23,7 +23,6 @@ task.
 | ti-connector-client | – |
 | ti-report | – |
 | jwz | std, jws, jwe, jwt, crypto-rustcrypto, hmac |
-| jwz-brainpool | – |
 | ti-jwz | legacy |
 | ti-idpd | – |
 | ti-directory | – |

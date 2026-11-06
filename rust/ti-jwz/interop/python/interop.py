@@ -1,4 +1,4 @@
-"""Python oracle of jwz-brainpool's interop fixtures, on jwcrypto.
+"""Python oracle of ti-jwz's brainpool interop fixtures, on jwcrypto.
 
     python interop.py gen   <keys.json> <out.json>             tokens jwcrypto makes, for jwz
     python interop.py check <keys.json> <jwz.json> <out.json>  jwcrypto's verdicts on jwz's tokens

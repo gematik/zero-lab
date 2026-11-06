@@ -26,6 +26,7 @@
 //! `interop/README.md`). Needs neither oracle: it checks that jwz verifies every oracle
 //! token, that every oracle accepted jwz's current tokens, and that the coverage table
 //! is current.
+#![cfg(feature = "legacy")]
 
 mod support {
     #[path = "../support/interop.rs"]

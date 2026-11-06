@@ -45,7 +45,7 @@ use crate::trust::{CertificateTrust, Checked, IdpCertificate};
 pub(crate) type Backend = Extended<RustCrypto>;
 
 pub(crate) fn backend() -> Arc<Backend> {
-    Arc::new(jwz_brainpool::backend(RustCrypto::new()))
+    Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()))
 }
 
 /// The OpenID metadata of an IDP-Dienst (gemSpec_IDP_Dienst §7.2): the standard
@@ -190,7 +190,7 @@ pub(crate) fn verifier_from_certificate(
     alg: SignatureAlgorithm,
     registry: &jwz::jwa::Registry,
 ) -> Result<SoftwareKey<Backend>, Error> {
-    let crv = if alg == jwz_brainpool::BP256R1 {
+    let crv = if alg == ti_jwz::brainpool::BP256R1 {
         "BP-256"
     } else {
         "P-256"

@@ -39,7 +39,7 @@ Trust-critical means a defect accepts a forged certificate, a wrong key or a wro
 | roots.json cross-certificate walk, compiled anchors | the same | `ti-pki` (`roots`, `anchors`) | none | part of the above | yes |
 | OCSP request, response verification, responder authorization | the same | `ti-pki` (`ocsp`, `revocation`) | none | part of pki-validation | yes |
 | TLS peer verification of TI endpoints | every host that talks to a TI endpoint | planned: rustls verifier (TASK-97) | planned: `VerifyConnection` through the shared rules (TASK-98) | pki-validation | yes |
-| Brainpool curves, JOSE with brainpool | signing and verifying with SMC-B, HBA and IDP keys | `jwz-brainpool`, `ti-jwz` | `go/brainpool` (Fiat-verified, frozen), `josebp` | none; Wycheproof and OpenSSL cross tests | yes |
+| Brainpool curves, JOSE with brainpool | signing and verifying with SMC-B, HBA and IDP keys | `ti-jwz` (`legacy`) | `go/brainpool` (Fiat-verified, frozen), `josebp` | none; Wycheproof and OpenSSL cross tests | yes |
 | IDP-Dienst flow, client side | CLI, epa, apps | `ti-idpd` | `go/gemidp` authenticator (epa uses `ti idpd authenticate`) | `spec/idp-dienst` candidate | yes |
 | IDP-Dienst token verification, relying-party side | PDP, PEP, BFF | `ti-idpd` verifies the IDP certificate against the TSL (TASK-27) | `go/gemidp` takes the key from the discovery document **without verifying its certificate** (`shared.go:142`) | the same | yes, gap: TASK-171 |
 | OpenID Federation trust chains | PDP as relying party | planned `ti-oidf` | `go/oidf`, one hop (master to IdP), no `authority_hints` walk | `spec/oidf-sek` candidate | yes |

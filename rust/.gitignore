@@ -1,4 +1,4 @@
 /target
 /dist
 Cargo.lock.bak
-/jwz-brainpool/interop/python/.venv
+/ti-jwz/interop/python/.venv

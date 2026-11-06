@@ -26,7 +26,7 @@
 //! tokens, byte for byte, as natively (`tests/data/interop/jwz.json`). Design time
 //! (`just jwz-browser`, stamped): the browser and its driver are not needed by
 //! `just check`.
-#![cfg(all(target_family = "wasm", target_os = "unknown"))]
+#![cfg(all(target_family = "wasm", target_os = "unknown", feature = "legacy"))]
 
 mod support {
     #[path = "../support/interop.rs"]
@@ -40,8 +40,8 @@ use jwz::crypto::rustcrypto::RustCrypto;
 use jwz::header::HeaderParams;
 use jwz::jws::{self, Jws};
 use jwz::profile::Profile;
-use jwz_brainpool::BrainpoolEs256Key;
 use support::interop::{jwz_cases, jwz_file, parse_cases, parse_keys, pretty, verify_with_jwz};
+use ti_jwz::brainpool::BrainpoolEs256Key;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -74,7 +74,7 @@ fn jwz_makes_the_native_tokens() {
 
 #[wasm_bindgen_test]
 fn epa_es256_on_a_generated_brainpool_key() {
-    let registry = jwz_brainpool::registry();
+    let registry = ti_jwz::brainpool::registry();
     let backend = Arc::new(RustCrypto::new());
     let key = BrainpoolEs256Key::generate(backend.rng()).unwrap();
     let other = BrainpoolEs256Key::generate(backend.rng()).unwrap();

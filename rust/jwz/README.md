@@ -23,8 +23,8 @@ Milestone 1:
 - `jwz::profile`: `Policy` (the single acceptance check) and the `strict` and
   `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the `ChainValidator` seam.
 
-Brainpool (`jwz-brainpool`) is checked against Go josebp and Python jwcrypto
-(`jwz-brainpool/interop`); every parser has a fuzz target (`fuzz/`, `just fuzz-jwz`). The
+Brainpool (`ti_jwz::brainpool`) is checked against Go josebp and Python jwcrypto
+(`ti-jwz/interop`); every parser has a fuzz target (`fuzz/`, `just fuzz-jwz`). The
 Concat KDF is proven correct in F* (hax), parsing invariants with Kani: see
 [`docs/VERIFIED.md`](docs/VERIFIED.md); specification references and their tests:
 [`docs/traceability.md`](docs/traceability.md).
@@ -34,8 +34,7 @@ Design: [`docs/adr/0001-jwz.md`](docs/adr/0001-jwz.md); dependencies:
 | Crate | What |
 | --- | --- |
 | `jwz` | the library |
-| `jwz-brainpool` | legacy brainpoolP256r1 (`BP256R1`, `BP-256`) for existing TI interfaces |
-| `ti-jwz` | gematik TI profiles (gemSpec_Krypt V2.51.0) |
+| `ti-jwz` | gematik TI profiles (gemSpec_Krypt V2.51.0) and, behind `legacy`, brainpoolP256r1 (`BP256R1`, `BP-256`) for existing TI interfaces |
 
 ## Features
 

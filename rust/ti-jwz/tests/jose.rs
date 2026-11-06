@@ -24,6 +24,7 @@
 //! Brainpool through jwz's own JWS and JWE code: `BP256R1` signatures, `ES256` on a
 //! brainpool key (ePA), ECDH-ES encryption to a `BP-256` key (the IDP client; brainpool
 //! JWE is encryption only), and the boundaries between brainpool and P-256 keys.
+#![cfg(feature = "legacy")]
 
 use std::sync::Arc;
 
@@ -38,20 +39,20 @@ use jwz::jwe::{self, EncryptionKey, Jwe};
 use jwz::jws::{self, Jws};
 use jwz::keys::{SoftwareAgreementKey, SoftwareKey};
 use jwz::profile::{Policy, Profile};
-use jwz_brainpool::{BP_256, BP256R1, BrainpoolEs256Key};
+use ti_jwz::brainpool::{BP_256, BP256R1, BrainpoolEs256Key};
 
 fn code<T>(r: Result<T, jwz::Error>) -> Result<T, ErrorCode> {
     r.map_err(|e| e.code())
 }
 
 fn interop() -> Policy {
-    Profile::rfc7518_interop(&jwz_brainpool::registry()).policy
+    Profile::rfc7518_interop(&ti_jwz::brainpool::registry()).policy
 }
 
 #[test]
 fn bp256r1_signs_and_verifies_and_is_bound_to_its_curve() {
-    let registry = jwz_brainpool::registry();
-    let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
+    let registry = ti_jwz::brainpool::registry();
+    let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
     let key = SoftwareKey::generate(BP256R1, &registry, Arc::clone(&backend)).unwrap();
     assert_eq!(key.public_jwk().crv(), Some("BP-256"));
     let token = jws::sign(b"idp", HeaderParams::new().typ("JWT"), &key).unwrap();
@@ -87,7 +88,7 @@ fn bp256r1_signs_and_verifies_and_is_bound_to_its_curve() {
 
 #[test]
 fn epa_es256_on_a_brainpool_key() {
-    let registry = jwz_brainpool::registry();
+    let registry = ti_jwz::brainpool::registry();
     let backend = Arc::new(RustCrypto::new());
     let aut = BrainpoolEs256Key::generate(backend.rng())
         .unwrap()
@@ -133,8 +134,8 @@ fn epa_es256_on_a_brainpool_key() {
 /// (`tests/interop.rs`); jwz does not decrypt brainpool JWE yet.
 #[test]
 fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
-    let registry = jwz_brainpool::registry();
-    let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
+    let registry = ti_jwz::brainpool::registry();
+    let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
     let idp_enc = SoftwareAgreementKey::generate(BP_256, Arc::clone(&backend))
         .unwrap()
         .public_jwk();

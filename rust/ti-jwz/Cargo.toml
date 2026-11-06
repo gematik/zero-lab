@@ -1,8 +1,8 @@
 [package]
 name = "ti-jwz"
 version = "0.1.0"
-description = "gematik TI profiles for jwz (gemSpec_Krypt V2.51.0, gemSpec_IDP_Dienst V2.2.0): ti() for new components, ti_legacy() with brainpool for existing interfaces"
-keywords = ["jose", "gematik", "telematik", "profile"]
+description = "gematik TI profiles for jwz (gemSpec_Krypt V2.51.0, gemSpec_IDP_Dienst V2.2.0): ti() for new components; ti_legacy() and brainpoolP256r1 (BP256R1, BP-256) for existing interfaces"
+keywords = ["jose", "gematik", "telematik", "profile", "brainpool"]
 categories = ["cryptography", "no-std"]
 edition.workspace = true
 rust-version.workspace = true
@@ -13,15 +13,31 @@ publish.workspace = true
 
 [features]
 default = []
-# ti_legacy(): brainpool (BP256R1, BP-256 ECDH-ES) through jwz-brainpool.
-legacy = ["dep:jwz-brainpool"]
+# brainpoolP256r1 for existing interfaces: ti_legacy() and the brainpool module (BP256R1,
+# BP-256 ECDH-ES). New components leave it off; `just brainpool-absent` checks that.
+legacy = ["dep:bp256", "dep:ecdsa", "dep:elliptic-curve", "dep:signature"]
 
 [dependencies]
 jwz.workspace = true
-jwz-brainpool = { workspace = true, optional = true }
+# brainpoolP256r1 arithmetic, ECDSA with SHA-256 (RFC 6979 nonces) and ECDH, on the same
+# RustCrypto 0.14 line as jwz's own backend.
+bp256 = { workspace = true, features = ["alloc"], optional = true }
+ecdsa = { workspace = true, optional = true }
+elliptic-curve = { workspace = true, features = ["ecdh", "alloc"], optional = true }
+# BrainpoolEs256Key implements RustCrypto's signature traits, as jwz's keys do.
+signature = { workspace = true, features = ["alloc"], optional = true }
 
 [dev-dependencies]
-jwz = { workspace = true, features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto"] }
+jwz = { workspace = true, features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto", "test-util"] }
+serde_json.workspace = true
+
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test.workspace = true
+
+# The generator of the interop fixtures (`just jwz-interop`).
+[[example]]
+name = "interop"
+required-features = ["legacy"]
 
 [lints]
 workspace = true

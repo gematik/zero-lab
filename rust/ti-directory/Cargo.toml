@@ -24,7 +24,7 @@ base64ct.workspace = true
 traceability.workspace = true
 # The guard tests need some BP256R1 signer; it never gets to sign.
 jwz = { workspace = true, features = ["std", "jws", "crypto-rustcrypto"] }
-jwz-brainpool.workspace = true
+ti-jwz = { workspace = true, features = ["legacy"] }
 
 [lints]
 workspace = true

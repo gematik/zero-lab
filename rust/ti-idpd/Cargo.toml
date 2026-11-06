@@ -20,7 +20,6 @@ ureq = ["dep:ureq"]
 # JOSE: the IDP speaks BP256R1 and ECDH-ES on BP-256 (gemSpec_IDP_Dienst), so the TI
 # legacy profile and the brainpool registry and backend.
 jwz = { workspace = true, features = ["std", "jws", "jwe", "jwt", "crypto-rustcrypto"] }
-jwz-brainpool.workspace = true
 ti-jwz = { workspace = true, features = ["legacy"] }
 # The IDP's certificates in `x5c`: parsing only, no algorithm features.
 ti-pki.workspace = true

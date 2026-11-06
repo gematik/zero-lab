@@ -17,7 +17,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │
  engines    ti-idpd  ti-directory  ti-connector-client  ti-report       (sans I/O)
               │
- core       ti-pki (+ load)  jwz (+ jwz-brainpool, ti-jwz)  ti-pkcs12
+ core       ti-pki (+ load)  jwz (+ ti-jwz)         ti-pkcs12
               │
  vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-cache (HTTP cache policy, cache store trait)
 ```
@@ -110,7 +110,7 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
   [development.md](./development.md#gated-tests).
 - Scripted transports and fixed clocks from the `test-util` features, mock HSM signers in
   jwz; Wycheproof, the W3C C14N suites, ref-GemLibPki and interop fixtures (Go, Python,
-  OpenSSL); jwz and jwz-brainpool also in headless Chrome (`just jwz-browser`, stamped).
+  OpenSSL); jwz and ti-jwz's brainpool also in headless Chrome (`just jwz-browser`, stamped).
 
 ## 6. Verification and tooling
 
@@ -121,7 +121,7 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 | bounded model checking | Kani | design time, stamped | jwz (base64url, compact, ECDH) |
 | functional proof | hax → F* | design time, stamped | jwz Concat KDF (SP 800-56A §5.8.1) |
 | fuzzing | cargo-fuzz (below) | release, design time | jwz, ti-cli, ti-pki and ti-connector-client parsers |
-| known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, jwz-brainpool, ti-pki, ti-pkcs12 |
+| known-answer, corpora, interop | Wycheproof, spec corpora, interop runs | check | jwz, ti-jwz, ti-pki, ti-pkcs12 |
 | undefined behaviour | Miri | only if `unsafe` ever enters | n/a |
 | mutation testing | cargo-mutants (`just mutants-record`, `just mutants-gate`) | before a release; `just release` refuses a crate without a score for its current code or below its threshold in `mutation-scores.toml` | per crate |
 | coverage | cargo-llvm-cov (`just coverage`), with the cited requirements whose code no test runs | on demand | all crates |
@@ -165,7 +165,7 @@ are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
 ti-cache, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
-jwz-brainpool, ti-jwz, ti-idpd and ti-directory, with every feature but their adapters
+ti-jwz, ti-idpd and ti-directory, with every feature but their adapters
 (the `ureq` transports, ti-types' `clap`) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
 or foreign code through `unsafe` (rpassword) belongs there. What counts is what

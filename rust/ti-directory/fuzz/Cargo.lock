@@ -524,17 +524,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jwz-brainpool"
-version = "0.1.0"
-dependencies = [
- "bp256",
- "ecdsa",
- "elliptic-curve",
- "jwz",
- "signature",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -945,7 +934,6 @@ version = "0.1.0"
 dependencies = [
  "base64ct",
  "jwz",
- "jwz-brainpool",
  "serde",
  "serde_json",
  "thiserror",
@@ -958,8 +946,11 @@ dependencies = [
 name = "ti-jwz"
 version = "0.1.0"
 dependencies = [
+ "bp256",
+ "ecdsa",
+ "elliptic-curve",
  "jwz",
- "jwz-brainpool",
+ "signature",
 ]
 
 [[package]]

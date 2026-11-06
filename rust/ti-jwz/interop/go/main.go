@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Command interop is the Go oracle of jwz-brainpool's interop fixtures, on
+// Command interop is the Go oracle of ti-jwz's brainpool interop fixtures, on
 // go/brainpool/josebp.
 //
 //	go run . gen   <keys.json> <out.json>             tokens josebp makes, for jwz

@@ -22,8 +22,8 @@
  */
 
 //! The gematik TI profiles for jwz: [`ti`] for new components and, behind the `legacy`
-//! feature, [`ti_legacy`] for the existing interfaces that use brainpoolP256r1. No RSA, no
-//! HMAC, no CBC-HMAC.
+//! feature, [`ti_legacy`] and the [`brainpool`] algorithms for the existing interfaces that
+//! use brainpoolP256r1. No RSA, no HMAC, no CBC-HMAC.
 //!
 //! The rules and where they come from:
 //!
@@ -37,7 +37,7 @@
 //! | `x5c` allowed in headers | gemSpec_Krypt V2.51.0 A_24658-01, gemSpec_IDP_Dienst V2.2.0 §7.7 |
 //!
 //! ePA's AUT signatures use `ES256` with a brainpoolP256r1 key: that is a key choice, not
-//! a profile rule, made with `jwz_brainpool::BrainpoolEs256Key` (feature `legacy`).
+//! a profile rule, made with `brainpool::BrainpoolEs256Key` (feature `legacy`).
 //!
 //! A_24658-01 limits the age of a client authentication JWT by `iat` (10 minutes) and
 //! does not require `exp`; for those tokens set `claims.require_exp = false` and
@@ -46,6 +46,9 @@
 #![forbid(unsafe_code)]
 
 extern crate alloc;
+
+#[cfg(feature = "legacy")]
+pub mod brainpool;
 
 use alloc::vec;
 use alloc::vec::Vec;
@@ -97,10 +100,7 @@ pub fn ti() -> Profile {
 pub fn ti_legacy() -> Profile {
     let mut profile = ti();
     profile.name = "ti-legacy".into();
-    profile
-        .policy
-        .signature_algorithms
-        .push(jwz_brainpool::BP256R1);
+    profile.policy.signature_algorithms.push(brainpool::BP256R1);
     profile
 }
 
@@ -108,7 +108,7 @@ pub fn ti_legacy() -> Profile {
 /// brainpool names.
 pub fn registry() -> Registry {
     #[cfg(feature = "legacy")]
-    let registry = jwz_brainpool::registry();
+    let registry = brainpool::registry();
     #[cfg(not(feature = "legacy"))]
     let registry = Registry::standard();
     registry

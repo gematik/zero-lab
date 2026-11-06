@@ -39,7 +39,7 @@ use jwz::jwe::{self, EncryptionKey, Jwe};
 use jwz::jws::{self, Jws};
 use jwz::jwt::{Claims, FixedClock};
 use jwz::keys::{SoftwareAgreementKey, SoftwareKey, SymmetricKey};
-use jwz_brainpool::{BP_256, BP256R1, BrainpoolEs256Key};
+use ti_jwz::brainpool::{BP_256, BP256R1, BrainpoolEs256Key};
 use ti_jwz::{registry, ti, ti_legacy};
 
 fn code<T>(r: Result<T, jwz::Error>) -> Result<T, ErrorCode> {
@@ -49,7 +49,7 @@ fn code<T>(r: Result<T, jwz::Error>) -> Result<T, ErrorCode> {
 #[test]
 fn ti_refuses_a_valid_bp256r1_token_and_ti_legacy_accepts_it() {
     let registry = registry();
-    let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
+    let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
     let idp_sig = SoftwareKey::generate(BP256R1, &registry, backend).unwrap();
     let token = jws::sign(br#"{"exp":2000}"#, HeaderParams::new().typ("JWT"), &idp_sig).unwrap();
 
@@ -73,7 +73,7 @@ fn ti_refuses_a_valid_bp256r1_token_and_ti_legacy_accepts_it() {
 #[test]
 fn brainpool_jwe_is_encryption_only() {
     let registry = registry();
-    let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
+    let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
     let idp_enc = SoftwareAgreementKey::generate(BP_256, Arc::clone(&backend)).unwrap();
     // A TI client encrypts to the IDP's BP-256 key...
     let token = jwe::encrypt(

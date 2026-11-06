@@ -324,9 +324,9 @@ impl Transport for Scripted {
 #[test]
 fn login_stops_at_the_directorys_redirect_when_it_is_not_the_idps() {
     let key = SoftwareKey::generate(
-        jwz_brainpool::BP256R1,
-        &jwz_brainpool::registry(),
-        std::sync::Arc::new(jwz_brainpool::backend(
+        ti_jwz::brainpool::BP256R1,
+        &ti_jwz::brainpool::registry(),
+        std::sync::Arc::new(ti_jwz::brainpool::backend(
             jwz::crypto::rustcrypto::RustCrypto::new(),
         )),
     )

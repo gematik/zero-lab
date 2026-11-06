@@ -290,7 +290,7 @@ is released, every suite listed for it runs green and the release PR records the
 | `ti-pki` OpenSSL parity (`tests/openssl_cross.rs`) | `just test` | `openssl` with brainpool curves | the same verdict as `openssl verify` / `openssl ocsp` on the same bytes | `ti-pki` |
 | Konnektor end to end (`ti-connector-client/tests/e2e.rs`) | `just konnektor-e2e`, `just konnektor-e2e-interactive` (PIN entry, HITL) | `TI_TEST_KON_PATH` (a `.kon`), optional `TI_TEST_PDFA_PATH` (interactive), `TI_TEST_KON_RECORD_DIR` (records the run for `tests/recorded.rs`) | the facades against a real Konnektor and card | `ti-connector-client`, `ti-cli` |
 | `probe` through the TI VPN (`ti-cli/tests/probe.rs`, `#[ignore]`, HITL) | `TI_TEST_PROBE_ENV=ref TI_TEST_PROBE_VPN=on cargo test -p ti-cli --test probe -- --ignored --exact hitl_the_ti_vpn_block_answers_exactly_with_the_vpn --nocapture`, then with `TI_TEST_PROBE_VPN=off` | a Konnektor or TI-Gateway with its TI VPN; network | the TI-VPN block of `probe` answers exactly when the VPN is up, the internet block either way | `ti-cli` |
-| jwz in the browser | `just jwz-browser` (design time, stamped) | Chrome for Testing, `wasm-bindgen-test-runner` | jwz and jwz-brainpool in `wasm32` in a real browser | `jwz`, `jwz-brainpool` (the stamp is checked by `just check`) |
+| jwz in the browser | `just jwz-browser` (design time, stamped) | Chrome for Testing, `wasm-bindgen-test-runner` | jwz and ti-jwz's brainpool in `wasm32` in a real browser | `jwz`, `ti-jwz` (the stamp is checked by `just check`) |
 
 ## WebAssembly (ti-wasm)
 
@@ -491,15 +491,15 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer, ti-report, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
-| `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz |
+| `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz or ti-jwz |
 | `jwz-rsa-guard` | jwz's reserved `rsa` feature still refuses to build |
 | `brainpool-absent <crate>` | No brainpool in a crate's tree (run for every new component) |
 | `verify-formal-jwz` | Design time (Kani): the bounded proofs in `jwz/src/proofs.rs` |
 | `verify-hax-jwz` | Design time (hax, F*): extracts jwz's Concat KDF core and proves it against SP 800-56A §5.8.1 (`jwz/verification/hax`) |
 | `jwz-recheck [--all]` | Reruns the design-time checks (Kani, hax and F*, browser) whose inputs changed and rewrites `jwz/verification/stamps`; `just check` fails on a stale stamp without needing the tools |
-| `jwz-browser` | Design time (Chrome for Testing): the browser tests of jwz and jwz-brainpool, wasm32 in headless Chrome |
+| `jwz-browser` | Design time (Chrome for Testing): the browser tests of jwz and ti-jwz's brainpool, wasm32 in headless Chrome |
 | `jwz-browser-tools` | Download Chrome for Testing's headless shell and chromedriver into `JWZ_CHROME_DIR` (default `~/Development/tools/chrome`) |
-| `jwz-interop` | Design time (Go, Python 3): brainpool interop fixtures against Go josebp and Python jwcrypto, both directions, and their coverage table (`jwz-brainpool/interop`) |
+| `jwz-interop` | Design time (Go, Python 3): brainpool interop fixtures against Go josebp and Python jwcrypto, both directions, and their coverage table (`ti-jwz/interop`) |
 | `fuzz-jwz [seconds]` | Design time (nightly, cargo-fuzz): every jwz parser, `seconds` each (default 30), from the committed seeds |
 | `fuzz-ti-pki [seconds]` | Design time (nightly, cargo-fuzz): ti-pki's parsers of network bytes (the detached TSL signature, the TSL list, OCSP responses), `seconds` each, from the committed seeds |
 | `fuzz-ti-connector-client [seconds]` | Design time (nightly, cargo-fuzz): the `.kon` parser, its file check and redacted view, `seconds` each (default 30) |

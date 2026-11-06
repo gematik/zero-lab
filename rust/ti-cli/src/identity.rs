@@ -42,10 +42,10 @@ use jwz::header::HeaderParams;
 use jwz::jwa::SignatureAlgorithm;
 use jwz::jwk::{EcKey, Jwk, KeyMaterial, Secret};
 use jwz::keys::{AsyncSigner, JwsKey, Signature, Signer, SoftwareKey};
-use jwz_brainpool::BrainpoolEs256Key;
 use sha2::{Digest, Sha256};
 use ti_connector_client::SignatureType;
 use ti_connector_client::types::{CertRef, Crypt};
+use ti_jwz::brainpool::BrainpoolEs256Key;
 use ti_pki::Certificate;
 use x509_cert::ext::pkix::KeyUsages;
 use zeroize::Zeroizing;
@@ -114,7 +114,7 @@ impl Curve {
     /// brainpool only.
     fn signs(self, alg: SignatureAlgorithm) -> bool {
         alg == SignatureAlgorithm::ES256
-            || (alg == jwz_brainpool::BP256R1 && self == Curve::Brainpool)
+            || (alg == ti_jwz::brainpool::BP256R1 && self == Curve::Brainpool)
     }
 }
 
@@ -122,7 +122,7 @@ impl From<SignAlg> for SignatureAlgorithm {
     fn from(alg: SignAlg) -> Self {
         match alg {
             SignAlg::Es256 => SignatureAlgorithm::ES256,
-            SignAlg::Bp256r1 => jwz_brainpool::BP256R1,
+            SignAlg::Bp256r1 => ti_jwz::brainpool::BP256R1,
         }
     }
 }
@@ -355,8 +355,8 @@ impl PrivateKey {
         let key = SoftwareKey::from_jwk(
             &jwk,
             alg,
-            &jwz_brainpool::registry(),
-            Arc::new(jwz_brainpool::backend(RustCrypto::new())),
+            &ti_jwz::brainpool::registry(),
+            Arc::new(ti_jwz::brainpool::backend(RustCrypto::new())),
         )
         .map_err(mismatch)?;
         Ok(Box::new(key))
@@ -665,10 +665,10 @@ mod tests {
             .unwrap();
         assert_eq!(es256.algorithm(), SignatureAlgorithm::ES256);
         let bp = key
-            .signer_for(&cert("aut.pem"), jwz_brainpool::BP256R1)
+            .signer_for(&cert("aut.pem"), ti_jwz::brainpool::BP256R1)
             .unwrap();
-        assert_eq!(bp.algorithm(), jwz_brainpool::BP256R1);
+        assert_eq!(bp.algorithm(), ti_jwz::brainpool::BP256R1);
         assert!(Curve::P256.signs(SignatureAlgorithm::ES256));
-        assert!(!Curve::P256.signs(jwz_brainpool::BP256R1));
+        assert!(!Curve::P256.signs(ti_jwz::brainpool::BP256R1));
     }
 }

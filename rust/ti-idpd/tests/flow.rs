@@ -58,7 +58,7 @@ const AUTH_URL: &str = "https://idp.test/sign_response?client_id=gematikTestPs&r
 type Backend = jwz::crypto::Extended<RustCrypto>;
 
 fn backend() -> Arc<Backend> {
-    Arc::new(jwz_brainpool::backend(RustCrypto::new()))
+    Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()))
 }
 
 fn fixture(name: &str) -> Vec<u8> {
@@ -86,7 +86,7 @@ fn idp_sig_key(kid: &str) -> (SoftwareKey<Backend>, Vec<u8>) {
     material.d = Some(Secret::new(scalar));
     let key = SoftwareKey::from_jwk(
         &Jwk::new(KeyMaterial::Ec(material)),
-        jwz_brainpool::BP256R1,
+        ti_jwz::brainpool::BP256R1,
         &ti_jwz::registry(),
         backend(),
     )
@@ -98,7 +98,7 @@ fn idp_sig_key(kid: &str) -> (SoftwareKey<Backend>, Vec<u8>) {
 /// The card: a BP256R1 key and some AUT certificate for `x5c`.
 fn card() -> (SoftwareKey<Backend>, Vec<u8>) {
     let key =
-        SoftwareKey::generate(jwz_brainpool::BP256R1, &ti_jwz::registry(), backend()).unwrap();
+        SoftwareKey::generate(ti_jwz::brainpool::BP256R1, &ti_jwz::registry(), backend()).unwrap();
     let cert =
         ti_pki::parse_pem_certificates(&fixture("../../../ti-cli/tests/fixtures/identity/aut.pem"))
             .unwrap()
@@ -141,7 +141,7 @@ impl FakeIdp {
     fn new(behaviour: Behaviour) -> FakeIdp {
         let (disc_sig, disc_cert) = idp_sig_key("puk_disc_sig");
         let (idp_sig, idp_sig_cert) = idp_sig_key("puk_idp_sig");
-        let mut idp_enc = SoftwareAgreementKey::generate(jwz_brainpool::BP_256, backend())
+        let mut idp_enc = SoftwareAgreementKey::generate(ti_jwz::brainpool::BP_256, backend())
             .unwrap()
             .public_jwk();
         idp_enc.kid = Some("puk_idp_enc".into());
@@ -178,9 +178,10 @@ impl FakeIdp {
         }
         let other;
         let signer: &dyn Signer = if self.behaviour == Behaviour::DiscoverySignedByOtherKey {
-            other = SoftwareKey::generate(jwz_brainpool::BP256R1, &ti_jwz::registry(), backend())
-                .unwrap()
-                .with_kid("puk_disc_sig");
+            other =
+                SoftwareKey::generate(ti_jwz::brainpool::BP256R1, &ti_jwz::registry(), backend())
+                    .unwrap()
+                    .with_kid("puk_disc_sig");
             &other
         } else {
             &self.disc_sig
@@ -205,9 +206,10 @@ impl FakeIdp {
         let other;
         let signer: &dyn Signer = if self.behaviour == Behaviour::ChallengeSignedByOtherKey {
             // A key that is not PuK_IDP_SIG, under its kid.
-            other = SoftwareKey::generate(jwz_brainpool::BP256R1, &ti_jwz::registry(), backend())
-                .unwrap()
-                .with_kid("puk_idp_sig");
+            other =
+                SoftwareKey::generate(ti_jwz::brainpool::BP256R1, &ti_jwz::registry(), backend())
+                    .unwrap()
+                    .with_kid("puk_idp_sig");
             &other
         } else {
             &self.idp_sig
@@ -442,7 +444,7 @@ fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate()
     assert_eq!(header["x5c"].as_array().unwrap().len(), 1);
 
     // An ES256 signer (ePA's) is not what the IDP accepts for the challenge.
-    let es256 = jwz_brainpool::BrainpoolEs256Key::generate(backend().as_ref().rng()).unwrap();
+    let es256 = ti_jwz::brainpool::BrainpoolEs256Key::generate(backend().as_ref().rng()).unwrap();
     let metadata = discovery::parse(
         &Idp::new("https://idp.test"),
         &idp.send(&discovery::request(&Idp::new("https://idp.test")))

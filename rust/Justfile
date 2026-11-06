@@ -388,7 +388,6 @@ wasm32:
     cargo check -p ti-wasm --target wasm32-unknown-unknown
     cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
     cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
-    cargo check -p jwz-brainpool --target wasm32-unknown-unknown
     cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
     cargo check -p ti-idpd --target wasm32-unknown-unknown
     cargo check -p ti-directory --target wasm32-unknown-unknown
@@ -453,22 +452,21 @@ nonprod-absent:
     echo "no non-prod trust material without dangerous-nonprod"
 
 # Only the jwz crates: the loop while working on jwz; `check` stays the gate before a commit.
-# fmt, clippy, docs, tests, feature matrix, wasm32 and the guards for jwz, jwz-brainpool, ti-jwz
+# fmt, clippy, docs, tests, feature matrix, wasm32 and the guards for jwz and ti-jwz
 check-jwz:
-    cargo fmt -p jwz -p jwz-brainpool -p ti-jwz -- --check
+    cargo fmt -p jwz -p ti-jwz -- --check
     cargo clippy -p jwz --all-targets --features {{JWZ_FEATURES}} -- -D warnings
-    cargo clippy -p jwz -p jwz-brainpool -p ti-jwz --all-targets -- -D warnings
-    cargo clippy -p jwz-brainpool -p ti-jwz --all-targets --all-features -- -D warnings
+    cargo clippy -p jwz -p ti-jwz --all-targets -- -D warnings
+    cargo clippy -p ti-jwz --all-targets --all-features -- -D warnings
     RUSTDOCFLAGS="-D warnings" cargo doc -p jwz --no-deps --features {{JWZ_FEATURES}}
-    RUSTDOCFLAGS="-D warnings" cargo doc -p jwz-brainpool -p ti-jwz --no-deps --all-features
+    RUSTDOCFLAGS="-D warnings" cargo doc -p ti-jwz --no-deps --all-features
     cargo nextest run -p jwz --features {{JWZ_FEATURES}}
-    cargo nextest run -p jwz-brainpool -p ti-jwz --all-features
+    cargo nextest run -p ti-jwz --all-features
     cargo test -p jwz --features {{JWZ_FEATURES}} --doc
-    cargo test -p jwz-brainpool -p ti-jwz --all-features --doc
+    cargo test -p ti-jwz --all-features --doc
     cargo hack check -p jwz --each-feature --exclude-features rsa --no-dev-deps
     cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
     cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
-    cargo check -p jwz-brainpool --target wasm32-unknown-unknown
     cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
     just jwz-backends jwz-rsa-guard
     just brainpool-absent jwz
@@ -479,17 +477,17 @@ check-jwz:
 jwz-interop:
     #!/usr/bin/env bash
     set -euo pipefail
-    data="$PWD/jwz-brainpool/tests/data/interop"
-    cargo run -q -p jwz-brainpool --example interop -- tokens
-    (cd jwz-brainpool/interop/go && GOWORK=off go run . gen "$data/keys.json" "$data/go.json" \
+    data="$PWD/ti-jwz/tests/data/interop"
+    cargo run -q -p ti-jwz --features legacy --example interop -- tokens
+    (cd ti-jwz/interop/go && GOWORK=off go run . gen "$data/keys.json" "$data/go.json" \
         && GOWORK=off go run . check "$data/keys.json" "$data/jwz.json" "$data/go-verdicts.json")
-    py=jwz-brainpool/interop/python
+    py=ti-jwz/interop/python
     [ -x "$py/.venv/bin/python" ] || python3 -m venv "$py/.venv"
     "$py/.venv/bin/pip" install -q -r "$py/requirements.txt"
     "$py/.venv/bin/python" "$py/interop.py" gen "$data/keys.json" "$data/python.json"
     "$py/.venv/bin/python" "$py/interop.py" check "$data/keys.json" "$data/jwz.json" "$data/python-verdicts.json"
-    cargo run -q -p jwz-brainpool --example interop -- coverage
-    cargo test -q -p jwz-brainpool --test interop
+    cargo run -q -p ti-jwz --features legacy --example interop -- coverage
+    cargo test -q -p ti-jwz --features legacy --test interop
 
 # Nightly for cargo-fuzz; override with JWZ_NIGHTLY=<toolchain>
 JWZ_NIGHTLY := env_var_or_default("JWZ_NIGHTLY", "nightly-2026-08-21")
@@ -638,7 +636,7 @@ jwz-browser-tools:
     env -u NODE_OPTIONS npx -y @puppeteer/browsers install chromedriver@stable
 
 # Design time, stamped as jwz/verification/stamps/browser.toml.
-# The browser tests of jwz and jwz-brainpool, wasm32-unknown-unknown in headless Chrome
+# The browser tests of jwz and ti-jwz's brainpool, wasm32-unknown-unknown in headless Chrome
 jwz-browser:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -656,20 +654,20 @@ jwz-browser:
     printf '{"goog:chromeOptions":{"binary":"%s"}}\n' "$shell" > target/jwz-browser/webdriver.json
     WASM_BINDGEN_TEST_WEBDRIVER_JSON="$PWD/target/jwz-browser/webdriver.json" CHROMEDRIVER="$driver" \
         CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
-        cargo test --locked --target wasm32-unknown-unknown -p jwz -p jwz-brainpool --test browser
+        cargo test --locked --target wasm32-unknown-unknown -p jwz -p ti-jwz --features ti-jwz/legacy --test browser
 
 # rustls brings ring into ti-cli and ti-connector-client for TLS, so this is a tree check
 # for the jwz crates rather than a deny ban (ADR 0001, principle 8).
-# No openssl, ring, aws-lc or cryptoki under jwz, jwz-brainpool or ti-jwz
+# No openssl, ring, aws-lc or cryptoki under jwz or ti-jwz
 jwz-backends:
     #!/usr/bin/env bash
     set -euo pipefail
-    for crate in jwz jwz-brainpool ti-jwz; do
+    for crate in jwz ti-jwz; do
         found=$(cargo tree -p "$crate" -e normal --prefix none --all-features \
             | grep -E '^(openssl|openssl-sys|ring|aws-lc-rs|aws-lc-sys|cryptoki) ' || true)
         if [ -n "$found" ]; then echo "$crate depends on: $found" >&2; exit 1; fi
     done
-    echo "jwz, jwz-brainpool and ti-jwz are free of openssl, ring, aws-lc and cryptoki"
+    echo "jwz and ti-jwz are free of openssl, ring, aws-lc and cryptoki"
 
 # jwz's `rsa` feature refuses to build until RSA crypto exists (milestone 1)
 jwz-rsa-guard:
@@ -681,12 +679,12 @@ jwz-rsa-guard:
     grep -q "rsa: not yet implemented" <<<"$out" || { echo "jwz --features rsa failed for another reason:" >&2; echo "$out" >&2; exit 1; }
     echo "jwz refuses the rsa feature"
 
-# New components must not carry brainpool (ADR 0001); jwz-brainpool itself fails.
-# No bp256, bp384 or jwz-brainpool in CRATE's tree with its default features
+# New components must not carry brainpool (ADR 0001); ti-jwz with `legacy` fails.
+# No bp256 or bp384 in CRATE's tree with its default features
 brainpool-absent crate:
     #!/usr/bin/env bash
     set -euo pipefail
-    found=$(cargo tree -p {{crate}} -e normal --prefix none | grep -E '^(bp256|bp384|jwz-brainpool) ' || true)
+    found=$(cargo tree -p {{crate}} -e normal --prefix none | grep -E '^(bp256|bp384) ' || true)
     if [ -n "$found" ]; then echo "{{crate}} depends on brainpool: $found" >&2; exit 1; fi
     echo "{{crate}} is free of brainpool"
 
@@ -861,8 +859,8 @@ jwz-recheck *flags:
     # dependency versions and features, brainpool arithmetic; and the tests themselves.
     recheck browser jwz-browser "$("$shell" --version), $(wasm-bindgen-test-runner --version)" \
         tests/browser.rs src/crypto/rustcrypto.rs src/jwt.rs Cargo.toml ../Cargo.toml \
-        ../jwz-brainpool/tests/browser.rs ../jwz-brainpool/Cargo.toml $(ls ../jwz-brainpool/src/*.rs) \
-        $(ls ../jwz-brainpool/tests/data/interop/{keys,jwz,go,python}.json)
+        ../ti-jwz/tests/browser.rs ../ti-jwz/Cargo.toml $(ls ../ti-jwz/src/brainpool/*.rs) \
+        $(ls ../ti-jwz/tests/data/interop/{keys,jwz,go,python}.json)
 
 # Miri on the test suite (only meaningful if a crate ever allows unsafe; nightly required)
 miri:
@@ -950,7 +948,7 @@ clean:
     set -eu -o pipefail
     before=$(df -k . | awk 'NR==2 {print $4}')
     cargo clean
-    for dir in */fuzz/target jwz-brainpool/interop/python/.venv; do
+    for dir in */fuzz/target ti-jwz/interop/python/.venv; do
         if [ -d "$dir" ]; then
             echo "removing $dir"
             rm -rf "$dir"

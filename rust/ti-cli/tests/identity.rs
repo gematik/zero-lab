@@ -33,9 +33,9 @@ use std::process::{Command, Output, Stdio};
 use base64ct::{Base64, Base64UrlUnpadded, Encoding};
 use jwz::jws::Jws;
 use jwz::profile::Profile;
-use jwz_brainpool::BrainpoolEs256Key;
 use serde_json::{Value, json};
 use support::assert_conforms;
+use ti_jwz::brainpool::BrainpoolEs256Key;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -392,7 +392,7 @@ fn sign_produces_an_es256_jws_with_x5c_that_the_certificate_verifies() {
 
     let certificate = ti_pki::Certificate::from_der(&der).unwrap();
     let key = BrainpoolEs256Key::from_point(certificate.public_key()).unwrap();
-    let registry = jwz_brainpool::registry();
+    let registry = ti_jwz::brainpool::registry();
     let policy = Profile::rfc7518_interop(&registry).policy;
     let verified = Jws::parse(jws, &policy, &registry)
         .unwrap()

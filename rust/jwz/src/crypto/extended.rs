@@ -23,7 +23,7 @@
 
 //! A backend with further curves: [`Extended`] answers from its added providers first
 //! and falls back to the base backend. This is how a curve the base backend lacks
-//! (brainpoolP256r1 from `jwz-brainpool`) becomes usable for keys and JWE without
+//! (brainpoolP256r1 from `ti_jwz::brainpool`) becomes usable for keys and JWE without
 //! being a second backend: random source, hashing, AEAD and key wrap stay the base's.
 
 use alloc::boxed::Box;

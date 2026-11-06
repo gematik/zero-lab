@@ -25,6 +25,7 @@
 //! ECDSA through JWK parsing and both key types, ECDH through `Bp256`.
 //!
 //! `valid` must pass and `invalid` must fail; `acceptable` may go either way.
+#![cfg(feature = "legacy")]
 
 use std::sync::Arc;
 
@@ -32,8 +33,8 @@ use jwz::crypto::Ecdh;
 use jwz::crypto::rustcrypto::RustCrypto;
 use jwz::jwk::{EcKey, Jwk, KeyMaterial};
 use jwz::keys::{Signature, SoftwareKey, Verifier};
-use jwz_brainpool::{BP256R1, Bp256, BrainpoolEs256Key};
 use serde_json::Value;
+use ti_jwz::brainpool::{BP256R1, Bp256, BrainpoolEs256Key};
 
 fn load(name: &str) -> Value {
     let path = format!(
@@ -91,8 +92,8 @@ fn group_jwk(group: &Value) -> Jwk {
 
 #[test]
 fn wycheproof_ecdsa_bp256r1_sha256_p1363_as_bp256r1_and_as_es256() {
-    let registry = jwz_brainpool::registry();
-    let backend = Arc::new(jwz_brainpool::backend(RustCrypto::new()));
+    let registry = ti_jwz::brainpool::registry();
+    let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
     let checked = run(
         "ecdsa_brainpoolP256r1_sha256_p1363_test.json",
         |group, test| {

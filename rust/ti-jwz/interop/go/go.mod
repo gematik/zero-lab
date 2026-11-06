@@ -1,4 +1,4 @@
-module github.com/gematik/zero-lab/rust/jwz-brainpool/interop/go
+module github.com/gematik/zero-lab/rust/ti-jwz/interop/go
 
 go 1.26.4
 
