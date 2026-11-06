@@ -4,7 +4,7 @@ title: 'jwz: confirm crate names before publishing'
 status: In Progress
 assignee: []
 created_date: 2026-10-10 05:58
-updated_date: '2026-11-06T18:59:00Z'
+updated_date: '2026-11-06T22:03:00Z'
 labels:
   - jwz
   - decision
@@ -37,4 +37,6 @@ Maintainer, 2026-11-06: jwz-brainpool goes into ti-jwz (TASK-225), so the names 
 Maintainer, 2026-11-06: names jwz and ti-jwz (jwz-brainpool merged into ti-jwz, TASK-225); publish stays off. Recorded in ADR 0001 (9a2e2d93). The tags rust/<crate>/vX.Y.Z are already in release-plz.toml. AC 2 waits on the registry decision.
 
 2026-11-06: maintainer: publish jwz to crates.io now (ti-jwz later); org team owner (github:gematik:<team>) added next week. Steps: publish enabled for jwz only, mutation score, just release jwz=0.1.0, cargo publish -p jwz, push main and tag.
+
+2026-11-06: jwz 0.1.0 published to crates.io (release 86c91895, tag rust/jwz/v0.1.0, mutation score 0.885), first publish by the maintainer's account. Open: add the gematik GitHub team as owner (cargo owner --add github:gematik:<team> jwz) once a gematik org owner approved crates.io's OAuth access; ti-jwz not published yet.
 <!-- SECTION:NOTES:END -->
