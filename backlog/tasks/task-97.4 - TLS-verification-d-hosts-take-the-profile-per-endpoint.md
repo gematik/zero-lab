@@ -1,9 +1,10 @@
 ---
 id: TASK-97.4
 title: 'TLS verification (d): hosts take the profile per endpoint'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
+updated_date: '2026-11-06T08:37:00Z'
 labels:
   - ti-cli
   - security
