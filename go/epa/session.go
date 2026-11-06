@@ -24,8 +24,8 @@ package epa
 import (
 	"bytes"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -41,17 +41,12 @@ var UserAgent = "zero-epa-client/" + Version
 // ClientOption configures a Client in [NewClient].
 type ClientOption func(*Client)
 
-// WithInsecureSkipVerify turns off the check of the aggregators' TLS certificates.
-func WithInsecureSkipVerify() ClientOption {
+// WithTLSConfig sets how the aggregators' TLS certificates are verified: the ti profile's configuration,
+// titls.TiVerifier's ClientConfig. The client works on a copy. It is required, as there is no default
+// verification for an Aktensystem (TLSV-001).
+func WithTLSConfig(config *tls.Config) ClientOption {
 	return func(c *Client) {
-		c.insecureSkipVerify = true
-	}
-}
-
-// WithCertPool sets the TLS roots for the aggregators.
-func WithCertPool(certPool *x509.CertPool) ClientOption {
-	return func(c *Client) {
-		c.certPool = certPool
+		c.tlsConfig = config
 	}
 }
 
@@ -70,8 +65,9 @@ func WithTimeout(timeout time.Duration) ClientOption {
 	}
 }
 
-// WithHTTPClient supplies the base HTTP client. The epa client layers its TLS settings and
-// User-Agent onto a copy of it; when unset, a client with a default timeout is created.
+// WithHTTPClient supplies the base HTTP client. The epa client layers the configuration of
+// [WithTLSConfig] and its User-Agent onto a copy of it; when unset, a client with a default timeout is
+// created.
 func WithHTTPClient(client *http.Client) ClientOption {
 	return func(c *Client) {
 		c.HTTPClient = client
@@ -88,8 +84,8 @@ func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
 }
 
 // transportWithTLS clones the base transport (or http.DefaultTransport when the base is nil or not a
-// *http.Transport) and applies the given TLS config, layering epa's TLS settings onto the chosen
-// client without mutating it.
+// *http.Transport) and gives it tlsConfig, so the base client's own TLS settings never verify an
+// aggregator and the chosen client is not changed.
 func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTripper {
 	base, ok := transportOrDefault(rt).(*http.Transport)
 	if !ok {
@@ -122,17 +118,16 @@ type SecurityFunctions struct {
 // GetConsentDecisionInformation) live on *Client and do NOT require an open
 // VAU channel. Use OpenSession to upgrade to a *Session for VAU-bound calls.
 type Client struct {
-	Env                Env
-	ProviderNumber     ProviderNumber
-	BaseURL            string
-	HTTPClient         *http.Client
-	securityFunctions  *SecurityFunctions
-	insecureSkipVerify bool
-	certPool           *x509.CertPool
-	Timeout            time.Duration
-	vauVerifier        vau.CertVerifier
-	vauVerify          vau.VerifyMode
-	now                func() time.Time
+	Env               Env
+	ProviderNumber    ProviderNumber
+	BaseURL           string
+	HTTPClient        *http.Client
+	securityFunctions *SecurityFunctions
+	tlsConfig         *tls.Config
+	Timeout           time.Duration
+	vauVerifier       vau.CertVerifier
+	vauVerify         vau.VerifyMode
+	now               func() time.Time
 }
 
 func (c *Client) clock() time.Time {
@@ -232,7 +227,8 @@ func ResolveBaseURL(env Env, provider ProviderNumber) string {
 // NewClient builds a Client for the given aggregator. It does not perform
 // any network calls; the returned Client is ready to use for /information
 // endpoints, and may be promoted to a *Session via OpenSession when a VAU
-// channel is needed.
+// channel is needed. Every request, the VAU's included, goes over TLS verified
+// as [WithTLSConfig] says, which is required.
 func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options ...ClientOption) (*Client, error) {
 	client := &Client{
 		Env:               env,
@@ -243,19 +239,17 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 	for _, option := range options {
 		option(client)
 	}
+	if client.tlsConfig == nil {
+		return nil, errors.New("no TLS verification configured for the Aktensystem: WithTLSConfig is required")
+	}
 
 	base := client.HTTPClient
 	if base == nil {
 		base = &http.Client{Timeout: defaultHTTPTimeout}
 	}
-	// layer epa's TLS settings and User-Agent onto the chosen client without mutating the caller's
+	// layer the TLS configuration and User-Agent onto the chosen client without mutating the caller's
 	decorated := *base
-	decorated.Transport = &customTransport{
-		t: transportWithTLS(base.Transport, &tls.Config{
-			InsecureSkipVerify: client.insecureSkipVerify, //nolint:gosec // TASK-180: verification is off for any proxy without a cert pool
-			RootCAs:            client.certPool,
-		}),
-	}
+	decorated.Transport = &customTransport{t: transportWithTLS(base.Transport, client.tlsConfig.Clone())}
 	if client.Timeout > 0 {
 		decorated.Timeout = client.Timeout
 	} else if decorated.Timeout == 0 {
