@@ -9,6 +9,7 @@ require (
 	github.com/gematik/zero-lab/go/oidf v0.51.0
 	github.com/gematik/zero-lab/go/openid v0.53.0
 	github.com/gematik/zero-lab/go/pep v0.26.0
+	github.com/gematik/zero-lab/go/tipki v0.31.1
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	go.yaml.in/yaml/v4 v4.0.0-rc.9
@@ -16,7 +17,6 @@ require (
 
 require (
 	github.com/gematik/zero-lab/go/brainpool v1.3.0 // indirect
-	github.com/gematik/zero-lab/go/tipki v0.31.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.11.0 // indirect

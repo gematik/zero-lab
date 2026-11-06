@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,13 +43,13 @@ const oidfDevAPIKeyEnv = "PEP_OIDF_DEV_API_KEY" //nolint:gosec // the name of th
 
 // loadProviders builds the providers from openid-providers.yaml. An oidc or idpd entry uses
 // <public>/oauth2/callback unless it sets its own redirect_uri; the idpd client is always the gematik
-// Authenticator deep-link flow.
-func loadProviders(path, publicURL string) (*providers.Set, error) {
+// Authenticator deep-link flow. client carries every provider's requests.
+func loadProviders(path, publicURL string, client *http.Client) (*providers.Set, error) {
 	entries, err := providerEntries(path)
 	if err != nil {
 		return nil, err
 	}
-	env := providers.Env{BaseDir: filepath.Dir(path), RedirectURI: publicURL + "/oauth2/callback"}
+	env := providers.Env{BaseDir: filepath.Dir(path), RedirectURI: publicURL + "/oauth2/callback", HTTPClient: client}
 	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
@@ -61,8 +62,8 @@ func loadProviders(path, publicURL string) (*providers.Set, error) {
 }
 
 // providersFromEnv builds a single provider of each type from the PEP_* env vars — the simple path used
-// when no openid-providers.yaml is present.
-func providersFromEnv(publicURL string) *providers.Set {
+// when no openid-providers.yaml is present. httpClient carries every provider's requests.
+func providersFromEnv(publicURL string, httpClient *http.Client) *providers.Set {
 	var configured []providers.Provider
 	var federation providers.Federation
 	callback := publicURL + "/oauth2/callback"
@@ -85,6 +86,7 @@ func providersFromEnv(publicURL string) *providers.Set {
 			Name:           orDefault(os.Getenv("PEP_OIDC_NAME"), "OpenID Connect"),
 			LogoURI:        os.Getenv("PEP_OIDC_LOGO_URI"),
 			AcceptableSkew: skew,
+			HTTPClient:     httpClient,
 		})
 		if err != nil {
 			log.Fatalf("create oidc client: %v", err)
@@ -105,6 +107,7 @@ func providersFromEnv(publicURL string) *providers.Set {
 			log.Fatalf("load oidf relying party: %v", err)
 		}
 		config.APIKey = os.Getenv(oidfDevAPIKeyEnv)
+		config.HTTPClient = httpClient
 		rp, err := oidf.NewRelyingParty(config, filepath.Dir(rpPath))
 		if err != nil {
 			log.Fatalf("load oidf relying party: %v", err)
@@ -130,6 +133,7 @@ func providersFromEnv(publicURL string) *providers.Set {
 			UserAgent:         os.Getenv("PEP_IDPD_USER_AGENT"),
 			TrustBundlePath:   os.Getenv("PEP_IDPD_TRUST_BUNDLE_PATH"),
 			TrustFetch:        os.Getenv("PEP_IDPD_TRUST_FETCH") == "true",
+			HTTPClient:        httpClient,
 		})
 		if err != nil {
 			log.Fatalf("create idpd client: %v", err)

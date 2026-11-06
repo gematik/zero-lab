@@ -39,6 +39,7 @@ import (
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
+	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 const (
@@ -51,6 +52,8 @@ const (
 	oidfDevAPIKeyEnv = "PDP_OIDF_DEV_API_KEY" //nolint:gosec // the name of the variable, not a key
 	// reapEvery is how often expired rows leave the store.
 	reapEvery = 10 * time.Minute
+	// providerHTTPTimeout bounds each request to an OpenID provider or the federation.
+	providerHTTPTimeout = 30 * time.Second
 )
 
 func runStart(opts *options, args []string) error {
@@ -123,6 +126,10 @@ func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 		return nil, nil, fmt.Errorf("load config file: %w", err)
 	}
 	config.OIDFAPIKey = os.Getenv(oidfDevAPIKeyEnv)
+	// The OpenID providers, the IDP-Dienst and the federation master are on the internet: the web profile.
+	if config.HTTPClient, err = titls.NewWebHTTPClient(providerHTTPTimeout, titls.Options{}); err != nil {
+		return nil, nil, err
+	}
 	slog.Debug("Loaded config file", "config_file", configFile)
 
 	store, nonceKeys, err := openStore(os.Getenv("DATABASE_URL"), os.Getenv(storeKeyPathEnv))

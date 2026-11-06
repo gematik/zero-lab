@@ -91,9 +91,11 @@ type ClientConfig struct {
 	// Trust replaces both. Not serialized; supplied programmatically.
 	Trust CertificateTrust `yaml:"-"`
 
-	// HTTPClient is used for metadata, key, and token requests. Not serialized; supplied
-	// programmatically. When nil, a client with a default timeout is created. The configured
-	// User-Agent is layered onto the client's transport either way.
+	// HTTPClient is used for metadata, key, and token requests, and for the trust material's downloads
+	// and OCSP. Not serialized; supplied programmatically. When nil, the IDP-Dienst is reached under the
+	// web profile of spec/pki-validation (titls.NewWebHTTPClient); a client supplied here is used as given,
+	// and the host then owns its TLS. The configured User-Agent is layered onto the client's transport
+	// either way.
 	HTTPClient *http.Client `yaml:"-"`
 
 	// Clock is the time tokens are judged at. Not serialized; supplied programmatically. When nil, the
@@ -154,9 +156,9 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 
 	baseURL := idp.baseURL
 
-	httpClient := config.HTTPClient
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	httpClient, err := clientOrWeb(config.HTTPClient)
+	if err != nil {
+		return nil, err
 	}
 	// layer the gematik User-Agent onto the chosen client without mutating the caller's
 	decorated := *httpClient

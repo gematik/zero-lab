@@ -216,14 +216,12 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 	// injection as the federation client), without mutating the caller's.
 	mtlsClient := *baseClient
 	mtlsClient.CheckRedirect = refuseRedirect
-	mtlsClient.Transport = AddAPIKeyTransport(transportWithTLS(baseClient.Transport, &tls.Config{
-		// GetClientCertificate (not Certificates) so our self-signed client cert is presented
-		// unconditionally: self_signed_tls_client_auth means the IDP's CertificateRequest advertises a
-		// list of acceptable CA names that does not include our self-signed issuer, and Go would otherwise
-		// withhold the cert for not chaining to one of them.
-		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			return &tlsCert, nil
-		},
+	// GetClientCertificate (not Certificates) so our self-signed client cert is presented
+	// unconditionally: self_signed_tls_client_auth means the IDP's CertificateRequest advertises a
+	// list of acceptable CA names that does not include our self-signed issuer, and Go would otherwise
+	// withhold the cert for not chaining to one of them.
+	mtlsClient.Transport = AddAPIKeyTransport(transportWithClientCertificate(baseClient.Transport, func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		return &tlsCert, nil
 	}), cfg.APIKey)
 	rp.httpClient = &mtlsClient
 
@@ -671,21 +669,20 @@ func (cfg *RelyingPartyConfig) buildMetadata() *Metadata {
 	}
 }
 
-// transportWithTLS clones the base transport (or http.DefaultTransport when the base is nil or not a
-// *http.Transport) and applies the given TLS config, so mutual TLS is layered onto the chosen client
-// without mutating it.
-func transportWithTLS(rt http.RoundTripper, tlsConfig *tls.Config) http.RoundTripper {
+// transportWithClientCertificate clones the base transport (or http.DefaultTransport when the base is nil or
+// not a *http.Transport) and adds the client certificate to a copy of its TLS configuration, so mutual TLS is
+// layered onto the chosen client without mutating it. The base's verification stays whole: its roots, versions
+// and VerifyConnection, the web profile's when the host hands one in, never the system's defaults instead.
+func transportWithClientCertificate(rt http.RoundTripper, certificate func(*tls.CertificateRequestInfo) (*tls.Certificate, error)) http.RoundTripper {
 	base, ok := transportOrDefault(rt).(*http.Transport)
 	if !ok {
 		base = http.DefaultTransport.(*http.Transport)
 	}
 	t := base.Clone()
-	// The base's trust stays: a client with its own RootCAs must not fall back to the system's for mutual TLS.
-	if t.TLSClientConfig != nil {
-		tlsConfig.RootCAs = t.TLSClientConfig.RootCAs
-		tlsConfig.MinVersion = t.TLSClientConfig.MinVersion
+	if t.TLSClientConfig == nil {
+		t.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
-	t.TLSClientConfig = tlsConfig
+	t.TLSClientConfig.GetClientCertificate = certificate
 	return t
 }
 

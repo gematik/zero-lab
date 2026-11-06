@@ -43,7 +43,9 @@ Go keeps servers and relying parties, their libraries and the ePA client
   ([architecture](../../docs/architecture.md#the-host-owns-the-transport-the-core-owns-trust)):
   a client for a TI endpoint gets a `tls.Config` whose `VerifyConnection` applies the
   shared verification rules (natively under `spec/pki-validation`, or through `ti`),
-  never the system roots alone (TASK-98).
+  never the system roots alone (TASK-98). In Go that is `tipki/titls`: ePA and KIM take
+  the `ti` profile, every other endpoint the `web` profile, which a command hands its
+  libraries as `titls.NewWebHTTPClient`; no path falls back to unverified TLS.
 
 ## 3. Keys and cryptography
 

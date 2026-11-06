@@ -80,6 +80,7 @@ import (
 	"github.com/gematik/zero-lab/go/openid/providers"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/gematik/zero-lab/go/pep/proxy"
+	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 func env(key, def string) string {
@@ -97,6 +98,9 @@ const sessionStorePurpose = "pep/session"
 
 // reapEvery is how often expired rows leave the store.
 const reapEvery = 10 * time.Minute
+
+// outboundHTTPTimeout bounds each request to the PDP or an OpenID provider.
+const outboundHTTPTimeout = 30 * time.Second
 
 // checkInsecureCookie refuses PEP_INSECURE_COOKIE outside local development (server rule 17): a cookie without Secure
 // and __Host- goes out over plain http, and any host of the domain can set it.
@@ -205,25 +209,32 @@ func main() {
 		}
 	}
 
+	// The PDP and the OpenID providers, the IDP-Dienst and the federation master among them, are on the
+	// internet: every outbound request goes under the web profile of spec/pki-validation.
+	webClient, err := titls.NewWebHTTPClient(outboundHTTPTimeout, titls.Options{})
+	if err != nil {
+		log.Fatalf("outbound TLS: %v", err)
+	}
+
 	// Backend selection: PEP_BACKEND=pdp makes pep a confidential client of the PDP (DPoP-bound tokens + the
 	// gated /api proxy); otherwise pep drives the configured OIDC/OIDF/idpd providers directly.
 	var backend proxy.Backend
 	if os.Getenv("PEP_BACKEND") == "pdp" {
-		backend = pdpBackendFromEnv(publicURL)
+		backend = pdpBackendFromEnv(publicURL, webClient)
 	} else {
 		// Providers run in parallel. When the providers file exists it is the source; otherwise a single
 		// provider of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_IDPD_* env vars.
 		var set *providers.Set
 		if _, statErr := os.Stat(providersPath); statErr == nil { //nolint:gosec // the path comes from PEP_OPENID_PROVIDERS_PATH or the fixed default in the working directory, not a request
 			var err error
-			if set, err = loadProviders(providersPath, publicURL); err != nil {
+			if set, err = loadProviders(providersPath, publicURL, webClient); err != nil {
 				log.Fatalf("load providers from %s: %v", providersPath, err) //nolint:gosec // start-up log of a path from the operator's environment, no request data
 			}
 			slog.Info("providers loaded", "path", providersPath)
 		} else if providersExplicit {
 			log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr) //nolint:gosec // %q escapes a value from the operator's environment; start-up log, no request data
 		} else {
-			set = providersFromEnv(publicURL)
+			set = providersFromEnv(publicURL, webClient)
 		}
 		if set.Empty() {
 			log.Fatal("configure providers via openid-providers.yaml (PEP_OPENID_PROVIDERS_PATH), or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_IDPD_CLIENT_ID")

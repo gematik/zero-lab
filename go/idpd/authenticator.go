@@ -105,7 +105,8 @@ type AuthenticatorConfig struct {
 	Trust CertificateTrust
 
 	// HTTPClient is used for metadata and key fetches; a redirect-suppressing copy of it drives the
-	// challenge flow. When nil, a client with a default timeout is created.
+	// challenge flow. When nil, the IDP-Dienst is reached under the web profile of spec/pki-validation
+	// (titls.NewWebHTTPClient); a client supplied here is used as given, and the host then owns its TLS.
 	HTTPClient *http.Client
 
 	// Clock is the time challenges are judged at. When nil, the system clock.
@@ -125,9 +126,9 @@ func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
 	if config.Trust == nil {
 		return nil, errors.New("no trust for the IDP-Dienst's certificates")
 	}
-	httpClient := config.HTTPClient
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+	httpClient, err := clientOrWeb(config.HTTPClient)
+	if err != nil {
+		return nil, err
 	}
 
 	baseURL := config.IDP.baseURL

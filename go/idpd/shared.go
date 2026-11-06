@@ -37,6 +37,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
+	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 const defaultHTTPTimeout = 30 * time.Second
@@ -47,6 +48,19 @@ const maxIDPResponseBytes = 1 << 20
 // defaultUserAgent is sent when ClientConfig.UserAgent is empty: the gematik IDP-Dienst rejects requests
 // without a User-Agent ("User Agent fehlt").
 const defaultUserAgent = "zero-lab"
+
+// clientOrWeb is client, or without one a client under the web profile: the IDP-Dienst, its key and
+// trust material hosts are on the internet with public certificates (spec/pki-validation).
+func clientOrWeb(client *http.Client) (*http.Client, error) {
+	if client != nil {
+		return client, nil
+	}
+	web, err := titls.NewWebHTTPClient(defaultHTTPTimeout, titls.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("the IDP-Dienst's TLS: %w", err)
+	}
+	return web, nil
+}
 
 // transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
 // has a concrete base transport to wrap.

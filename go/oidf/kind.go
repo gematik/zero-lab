@@ -70,6 +70,7 @@ func Kind(apiKey string, built func(*RelyingParty)) providers.Kind {
 			return providers.Built{}, err
 		}
 		config.APIKey = apiKey
+		config.HTTPClient = env.HTTPClient
 		rp, err := NewRelyingParty(config, env.BaseDir)
 		if err != nil {
 			return providers.Built{}, err
