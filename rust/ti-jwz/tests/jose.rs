@@ -225,7 +225,7 @@ impl jwz::crypto::Rng for HighFirst {
         use core::sync::atomic::Ordering;
         let high = self
             .invalid
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
             .is_ok();
         for (i, byte) in dest.iter_mut().enumerate() {
             *byte = if high {
