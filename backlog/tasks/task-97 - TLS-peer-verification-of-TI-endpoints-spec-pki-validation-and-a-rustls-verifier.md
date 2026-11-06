@@ -4,7 +4,7 @@ title: 'TLS server verification as core hooks: TI-PKI and hardened Web-PKI'
 status: To Do
 assignee: []
 created_date: 2026-10-15 05:20
-updated_date: '2026-11-05T19:31:00Z'
+updated_date: '2026-11-06T07:33:00Z'
 labels:
   - ti-pki
   - spec
@@ -43,4 +43,6 @@ Which profile an endpoint gets is core configuration, never inferred from its ce
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-05, maintainer: TI-PKI server certificates and hardened Web-PKI server certificates are two profiles; the hooks must be secure and fast. The earlier note about the PDP's token exchange (TASK-168) and the relying parties (TASK-171) is gone with those tasks.
+
+Maintainer, 2026-11-06: no curated CA set for internet endpoints. The Web-PKI profile takes the usual Web-PKI roots and adds requirements on the certificates, as gematik's specs and the ZETA SDK (github.com/gematik/zeta-sdk, network/.../config/tls) state them: end-entity ECC (P-256/P-384) or RSA >= 3000 (gemSpec_Krypt A_28976, A_16176-01: 120-bit level per TR-02102-2); chain RSA >= 2048 tolerated by the SDK; no SHA-1/MD5/SHA-224; TLS 1.2 ECDHE+AES-GCM or 1.3 AES-GCM; curves P-256, P-384, brainpool; revocation hard-fail: stapled OCSP, cached OCSP, OCSP, CRL (SDK; E-Rezept A_27857-02). TI side: GS-A_4662, GS-A_4663/Tab_PKI_273 (TUC_PKI_018, OCSP mode, PolicyList Tab_PKI_405), GS-A_5077 (FQDN), GS-A_4384-03, A_18467, A_21275-01, A_24913 (ePA stapling, 50 min).
 <!-- SECTION:NOTES:END -->
