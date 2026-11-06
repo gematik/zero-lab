@@ -7,6 +7,23 @@ tested in headless Chrome.
 
 Start with the guide (`jwz::guide` in the API documentation, [`docs/guide.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/guide.md)).
 
+## Standards
+
+| RFC | Title | In jwz |
+| --- | --- | --- |
+| [7515](https://www.rfc-editor.org/rfc/rfc7515) | JSON Web Signature (JWS) | compact and JSON serializations |
+| [7516](https://www.rfc-editor.org/rfc/rfc7516) | JSON Web Encryption (JWE) | compact and JSON serializations |
+| [7517](https://www.rfc-editor.org/rfc/rfc7517) | JSON Web Key (JWK) | JWK and JWK Set |
+| [7518](https://www.rfc-editor.org/rfc/rfc7518) | JSON Web Algorithms (JWA) | ES256; ECDH-ES (P-256, direct and +A128/192/256KW), A128/192/256KW, `dir`, A128/192/256GCM; HS256/384/512 (feature `hmac`). Not yet: P-384, P-521, RSA |
+| [7519](https://www.rfc-editor.org/rfc/rfc7519) | JSON Web Token (JWT) | claims and their validation |
+| [7520](https://www.rfc-editor.org/rfc/rfc7520) | Examples of Protecting Content Using JOSE | test vectors |
+| [7638](https://www.rfc-editor.org/rfc/rfc7638) | JWK Thumbprint | thumbprints |
+| [8037](https://www.rfc-editor.org/rfc/rfc8037) | CFRG Curves in JOSE | Ed25519 (EdDSA) |
+| [8725](https://www.rfc-editor.org/rfc/rfc8725) | JSON Web Token Best Current Practices | §3.4: cryptographic inputs validated (peer points on the curve) |
+
+Every requirement jwz implements is traced to the tests that prove it:
+[`docs/traceability.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/traceability.md).
+
 ## What's in 0.1
 
 - `jwz::jwa`: the algorithm registry;
@@ -42,9 +59,8 @@ The reasoning is in the design record, [`docs/adr/0001-jwz.md`](https://github.c
 
 ## How it is checked
 
-- **Specification tests:** the requirements, examples and known answers of RFC 7515, 7516,
-  7517, 7518, 7519, 7520, 7638, 8037 and 8725, and Wycheproof vectors for the primitives
-  behind the backend traits. Tests are named after the requirement they prove, and
+- **Specification tests:** the requirements, examples and known answers of the RFCs above,
+  and Wycheproof vectors for the primitives behind the backend traits. Tests are named after the requirement they prove, and
   every reference is traced to its tests in
   [`docs/traceability.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/traceability.md).
 - **Fuzzing:** a fuzz target per parser (compact and JSON JWS and JWE, JWK, claims).
