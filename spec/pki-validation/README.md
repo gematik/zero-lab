@@ -80,8 +80,12 @@ the inner channels of the VAU and ZETA/ASL, Certificate Transparency, and the se
   (`signature_algorithm_not_allowed`), and each signature verifies (`signature_invalid`).
 - **TLSV-024** The reference identity is the host name the client connected to, never one the server
   supplied, in its ASCII form (an internationalized name as its A-labels). It is compared
-  case-insensitively, without a trailing dot (RFC 9525 §6.3). An IP address matches only an `iPAddress`
-  subject alternative name of the same bytes. A mismatch is `name_mismatch`.
+  case-insensitively, without a trailing dot (RFC 9525 §6.3). A presented name may be a wildcard: `*` as
+  the whole leftmost label, standing for exactly one label of the reference name, never for a dot, never
+  for a partial label (`f*.example.com`), and never matching a name with fewer labels than its own
+  (`*.example.com` does not match `example.com`). A wildcard in any other position matches nothing. An IP
+  address matches only an `iPAddress` subject alternative name of the same bytes. A mismatch is
+  `name_mismatch`.
 
 ### Profile `ti`
 
@@ -90,9 +94,8 @@ the inner channels of the VAU and ZETA/ASL, Certificate Transparency, and the se
   type among the TLS server types of Tab_PKI_405, C.FD.TLS-S and C.ZD.TLS-S (`profile_type_mismatch`), its
   baseline of Tab_PKI_250 and Tab_PKI_247, and its key under VALID-002.
 - **TLSV-031** The reference host name MUST equal the commonName or one of the `dNSName` subject
-  alternative names (GS-A_5077, Tab_PKI_247, Tab_PKI_250); a certificate may name a service under several
-  names. The match is exact: a wildcard matches nothing, since a TI service's certificate names its own
-  FQDNs.
+  alternative names (GS-A_5077, Tab_PKI_247, Tab_PKI_250), as TLSV-024 compares them, wildcards included;
+  a certificate may name a service under several names.
 - **TLSV-032** Revocation is OCSP and cannot be switched off (Tab_PKI_273: Prüfmodus OCSP, no offline mode,
   TOLERATE_OCSP_FAILURE false). A stapled response (RFC 6066 §8) is used when it verifies under OCSP-001 and
   is within the OCSP grace period, 10 minutes by default and configurable (A_24913, TUC_PKI_018 7b).
@@ -111,8 +114,8 @@ the inner channels of the VAU and ZETA/ASL, Certificate Transparency, and the se
   (A_28976, after TR-02102-2) and of non-TI RSA keys (A_16176-01).
 - **TLSV-042** A CA's key is ECDSA on P-256, P-384 or P-521, or RSA of at least 2048 bits
   (`key_not_admissible`). The lower RSA floor is the Web-PKI's today, as the ZETA SDK accepts it.
-- **TLSV-043** The name matches a `dNSName` subject alternative name under RFC 9525 §6.3 (A_27856-02). A
-  wildcard is the whole leftmost label and stands for exactly one label; the commonName is not read.
+- **TLSV-043** The name matches a `dNSName` subject alternative name as TLSV-024 compares them
+  (A_27856-02); the commonName is not read.
 - **TLSV-044** The end entity's revocation status is required (A_27857-02): from a stapled OCSP response,
   else a cached response, else its OCSP responder (AIA), else its CRL (CRL distribution point), as the ZETA
   SDK asks them. `revoked` refuses (`revoked`); when no source gives a status, the server is refused
@@ -189,8 +192,9 @@ None known: no implementation exists yet (TASK-97, TASK-98).
   the TI. `web` trusts what the host trusts; an operator who adds a root to the system adds it here.
 - Revocation fails closed under both profiles. A server is unreachable while its revocation status is, by
   design.
-- The name check uses the host the client asked for. A server cannot name itself into a match, and `ti`
-  allows no wildcard that one certificate could stretch over several services.
+- The name check uses the host the client asked for, so a server cannot name itself into a match. A
+  wildcard covers one label under one domain: a certificate for `*.example.com` is good for every service
+  directly under it, which its holder must want, and for nothing deeper or beside it.
 - Reused verdicts end with the earliest reason to stop trusting them; a refusal is checked again every time.
 - Not covered: a CA of the Web-PKI that issues wrongly and is not yet distrusted (Certificate Transparency
   would show it), and denial of service through unreachable OCSP responders or CRL hosts.
