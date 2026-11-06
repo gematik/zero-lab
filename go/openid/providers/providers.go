@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -64,6 +65,9 @@ type Env struct {
 	BaseDir string
 	// RedirectURI is used by an entry without one of its own.
 	RedirectURI string
+	// HTTPClient carries every kind's requests; nil leaves each its library's default. The program
+	// chooses it, and with it the providers' TLS verification.
+	HTTPClient *http.Client
 }
 
 // Decode reads an entry's value into a typed configuration. The program supplies it and decides the format. It
@@ -139,6 +143,7 @@ func OIDC(decode Decode, env Env) (Built, error) {
 		if config.RedirectURI == "" {
 			config.RedirectURI = env.RedirectURI
 		}
+		config.HTTPClient = env.HTTPClient
 		if err := config.Validate(); err != nil {
 			return Built{}, fmt.Errorf("[%d]: %w", i, err)
 		}

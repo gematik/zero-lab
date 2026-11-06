@@ -22,13 +22,13 @@
 package vau_test
 
 import (
-	"crypto/tls"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
+	"github.com/gematik/zero-lab/go/epa/epatest"
 	"github.com/gematik/zero-lab/go/epa/vau"
 )
 
@@ -47,14 +47,13 @@ func TestOpenChannel(t *testing.T) {
 	if baseURL == "" {
 		t.Skip("EPA_VAU_BASE_URL not set — skipping live VAU OpenChannel test")
 	}
-	// do not check the server certificate
+	env := os.Getenv("EPA_ENV")
+	if env == "" {
+		env = "ref"
+	}
 	httpClient := &http.Client{
 		Transport: &customTransport{
-			t: &http.Transport{
-				TLSClientConfig: &tls.Config{
-					InsecureSkipVerify: true, //nolint:gosec // gated live test of the VAU handshake above TLS; it only runs against the server a developer names in EPA_VAU_BASE_URL
-				},
-			},
+			t: &http.Transport{TLSClientConfig: epatest.TiTLSConfig(t, env)},
 		},
 	}
 	channel, err := vau.OpenChannel(baseURL, vau.EnvNonPU, httpClient)

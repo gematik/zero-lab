@@ -87,7 +87,7 @@ func TestIDPD_SMCB(t *testing.T) {
 		RedirectURI: os.Getenv("IDPD_REDIRECT_URI"),
 		Scopes:      strings.Split(os.Getenv("IDPD_SCOPE"), " "),
 	}
-	client, err := idpd.NewClientFromConfig(cfg)
+	client, err := idpd.NewClientFromConfig(cfg, mustWebClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestIDPD_SMCB(t *testing.T) {
 		IDP:        client.IDP,
 		Trust:      trust,
 		SignerFunc: idpd.SignWithSoftkey(prk, cert),
-	})
+	}, mustWebClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}

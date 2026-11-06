@@ -22,14 +22,17 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -51,27 +54,70 @@ var routerCmd = &cobra.Command{
 	Use:   "proxy",
 	Short: "Run ePA Client as Proxy",
 	Run: func(_ *cobra.Command, _ []string) {
-		runner, err := tiBinary()
-		cobra.CheckErr(err)
-
-		proxies := make([]*epa.Proxy, len(config.ProxyConfigs))
-		proxyInfos := make([]*epa.ProxyInfo, 0, len(config.ProxyConfigs))
-		for num, proxyConfig := range config.ProxyConfigs {
-			proxy, err := createProxy(&proxyConfig, runner)
-			cobra.CheckErr(err)
-			info, err := proxy.GetProxyInfo()
-			cobra.CheckErr(err)
-			proxyInfos = append(proxyInfos, info)
-			proxies[num] = proxy
-		}
-
-		router, err := buildRouter(proxies, proxyInfos, ti.NewProber(runner, time.Now))
-		cobra.CheckErr(err)
-
-		slog.Info("starting Proxy at " + listenAddr)
-		server := &http.Server{Addr: listenAddr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
-		log.Fatal(server.ListenAndServe())
+		cobra.CheckErr(runProxy())
 	},
+}
+
+// runProxy serves the configured proxies until SIGINT or SIGTERM. Their Aktensysteme are verified under
+// the ti profile over the TSL of their environment, which is fetched first: without it nothing starts.
+func runProxy() error {
+	runner, err := tiBinary()
+	if err != nil {
+		return err
+	}
+	trust, err := newTiTrust(proxyEnvs(config.ProxyConfigs)...)
+	if err != nil {
+		return err
+	}
+	defer trust.Close()
+
+	proxies := make([]*epa.Proxy, len(config.ProxyConfigs))
+	proxyInfos := make([]*epa.ProxyInfo, 0, len(config.ProxyConfigs))
+	for num, proxyConfig := range config.ProxyConfigs {
+		proxyConfig.TLSConfig = trust.config(proxyConfig.Env)
+		proxy, err := createProxy(&proxyConfig, runner)
+		if err != nil {
+			return err
+		}
+		info, err := proxy.GetProxyInfo()
+		if err != nil {
+			return err
+		}
+		proxyInfos = append(proxyInfos, info)
+		proxies[num] = proxy
+	}
+
+	router, err := buildRouter(proxies, proxyInfos, ti.NewProber(runner, time.Now))
+	if err != nil {
+		return err
+	}
+
+	slog.Info("starting Proxy at " + listenAddr)
+	server := &http.Server{Addr: listenAddr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return serve(ctx, server)
+}
+
+// serve runs server until ctx ends, then lets the requests in flight finish.
+func serve(ctx context.Context, server *http.Server) error {
+	errc := make(chan error, 1)
+	go func() { errc <- server.ListenAndServe() }()
+
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	if err := <-errc; !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
 
 // buildRouter mounts the proxies under /api and the developer portal as

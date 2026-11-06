@@ -4,9 +4,9 @@ go 1.27.0
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.7
-	github.com/gematik/zero-lab/go/kv v0.1.0
-	github.com/gematik/zero-lab/go/nonce v0.22.0
-	github.com/gematik/zero-lab/go/pep v0.26.0
+	github.com/gematik/zero-lab/go/kv v0.1.1-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/nonce v0.22.1-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/pep v0.26.1-0.20261106180818-4c2a720247df
 )
 
 require (
@@ -73,7 +73,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.11.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/klauspost/compress v1.20.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/manifoldco/promptui v0.9.0 // indirect

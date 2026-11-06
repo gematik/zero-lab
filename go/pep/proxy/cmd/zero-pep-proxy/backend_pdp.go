@@ -24,6 +24,7 @@ package main
 import (
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 
@@ -34,8 +35,9 @@ import (
 )
 
 // pdpBackendFromEnv builds the PDP backend (PEP_BACKEND=pdp): pep as a confidential client of the PDP. The
-// private_key_jwt signing key is read from a file (PEP_CLIENT_SIGNING_KEY_PATH), never from an env value.
-func pdpBackendFromEnv(publicURL string) proxy.Backend {
+// private_key_jwt signing key is read from a file (PEP_CLIENT_SIGNING_KEY_PATH), never from an env value. client
+// carries the requests to the PDP.
+func pdpBackendFromEnv(publicURL string, client *http.Client) proxy.Backend {
 	asIssuer := os.Getenv("PEP_AS_ISSUER")
 	clientID := os.Getenv("PEP_CLIENT_ID")
 	if asIssuer == "" || clientID == "" {
@@ -54,6 +56,7 @@ func pdpBackendFromEnv(publicURL string) proxy.Backend {
 		ClientID:    clientID,
 		SigningKey:  signingKey,
 		RedirectURI: redirect,
+		HTTPClient:  client,
 	}
 	if s := os.Getenv("PEP_SCOPES"); s != "" {
 		cfg.Scopes = strings.Fields(s)

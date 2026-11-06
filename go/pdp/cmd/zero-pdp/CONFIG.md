@@ -10,6 +10,10 @@ Three sources, the same split pep uses:
   the workdir.
 - **Environment** — runtime + secrets via `*_PATH` files.
 
+Requests to the providers, the federation and the IDP-Dienst's trust material are verified under the `web`
+profile of [`spec/pki-validation`](../../../../spec/pki-validation/README.md) against the system's roots (the
+image's `ca-certificates`); there is no setting that turns it off.
+
 | Var | Purpose | Default |
 | --- | --- | --- |
 | `PDP_CONFIG_FILE` (`-f`) | the domain config file | `pdp.yaml` |

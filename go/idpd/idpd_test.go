@@ -28,9 +28,11 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gematik/zero-lab/go/idpd"
 	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -79,7 +81,7 @@ func TestIDPD(t *testing.T) {
 		Scopes:      strings.Split(os.Getenv("IDPD_SCOPE"), " "),
 	}
 
-	client, err := idpd.NewClientFromConfig(cfg)
+	client, err := idpd.NewClientFromConfig(cfg, mustWebClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +99,7 @@ func TestIDPD(t *testing.T) {
 		IDP:        client.IDP,
 		Trust:      trust,
 		SignerFunc: idpd.SignWithSoftkeyPEM(testKeyBytes, testCertBytes),
-	})
+	}, mustWebClient(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,16 +129,26 @@ func TestIDPD(t *testing.T) {
 
 // mustLiveTrust uses the mounted bundle when one is named and downloads the material otherwise,
 // so a login test needs nothing beyond the IDP client configuration.
+// mustWebClient is what a host hands idpd for the IDP-Dienst and its trust material: the web profile.
+func mustWebClient(t *testing.T) *http.Client {
+	t.Helper()
+	client, err := titls.NewWebHTTPClient(30*time.Second, titls.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client
+}
+
 func mustLiveTrust(t *testing.T) idpd.CertificateTrust {
 	t.Helper()
 	if path := os.Getenv("IDPD_TRUST_BUNDLE_PATH"); path != "" {
-		trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, path, http.DefaultClient)
+		trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, path, mustWebClient(t))
 		if err != nil {
 			t.Fatalf("IDPD_TRUST_BUNDLE_PATH: %v", err)
 		}
 		return trust
 	}
-	trust, err := idpd.NewFetchingTrust(idpd.EnvironmentReference, http.DefaultClient)
+	trust, err := idpd.NewFetchingTrust(idpd.EnvironmentReference, mustWebClient(t))
 	if err != nil {
 		t.Fatalf("download trust material: %v", err)
 	}

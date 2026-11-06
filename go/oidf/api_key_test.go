@@ -86,8 +86,14 @@ func TestALibraryReadsNoAPIKeyFromTheEnvironment(t *testing.T) {
 
 func TestMutualTLSKeepsTheBaseClientsTrust(t *testing.T) {
 	roots := x509.NewCertPool()
-	base := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS13}}
-	layered, ok := transportWithTLS(base, &tls.Config{MinVersion: tls.VersionTLS12}).(*http.Transport)
+	verified := false
+	base := &http.Transport{TLSClientConfig: &tls.Config{
+		RootCAs:          roots,
+		MinVersion:       tls.VersionTLS13,
+		VerifyConnection: func(tls.ConnectionState) error { verified = true; return nil },
+	}}
+	certificate := func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { return &tls.Certificate{}, nil }
+	layered, ok := transportWithClientCertificate(base, certificate).(*http.Transport)
 	if !ok {
 		t.Fatal("not an http.Transport")
 	}
@@ -96,6 +102,12 @@ func TestMutualTLSKeepsTheBaseClientsTrust(t *testing.T) {
 	}
 	if layered.TLSClientConfig.MinVersion != tls.VersionTLS13 {
 		t.Errorf("MinVersion = %d", layered.TLSClientConfig.MinVersion)
+	}
+	if layered.TLSClientConfig.VerifyConnection == nil || layered.TLSClientConfig.VerifyConnection(tls.ConnectionState{}) != nil || !verified {
+		t.Error("the base client's verification is gone")
+	}
+	if layered.TLSClientConfig.GetClientCertificate == nil {
+		t.Error("no client certificate")
 	}
 	if base.TLSClientConfig.GetClientCertificate != nil {
 		t.Error("the base transport was changed")

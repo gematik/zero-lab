@@ -90,6 +90,11 @@ enters the Go process.
   `authn_card` (+ `authn_connector`) for an SMC-B at the Konnektor. `vau_cert_verify:
   warn|enforce|off` (default `warn`) says what a bad verdict on the VAU's certificates
   does.
+- `zero-epa proxy` and `zero-epa probe` verify the Aktensysteme' TLS under the `ti` profile
+  (`tipki/titls`) over the TSL of each environment they use, which they download at start
+  (`tipki/fetch`, from hosts verified under the `web` profile) and keep fresh. Without it
+  they do not start, so they need a route to gematik's TSL hosts and the TI's OCSP
+  responders; there is no unverified fallback.
 - The Docker image downloads a released, statically linked `ti` from GitHub, pinned by its
   SHA-256 in the Dockerfile (`just docker-build epa`). Moving to a newer `ti` means changing
   the URL and the hash there.
@@ -118,7 +123,7 @@ and the release PR records the runs; the rules are in
 | idpd IDP certificates (HITL) | `just idpd-trust-test` | `IDPD_TRUST_BUNDLE_PATH`, a route to the reference IDP and its OCSP responder | both real IDP certificates pass `idpd-sig` with live OCSP (IDPV-005) | idpd |
 | idpd trust download (HITL) | `just idpd-trust-fetch-test` | a route to gematik's TSL and CRL hosts, the reference IDP and its OCSP responder | the material downloads and verifies, and both real IDP certificates pass with live OCSP (IDPV-007) | idpd |
 | idpd SMC-B | `just idpd-smcb-test` | `IDPD_*`, an SMC-B identity (`IDPD_SMCB_P12`), a route to gematik's hosts; `IDPD_TRUST_BUNDLE_PATH` replaces the download with a bundle from `ti pki trust export` | authentication at the gematik IDP-Dienst with an SMC-B | `idpd` |
-| ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity | VAU, authorization, record status and consent at both providers | `epa` |
+| ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity, a route to gematik's TSL hosts | VAU, authorization, record status and consent at both providers, over TLS verified under the `ti` profile | `epa` |
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
 | OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |
 | kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database | the Postgres store: round trip, expiry, `Take` and `SetIfAbsent` single-use under concurrency, a sealed store over it | `kv`, `pdp`, `pep`, `bff` |
@@ -220,3 +225,4 @@ git checkout go/epa/v0.20.3
 | `upgrade` | `go get -u ./...` + tidy per module (deliberate dependency upgrade) |
 | `docker-build-<cmd>` / `docker-push-<cmd>` | Build / build+push the command's Docker image |
 | `update-roots` | Refresh the embedded TSL root certificates |
+| `tls-bench` | A cold and a cached TLS server verification per profile of `spec/pki-validation` (`tipki/titls`), on one core; fails when a median exceeds its budget (5 ms cold, 10 µs cached) |

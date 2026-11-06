@@ -22,7 +22,7 @@
 package epa
 
 import (
-	"crypto/x509"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -36,7 +36,7 @@ type sessionManager struct {
 	lock              sync.RWMutex
 	timeout           time.Duration
 	env               Env
-	certPool          *x509.CertPool
+	tlsConfig         *tls.Config
 	securityFunctions *SecurityFunctions
 	authenticator     Authenticator
 	vauVerifier       vau.CertVerifier
@@ -104,13 +104,8 @@ func (sm *sessionManager) gate(provider ProviderNumber) *sync.Mutex {
 
 // loginAt opens a VAU session at provider and authorizes it.
 func (sm *sessionManager) loginAt(provider ProviderNumber) (*Session, error) {
-	options := []ClientOption{WithTimeout(sm.timeout), WithVAUVerification(sm.vauVerifier, sm.vauVerify), WithClock(sm.now)}
-	if sm.certPool == nil {
-		options = append(options, WithInsecureSkipVerify())
-	} else {
-		options = append(options, WithCertPool(sm.certPool))
-	}
-	client, err := NewClient(sm.env, provider, sm.securityFunctions, options...)
+	client, err := NewClient(sm.env, provider, sm.securityFunctions,
+		WithTLSConfig(sm.tlsConfig), WithTimeout(sm.timeout), WithVAUVerification(sm.vauVerifier, sm.vauVerify), WithClock(sm.now))
 	if err != nil {
 		return nil, fmt.Errorf("new client at provider %d: %w", provider, err)
 	}

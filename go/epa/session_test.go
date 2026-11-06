@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/epa"
+	"github.com/gematik/zero-lab/go/epa/epatest"
 	"github.com/gematik/zero-lab/go/epa/ti"
 	"github.com/gematik/zero-lab/go/epa/vau"
 )
@@ -171,9 +172,9 @@ func debugLogger() {
 }
 
 // establishAuthorizedSession loads the SMC-B identity through the ti tool, opens a VAU channel to
-// the given provider's aggregator (the VAU's certificates verified by ti, warn mode), and runs
-// the full authorization handshake (client attest, IDP authentication via `ti idpd authenticate`,
-// auth code). No VSDM material is required — entitlement proof material is supplied by the caller
+// the given provider's aggregator (its TLS under the ti profile over the TSL fetched for the test,
+// the VAU's certificates verified by ti, warn mode), and runs the full authorization handshake
+// (client attest, IDP authentication via `ti idpd authenticate`, auth code). No VSDM material is required — entitlement proof material is supplied by the caller
 // to SetEntitlementPN/SetEntitlementPoPP.
 func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.ProviderNumber) (*epa.Session, *ti.Identity) {
 	t.Helper()
@@ -183,7 +184,7 @@ func establishAuthorizedSession(t *testing.T, cfg epaTestConfig, provider epa.Pr
 
 	sf := epa.SecurityFunctionsFromIdentity(identity, nil, nil)
 	client, err := epa.NewClient(cfg.env, provider, sf,
-		epa.WithInsecureSkipVerify(), epa.WithTimeout(30*time.Second),
+		epa.WithTLSConfig(epatest.TiTLSConfig(t, string(cfg.env))), epa.WithTimeout(30*time.Second),
 		epa.WithVAUVerification(&ti.Verifier{Runner: runner}, vauVerifyMode()))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
@@ -404,7 +405,7 @@ func TestEPA_RecordsAvailability(t *testing.T) {
 	identity, _ := cfg.loadIdentity(t)
 	sf := epa.SecurityFunctionsFromIdentity(identity, nil, nil)
 	client, err := epa.NewClient(cfg.env, epa.ProviderNumber1, sf,
-		epa.WithInsecureSkipVerify(), epa.WithTimeout(30*time.Second))
+		epa.WithTLSConfig(epatest.TiTLSConfig(t, string(cfg.env))), epa.WithTimeout(30*time.Second))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}

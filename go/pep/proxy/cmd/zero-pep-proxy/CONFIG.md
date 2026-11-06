@@ -9,6 +9,11 @@ pep is configured from two sources:
 The providers file holds only providers; it does not contain `PEP_PUBLIC_URL`, cookies, the session key,
 `DATABASE_URL`, etc.
 
+Every outbound request, to the providers, the federation, the IDP-Dienst's trust material and the PDP
+(`PEP_BACKEND=pdp`), is verified under the `web` profile of
+[`spec/pki-validation`](../../../../../spec/pki-validation/README.md) against the system's roots (the image's
+`ca-certificates`); there is no setting that turns it off.
+
 ## 1. `openid-providers.yaml` — the providers
 
 Loaded from `PEP_OPENID_PROVIDERS_PATH` (default `./openid-providers.yaml`). It is flat — the three provider

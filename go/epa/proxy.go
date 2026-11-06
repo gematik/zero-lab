@@ -23,7 +23,7 @@ package epa
 
 import (
 	"context"
-	"crypto/x509"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -118,11 +118,9 @@ type ProxyConfig struct {
 	// TI is the tool; nil means `ti` on the PATH.
 	TI *ti.Binary `yaml:"-"`
 
-	// CertPool is the TLS root pool used when connecting to ePA aggregators.
-	// When nil, the session manager falls back to InsecureSkipVerify — fine for
-	// demos, wrong for anything real. Callers should populate this from the
-	// gematik TI roots (`ti pki roots bundle`).
-	CertPool *x509.CertPool `yaml:"-"`
+	// TLSConfig verifies the Aktensysteme under the ti profile: titls.TiVerifier's ClientConfig
+	// over the verified TSL. Required; a proxy without it is not built (TLSV-001).
+	TLSConfig *tls.Config `yaml:"-"`
 	// Clock is the time sessions, entitlements and status results are dated and judged at; nil means the
 	// system clock.
 	Clock func() time.Time `yaml:"-"`
@@ -262,8 +260,9 @@ func IDPEnvironment(env Env) string {
 // that need entitlement will fail at the first call with a clear error from
 // the consuming code. When sf.ProvidePoPP is set, the proxy entitles via the
 // PoPP token path and ignores ProvidePN/ProvideHCV. The VAU's certificates are
-// not verified on this path.
-func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, authenticator Authenticator, name string, timeout time.Duration, certPool *x509.CertPool) (*Proxy, error) {
+// not verified on this path; the aggregators' TLS certificates are, as
+// tlsConfig says (see [ProxyConfig.TLSConfig]).
+func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, authenticator Authenticator, name string, timeout time.Duration, tlsConfig *tls.Config) (*Proxy, error) {
 	if sf == nil {
 		return nil, errors.New("SecurityFunctions is required")
 	}
@@ -276,7 +275,7 @@ func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, authenticator
 		Timeout:           timeout,
 		SecurityFunctions: sf,
 		Authenticator:     authenticator,
-		CertPool:          certPool,
+		TLSConfig:         tlsConfig,
 		VAUCertVerify:     "off",
 	})
 }
@@ -286,6 +285,9 @@ func NewProxyWithSecurityFunctions(env Env, sf *SecurityFunctions, authenticator
 func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	if config.SecurityFunctions == nil || config.Authenticator == nil {
 		return nil, fmt.Errorf("proxy %q: identity not loaded (ProxyConfig.Init)", config.Name)
+	}
+	if config.TLSConfig == nil {
+		return nil, fmt.Errorf("proxy %q: no TLS verification configured for the Aktensysteme (ProxyConfig.TLSConfig)", config.Name)
 	}
 	p := &Proxy{
 		Env:           config.Env,
@@ -305,7 +307,7 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		timeout:           config.Timeout,
 		securityFunctions: config.SecurityFunctions,
 		authenticator:     p.Authenticator,
-		certPool:          config.CertPool,
+		tlsConfig:         config.TLSConfig,
 		vauVerifier:       config.vauVerifier,
 		vauVerify:         config.vauVerifyMode(),
 		sessions:          make(map[ProviderNumber]*Session),

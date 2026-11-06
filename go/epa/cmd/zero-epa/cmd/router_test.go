@@ -23,6 +23,8 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -91,7 +93,7 @@ func TestRouterPrecedence(t *testing.T) {
 		Admitted:  &epa.Admission{RegistrationNumber: "test"},
 	}}
 
-	proxy, err := epa.NewProxyWithSecurityFunctions(epa.EnvDev, sf, &epatest.Authenticator{Code: "c"}, "test", 5*time.Second, nil)
+	proxy, err := epa.NewProxyWithSecurityFunctions(epa.EnvDev, sf, &epatest.Authenticator{Code: "c"}, "test", 5*time.Second, &tls.Config{RootCAs: x509.NewCertPool()})
 	if err != nil {
 		t.Fatal(err)
 	}

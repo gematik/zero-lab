@@ -91,11 +91,6 @@ type ClientConfig struct {
 	// Trust replaces both. Not serialized; supplied programmatically.
 	Trust CertificateTrust `yaml:"-"`
 
-	// HTTPClient is used for metadata, key, and token requests. Not serialized; supplied
-	// programmatically. When nil, a client with a default timeout is created. The configured
-	// User-Agent is layered onto the client's transport either way.
-	HTTPClient *http.Client `yaml:"-"`
-
 	// Clock is the time tokens are judged at. Not serialized; supplied programmatically. When nil, the
 	// system clock.
 	Clock func() time.Time `yaml:"-"`
@@ -124,7 +119,12 @@ func (c *Client) now() time.Time {
 // reachable and its certificate valid (IDPV-001). There is no client without trust material (IDPV-003).
 // ClientID, RedirectURI and at least one scope are required; BaseURL overrides the base URL of
 // the Environment.
-func NewClientFromConfig(config ClientConfig) (*Client, error) {
+//
+// httpClient carries the metadata, key and token requests, and the trust material's downloads and OCSP;
+// the configured User-Agent is layered onto a copy of it. It is the host's, as is its TLS: for the
+// IDP-Dienst the web profile of spec/pki-validation (titls.NewWebHTTPClient). It is a parameter so that
+// no caller can leave it out; nil is refused.
+func NewClientFromConfig(config ClientConfig, httpClient *http.Client) (*Client, error) {
 	if config.Environment == EnvironmentUnset {
 		return nil, errors.New("environment is required: test, ref or prod")
 	}
@@ -154,9 +154,8 @@ func NewClientFromConfig(config ClientConfig) (*Client, error) {
 
 	baseURL := idp.baseURL
 
-	httpClient := config.HTTPClient
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+		return nil, errNoHTTPClient
 	}
 	// layer the gematik User-Agent onto the chosen client without mutating the caller's
 	decorated := *httpClient

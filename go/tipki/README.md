@@ -130,6 +130,39 @@ So soft-fail forgives only a responder that cannot answer, never one that cannot
 profile is hard-fail, so a validator built from a profile never forgives either, and an OCSP outage refuses
 its certificates. Soft-fail applies only to a `Validator` configured without a profile.
 
+## TLS servers
+
+`ServerCheck` is the `ti` profile of [`spec/pki-validation`](../../spec/pki-validation): what a TLS client
+checks of a TI server before it sends anything, independent of the TLS library. The library hands over the
+chain, the host name it connected to and the stapled OCSP response:
+
+```go
+check := tipki.NewServerCheck(store) // nil while no TSL is within its grace period
+verdict := check.Verify(ctx, chain, "svc.example.ti", stapled, now, tipki.NewOCSPChecker(transport))
+if !verdict.Valid() {
+	return fmt.Errorf("server refused: %s: %s", verdict.Code, verdict.Detail)
+}
+```
+
+The chain is validated as a C.FD.TLS-S or C.ZD.TLS-S without revocation, then no SHA-1, MD5 or SHA-224
+signature may appear below the root, then the host must be the commonName or a `dNSName` (a wildcard
+stands for exactly one leftmost label), and last the OCSP status: from the stapled response if it is
+within `OCSPGrace` (10 minutes by default), else from the responder. `NotAfter`, `ProducedAt` and
+`NextUpdate` bound how long an accepted verdict may be reused.
+
+Package `titls` puts both profiles of the spec into a `crypto/tls` client configuration: `ti` through
+`ServerCheck` over a `TrustSource` the host swaps on each TSL reload, and `web` over the system's roots with
+the profile's key, name, validity and revocation rules (stapled OCSP, the responder, the CRL). It reuses
+accepted verdicts in a bounded cache and reaches responders and CRL hosts only through the host's
+`*http.Client`. `NewWebHTTPClient` is the web profile as an `*http.Client`, for the libraries a host hands
+one. Its package documentation lists what `crypto/tls` cannot offer as `handshake.json` has it.
+
+Package `fetch` is the host-side piece for a workload with no producer to mount a bundle from: over the
+host's `*http.Client` it downloads an environment's roots and TSL from the fixed hosts, takes a list only
+under the SHA-256 the HTTPS host names, verifies everything as a bundle, refreshes hourly in the background
+and fails closed once the copy is 24 hours past its last good refresh or the list's `NextUpdate` has passed.
+Its `Source` is the `titls.TrustSource` it swaps on each change, and withdraws at that moment.
+
 ## Security posture
 
 - **Trust comes from verification only.** Trust starts at the pinned anchors, and a TSL counts only
@@ -147,6 +180,8 @@ This library has **not** undergone an independent third-party audit.
 - **Conformance to Rust's `ti-pki`.** Both implementations are held to language-neutral rules with
   shared test data: [`spec/pki-profiles`](../../spec/pki-profiles) and
   [`spec/pki-path`](../../spec/pki-path). `ti-pki` writes the corpora and `tipki` must read the same.
+  The `ti` cases of [`spec/pki-validation`](../../spec/pki-validation) hold `ServerCheck` to the same
+  codes as `ti_pki::tls`.
 - **Fuzzing** of the parsers for certificates, admission, bundles, roots, TSL, detached signatures, OCSP
   responses and identifiers.
 - **Live tests** run through `go/idpd`, against the TSL and the IDP-Dienst of the reference environment.
@@ -161,8 +196,10 @@ This library has **not** undergone an independent third-party audit.
 ## Package layout
 
 ```
-tipki/      Certificates, profiles, TSL, chains, OCSP, Validator
+tipki/      Certificates, profiles, TSL, chains, OCSP, Validator, ServerCheck
   oid/      The identifiers of gemSpec_OID
+  titls/    TLS client configurations for the ti and web profiles of spec/pki-validation
+  fetch/    Download and background refresh of an environment's trust material
 ```
 
 ## Development
@@ -173,4 +210,5 @@ The [repository's rules](../../docs/README.md) apply, and versions are this modu
 ```bash
 go test ./...
 go test -run x -fuzz FuzzParseTSL -fuzztime 30s .
+go test -run x -fuzz FuzzWebCheck -fuzztime 30s ./titls
 ```

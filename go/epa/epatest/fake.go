@@ -22,6 +22,7 @@
 // Package epatest holds test doubles for the epa package's identity backends: an
 // Identity that signs nothing real and an Authenticator that answers with a fixed code.
 // Tests of the proxy, the portal and the session guards use them instead of the ti tool.
+// [TiTLSConfig] is the ti profile for the gated tests that reach real Aktensysteme.
 package epatest
 
 import (

@@ -36,6 +36,19 @@ the hash algorithm it names.
 offers (TLSV-010 to 013). An implementation proves it with a test that reads the configuration it builds,
 not with a connection.
 
+Where the TLS library cannot narrow its offer to the list, the implementation says so in its
+documentation, refuses after the handshake whatever it can see was negotiated outside the list, and is
+listed here. Go's `crypto/tls` (`go/tipki/titls`):
+
+- TLS 1.3's `TLS_CHACHA20_POLY1305_SHA256` is always offered; a connection that negotiates it is refused.
+- The client's `signature_algorithms` are not configurable: Ed25519, ML-DSA and `ecdsa_secp521r1_sha512`
+  are offered too. The negotiated scheme is not visible afterwards; the key rules (TLSV-030, TLSV-041,
+  TLSV-042) leave no certificate those schemes could be used with.
+- No brainpool groups or signature schemes: a server presenting a brainpool certificate fails inside
+  `crypto/tls` before the profile's check runs, so it is refused, never accepted.
+- A server reached by IP address has no server name in `crypto/tls`'s verification callback and is refused
+  (`name_mismatch`).
+
 ## Rules proved by the implementations' own tests
 
 - TLSV-002: a refusal ends the handshake with a fatal alert, and no option skips a rule.

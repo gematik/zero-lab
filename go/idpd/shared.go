@@ -33,13 +33,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
 )
-
-const defaultHTTPTimeout = 30 * time.Second
 
 // maxIDPResponseBytes bounds what the IDP-Dienst can make a client read.
 const maxIDPResponseBytes = 1 << 20
@@ -47,6 +44,10 @@ const maxIDPResponseBytes = 1 << 20
 // defaultUserAgent is sent when ClientConfig.UserAgent is empty: the gematik IDP-Dienst rejects requests
 // without a User-Agent ("User Agent fehlt").
 const defaultUserAgent = "zero-lab"
+
+// errNoHTTPClient refuses a client or authenticator without the host's HTTP client: the host decides TLS
+// (go/docs/design.md §2), and the library has no default to fall back to.
+var errNoHTTPClient = errors.New("no HTTP client: the host supplies it, for the IDP-Dienst under the web profile (titls.NewWebHTTPClient)")
 
 // transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
 // has a concrete base transport to wrap.

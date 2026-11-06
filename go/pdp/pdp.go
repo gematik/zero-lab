@@ -24,6 +24,7 @@ package pdp
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
@@ -43,6 +44,9 @@ type Config struct {
 	ProvidersPath string `yaml:"-"`
 	// OIDFAPIKey is the key of gematik's development federation; the program supplies it.
 	OIDFAPIKey string `yaml:"-"`
+	// HTTPClient carries the requests to the providers and the federation; the program supplies it, and
+	// with it their TLS verification. Nil leaves each provider library's default.
+	HTTPClient *http.Client `yaml:"-"`
 }
 
 const defaultOpenidProvidersFile = "openid-providers.yaml"
@@ -84,7 +88,7 @@ func loadProviders(config *Config) error {
 	if err != nil {
 		return err
 	}
-	set, err := providers.Build(entries, providers.Env{BaseDir: filepath.Dir(config.ProvidersPath)}, providers.Kinds{
+	set, err := providers.Build(entries, providers.Env{BaseDir: filepath.Dir(config.ProvidersPath), HTTPClient: config.HTTPClient}, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(nil),
 		"oidf": oidf.Kind(config.OIDFAPIKey, func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),

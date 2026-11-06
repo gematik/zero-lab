@@ -63,7 +63,7 @@ func TestAnOutdatedProviderKeyStopsTheStart(t *testing.T) {
 	if err := os.WriteFile(path, []byte("gemidp:\n  - client_id: x\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := loadProviders(path, "https://pep")
+	_, err := loadProviders(path, "https://pep", nil)
 	if err == nil || !strings.Contains(err.Error(), `unknown key "gemidp"`) {
 		t.Errorf("err = %v", err)
 	}
@@ -74,7 +74,7 @@ func TestAnUnknownFieldInAProviderEntryStopsTheStart(t *testing.T) {
 	if err := os.WriteFile(path, []byte("idpd:\n  - client_id: x\n    trust_bundle: y\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadProviders(path, "https://pep"); err == nil || !strings.Contains(err.Error(), "trust_bundle") {
+	if _, err := loadProviders(path, "https://pep", nil); err == nil || !strings.Contains(err.Error(), "trust_bundle") {
 		t.Errorf("err = %v", err)
 	}
 }

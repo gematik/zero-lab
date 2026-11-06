@@ -48,7 +48,7 @@ func Kind(adjust func(*ClientConfig)) providers.Kind {
 			if adjust != nil {
 				adjust(&config)
 			}
-			client, err := NewClientFromConfig(config)
+			client, err := NewClientFromConfig(config, env.HTTPClient)
 			if err != nil {
 				return providers.Built{}, fmt.Errorf("[%d] (%s): %w", i, config.ClientID, err)
 			}

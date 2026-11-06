@@ -22,6 +22,8 @@
 package epa_test
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"strings"
 	"testing"
 
@@ -33,7 +35,7 @@ import (
 // below only exercise the guard paths that must fail before any network I/O.
 func offlineSession(t *testing.T, sf *epa.SecurityFunctions) *epa.Session {
 	t.Helper()
-	client, err := epa.NewClient(epa.EnvDev, epa.ProviderNumber1, sf)
+	client, err := epa.NewClient(epa.EnvDev, epa.ProviderNumber1, sf, epa.WithTLSConfig(&tls.Config{RootCAs: x509.NewCertPool()}))
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
