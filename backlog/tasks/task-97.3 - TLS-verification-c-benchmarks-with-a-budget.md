@@ -1,9 +1,10 @@
 ---
 id: TASK-97.3
 title: 'TLS verification (c): benchmarks with a budget'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
+updated_date: '2026-11-06T08:34:00Z'
 labels:
   - ti-pki
   - tests
