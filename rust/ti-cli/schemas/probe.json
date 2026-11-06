@@ -118,11 +118,11 @@
               "warn",
               "fail"
             ],
-            "description": "ok: the expected answer; warn: an answer, not the expected one, or no answer from a Bestandsnetz; fail: no answer."
+            "description": "ok: the expected answer; warn: an answer, not the expected one, or no answer from a Bestandsnetz; fail: no answer, or a certificate the endpoint's profile refuses."
           },
           "answered": {
             "type": "boolean",
-            "description": "The endpoint answered; false for a transport failure (timeout, refused, DNS, TLS), whatever the status."
+            "description": "The endpoint answered; false for a failure before a server spoke (timeout, refused, DNS), whatever the status. A refused certificate is an answer."
           },
           "detail": {
             "type": "string"
@@ -136,6 +136,34 @@
           "duration_ms": {
             "type": "integer",
             "minimum": 0
+          },
+          "tls": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The profile of spec/pki-validation the server's certificate is verified under; null for an endpoint reached without TLS.",
+            "properties": {
+              "profile": {
+                "enum": [
+                  "ti",
+                  "web"
+                ],
+                "description": "ti: the environment's TSL and roots (ePA); web: the operating system's roots, or --cacert/--capath (the IDP-Dienst, E-Rezept, the internet services)."
+              },
+              "verified": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "true: the certificate verified; false: refused, or the handshake failed; null: no handshake took place."
+              }
+            },
+            "required": [
+              "profile",
+              "verified"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -149,7 +177,8 @@
           "answered",
           "detail",
           "http_status",
-          "duration_ms"
+          "duration_ms",
+          "tls"
         ],
         "additionalProperties": false
       }

@@ -26,8 +26,11 @@
 //! discovery for ZETA-protected services, the TI platform's service-discovery catalog
 //! (whose instances are probed too), plain HTTP otherwise.
 //!
-//! Like the Go `ti probe`, TLS is not verified: the question is reachability, and many
-//! TI services present certificates of TI-internal CAs.
+//! Every https endpoint is verified under the profile of `spec/pki-validation` its data
+//! names: `ti` (the environment's TSL and roots, OCSP) for the services that present TI
+//! certificates, such as ePA, and `web` (the operating system's roots) for the rest, the
+//! IDP-Dienst and the E-Rezept Fachdienst included. A refused certificate is an answer
+//! and a failure: reachable is not trustworthy.
 //!
 //! The endpoints are grouped by how they are reached: through the TI VPN of a Konnektor
 //! or TI-Gateway, or from the internet. Without the VPN none of the first answers, and
@@ -39,16 +42,23 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use base64ct::{Base64UrlUnpadded, Encoding};
+use rustls::CertificateError;
 use serde::{Deserialize, Serialize};
 use ti_pki::Env;
+use ti_pki::load::SystemClock;
+use ti_pki::ocsp::OcspChecker;
+use ti_pki::tls::ServerCheck;
+use ti_tls::TiVerifier;
 use ureq::Agent;
-use ureq::tls::{TlsConfig, TlsProvider};
 
 use super::connector::emit;
 use crate::cli::GlobalArgs;
 use crate::error::{CliError, Exit};
+use crate::http;
+use crate::net::NetArgs;
 use crate::output::live::Live;
 use crate::output::{Line, Output, Tone, style};
+use crate::trust::Session;
 
 /// Every request is given up after this.
 const TIMEOUT: Duration = Duration::from_secs(3);
@@ -87,6 +97,31 @@ struct Endpoint {
     access: Access,
     kind: Kind,
     url: String,
+    /// The profile its certificate is verified under; `web` unless the data says `ti`.
+    #[serde(default)]
+    tls: TlsProfile,
+}
+
+/// The profile of `spec/pki-validation` a server is verified under. Being a TI service
+/// does not decide it: the IDP-Dienst and E-Rezept present public certificates, ePA and
+/// KIM certificates of the TI's PKI.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum TlsProfile {
+    /// The TI's private trust: the environment's TSL and roots.
+    Ti,
+    /// The operating system's roots, under the TI's rules for the internet.
+    #[default]
+    Web,
+}
+
+impl TlsProfile {
+    fn as_str(self) -> &'static str {
+        match self {
+            TlsProfile::Ti => "ti",
+            TlsProfile::Web => "web",
+        }
+    }
 }
 
 /// How an endpoint is reached; part of the endpoint data, never inferred from its name.
@@ -177,6 +212,8 @@ struct Outcome {
     duration: Duration,
     /// Endpoints a catalog lists.
     discovered: Vec<Endpoint>,
+    /// Whether the server's certificate verified: `None` without a handshake.
+    verified: Option<bool>,
 }
 
 /// One row: an endpoint and, once probed, its outcome.
@@ -227,12 +264,29 @@ struct ProbeInfo {
     detail: String,
     http_status: Option<u16>,
     duration_ms: u64,
+    /// `None` for an endpoint reached without TLS.
+    tls: Option<TlsInfo>,
+}
+
+#[derive(Serialize)]
+struct TlsInfo {
+    profile: TlsProfile,
+    /// True when the certificate verified, false when it was refused or the handshake
+    /// failed, `None` when no handshake took place (no connection).
+    verified: Option<bool>,
+}
+
+/// The agent for each profile. The `ti` one exists only when an endpoint needs it and the
+/// environment's trust material loaded; otherwise why not.
+struct Agents {
+    web: Agent,
+    ti: Result<Agent, String>,
 }
 
 /// Runs `ti probe`.
 pub fn run(env: Env, def: bool, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let endpoints = endpoints(env)?;
-    let agent = agent(global)?;
+    let agent = Arc::new(agents(env, &endpoints, global, out)?);
     let start = Instant::now();
     let (tx, rx) = mpsc::channel();
     let mut rows: Vec<Row> = Vec::new();
@@ -358,33 +412,73 @@ fn endpoints(env: Env) -> Result<Vec<Endpoint>, CliError> {
     Ok(all.remove(env.as_str()).unwrap_or_default())
 }
 
-/// ureq without certificate verification, 3 s per request, the proxy and user agent of
-/// the HTTP options.
-fn agent(global: &GlobalArgs) -> Result<Agent, CliError> {
-    let tls = TlsConfig::builder()
-        .provider(TlsProvider::Rustls)
-        .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
-        .disable_verification(true)
-        .build();
-    Ok(Agent::config_builder()
-        .http_status_as_error(false)
-        .timeout_global(Some(TIMEOUT))
-        .timeout_connect(Some(TIMEOUT))
-        .user_agent(global.net.user_agent())
-        .tls_config(tls)
-        .proxy(crate::http::proxy(&global.net, "https")?)
-        .build()
-        .new_agent())
+/// The HTTP options with the probe's limits: 3 s per request, OCSP included, no retries.
+/// `-k` does not reach the probe: whether a server is trustworthy is what it reports.
+fn probe_net(net: &NetArgs) -> NetArgs {
+    NetArgs {
+        insecure: false,
+        connect_timeout: TIMEOUT,
+        max_time: TIMEOUT,
+        retry: 0,
+        ..net.clone()
+    }
+}
+
+/// An agent per profile with the proxy and user agent of the HTTP options. `web` trusts
+/// the operating system's roots, or `--cacert`/`--capath`. `ti` trusts `env`'s TSL and
+/// roots, loaded (from the cache while fresh) before any probe starts, and asks the OCSP
+/// responders a stapled answer does not replace.
+fn agents(
+    env: Env,
+    endpoints: &[Endpoint],
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<Agents, CliError> {
+    let net = probe_net(&global.net);
+    let web = ti_tls::ureq::agent(http::builder(&net, "https")?, http::web_config(&net)?);
+    let ti = if endpoints.iter().any(|e| e.tls == TlsProfile::Ti) {
+        ti_config(env, &net, global, out)
+            .and_then(|config| Ok(ti_tls::ureq::agent(http::builder(&net, "https")?, config)))
+            .map_err(|error| error.to_string())
+    } else {
+        Err("no endpoint is verified under ti".into())
+    };
+    Ok(Agents { web, ti })
+}
+
+/// The rustls configuration of the `ti` profile for `env`.
+fn ti_config(
+    env: Env,
+    net: &NetArgs,
+    global: &GlobalArgs,
+    out: &Output,
+) -> Result<Arc<rustls::ClientConfig>, CliError> {
+    // The trust material downloads with the ordinary limits: a TSL is larger than an
+    // answer the probe waits for.
+    let session = Session::new(global, false, out)?;
+    let (config, material) = super::load_trust(&session, env, false, None)?;
+    out.verbose(
+        1,
+        format_args!(
+            "{env}: {} roots, {} TSL CAs from {} for the ti profile",
+            material.info.roots, material.info.intermediates, material.info.source
+        ),
+    );
+    let responder = OcspChecker::new(&config, http::transport(net, out.verbosity())?, SystemClock)
+        .with_store(session.store());
+    let check = ServerCheck::new(config, Some(material.store));
+    let verifier = TiVerifier::new(check, responder);
+    Ok(Arc::new(ti_tls::client_config(Arc::new(verifier))))
 }
 
 fn spawn(
-    agent: &Agent,
+    agent: &Arc<Agents>,
     env: Env,
     tx: &mpsc::Sender<(usize, Outcome)>,
     index: usize,
     endpoint: &Endpoint,
 ) {
-    let (agent, tx, endpoint) = (agent.clone(), tx.clone(), endpoint.clone());
+    let (agent, tx, endpoint) = (Arc::clone(agent), tx.clone(), endpoint.clone());
     std::thread::spawn(move || {
         // The receiver outlives every worker; a send cannot fail while it runs.
         let _ = tx.send((index, probe(&agent, env, &endpoint)));
@@ -413,11 +507,26 @@ fn same_url(a: &str, b: &str) -> bool {
     a.trim_end_matches('/') == b.trim_end_matches('/')
 }
 
-/// Probes `endpoint` the way its kind asks for.
-fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
+/// Probes `endpoint` the way its kind asks for, over the agent of its profile.
+fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
     if endpoint.kind == Kind::Dns {
         return dns(endpoint);
     }
+    let agent = match (endpoint.tls, &agents.ti) {
+        (TlsProfile::Web, _) => &agents.web,
+        (TlsProfile::Ti, Ok(agent)) => agent,
+        (TlsProfile::Ti, Err(reason)) => {
+            return Outcome {
+                status: Status::Fail,
+                answered: false,
+                detail: format!("TLS ti: no trust material: {reason}"),
+                http_status: None,
+                duration: Duration::ZERO,
+                discovered: Vec::new(),
+                verified: None,
+            };
+        }
+    };
     let base = endpoint.url.trim_end_matches('/');
     let url = match endpoint.kind {
         Kind::Oidc => format!("{base}/.well-known/openid-configuration"),
@@ -456,8 +565,21 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
         Ok((status, body))
     });
     let duration = start.elapsed();
+    let tls = url.starts_with("https://");
     let (status, body) = match answer {
         Ok(answer) => answer,
+        // The server was reached; its certificate, or its TLS, is what failed.
+        Err(error) if let Some(reason) = tls_failure(&error) => {
+            return Outcome {
+                status: Status::Fail,
+                answered: true,
+                detail: format!("TLS {}: {reason}", endpoint.tls.as_str()),
+                http_status: None,
+                duration,
+                discovered: Vec::new(),
+                verified: Some(false),
+            };
+        }
         Err(error) => {
             return Outcome {
                 status: unanswered(endpoint.access),
@@ -466,6 +588,7 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
                 http_status: None,
                 duration,
                 discovered: Vec::new(),
+                verified: None,
             };
         }
     };
@@ -477,6 +600,47 @@ fn probe(agent: &Agent, env: Env, endpoint: &Endpoint) -> Outcome {
         http_status: Some(status),
         duration,
         discovered,
+        verified: tls.then_some(true),
+    }
+}
+
+/// Why the TLS of an answering server failed, in a few words; `None` for a failure before
+/// a handshake. ureq's connector reports the handshake as an I/O error around rustls's.
+fn tls_failure(error: &ureq::Error) -> Option<String> {
+    let rustls = match error {
+        ureq::Error::Rustls(error) => error,
+        ureq::Error::Io(error) => error.get_ref()?.downcast_ref::<rustls::Error>()?,
+        ureq::Error::Tls(reason) => return Some((*reason).to_owned()),
+        _ => return None,
+    };
+    Some(match rustls {
+        rustls::Error::InvalidCertificate(error) => refusal(error),
+        rustls::Error::AlertReceived(alert) => format!("the server sent {alert:?}"),
+        other => other.to_string(),
+    })
+}
+
+/// A refused certificate: the profile's own verdict where rustls has no name for it.
+fn refusal(error: &CertificateError) -> String {
+    match error {
+        CertificateError::UnknownIssuer => "unknown issuer".into(),
+        CertificateError::Expired | CertificateError::ExpiredContext { .. } => {
+            "certificate expired".into()
+        }
+        CertificateError::NotValidYet | CertificateError::NotValidYetContext { .. } => {
+            "certificate not yet valid".into()
+        }
+        CertificateError::NotValidForName | CertificateError::NotValidForNameContext { .. } => {
+            "certificate not issued for this host".into()
+        }
+        CertificateError::Revoked => "certificate revoked".into(),
+        CertificateError::BadSignature => "bad signature".into(),
+        CertificateError::Other(other) => match other.0.downcast_ref::<ti_tls::verifier::Refused>()
+        {
+            Some(refused) => refused.to_string(),
+            None => other.to_string(),
+        },
+        other => other.to_string(),
     }
 }
 
@@ -515,6 +679,7 @@ fn dns(endpoint: &Endpoint) -> Outcome {
         http_status: None,
         duration,
         discovered: Vec::new(),
+        verified: None,
     }
 }
 
@@ -657,6 +822,7 @@ fn catalog(env: Env, body: &[u8]) -> (Status, String, Vec<Endpoint>) {
                 _ => Kind::Http,
             },
             url: instance.url,
+            tls: TlsProfile::Web,
         })
         .collect::<Vec<_>>();
     if catalog.env == env.as_str() {
@@ -856,6 +1022,10 @@ fn report(env: Env, rows: &[Row], elapsed: Duration) -> Report {
                 detail: o.detail.clone(),
                 http_status: o.http_status,
                 duration_ms: u64::try_from(o.duration.as_millis()).unwrap_or(u64::MAX),
+                tls: r.endpoint.url.starts_with("https://").then_some(TlsInfo {
+                    profile: r.endpoint.tls,
+                    verified: o.verified,
+                }),
             })
         })
         .collect();
@@ -990,6 +1160,58 @@ mod tests {
             networks
                 .iter()
                 .all(|e| matches!(e.kind, Kind::Http | Kind::Dns))
+        );
+    }
+
+    /// TASK-228: ePA presents certificates of the TI's PKI; every other endpoint, the
+    /// IDP-Dienst and E-Rezept behind the TI VPN included, public ones.
+    #[test]
+    fn epa_is_verified_under_ti_every_other_endpoint_under_web() {
+        let all: HashMap<String, Vec<Endpoint>> = serde_json::from_str(ENDPOINTS).unwrap();
+        for (env, list) in &all {
+            for e in list {
+                let expected = if e.kind == Kind::Epa {
+                    TlsProfile::Ti
+                } else {
+                    TlsProfile::Web
+                };
+                assert_eq!(e.tls, expected, "{env}: {}", e.name);
+            }
+        }
+    }
+
+    fn handshake(error: rustls::Error) -> ureq::Error {
+        ureq::Error::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }
+
+    /// TASK-228: the reason a certificate was refused, rustls's name for it or the
+    /// profile's verdict; a failure before any handshake is no TLS failure.
+    #[test]
+    fn a_refused_certificate_is_reported_with_its_reason() {
+        let refused = |error| tls_failure(&handshake(rustls::Error::InvalidCertificate(error)));
+        assert_eq!(
+            refused(CertificateError::UnknownIssuer).as_deref(),
+            Some("unknown issuer")
+        );
+        assert_eq!(
+            refused(CertificateError::Revoked).as_deref(),
+            Some("certificate revoked")
+        );
+        let verdict = ti_tls::Verdict {
+            code: ti_tls::Code::SignatureAlgorithmNotAllowed,
+            detail: "sha1WithRSAEncryption".into(),
+            warnings: Vec::new(),
+            reusable_until: None,
+        };
+        let other = rustls::OtherError(Arc::new(ti_tls::verifier::Refused(verdict)));
+        assert_eq!(
+            refused(CertificateError::Other(other)).as_deref(),
+            Some("signature_algorithm_not_allowed: sha1WithRSAEncryption")
+        );
+        assert_eq!(tls_failure(&ureq::Error::ConnectionFailed), None);
+        assert_eq!(
+            tls_failure(&ureq::Error::Io(std::io::ErrorKind::TimedOut.into())),
+            None
         );
     }
 

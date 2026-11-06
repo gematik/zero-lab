@@ -385,3 +385,85 @@ fn unreachable_bestandsnetze_are_warnings_on_one_line() {
     assert!(block.contains("\n  ! not routed: demis, mdk\n"), "{text}");
     assert!(!block.contains("\n  demis "), "{text}");
 }
+
+/// TLS server that presents `tls/self-signed.pem` and completes whatever handshake the client
+/// lets it.
+fn serve_tls(listener: &TcpListener) {
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    let pem = |text: &str| pem_rfc7468::decode_vec(text.as_bytes()).unwrap().1;
+    let cert = pem(include_str!("fixtures/tls/self-signed.pem"));
+    let key = pem(include_str!("fixtures/tls/self-signed.key"));
+    let config = std::sync::Arc::new(
+        rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![CertificateDer::from(cert)],
+            PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key)),
+        )
+        .unwrap(),
+    );
+    for mut stream in listener.incoming().flatten() {
+        let config = std::sync::Arc::clone(&config);
+        std::thread::spawn(move || {
+            let mut conn = rustls::ServerConnection::new(config).unwrap();
+            let _ = conn.complete_io(&mut stream);
+        });
+    }
+}
+
+/// TASK-228: a server whose certificate the endpoint's profile refuses was reached, and fails
+/// with the reason: here `web`, which knows no issuer for a self-signed certificate.
+#[test]
+fn a_certificate_the_profile_refuses_fails_the_probe_with_the_reason() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || serve_tls(&listener));
+    let dir = std::env::temp_dir().join(format!("ti-probe-tls-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let endpoints = dir.join("endpoints.json");
+    std::fs::write(
+        &endpoints,
+        format!(
+            r#"{{"dev": [
+                {{"name": "self-signed", "access": "internet", "kind": "http", "url": "https://127.0.0.1:{port}"}}
+            ]}}"#
+        ),
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_ti"))
+        .args(["--format", "json", "probe", "dev"])
+        .env("TI_PROBE_ENDPOINTS_PATH", &endpoints)
+        .env_remove("HTTPS_PROXY")
+        .env_remove("https_proxy")
+        .env_remove("ALL_PROXY")
+        .env_remove("all_proxy")
+        .env_remove("CURL_CA_BUNDLE")
+        .env_remove("SSL_CERT_FILE")
+        .env_remove("SSL_CERT_DIR")
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_conforms("probe", &out.stdout);
+    assert_eq!(out.status.code(), Some(1), "the probe failed");
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let probe = &report["probes"][0];
+    assert_eq!(
+        (
+            probe["status"].as_str(),
+            probe["answered"].as_bool(),
+            probe["detail"].as_str()
+        ),
+        (Some("fail"), Some(true), Some("TLS web: unknown issuer")),
+        "{report}"
+    );
+    assert_eq!(
+        probe["tls"],
+        serde_json::json!({"profile": "web", "verified": false})
+    );
+    assert_eq!(report["access_paths"][0]["available"], true, "reached");
+}

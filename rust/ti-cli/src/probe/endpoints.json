@@ -2,8 +2,8 @@
   "prod": [
     {"name": "idpd-ti", "access": "ti-vpn", "kind": "oidc", "url": "https://idp.zentral.idp.splitdns.ti-dienste.de"},
     {"name": "erx", "access": "ti-vpn", "kind": "erp", "url": "https://erp.zentral.erp.splitdns.ti-dienste.de"},
-    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.prod.epa4all.de"},
-    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.prod.epa4all.de"},
+    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.prod.epa4all.de", "tls": "ti"},
+    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.prod.epa4all.de", "tls": "ti"},
     {"name": "fhir-directory", "access": "internet", "kind": "directory", "url": "https://fhir-directory.vzd.ti-dienste.de"},
     {"name": "idpd-internet", "access": "internet", "kind": "oidc", "url": "https://idp.app.ti-dienste.de"},
     {"name": "popp", "access": "internet", "kind": "zeta", "url": "https://popp.prod.poppservice.de"},
@@ -29,8 +29,8 @@
   "ref": [
     {"name": "idpd-ti", "access": "ti-vpn", "kind": "oidc", "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"},
     {"name": "erx", "access": "ti-vpn", "kind": "erp", "url": "https://erp-ref.zentral.erp.splitdns.ti-dienste.de"},
-    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.ref.epa4all.de"},
-    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.ref.epa4all.de"},
+    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.ref.epa4all.de", "tls": "ti"},
+    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.ref.epa4all.de", "tls": "ti"},
     {"name": "fhir-directory", "access": "internet", "kind": "directory", "url": "https://fhir-directory-ref.vzd.ti-dienste.de"},
     {"name": "idpd-internet", "access": "internet", "kind": "oidc", "url": "https://idp-ref.app.ti-dienste.de"},
     {"name": "popp", "access": "internet", "kind": "zeta", "url": "https://popp.ref.poppservice.de"},
@@ -39,8 +39,8 @@
   "test": [
     {"name": "idpd-ti", "access": "ti-vpn", "kind": "oidc", "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"},
     {"name": "erx", "access": "ti-vpn", "kind": "erp", "url": "https://erp-test.zentral.erp.splitdns.ti-dienste.de"},
-    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.test.epa4all.de"},
-    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.test.epa4all.de"},
+    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.test.epa4all.de", "tls": "ti"},
+    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.test.epa4all.de", "tls": "ti"},
     {"name": "fhir-directory", "access": "internet", "kind": "directory", "url": "https://fhir-directory-tu.vzd.ti-dienste.de"},
     {"name": "idpd-internet", "access": "internet", "kind": "oidc", "url": "https://idp-test.app.ti-dienste.de"},
     {"name": "popp", "access": "internet", "kind": "zeta", "url": "https://popp.test.poppservice.de"},
@@ -49,8 +49,8 @@
   "dev": [
     {"name": "idpd-ti", "access": "ti-vpn", "kind": "oidc", "url": "https://idp-ref.zentral.idp.splitdns.ti-dienste.de"},
     {"name": "erx", "access": "ti-vpn", "kind": "erp", "url": "https://erp-ref.zentral.erp.splitdns.ti-dienste.de"},
-    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.dev.epa4all.de"},
-    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.dev.epa4all.de"},
+    {"name": "epa-1", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-1.dev.epa4all.de", "tls": "ti"},
+    {"name": "epa-2", "access": "ti-vpn", "kind": "epa", "url": "https://epa-as-2.dev.epa4all.de", "tls": "ti"},
     {"name": "fhir-directory", "access": "internet", "kind": "directory", "url": "https://fhir-directory-ref.vzd.ti-dienste.de"},
     {"name": "idpd-internet", "access": "internet", "kind": "oidc", "url": "https://idp-ref.app.ti-dienste.de"},
     {"name": "popp", "access": "internet", "kind": "zeta", "url": "https://popp.dev.poppservice.de"},

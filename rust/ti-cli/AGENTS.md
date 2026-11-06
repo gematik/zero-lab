@@ -579,8 +579,12 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 - `ENV` is `prod`, `ref`, `test` or `dev` (also `pu`, `ru`, `tu`), positional or as
   `--env`; without either, `TI_ENV`. A positional `ENV` wins over `TI_ENV`; one that
   disagrees with an explicit `--env` is exit 2.
-- Every probe runs in parallel with a 3 s limit per request; TLS is not verified (the
-  question is reachability, and TI services use TI-internal CAs).
+- Every probe runs in parallel with a 3 s limit per request, OCSP included. Every https
+  endpoint is verified under the profile of `spec/pki-validation` its data names: `ti`
+  (the environment's TSL and roots, loaded or downloaded before the probes start, and
+  OCSP) for `epa-1` and `epa-2`; `web` (the OS roots, or `--cacert`/`--capath`) for the
+  rest, `idpd-ti` and `erx` included: being a TI service does not decide the profile.
+  `-k` does not reach the probe.
 - Each service is checked with its protocol: `oidc` (the IDP's OpenID discovery, JSON
   or signed), `zeta` (RFC 9728 protected-resource metadata of ZETA-protected services
   such as PoPP, VSDM and DiPag), `erp` (the E-Rezept Fachdienst's VAU certificate), `epa` (the
@@ -604,11 +608,14 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   never `fail`, so it leaves the exit code at 0; the text lists those not routed on one
   line (`! not routed: kzvwl, demis, …`), with a row for each that answered.
 - `TI_PROBE_ENDPOINTS_PATH` replaces the built-in list: a JSON object per environment
-  of `{"name", "access", "kind", "url"}`.
+  of `{"name", "access", "kind", "url", "tls"}`, `tls` `ti` or `web` (the default).
 - `status`: `ok` the expected answer, `warn` an answer but not the expected one (or no
-  answer from a Bestandsnetz), `fail` no answer; `answered` is false for every transport
-  failure; `detail` is `{kind} …` when ok (`oidc discovery`, `catalog, 6 instances`,
-  `http 403`), otherwise the cause (`HTTP 404`, `issuer … differs`, `DNS lookup failed`,
-  `timeout`, `connection refused`, `TLS error`). Hosts
+  answer from a Bestandsnetz), `fail` no answer or a certificate the profile refuses;
+  `answered` is false for a failure before a server spoke, true for a refused certificate;
+  `tls` is `{profile, verified}` for an https endpoint (`verified` null without a
+  handshake), null otherwise; `detail` is `{kind} …` when ok (`oidc discovery`,
+  `catalog, 6 instances`, `http 403`), otherwise the cause (`HTTP 404`,
+  `issuer … differs`, `DNS lookup failed`, `timeout`, `connection refused`,
+  `TLS web: unknown issuer`, `TLS ti: no trust material: …`). Hosts
   under `splitdns.ti-dienste.de` resolve only inside the TI.
 

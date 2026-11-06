@@ -63,7 +63,7 @@ const MAX_RETRY_DELAY: Duration = Duration::from_mins(10);
 const MAX_BODY: u64 = 32 * 1024 * 1024;
 
 /// curl's settings for requests to `scheme` URLs: proxy, timeouts, user agent.
-fn builder(net: &NetArgs, scheme: &str) -> Result<ConfigBuilder<AgentScope>, CliError> {
+pub(crate) fn builder(net: &NetArgs, scheme: &str) -> Result<ConfigBuilder<AgentScope>, CliError> {
     Ok(Agent::config_builder()
         .http_status_as_error(false)
         .timeout_connect(Some(net.connect_timeout))
@@ -80,7 +80,7 @@ fn plain_agent(net: &NetArgs) -> Result<Agent, CliError> {
 /// The rustls configuration of the `web` profile: `--cacert`/`--capath` as the roots in
 /// place of the system's, as curl and Go read `SSL_CERT_FILE`, and every other rule of the
 /// profile regardless.
-fn web_config(net: &NetArgs) -> Result<Arc<rustls::ClientConfig>, CliError> {
+pub(crate) fn web_config(net: &NetArgs) -> Result<Arc<rustls::ClientConfig>, CliError> {
     let (files, dir) = net.ca_sources();
     let check = if files.is_empty() && dir.is_none() {
         WebCheck::system()

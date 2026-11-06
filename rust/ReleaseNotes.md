@@ -36,6 +36,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   and the FHIR-Directory pass it (`cargo test -p ti-tls --features ureq --test real_world --
   --ignored`). `-k` no longer reaches the IDP-Dienst and the FHIR-Directory, as documented: it
   skips the check for downloads only. `-v` names the profile.
+- `ti probe` verifies every https endpoint, where it checked none (TASK-228): ePA under the
+  `ti` profile, against the environment's TSL and roots with OCSP; the IDP-Dienst, E-Rezept
+  and the internet services under `web`. A refused certificate fails the probe as an answer
+  (`TLS web: unknown issuer`), and the JSON gains `tls: {profile, verified}`. The endpoint
+  list takes `"tls": "ti"` per endpoint; `web` is the default. `-k` does not reach the probe.
 
 #### added
 - `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
