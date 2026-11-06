@@ -4,7 +4,7 @@ title: 'jwz: confirm crate names before publishing'
 status: To Do
 assignee: []
 created_date: 2026-10-10 05:58
-updated_date: '2026-11-06T06:43:00Z'
+updated_date: '2026-11-06T07:11:00Z'
 labels:
   - jwz
   - decision
@@ -21,7 +21,8 @@ jwz, jwz-brainpool and ti-jwz are publish = false until the crate names are conf
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Names confirmed; publish enabled; release-plz and tags configured
+- [x] #1 Crate names confirmed and recorded (ADR 0001)
+- [ ] #2 Publishing enabled in Cargo.toml and release-plz.toml once the registry decision is made
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -29,3 +30,9 @@ jwz, jwz-brainpool and ti-jwz are publish = false until the crate names are conf
 <!-- SECTION:PLAN:BEGIN -->
 Maintainer, 2026-11-06: jwz-brainpool goes into ti-jwz (TASK-225), so the names are jwz and ti-jwz; publish stays off. Record the confirmed names, remove jwz-brainpool from release-plz.toml.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Maintainer, 2026-11-06: names jwz and ti-jwz (jwz-brainpool merged into ti-jwz, TASK-225); publish stays off. Recorded in ADR 0001 (9a2e2d93). The tags rust/<crate>/vX.Y.Z are already in release-plz.toml. AC 2 waits on the registry decision.
+<!-- SECTION:NOTES:END -->
