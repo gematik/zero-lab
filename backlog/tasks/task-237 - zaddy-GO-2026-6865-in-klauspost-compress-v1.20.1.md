@@ -1,10 +1,10 @@
 ---
 id: TASK-237
 title: 'zaddy: GO-2026-6865 in klauspost/compress v1.20.1'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T17:20:00Z'
-updated_date: '2026-11-06T17:49:00Z'
+updated_date: '2026-11-06T18:25:00Z'
 labels:
   - go
   - security
@@ -35,3 +35,9 @@ Patch bump of github.com/klauspost/compress to v1.20.2 in zaddy (go get, go mod 
 <!-- SECTION:NOTES:BEGIN -->
 On spec/go-pki-validation (8d5b7c14): zaddy requires klauspost/compress v1.20.2; govulncheck clean for zaddy, go mod tidy -diff and verify pass. Only zaddy carries the module.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zaddy on klauspost/compress v1.20.2 (merged ff908674); govulncheck clean.
+<!-- SECTION:FINAL_SUMMARY:END -->

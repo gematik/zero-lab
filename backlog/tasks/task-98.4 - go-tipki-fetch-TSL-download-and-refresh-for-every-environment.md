@@ -1,10 +1,10 @@
 ---
 id: TASK-98.4
 title: 'go/tipki/fetch: TSL download and refresh for every environment'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T14:01:00Z'
-updated_date: '2026-11-06T16:48:00Z'
+updated_date: '2026-11-06T18:25:00Z'
 labels:
   - go
   - security

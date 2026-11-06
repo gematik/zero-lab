@@ -1,10 +1,10 @@
 ---
 id: TASK-98
 title: 'Go: TLS server verification hooks for TI-PKI and hardened Web-PKI'
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-10-15 05:20
-updated_date: '2026-11-06T14:01:00Z'
+updated_date: '2026-11-06T18:25:00Z'
 labels:
   - go
   - spec
@@ -28,9 +28,9 @@ go/tipki implements both profiles of spec/pki-validation natively with the stand
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 go/tipki offers a tls.Config constructor per profile of spec/pki-validation, passing the shared corpus
-- [ ] #2 Every Go client of a TI endpoint uses the TI-PKI profile and every client of an internet endpoint the hardened Web-PKI profile; epa no longer skips verification
-- [ ] #3 Benchmarks with the same budget as TASK-97 for a cold and a cached verification
+- [x] #1 go/tipki offers a tls.Config constructor per profile of spec/pki-validation, passing the shared corpus
+- [x] #2 Every Go client of a TI endpoint uses the TI-PKI profile and every client of an internet endpoint the hardened Web-PKI profile; epa no longer skips verification
+- [x] #3 Benchmarks with the same budget as TASK-97 for a cold and a cached verification
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -44,3 +44,9 @@ Maintainer 2026-11-06: profiles in a subpackage of tipki; zero-epa downloads the
 98.5 every Go client on its profile: epa proxy and probe ti (TASK-229), internet clients web; inventory first.
 No new dependencies: standard library only. The ti tls.Config needs one InsecureSkipVerify (crypto/x509 refuses the TI's brainpool CAs) with a justified nolint, inside titls only, VerifyConnection doing the whole check.
 <!-- SECTION:PLAN:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged ff908674. go/tipki: the ti profile's TLS server check (spec/pki-validation corpus, 23 ti cases). go/tipki/titls: web profile (27 cases), tls.Config per profile, swapped ti snapshot, bounded verdict cache, revocation fetcher, NewWebHTTPClient; deviations of crypto/tls listed in CONFORMANCE.md; just tls-bench within 5 ms cold / 10 µs cached. go/tipki/fetch: TSL download and refresh for prod/ref/test/dev, the ti snapshot withdrawn when stale; idpd on it. Clients: epa requires a TLS config (no InsecureSkipVerify, TASK-229 closed), zero-epa verifies the Aktensysteme under ti over its own TSL; idpd takes the host's client as a constructor parameter; zero-pdp and zero-pep-proxy hand web clients to idpd, openid, oidf and the PDP backend. Gated suites passed live (maintainer). Follow-ups: TASK-233, 234, 236.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-98.1
 title: ti profile server check in go/tipki
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T14:01:00Z'
-updated_date: '2026-11-06T14:09:00Z'
+updated_date: '2026-11-06T18:25:00Z'
 labels:
   - go
   - security

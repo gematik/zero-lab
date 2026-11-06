@@ -1,10 +1,10 @@
 ---
 id: TASK-229
 title: 'zero-epa: TLS verification skipped when no cert pool is set'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
-updated_date: '2026-11-06T17:16:00Z'
+updated_date: '2026-11-06T18:25:00Z'
 labels:
   - epa
   - go
@@ -30,3 +30,9 @@ Found while planning TASK-97: go/epa/session_manager.go sets InsecureSkipVerify 
 <!-- SECTION:NOTES:BEGIN -->
 Closed by TASK-98.5 (fa4defe4): no zero-epa path reaches an Aktensystem without the ti profile; epa/tls_test.go proves an untrusted server is never reached.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed by TASK-98.5 (merged ff908674).
+<!-- SECTION:FINAL_SUMMARY:END -->

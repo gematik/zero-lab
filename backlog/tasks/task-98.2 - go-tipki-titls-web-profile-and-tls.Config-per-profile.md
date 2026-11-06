@@ -1,10 +1,10 @@
 ---
 id: TASK-98.2
 title: 'go/tipki/titls: web profile and tls.Config per profile'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T14:01:00Z'
-updated_date: '2026-11-06T14:30:00Z'
+updated_date: '2026-11-06T18:25:00Z'
 labels:
   - go
   - security
