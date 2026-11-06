@@ -4,12 +4,12 @@ go 1.27.0
 
 require (
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.1
-	github.com/gematik/zero-lab/go/idpd v0.1.1-0.20261106174913-8d5b7c14a83d
-	github.com/gematik/zero-lab/go/kv v0.1.1-0.20261106174913-8d5b7c14a83d
-	github.com/gematik/zero-lab/go/nonce v0.22.1-0.20261106174913-8d5b7c14a83d
-	github.com/gematik/zero-lab/go/oidf v0.51.1-0.20261106174913-8d5b7c14a83d
-	github.com/gematik/zero-lab/go/openid v0.53.1-0.20261106174913-8d5b7c14a83d
-	github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261106174913-8d5b7c14a83d
+	github.com/gematik/zero-lab/go/idpd v0.1.1-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/kv v0.1.1-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/nonce v0.22.1-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/oidf v0.51.1-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/openid v0.53.1-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261106180818-4c2a720247df
 	github.com/go-jose/go-jose/v4 v4.1.6
 	go.yaml.in/yaml/v4 v4.0.0-rc.9
 )
