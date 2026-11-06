@@ -95,6 +95,10 @@ the caller's transport. Without a route to the responder there is no verificatio
 - **IDPV-002** `puk_idp_sig` carries its certificate in `x5c`, with the same key as the JWK, and that certificate passes
   on every fetch, before the key verifies a challenge or a token.
 - **IDPV-003** There is no client or authenticator without trust material. Nothing downgrades a failure to a warning.
+  One exception, decided by the maintainer (TASK-223): `ti-idpd`'s `trust::Unverified`, which `ti` offers as
+  `--idp-unverified`, does not check at all. It serves an IDP outside the TI PKI (a reference implementation, the
+  fake IDP of `ti`'s tests), is never a default, and marks the result: `verified` false and the warning
+  `idp_certificates_unverified`. A check that runs and fails still stops the flow; `go/idpd` has no such mode.
 - **IDPV-004** `puk_idp_enc` is published without a certificate, so nothing about its standing can be verified; this is a
   known gap, the same in `ti-idpd`. Its address comes from the verified discovery document, TLS carries it, and it must
   be a brainpoolP256r1 key with `use` `enc`.
