@@ -12,7 +12,7 @@ specification. Why and when a specification is needed is in
 | [tsl-xmldsig](tsl-xmldsig/README.md) | TSL signer, update, anchor change and CA status (parts B to G); part A is withdrawn | `rust/ti-pki` |
 | [pki-path](pki-path/README.md) | Certificate chains from a trust bundle, without a network | `rust/ti-pki`, `go/tipki` |
 | [pki-profiles](pki-profiles/README.md) | Certificate types, admission and validation profiles | `rust/ti-pki`, `go/tipki` |
-| [pki-validation](pki-validation/README.md) | TLS server certificates under the `ti` and `web` profiles | `rust/ti-pki`, `go/tipki` (planned) |
+| [pki-validation](pki-validation/README.md) | TLS server certificates under the `ti` and `web` profiles | `rust/ti-pki` (`ti`), `rust/ti-tls` (`web`, handshake); Go planned |
 | [pkcs12](pkcs12/README.md) | PKCS#12 decoding and encoding | `rust/ti-pkcs12`, `go/pkcs12` |
 
 ## Writing a specification

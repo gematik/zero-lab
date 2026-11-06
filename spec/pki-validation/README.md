@@ -2,8 +2,9 @@
 
 Language-neutral rules for a TLS client's verification of the server it connects to, under one of two
 profiles: `ti` for endpoints of the Telematikinfrastruktur, whose trust is the TI's own, and `web` for
-endpoints on the internet, whose trust is the host system's root store. `rust/ti-pki` and `go/tipki`
-implement them, and [`testdata`](testdata) holds the two together.
+endpoints on the internet, whose trust is the host system's root store. The TI's PKI implements `ti`
+(`rust/ti-pki`, `go/tipki`); the TLS layer implements `web` and the handshake rules, and hands `ti` to the
+TI's PKI (`rust/ti-tls`, and its Go counterpart). [`testdata`](testdata) holds them together.
 
 Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as in RFC 2119.
 
