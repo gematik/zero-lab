@@ -130,6 +130,26 @@ So soft-fail forgives only a responder that cannot answer, never one that cannot
 profile is hard-fail, so a validator built from a profile never forgives either, and an OCSP outage refuses
 its certificates. Soft-fail applies only to a `Validator` configured without a profile.
 
+## TLS servers
+
+`ServerCheck` is the `ti` profile of [`spec/pki-validation`](../../spec/pki-validation): what a TLS client
+checks of a TI server before it sends anything, independent of the TLS library. The library hands over the
+chain, the host name it connected to and the stapled OCSP response:
+
+```go
+check := tipki.NewServerCheck(store) // nil while no TSL is within its grace period
+verdict := check.Verify(ctx, chain, "svc.example.ti", stapled, now, tipki.NewOCSPChecker(transport))
+if !verdict.Valid() {
+	return fmt.Errorf("server refused: %s: %s", verdict.Code, verdict.Detail)
+}
+```
+
+The chain is validated as a C.FD.TLS-S or C.ZD.TLS-S without revocation, then no SHA-1, MD5 or SHA-224
+signature may appear below the root, then the host must be the commonName or a `dNSName` (a wildcard
+stands for exactly one leftmost label), and last the OCSP status: from the stapled response if it is
+within `OCSPGrace` (10 minutes by default), else from the responder. `NotAfter`, `ProducedAt` and
+`NextUpdate` bound how long an accepted verdict may be reused.
+
 ## Security posture
 
 - **Trust comes from verification only.** Trust starts at the pinned anchors, and a TSL counts only
@@ -147,6 +167,8 @@ This library has **not** undergone an independent third-party audit.
 - **Conformance to Rust's `ti-pki`.** Both implementations are held to language-neutral rules with
   shared test data: [`spec/pki-profiles`](../../spec/pki-profiles) and
   [`spec/pki-path`](../../spec/pki-path). `ti-pki` writes the corpora and `tipki` must read the same.
+  The `ti` cases of [`spec/pki-validation`](../../spec/pki-validation) hold `ServerCheck` to the same
+  codes as `ti_pki::tls`.
 - **Fuzzing** of the parsers for certificates, admission, bundles, roots, TSL, detached signatures, OCSP
   responses and identifiers.
 - **Live tests** run through `go/idpd`, against the TSL and the IDP-Dienst of the reference environment.
@@ -161,7 +183,7 @@ This library has **not** undergone an independent third-party audit.
 ## Package layout
 
 ```
-tipki/      Certificates, profiles, TSL, chains, OCSP, Validator
+tipki/      Certificates, profiles, TSL, chains, OCSP, Validator, ServerCheck
   oid/      The identifiers of gemSpec_OID
 ```
 
