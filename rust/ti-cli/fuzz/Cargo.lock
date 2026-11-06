@@ -1584,6 +1584,7 @@ dependencies = [
  "ti-pkcs12",
  "ti-pki",
  "ti-report",
+ "ti-tls",
  "ti-types",
  "ureq",
  "x509-cert",
@@ -1716,6 +1717,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-tls"
+version = "0.1.0"
+dependencies = [
+ "const-oid",
+ "der",
+ "rustls",
+ "rustls-native-certs",
+ "rustls-pki-types",
+ "rustls-webpki",
+ "sha2",
+ "ti-pki",
+ "ureq",
+ "x509-cert",
+]
+
+[[package]]
 name = "ti-types"
 version = "0.1.0"
 
@@ -1779,7 +1796,6 @@ dependencies = [
  "percent-encoding",
  "rustls",
  "rustls-pki-types",
- "rustls-platform-verifier",
  "ureq-proto",
  "utf8-zero",
 ]
