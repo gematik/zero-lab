@@ -160,7 +160,7 @@ func (c *ServerCheck) Verify(ctx context.Context, chain []*x509.Certificate, hos
 		return refusal(result.Errors, VerdictChainIncomplete)
 	}
 	for _, cert := range result.Chain[:len(result.Chain)-1] {
-		if name, weak := weakSignature(cert); weak {
+		if name, weak := WeakSignature(cert); weak {
 			return refuse(VerdictSignatureAlgorithmNotAllowed, fmt.Sprintf("%q is signed with %s", cert.Subject.CommonName, name), nil)
 		}
 	}
@@ -270,7 +270,8 @@ var weakSignatures = map[string]string{
 	"1.2.840.10045.4.3.1":   "ECDSA with SHA-224",
 }
 
-func weakSignature(cert *x509.Certificate) (string, bool) {
+// WeakSignature names the algorithm cert is signed with when it is one of TLSV-023's SHA-1, MD5 or SHA-224.
+func WeakSignature(cert *x509.Certificate) (string, bool) {
 	var outer struct {
 		TBS       asn1.RawValue
 		Algorithm pkix.AlgorithmIdentifier

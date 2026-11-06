@@ -150,6 +150,12 @@ stands for exactly one leftmost label), and last the OCSP status: from the stapl
 within `OCSPGrace` (10 minutes by default), else from the responder. `NotAfter`, `ProducedAt` and
 `NextUpdate` bound how long an accepted verdict may be reused.
 
+Package `titls` puts both profiles of the spec into a `crypto/tls` client configuration: `ti` through
+`ServerCheck` over a `TrustSource` the host swaps on each TSL reload, and `web` over the system's roots with
+the profile's key, name, validity and revocation rules (stapled OCSP, the responder, the CRL). It reuses
+accepted verdicts in a bounded cache and reaches responders and CRL hosts only through the host's
+`*http.Client`. Its package documentation lists what `crypto/tls` cannot offer as `handshake.json` has it.
+
 ## Security posture
 
 - **Trust comes from verification only.** Trust starts at the pinned anchors, and a TSL counts only
@@ -185,6 +191,7 @@ This library has **not** undergone an independent third-party audit.
 ```
 tipki/      Certificates, profiles, TSL, chains, OCSP, Validator, ServerCheck
   oid/      The identifiers of gemSpec_OID
+  titls/    TLS client configurations for the ti and web profiles of spec/pki-validation
 ```
 
 ## Development
@@ -195,4 +202,5 @@ The [repository's rules](../../docs/README.md) apply, and versions are this modu
 ```bash
 go test ./...
 go test -run x -fuzz FuzzParseTSL -fuzztime 30s .
+go test -run x -fuzz FuzzWebCheck -fuzztime 30s ./titls
 ```
