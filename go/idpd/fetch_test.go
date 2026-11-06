@@ -33,6 +33,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/tipki"
 	"github.com/gematik/zero-lab/go/tipki/fetch"
+	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 // The download and refresh are proven in go/tipki/fetch; these prove idpd's checks over the store it yields.
@@ -109,7 +110,11 @@ func TestIDPV007TheLiveReferenceEnvironment(t *testing.T) {
 	if os.Getenv("IDPD_TRUST_FETCH") == "" {
 		t.Skip("IDPD_TRUST_FETCH not set: needs a route to gematik's hosts; proves the download and both IDP certificates live")
 	}
-	trust, err := NewFetchingTrust(EnvironmentReference, http.DefaultClient)
+	web, err := titls.NewWebHTTPClient(30*time.Second, titls.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust, err := NewFetchingTrust(EnvironmentReference, web)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +123,7 @@ func TestIDPV007TheLiveReferenceEnvironment(t *testing.T) {
 	client, err := NewClientFromConfig(ClientConfig{
 		Environment: EnvironmentReference, ClientID: "trust-test", RedirectURI: "https://rp/cb",
 		Scopes: []string{"openid"}, Trust: recorded,
-	})
+	}, web)
 	if err != nil {
 		t.Fatal(err)
 	}

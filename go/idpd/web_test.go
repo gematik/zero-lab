@@ -22,7 +22,6 @@
 package idpd
 
 import (
-	"crypto/tls"
 	"errors"
 	"io"
 	"log"
@@ -32,10 +31,10 @@ import (
 	"testing"
 )
 
-// TLSV-001 and TLSV-040: without a client from the host, the IDP-Dienst is reached under the web profile
-// against the system's roots, so a server under a root the system does not hold is refused before a
-// request is sent; a host's client is used as given.
-func TestTLSV040WithoutAClientTheIDPDienstIsVerifiedUnderTheWebProfile(t *testing.T) {
+// TLSV-001: the host decides TLS. The client is a constructor parameter, so the compiler holds every
+// caller to passing one; a nil one builds neither an authenticator nor a client and sends nothing, and a
+// host's client is used as given.
+func TestTLSV001ANilClientIsRefusedAndNothingReachesTheIDPDienst(t *testing.T) {
 	var reached atomic.Int64
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		reached.Add(1)
@@ -45,22 +44,22 @@ func TestTLSV040WithoutAClientTheIDPDienstIsVerifiedUnderTheWebProfile(t *testin
 	server.StartTLS()
 	t.Cleanup(server.Close)
 
-	_, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, server.URL), Trust: &recording{}})
-	if _, ok := errors.AsType[*tls.CertificateVerificationError](err); !ok {
+	_, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, server.URL), Trust: &recording{}}, nil)
+	if !errors.Is(err, errNoHTTPClient) {
 		t.Errorf("authenticator: %v", err)
 	}
 	_, err = NewClientFromConfig(ClientConfig{
 		Environment: EnvironmentReference, BaseURL: server.URL, ClientID: "client", RedirectURI: "https://rp.example/cb",
 		Scopes: []string{"openid"}, Trust: &recording{},
-	})
-	if _, ok := errors.AsType[*tls.CertificateVerificationError](err); !ok {
+	}, nil)
+	if !errors.Is(err, errNoHTTPClient) {
 		t.Errorf("client: %v", err)
 	}
 	if n := reached.Load(); n != 0 {
 		t.Fatalf("%d requests reached the server", n)
 	}
 
-	_, err = NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, server.URL), Trust: &recording{}, HTTPClient: server.Client()})
+	_, err = NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, server.URL), Trust: &recording{}}, server.Client())
 	if err == nil || reached.Load() != 1 {
 		t.Fatalf("the host's client was not used: %v, %d requests", err, reached.Load())
 	}

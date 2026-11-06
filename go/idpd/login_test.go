@@ -147,7 +147,7 @@ func TestExchangeVerifiesTheIDTokenOfTheResponse(t *testing.T) {
 	idp := newFakeIDP(t)
 	issued := &issuedTokens{}
 	serveTokens(t, idp, issued, true)
-	client, err := NewClientFromConfig(idp.config(&recording{}))
+	client, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,7 +164,7 @@ func TestExchangeVerifiesTheIDTokenOfTheResponse(t *testing.T) {
 func TestExchangeRefusesAResponseWithoutAnIDToken(t *testing.T) {
 	idp := newFakeIDP(t)
 	serveTokens(t, idp, &issuedTokens{}, false)
-	client, err := NewClientFromConfig(idp.config(&recording{}))
+	client, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestExchangeFetchesTheKeysUnderTheCallersContext(t *testing.T) {
 		return encJWK()
 	}
 	serveTokens(t, idp, &issuedTokens{}, true)
-	client, err := NewClientFromConfig(idp.config(&recording{}))
+	client, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,8 +207,8 @@ func challengeFlow(t *testing.T, idp *fakeIDP, alg string, claims map[string]any
 		_ = json.NewEncoder(w).Encode(map[string]any{"challenge": signIDToken(t, idp.key, alg, claims), "user_consent": map[string]any{}})
 	}
 	authenticator, err := NewAuthenticator(AuthenticatorConfig{
-		IDP: NewIDP(EnvironmentReference, idp.URL), SignerFunc: SignWithSoftkey(idp.key, idp.cert), Trust: &recording{}, HTTPClient: idp.Client(),
-	})
+		IDP: NewIDP(EnvironmentReference, idp.URL), SignerFunc: SignWithSoftkey(idp.key, idp.cert), Trust: &recording{},
+	}, idp.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func TestTheIDPIsReadWithinABound(t *testing.T) {
 	t.Run("the discovery document", func(t *testing.T) {
 		idp := newFakeIDP(t)
 		idp.discovery = func(base string) []byte { return append([]byte(huge), idp.signDiscovery(t, base, idp.key)...) }
-		_, err := NewClientFromConfig(idp.config(&recording{}))
+		_, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
 		if err == nil || !strings.Contains(err.Error(), "larger than") {
 			t.Errorf("err = %v", err)
 		}
@@ -380,7 +380,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 	idp := newFakeIDP(t)
 	issued := &issuedTokens{}
 	serveTokens(t, idp, issued, true)
-	client, err := NewClientFromConfig(idp.config(&recording{}))
+	client, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -428,7 +428,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 func TestExchangeRefusesAnIDTokenOfAnotherLogin(t *testing.T) {
 	idp := newFakeIDP(t)
 	serveTokens(t, idp, &issuedTokens{}, true)
-	client, err := NewClientFromConfig(idp.config(&recording{}))
+	client, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
 	if err != nil {
 		t.Fatal(err)
 	}

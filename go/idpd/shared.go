@@ -33,14 +33,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
-	"github.com/gematik/zero-lab/go/tipki/titls"
 )
-
-const defaultHTTPTimeout = 30 * time.Second
 
 // maxIDPResponseBytes bounds what the IDP-Dienst can make a client read.
 const maxIDPResponseBytes = 1 << 20
@@ -49,18 +45,9 @@ const maxIDPResponseBytes = 1 << 20
 // without a User-Agent ("User Agent fehlt").
 const defaultUserAgent = "zero-lab"
 
-// clientOrWeb is client, or without one a client under the web profile: the IDP-Dienst, its key and
-// trust material hosts are on the internet with public certificates (spec/pki-validation).
-func clientOrWeb(client *http.Client) (*http.Client, error) {
-	if client != nil {
-		return client, nil
-	}
-	web, err := titls.NewWebHTTPClient(defaultHTTPTimeout, titls.Options{})
-	if err != nil {
-		return nil, fmt.Errorf("the IDP-Dienst's TLS: %w", err)
-	}
-	return web, nil
-}
+// errNoHTTPClient refuses a client or authenticator without the host's HTTP client: the host decides TLS
+// (go/docs/design.md §2), and the library has no default to fall back to.
+var errNoHTTPClient = errors.New("no HTTP client: the host supplies it, for the IDP-Dienst under the web profile (titls.NewWebHTTPClient)")
 
 // transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
 // has a concrete base transport to wrap.

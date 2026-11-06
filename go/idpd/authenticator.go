@@ -104,11 +104,6 @@ type AuthenticatorConfig struct {
 	// Trust decides about the IDP-Dienst's certificates; required (IDPV-003).
 	Trust CertificateTrust
 
-	// HTTPClient is used for metadata and key fetches; a redirect-suppressing copy of it drives the
-	// challenge flow. When nil, the IDP-Dienst is reached under the web profile of spec/pki-validation
-	// (titls.NewWebHTTPClient); a client supplied here is used as given, and the host then owns its TLS.
-	HTTPClient *http.Client
-
 	// Clock is the time challenges are judged at. When nil, the system clock.
 	Clock func() time.Time
 }
@@ -122,13 +117,16 @@ func (a *Authenticator) now() time.Time {
 }
 
 // NewAuthenticator creates a new Authenticator
-func NewAuthenticator(config AuthenticatorConfig) (*Authenticator, error) {
+//
+// httpClient carries the metadata and key fetches, and a redirect-suppressing copy of it the challenge
+// flow. It is the host's, as is its TLS: for the IDP-Dienst the web profile of spec/pki-validation
+// (titls.NewWebHTTPClient). It is a parameter so that no caller can leave it out; nil is refused.
+func NewAuthenticator(config AuthenticatorConfig, httpClient *http.Client) (*Authenticator, error) {
 	if config.Trust == nil {
 		return nil, errors.New("no trust for the IDP-Dienst's certificates")
 	}
-	httpClient, err := clientOrWeb(config.HTTPClient)
-	if err != nil {
-		return nil, err
+	if httpClient == nil {
+		return nil, errNoHTTPClient
 	}
 
 	baseURL := config.IDP.baseURL

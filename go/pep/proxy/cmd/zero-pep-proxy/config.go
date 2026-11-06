@@ -133,8 +133,7 @@ func providersFromEnv(publicURL string, httpClient *http.Client) *providers.Set 
 			UserAgent:         os.Getenv("PEP_IDPD_USER_AGENT"),
 			TrustBundlePath:   os.Getenv("PEP_IDPD_TRUST_BUNDLE_PATH"),
 			TrustFetch:        os.Getenv("PEP_IDPD_TRUST_FETCH") == "true",
-			HTTPClient:        httpClient,
-		})
+		}, httpClient)
 		if err != nil {
 			log.Fatalf("create idpd client: %v", err)
 		}

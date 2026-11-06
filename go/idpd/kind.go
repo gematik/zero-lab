@@ -45,11 +45,10 @@ func Kind(adjust func(*ClientConfig)) providers.Kind {
 			if config.RedirectURI == "" {
 				config.RedirectURI = env.RedirectURI
 			}
-			config.HTTPClient = env.HTTPClient
 			if adjust != nil {
 				adjust(&config)
 			}
-			client, err := NewClientFromConfig(config)
+			client, err := NewClientFromConfig(config, env.HTTPClient)
 			if err != nil {
 				return providers.Built{}, fmt.Errorf("[%d] (%s): %w", i, config.ClientID, err)
 			}

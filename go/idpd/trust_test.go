@@ -43,6 +43,7 @@ import (
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
 	"github.com/gematik/zero-lab/go/tipki"
+	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 // A brainpool certificate and its key, which the fake IDP signs with: no CA here vouches for it, which is
@@ -174,7 +175,7 @@ func (idp *fakeIDP) signDiscovery(t *testing.T, base string, signer *ecdsa.Priva
 func (idp *fakeIDP) config(trust CertificateTrust) ClientConfig {
 	return ClientConfig{
 		Environment: EnvironmentReference, BaseURL: idp.URL, ClientID: "client", RedirectURI: "https://rp/cb",
-		Scopes: []string{"openid"}, Trust: trust, HTTPClient: idp.Client(),
+		Scopes: []string{"openid"}, Trust: trust,
 	}
 }
 
@@ -182,7 +183,7 @@ func (idp *fakeIDP) config(trust CertificateTrust) ClientConfig {
 func TestASignedDiscoveryDocumentOfAnotherIssuerIsRefused(t *testing.T) {
 	idp := newFakeIDP(t)
 	idp.discovery = func(string) []byte { return idp.signDiscovery(t, "https://idp.other.example", idp.key) }
-	_, err := NewClientFromConfig(idp.config(&recording{}))
+	_, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
 	if err == nil || !strings.Contains(err.Error(), "names the issuer") {
 		t.Errorf("err = %v", err)
 	}
@@ -191,7 +192,7 @@ func TestASignedDiscoveryDocumentOfAnotherIssuerIsRefused(t *testing.T) {
 func TestIDPV001TheDiscoverySignerIsCheckedBeforeItsKeyIsUsed(t *testing.T) {
 	idp := newFakeIDP(t)
 	trust := &recording{}
-	client, err := NewClientFromConfig(idp.config(trust))
+	client, err := NewClientFromConfig(idp.config(trust), idp.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,10 +207,10 @@ func TestIDPV001TheDiscoverySignerIsCheckedBeforeItsKeyIsUsed(t *testing.T) {
 func TestIDPV001ARefusedSignerIsAHardError(t *testing.T) {
 	idp := newFakeIDP(t)
 	trust := &recording{refuse: map[IDPCertificate]bool{DiscoverySigner: true}}
-	if _, err := NewClientFromConfig(idp.config(trust)); err == nil || !strings.Contains(err.Error(), "refused") {
+	if _, err := NewClientFromConfig(idp.config(trust), idp.Client()); err == nil || !strings.Contains(err.Error(), "refused") {
 		t.Errorf("err = %v", err)
 	}
-	if _, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, idp.URL), Trust: trust, HTTPClient: idp.Client()}); err == nil {
+	if _, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, idp.URL), Trust: trust}, idp.Client()); err == nil {
 		t.Error("an authenticator went on")
 	}
 }
@@ -221,7 +222,7 @@ func TestIDPV001ATrustedCertificateDoesNotExcuseABadSignature(t *testing.T) {
 		t.Fatal(err)
 	}
 	idp.discovery = func(base string) []byte { return idp.signDiscovery(t, base, other) }
-	_, err = NewClientFromConfig(idp.config(&recording{}))
+	_, err = NewClientFromConfig(idp.config(&recording{}), idp.Client())
 	if err == nil || strings.Contains(err.Error(), "missing alg") {
 		t.Errorf("a discovery document another key signed: %v", err)
 	}
@@ -272,10 +273,10 @@ func TestIDPV002AKeyWithoutItsCertificateIsRefused(t *testing.T) {
 
 func TestIDPV003ThereIsNoClientWithoutTrust(t *testing.T) {
 	idp := newFakeIDP(t)
-	if _, err := NewClientFromConfig(idp.config(nil)); err == nil {
+	if _, err := NewClientFromConfig(idp.config(nil), idp.Client()); err == nil {
 		t.Error("a client without trust")
 	}
-	if _, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, idp.URL), HTTPClient: idp.Client()}); err == nil {
+	if _, err := NewAuthenticator(AuthenticatorConfig{IDP: NewIDP(EnvironmentReference, idp.URL)}, idp.Client()); err == nil {
 		t.Error("an authenticator without trust")
 	}
 }
@@ -451,7 +452,7 @@ func TestIDPV006NoNamedEnvironmentTrustsNothing(t *testing.T) {
 	idp := newFakeIDP(t)
 	config := idp.config(&recording{})
 	config.Environment = EnvironmentUnset
-	if _, err := NewClientFromConfig(config); err == nil {
+	if _, err := NewClientFromConfig(config, idp.Client()); err == nil {
 		t.Error("a client without an environment")
 	}
 }
@@ -468,7 +469,7 @@ func TestIDPV003NoBundleNoClient(t *testing.T) {
 	idp := newFakeIDP(t)
 	config := idp.config(nil)
 	config.TrustBundlePath = filepath.Join(t.TempDir(), "none.json")
-	if _, err := NewClientFromConfig(config); err == nil {
+	if _, err := NewClientFromConfig(config, idp.Client()); err == nil {
 		t.Error("a bundle that is not there")
 	}
 }
@@ -479,7 +480,11 @@ func TestIDPV005TheLiveReferenceIDP(t *testing.T) {
 	if bundle == "" {
 		t.Skip("IDPD_TRUST_BUNDLE_PATH not set: needs `ti pki trust export --env ref` and a route to the IDP; proves both IDP certificates live")
 	}
-	trust, err := NewBundleTrust(EnvironmentReference, bundle, http.DefaultClient)
+	web, err := titls.NewWebHTTPClient(30*time.Second, titls.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust, err := NewBundleTrust(EnvironmentReference, bundle, web)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +492,7 @@ func TestIDPV005TheLiveReferenceIDP(t *testing.T) {
 	client, err := NewClientFromConfig(ClientConfig{
 		Environment: EnvironmentReference, ClientID: "trust-test", RedirectURI: "https://rp/cb",
 		Scopes: []string{"openid"}, Trust: recorded,
-	})
+	}, web)
 	if err != nil {
 		t.Fatal(err)
 	}
