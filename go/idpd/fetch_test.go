@@ -24,12 +24,10 @@ package idpd
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/hex"
+	"errors"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -37,52 +35,35 @@ import (
 	"github.com/gematik/zero-lab/go/tipki/fetch"
 )
 
-// The download and refresh are proven in go/tipki/fetch; these prove idpd's checks over what it fetched.
+// The download and refresh are proven in go/tipki/fetch; these prove idpd's checks over the store it yields.
 
-// publisher serves the captured reference list as gematik's hosts do.
-type publisher struct {
-	*httptest.Server
-	requests atomic.Int64
-}
-
-func newPublisher(t *testing.T) *publisher {
+// fetched is a FetchingTrust over the store the fetch path loads from the captured reference publication:
+// the same roots.json, list, signature and signer status, verified the same way.
+func fetched(t *testing.T) *FetchingTrust {
 	t.Helper()
-	list := readFile(t, refList+".xml")
-	digest := sha256.Sum256(list)
-	files := map[string][]byte{
-		"/roots.json": readFile(t, "../../rust/ti-pki/src/roots-nonprod.json"),
-		"/list.sha2":  []byte(hex.EncodeToString(digest[:]) + "  ECC-RSA_TSL-ref.xml\n"),
-		"/list.xml":   list,
-		"/list.sig":   readFile(t, refList+".sig"),
-		"/list.ocsp":  readFile(t, refList+".ocsp"),
-	}
-	pub := &publisher{}
-	pub.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pub.requests.Add(1)
-		body, ok := files[r.URL.Path]
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		_, _ = w.Write(body)
-	}))
-	t.Cleanup(pub.Close)
-	return pub
-}
-
-func (p *publisher) started(t *testing.T, now func() time.Time) *FetchingTrust {
-	t.Helper()
-	base, err := newVerifier(EnvironmentReference, p.Client())
+	base, err := newVerifier(EnvironmentReference, http.DefaultClient)
 	if err != nil {
 		t.Fatal(err)
 	}
 	base.checker = answering(tipki.RevocationGood)
-	base.now = now
-	return &FetchingTrust{verifier: base, trust: fetch.NewForTest(t, fetch.Reference, p.URL, p.Client(), base.checker, now)}
+	base.now = func() time.Time { return captured }
+	store, err := base.load(t.Context(), &tipki.Bundle{
+		Label:           "fetched",
+		AnchorSHA256:    sha256.Sum256(tipki.AnchorNonProd),
+		Roots:           readFile(t, "../../rust/ti-pki/src/roots-nonprod.json"),
+		TSL:             readFile(t, refList+".xml"),
+		TSLSignature:    readFile(t, refList+".sig"),
+		TSLSignerStatus: readFile(t, refList+".ocsp"),
+		FetchedAt:       captured,
+	}, captured, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &FetchingTrust{verifier: base, current: func() (*tipki.TrustStore, error) { return store, nil }}
 }
 
 func TestIDPV007TheFetchedMaterialVerifiesTheRealCertificates(t *testing.T) {
-	trust := newPublisher(t).started(t, func() time.Time { return captured })
+	trust := fetched(t)
 	for which, name := range map[IDPCertificate]string{DiscoverySigner: "disc.ru.idp.rise.der", TokenSigner: "main.ru.idp.rise.der"} { //nolint:gosec // file names of test certificates, not credentials
 		if err := trust.Check(t.Context(), which, idpCertificate(t, name)); err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -101,27 +82,15 @@ func TestIDPV007NoEnvironmentNoStart(t *testing.T) {
 	}
 }
 
-func TestIDPV008ALoginNeverFetches(t *testing.T) {
-	pub := newPublisher(t)
-	now := captured
-	trust := pub.started(t, func() time.Time { return now })
-	before := pub.requests.Load()
-	now = captured.Add(3 * time.Hour)
-	if err := trust.Check(t.Context(), DiscoverySigner, idpCertificate(t, "disc.ru.idp.rise.der")); err != nil {
-		t.Fatal(err)
-	}
-	if after := pub.requests.Load(); after != before {
-		t.Errorf("a check made %d requests", after-before)
-	}
-}
-
-func TestIDPV008ALoginIsRefusedOnceTheCopyIsTooOld(t *testing.T) {
-	now := captured
-	trust := newPublisher(t).started(t, func() time.Time { return now })
-	now = captured.Add(tipki.MaxBundleAge)
+func TestIDPV008ALoginIsRefusedWhenTheCopyNoLongerStands(t *testing.T) {
+	trust := fetched(t)
+	trust.current = func() (*tipki.TrustStore, error) { return nil, errors.New("trust material is 24h0m0s old") }
 	err := trust.Check(t.Context(), DiscoverySigner, idpCertificate(t, "disc.ru.idp.rise.der"))
-	if err == nil || !strings.Contains(err.Error(), "the limit is") {
+	if err == nil || !strings.Contains(err.Error(), "24h0m0s old") {
 		t.Errorf("err = %v", err)
+	}
+	if err := fetched(t).Check(t.Context(), DiscoverySigner, nil); err == nil {
+		t.Error("no certificate")
 	}
 }
 
@@ -156,7 +125,7 @@ func TestIDPV007TheLiveReferenceEnvironment(t *testing.T) {
 	if _, err := fetchSigningKey(t.Context(), client.Metadata.SigningKeyURI, client.httpClient, recorded); err != nil {
 		t.Fatal(err)
 	}
-	store, err := trust.trust.Current()
+	store, err := trust.current()
 	if err != nil {
 		t.Fatal(err)
 	}

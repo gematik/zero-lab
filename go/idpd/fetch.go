@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gematik/zero-lab/go/tipki"
 	"github.com/gematik/zero-lab/go/tipki/fetch"
 )
 
@@ -39,6 +40,8 @@ import (
 type FetchingTrust struct {
 	verifier
 	trust *fetch.Trust
+	// current is trust.Current, apart so a test can check over a store without downloading it.
+	current func() (*tipki.TrustStore, error)
 }
 
 // NewFetchingTrust fetches once, so a deployment without a route to the material does not start, and keeps
@@ -52,7 +55,7 @@ func NewFetchingTrust(env Environment, httpClient *http.Client) (*FetchingTrust,
 	if err != nil {
 		return nil, err
 	}
-	return &FetchingTrust{verifier: base, trust: trust}, nil
+	return &FetchingTrust{verifier: base, trust: trust, current: trust.Current}, nil
 }
 
 // fetchEnvironment names env as package fetch does; newVerifier has refused every other value before.
@@ -79,7 +82,7 @@ func (t *FetchingTrust) Check(ctx context.Context, which IDPCertificate, certs [
 	if len(certs) == 0 {
 		return fmt.Errorf("%s: no certificate", which)
 	}
-	store, err := t.trust.Current()
+	store, err := t.current()
 	if err != nil {
 		return fmt.Errorf("%s: %w", which, err)
 	}
