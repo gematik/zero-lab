@@ -1,10 +1,10 @@
 ---
 id: TASK-97.1
 title: 'TLS verification (a): spec/pki-validation with the ti and web profiles'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
-updated_date: '2026-11-06T07:48:00Z'
+updated_date: '2026-11-06T12:16:00Z'
 labels:
   - spec
   - ti-pki
@@ -32,3 +32,9 @@ TASK-97 part (a): the shared specification both implementations are held to.
 <!-- SECTION:NOTES:BEGIN -->
 On spec/pki-validation (../zero-lab-tls): README (TLSV-001 to 051, maintainer: system roots for web, SAN and CN for ti, wildcards for both), CONFORMANCE, testdata: generate.sh (OpenSSL 4.1.0, keys never written), 35 certificates, 27 OCSP responses (verified with openssl ocsp), 2 CRLs, manifest.py -> 50 cases, handshake.json. TLSV-002, 014, 050, 051 are proved by implementation tests (CONFORMANCE). No implementation runs the corpus yet: that is 97.2.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged into main by fast-forward (1f6aa1e6) with TASK-97's branch spec/pki-validation; just check green (820 + 128 tests, deny, vet, stamps).
+<!-- SECTION:FINAL_SUMMARY:END -->

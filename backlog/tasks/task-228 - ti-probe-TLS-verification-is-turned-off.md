@@ -1,10 +1,10 @@
 ---
 id: TASK-228
 title: 'ti probe: TLS verification is turned off'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
-updated_date: '2026-11-06T11:41:00Z'
+updated_date: '2026-11-06T12:16:00Z'
 labels:
   - ti-cli
   - security
@@ -39,3 +39,9 @@ On spec/pki-validation (with TASK-97):
 <!-- SECTION:NOTES:BEGIN -->
 On spec/pki-validation (012b54c6), with TASK-97. endpoints.json names tls ti for epa-1/epa-2 in every env, web by default. Agents per profile through ti_tls::ureq::agent: web via http::web_config, ti via Session/load_trust, ServerCheck and OcspChecker over a transport limited to 3 s. A refused certificate: status fail, answered true, 'TLS <profile>: <reason>' (ti-tls Refused verdicts by code); JSON tls {profile, verified}, schema extended. Tests: endpoint profiles per env, refusal reasons, end to end against a local self-signed P-256 server (fixture tests/fixtures/tls). Live 2026-11-06: ref and dev epa-1/2 verified under ti with OCSP, idpd-ti and erx verified under web; prod and test TI hosts not routed from here. The catalog is refused under web in every env (RSA-2048): TASK-231.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged into main by fast-forward (1f6aa1e6) with TASK-97's branch spec/pki-validation; just check green (820 + 128 tests, deny, vet, stamps).
+<!-- SECTION:FINAL_SUMMARY:END -->

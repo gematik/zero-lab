@@ -3,10 +3,10 @@ id: TASK-97.2
 title: >-
   TLS verification (b): ti profile in ti-pki, web profile and rustls verifiers
   in ti-tls
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
-updated_date: '2026-11-06T08:22:00Z'
+updated_date: '2026-11-06T12:16:00Z'
 labels:
   - ti-pki
   - security
@@ -37,3 +37,9 @@ On spec/pki-validation (../zero-lab-tls): c7b1927f ti-pki::tls::ServerCheck (ti 
 
 Full just check on the branch: green (816 + 128 tests), after the jwz browser stamp rerun (the workspace Cargo.toml is one of its inputs) and the TASK-230 fix it surfaced.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged into main by fast-forward (1f6aa1e6) with TASK-97's branch spec/pki-validation; just check green (820 + 128 tests, deny, vet, stamps).
+<!-- SECTION:FINAL_SUMMARY:END -->

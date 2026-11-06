@@ -4,7 +4,7 @@ title: 'TLS server verification as core hooks: TI-PKI and hardened Web-PKI'
 status: In Progress
 assignee: []
 created_date: 2026-10-15 05:20
-updated_date: '2026-11-06T07:36:00Z'
+updated_date: '2026-11-06T12:16:00Z'
 labels:
   - ti-pki
   - spec
@@ -33,9 +33,9 @@ Which profile an endpoint gets is core configuration, never inferred from its ce
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 spec/pki-validation defines both profiles: rules with requirement IDs (gemSpec_PKI for TI-PKI, RFC 5280, CA/B Forum and the chosen hardening for Web-PKI), result codes, and a corpus with negative cases for each rule
+- [x] #1 spec/pki-validation defines both profiles: rules with requirement IDs (gemSpec_PKI for TI-PKI, RFC 5280, CA/B Forum and the chosen hardening for Web-PKI), result codes, and a corpus with negative cases for each rule
 - [ ] #2 ti-pki supplies both profiles as rustls ServerCertVerifiers over a shared, atomically swapped trust snapshot and a bounded verdict cache; the corpus passes; any new parser has a fuzz target
-- [ ] #3 Benchmarks with a budget for a cold and a cached verification of each profile, checked by a just recipe
+- [x] #3 Benchmarks with a budget for a cold and a cached verification of each profile, checked by a just recipe
 - [ ] #4 The ureq and reqwest adapters and ti-cli take the profile per endpoint from configuration, with no fallback to the system store; the Konnektor's .kon pinning stays as it is
 <!-- AC:END -->
 
@@ -53,4 +53,6 @@ Split into subtasks, in order: (a) spec/pki-validation: profiles ti and web, rul
 Maintainer, 2026-11-06: no curated CA set for internet endpoints. The Web-PKI profile takes the usual Web-PKI roots and adds requirements on the certificates, as gematik's specs and the ZETA SDK (github.com/gematik/zeta-sdk, network/.../config/tls) state them: end-entity ECC (P-256/P-384) or RSA >= 3000 (gemSpec_Krypt A_28976, A_16176-01: 120-bit level per TR-02102-2); chain RSA >= 2048 tolerated by the SDK; no SHA-1/MD5/SHA-224; TLS 1.2 ECDHE+AES-GCM or 1.3 AES-GCM; curves P-256, P-384, brainpool; revocation hard-fail: stapled OCSP, cached OCSP, OCSP, CRL (SDK; E-Rezept A_27857-02). TI side: GS-A_4662, GS-A_4663/Tab_PKI_273 (TUC_PKI_018, OCSP mode, PolicyList Tab_PKI_405), GS-A_5077 (FQDN), GS-A_4384-03, A_18467, A_21275-01, A_24913 (ePA stapling, 50 min).
 
 Maintainer, 2026-11-06: web profile uses the system's default roots, as the Go images do (ca-certificates copied into scratch, Go's system pool): the host loads them (rustls-native-certs, already in the tree) and hands them to the core as data; path building, host name, key and hash rules and revocation are the core's, equal on every platform. TI trust stays the private TSL/roots.json trust, never a public root. Assumed (maintainer may override): web revocation hard-fail as the ZETA SDK (stapled, cached, OCSP, CRL); RSA >= 2048 tolerated in the web CA chain, >= 3000 at the end entity; no Certificate Transparency.
+
+2026-11-06: 97.1-97.4 merged (1f6aa1e6). Open: AC 2, the verdict cache in ti-tls is not bounded (entries leave only when looked up after they expire) and a verifier holds one trust snapshot with no swap: TASK-232. AC 4: no reqwest adapter; no crate uses reqwest, so it waits for the maintainer's decision whether it is still wanted. Profiles live in ti-tls (web) and ti-pki (ti), as decided with the maintainer, not in ti-pki alone as AC 2 words it.
 <!-- SECTION:NOTES:END -->

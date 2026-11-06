@@ -1,10 +1,10 @@
 ---
 id: TASK-230
 title: 'jwz: BP256R1 key generation fails about once in 5,500'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T08:19:00Z'
-updated_date: '2026-11-06T08:22:00Z'
+updated_date: '2026-11-06T12:16:00Z'
 labels:
   - jwz
   - ti-jwz
@@ -30,3 +30,9 @@ Found by just check on the TASK-97 branch (ti-idpd a_20526 failed once with Cryp
 <!-- SECTION:NOTES:BEGIN -->
 On spec/pki-validation (73eedaaa, then try_update): random_scalar draws up to 64 times; ti-jwz test a_bp256r1_key_is_generated_however_many_draws_fall_outside_the_order fails with 8 draws and passes with 64. Merged with the TASK-97 branch.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged into main by fast-forward (1f6aa1e6) with TASK-97's branch spec/pki-validation; just check green (820 + 128 tests, deny, vet, stamps).
+<!-- SECTION:FINAL_SUMMARY:END -->
