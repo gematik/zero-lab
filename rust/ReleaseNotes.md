@@ -217,6 +217,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - Browser tests (`tests/browser.rs`, `just jwz-browser`, stamped): RFC 7515, RFC 8037 and
   RFC 7520 known answers, key generation, JWS and JWE round trips in headless Chrome.
 - `guide`: a guide across the modules, compiled by the doc tests.
+- RFC 7517 key use (TASK-220): a JWK Set ignores a key it cannot read (§5) instead of
+  failing whole; `key_ops` may not repeat a value or disagree with `use` (§4.3); and
+  `use`/`key_ops` bind a key to what it may do, `Jwk::allows(KeyPurpose)`, enforced by
+  `SoftwareKey`, `SoftwareAgreementKey`, `SymmetricKey` and JWE encryption, so a key
+  marked `enc` no longer signs or verifies (§4.2).
 - `concat_kdf` refuses an OtherInfo longer than `usize` (reachable only on 32-bit
   targets), which the F* proof showed the 32-bit length checks alone do not exclude.
 

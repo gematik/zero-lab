@@ -153,6 +153,48 @@ pub enum KeyMaterial {
     Rsa(RsaKey),
 }
 
+/// What a key is put to, which its `use` and `key_ops` must allow (RFC 7517 §4.2, §4.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum KeyPurpose {
+    /// Signing or verifying a JWS: `use` `sig`, `key_ops` `sign` or `verify`.
+    Signature,
+    /// Encrypting a JWE to the key, or wrapping or deriving its key with it: `use` `enc`,
+    /// `key_ops` `encrypt`, `wrapKey`, `deriveKey` or `deriveBits`.
+    Encryption,
+    /// Decrypting a JWE with the key, or unwrapping or deriving its key: `use` `enc`,
+    /// `key_ops` `decrypt`, `unwrapKey`, `deriveKey` or `deriveBits`.
+    Decryption,
+}
+
+impl KeyPurpose {
+    const fn key_use(self) -> &'static str {
+        match self {
+            KeyPurpose::Signature => "sig",
+            KeyPurpose::Encryption | KeyPurpose::Decryption => "enc",
+        }
+    }
+
+    const fn key_ops(self) -> &'static [&'static str] {
+        match self {
+            KeyPurpose::Signature => &["sign", "verify"],
+            KeyPurpose::Encryption => &["encrypt", "wrapKey", "deriveKey", "deriveBits"],
+            KeyPurpose::Decryption => &["decrypt", "unwrapKey", "deriveKey", "deriveBits"],
+        }
+    }
+}
+
+/// The `key_ops` RFC 7517 §4.3 defines for each `use` it defines.
+const SIG_OPS: &[&str] = &["sign", "verify"];
+const ENC_OPS: &[&str] = &[
+    "encrypt",
+    "decrypt",
+    "wrapKey",
+    "unwrapKey",
+    "deriveKey",
+    "deriveBits",
+];
+
 /// A JSON Web Key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Jwk {
@@ -220,7 +262,8 @@ impl Jwk {
     /// # Errors
     ///
     /// [`ErrorCode::Json`], [`ErrorCode::DuplicateMember`], [`ErrorCode::Base64`],
-    /// [`ErrorCode::MissingMember`], [`ErrorCode::InvalidMember`], or
+    /// [`ErrorCode::MissingMember`], [`ErrorCode::InvalidMember`] (also for a `key_ops`
+    /// that repeats a value or disagrees with `use`, RFC 7517 §4.3), or
     /// [`ErrorCode::UnsupportedKeyType`] for a `kty` other than EC, OKP, oct and RSA.
     pub fn parse(text: &str) -> Result<Jwk, Error> {
         let members = json::parse_object(text.as_bytes(), "jwk")?;
@@ -247,15 +290,42 @@ impl Jwk {
             "RSA" => KeyMaterial::Rsa(rsa_from_members(m)?),
             _ => return Err(Error::new(ErrorCode::UnsupportedKeyType, "kty")),
         };
+        let key_use = optional_str(m, "use")?;
+        let key_ops = optional_str_array(m, "key_ops")?;
+        if let Some(ops) = &key_ops {
+            check_key_ops(key_use.as_deref(), ops)?;
+        }
         Ok(Jwk {
             material,
             kid: optional_str(m, "kid")?,
             alg: optional_str(m, "alg")?,
-            key_use: optional_str(m, "use")?,
-            key_ops: optional_str_array(m, "key_ops")?,
+            key_use,
+            key_ops,
             x5c: optional_str_array(m, "x5c")?,
             x5t_s256: optional_str(m, "x5t#S256")?,
         })
+    }
+
+    /// Whether `use` and `key_ops` allow `purpose`; a key that states neither allows
+    /// every purpose (RFC 7517 §4.2, §4.3). A `use` or operation this library does not
+    /// know allows none of them.
+    pub fn allows(&self, purpose: KeyPurpose) -> bool {
+        self.key_use
+            .as_deref()
+            .is_none_or(|key_use| key_use == purpose.key_use())
+            && self.key_ops.as_deref().is_none_or(|ops| {
+                ops.iter()
+                    .any(|op| purpose.key_ops().contains(&op.as_str()))
+            })
+    }
+
+    /// Refuses the key for `purpose` unless [`allows`](Self::allows) says yes.
+    pub(crate) fn require(&self, purpose: KeyPurpose) -> Result<(), Error> {
+        if self.allows(purpose) {
+            Ok(())
+        } else {
+            Err(Error::new(ErrorCode::KeyMismatch, "use or key_ops"))
+        }
     }
 
     /// Checks the key against `registry`: a known curve for its key type and component
@@ -433,6 +503,14 @@ impl Jwk {
     }
 }
 
+/// The faults of a single key that RFC 7517 §5 says a set should ignore.
+const SKIPPED_IN_A_SET: &[ErrorCode] = &[
+    ErrorCode::UnsupportedKeyType,
+    ErrorCode::MissingMember,
+    ErrorCode::InvalidMember,
+    ErrorCode::Base64,
+];
+
 /// A JWK Set (RFC 7517 §5).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct JwkSet {
@@ -441,12 +519,17 @@ pub struct JwkSet {
 }
 
 impl JwkSet {
-    /// Parses a JWK Set. Keys with a `kty` this library does not handle are skipped, as
-    /// RFC 7517 §5 recommends; any other malformed key fails the whole set.
+    /// Parses a JWK Set. A key this library cannot read is skipped, as RFC 7517 §5 says
+    /// it should be: an unknown `kty`, a required member missing, a member of the wrong
+    /// type or encoding. A skipped key verifies and decrypts nothing, so a set only ever
+    /// shrinks. The document itself must be sound: invalid JSON, a duplicate member
+    /// anywhere, a `keys` that is not an array of objects fail the whole set.
     ///
     /// # Errors
     ///
-    /// As [`Jwk::parse`], and [`ErrorCode::MissingMember`] without `keys`.
+    /// [`ErrorCode::Json`], [`ErrorCode::DuplicateMember`], [`ErrorCode::MissingMember`]
+    /// without `keys`, [`ErrorCode::InvalidMember`] for a `keys` that is not an array of
+    /// objects.
     pub fn parse(text: &str) -> Result<JwkSet, Error> {
         let members = json::parse_object(text.as_bytes(), "jwk set")?;
         let entries = members
@@ -461,7 +544,7 @@ impl JwkSet {
                 .ok_or(Error::new(ErrorCode::InvalidMember, "keys"))?;
             match Jwk::from_members(object) {
                 Ok(key) => keys.push(key),
-                Err(e) if e.code() == ErrorCode::UnsupportedKeyType => {}
+                Err(e) if SKIPPED_IN_A_SET.contains(&e.code()) => {}
                 Err(e) => return Err(e),
             }
         }
@@ -501,6 +584,28 @@ fn optional_str(m: &Map<String, Value>, name: &'static str) -> Result<Option<Str
         Some(Value::String(s)) => Ok(Some(s.clone())),
         Some(_) => Err(Error::new(ErrorCode::InvalidMember, name)),
     }
+}
+
+/// RFC 7517 §4.3: `key_ops` values MUST NOT repeat, and with `use` the two MUST be
+/// consistent. Only the pairs the RFC defines are judged; another `use` or operation is
+/// left to [`Jwk::allows`], which allows it nothing.
+fn check_key_ops(key_use: Option<&str>, ops: &[String]) -> Result<(), Error> {
+    let invalid = Error::new(ErrorCode::InvalidMember, "key_ops");
+    for (i, op) in ops.iter().enumerate() {
+        if ops.iter().skip(i + 1).any(|other| other == op) {
+            return Err(invalid);
+        }
+    }
+    let defined = match key_use {
+        Some("sig") => SIG_OPS,
+        Some("enc") => ENC_OPS,
+        _ => return Ok(()),
+    };
+    let other = if defined == SIG_OPS { ENC_OPS } else { SIG_OPS };
+    if ops.iter().any(|op| other.contains(&op.as_str())) {
+        return Err(invalid);
+    }
+    Ok(())
 }
 
 fn optional_str_array(

@@ -32,7 +32,7 @@ use super::{JwsKey, KeyAgreement, Signature, to_signature_error};
 use crate::crypto::{Backend, CryptoError, Zeroizing};
 use crate::error::{Error, ErrorCode};
 use crate::jwa::{Curve, HashAlgorithm, KeyType, Registry, SignatureAlgorithm, Support};
-use crate::jwk::{EcKey, Jwk, KeyMaterial, OctKey, OkpKey, Secret};
+use crate::jwk::{EcKey, Jwk, KeyMaterial, KeyPurpose, OctKey, OkpKey, Secret};
 
 /// A JWS key in memory, bound to one algorithm.
 pub struct SoftwareKey<B: Backend> {
@@ -69,8 +69,8 @@ impl<B: Backend> SoftwareKey<B> {
     ///
     /// [`ErrorCode::UnsupportedAlgorithm`] if `alg` is not registered as available or
     /// the backend lacks it; [`ErrorCode::KeyMismatch`] if the key's type, curve or own
-    /// `alg` does not fit, or its private part does not match its public part; the
-    /// errors of [`Jwk::check`].
+    /// `alg` does not fit, its `use` or `key_ops` is not for signatures, or its private
+    /// part does not match its public part; the errors of [`Jwk::check`].
     pub fn from_jwk(
         jwk: &Jwk,
         alg: SignatureAlgorithm,
@@ -82,6 +82,7 @@ impl<B: Backend> SoftwareKey<B> {
             .filter(|e| e.support == Support::Available)
             .ok_or(UNSUPPORTED)?;
         jwk.check(registry)?;
+        jwk.require(KeyPurpose::Signature)?;
         // RFC 7517 §4.4: a key that names its algorithm is only for that algorithm.
         if jwk.key_type() != entry.key_type || jwk.alg.as_deref().is_some_and(|a| a != alg.as_str())
         {
@@ -293,10 +294,13 @@ impl SymmetricKey {
     ///
     /// # Errors
     ///
-    /// [`ErrorCode::KeyMismatch`] for a key that is not `oct`, the errors of
-    /// [`Jwk::check`].
+    /// [`ErrorCode::KeyMismatch`] for a key that is not `oct` or whose `use` or `key_ops`
+    /// is not for encryption, the errors of [`Jwk::check`].
     pub fn from_jwk(jwk: &Jwk, registry: &Registry) -> Result<Self, Error> {
         jwk.check(registry)?;
+        if !jwk.allows(KeyPurpose::Encryption) && !jwk.allows(KeyPurpose::Decryption) {
+            return Err(Error::new(ErrorCode::KeyMismatch, "use or key_ops"));
+        }
         let KeyMaterial::Oct(k) = &jwk.material else {
             return Err(MISMATCH);
         };
@@ -354,10 +358,12 @@ impl<B: Backend> SoftwareAgreementKey<B> {
     /// # Errors
     ///
     /// [`ErrorCode::MissingPrivateKey`] without `d`, [`ErrorCode::KeyMismatch`] for a key
-    /// that is not EC, [`ErrorCode::UnsupportedAlgorithm`] if the backend has no ECDH on
+    /// that is not EC or whose `use` or `key_ops` is not for decryption,
+    /// [`ErrorCode::UnsupportedAlgorithm`] if the backend has no ECDH on
     /// its curve; the errors of [`Jwk::check`].
     pub fn from_jwk(jwk: &Jwk, registry: &Registry, backend: Arc<B>) -> Result<Self, Error> {
         jwk.check(registry)?;
+        jwk.require(KeyPurpose::Decryption)?;
         let KeyMaterial::Ec(k) = &jwk.material else {
             return Err(MISMATCH);
         };

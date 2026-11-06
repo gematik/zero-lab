@@ -90,7 +90,7 @@ use crate::jwa::{
     HashAlgorithm, KeyEncryptionAlgorithm, KeyEncryptionEntry, KeyManagementMode, KeyType,
     Registry, Support,
 };
-use crate::jwk::{EcKey, Jwk, KeyMaterial};
+use crate::jwk::{EcKey, Jwk, KeyMaterial, KeyPurpose};
 use crate::keys::{AsyncKeyAgreement, KeyAgreement, SymmetricKey};
 use crate::profile::Policy;
 
@@ -604,9 +604,8 @@ fn recipient_point(
     let KeyMaterial::Ec(k) = &jwk.material else {
         return Err(Error::new(ErrorCode::KeyMismatch, "key agreement key"));
     };
-    if jwk.alg.as_deref().is_some_and(|own| own != alg.as_str())
-        || jwk.key_use.as_deref().is_some_and(|u| u != "enc")
-    {
+    jwk.require(KeyPurpose::Encryption)?;
+    if jwk.alg.as_deref().is_some_and(|own| own != alg.as_str()) {
         return Err(Error::new(
             ErrorCode::KeyMismatch,
             "key for another algorithm",

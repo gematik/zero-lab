@@ -612,20 +612,170 @@ fn rfc_7517_4_7_x5c_is_an_array_of_strings_kept_as_given() {
     }
 }
 
-/// A set skips keys of a type it does not know; a broken key of a known type fails the
-/// whole set rather than silently shrinking it.
+/// A key the set cannot read is ignored, as §5 says it should be: an unknown `kty`, a
+/// required member missing, a member of the wrong type or encoding. The set itself must be
+/// sound: a document that is not a set, or has a duplicate member anywhere, fails whole.
 #[test]
-fn rfc_7517_5_a_set_skips_unknown_key_types_but_not_broken_keys() {
-    let set = JwkSet::parse(r#"{"keys":[{"kty":"XYZ"},{"kty":"oct","k":"AQ"}]}"#).unwrap();
+fn rfc_7517_5_a_set_ignores_keys_it_cannot_read_but_not_a_broken_document() {
+    let set = JwkSet::parse(
+        r#"{"keys":[
+            {"kty":"XYZ"},
+            {"kty":"oct"},
+            {"kty":"oct","k":"AQ=="},
+            {"kty":"oct","k":"AQ","kid":7},
+            {"kty":"oct","k":"AQ","key_ops":["sign","sign"]},
+            {"kty":"oct","k":"AQ","kid":"good"}]}"#,
+    )
+    .unwrap();
     assert_eq!(set.keys.len(), 1);
+    assert_eq!(set.keys[0].kid.as_deref(), Some("good"));
     for text in [
-        r#"{"keys":[{"kty":"oct"},{"kty":"oct","k":"AQ"}]}"#,
-        r#"{"keys":[{"kty":"oct","k":"AQ=="}]}"#,
+        r#"{"keys":[{"kty":"oct","k":"AQ","k":"Ag"}]}"#,
         r#"{"keys":["x"]}"#,
         r#"{"keys":{}}"#,
+        r#"{"keys":[}"#,
         "{}",
     ] {
         assert!(JwkSet::parse(text).is_err(), "{text}");
+    }
+}
+
+/// `key_ops` values MUST NOT repeat, and with `use` they MUST agree: `sig` with `sign`
+/// and `verify`, `enc` with the encryption operations. A `use` the RFC does not define is
+/// not judged here; it allows nothing when the key is used.
+#[test]
+fn rfc_7517_4_3_key_ops_do_not_repeat_and_agree_with_use() {
+    let key = |members: &str| Jwk::parse(&format!(r#"{{"kty":"oct","k":"AQ",{members}}}"#));
+    for refused in [
+        r#""key_ops":["sign","sign"]"#,
+        r#""use":"sig","key_ops":["encrypt"]"#,
+        r#""use":"sig","key_ops":["verify","wrapKey"]"#,
+        r#""use":"enc","key_ops":["sign"]"#,
+    ] {
+        assert_eq!(
+            key(refused).map_err(|e| e.code()),
+            Err(ErrorCode::InvalidMember),
+            "{refused}"
+        );
+    }
+    for accepted in [
+        r#""key_ops":["sign","verify"]"#,
+        r#""use":"sig","key_ops":["verify"]"#,
+        r#""use":"enc","key_ops":["wrapKey","unwrapKey"]"#,
+        r#""use":"tls","key_ops":["sign"]"#,
+        r#""key_ops":["frobnicate"]"#,
+    ] {
+        assert!(key(accepted).is_ok(), "{accepted}");
+    }
+}
+
+/// A key goes only to what its `use` and `key_ops` allow: a signature key does not
+/// encrypt or decrypt, an encryption key does not sign or verify, and a `use` or
+/// operation this library does not know allows nothing. A key that states neither allows
+/// everything.
+#[test]
+fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
+    use jwz::jwk::KeyPurpose;
+    let with = |members: &str| {
+        let mut text = RFC7515_A3_KEY.trim_end_matches('}').to_string();
+        if !members.is_empty() {
+            text.push(',');
+            text.push_str(members);
+        }
+        text.push('}');
+        Jwk::parse(&text).unwrap()
+    };
+    let registry = Registry::standard();
+    let signs = |jwk: &Jwk| {
+        SoftwareKey::from_jwk(jwk, SignatureAlgorithm::ES256, &registry, backend())
+            .map(|_| ())
+            .map_err(|e| e.code())
+    };
+    for allowed in ["", r#""use":"sig""#, r#""key_ops":["verify"]"#] {
+        assert_eq!(signs(&with(allowed)), Ok(()), "{allowed}");
+        assert!(with(allowed).allows(KeyPurpose::Signature), "{allowed}");
+    }
+    for refused in [
+        r#""use":"enc""#,
+        r#""use":"tls""#,
+        r#""key_ops":["deriveKey"]"#,
+        r#""key_ops":["frobnicate"]"#,
+    ] {
+        assert_eq!(
+            signs(&with(refused)),
+            Err(ErrorCode::KeyMismatch),
+            "{refused}"
+        );
+    }
+
+    #[cfg(feature = "jwe")]
+    {
+        use jwz::header::HeaderParams;
+        use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm};
+        use jwz::jwe::{self, EncryptionKey};
+        use jwz::keys::SymmetricKey;
+
+        let agrees = |jwk: &Jwk| {
+            SoftwareAgreementKey::from_jwk(jwk, &registry, backend())
+                .map(|_| ())
+                .map_err(|e| e.code())
+        };
+        let encrypts_to = |jwk: &Jwk| {
+            jwe::encrypt(
+                b"x",
+                KeyEncryptionAlgorithm::ECDH_ES,
+                ContentEncryptionAlgorithm::A256GCM,
+                EncryptionKey::Public(&jwk.public()),
+                HeaderParams::new(),
+                &registry,
+                backend().as_ref(),
+            )
+            .map(|_| ())
+            .map_err(|e| e.code())
+        };
+        for allowed in ["", r#""use":"enc""#, r#""key_ops":["deriveKey"]"#] {
+            assert_eq!(agrees(&with(allowed)), Ok(()), "{allowed}");
+            assert_eq!(encrypts_to(&with(allowed)), Ok(()), "{allowed}");
+        }
+        assert_eq!(
+            agrees(&with(r#""key_ops":["encrypt"]"#)),
+            Err(ErrorCode::KeyMismatch),
+            "encrypt is not decrypt"
+        );
+        assert_eq!(
+            encrypts_to(&with(r#""key_ops":["decrypt"]"#)),
+            Err(ErrorCode::KeyMismatch),
+            "decrypt is not encrypt"
+        );
+        for refused in [r#""use":"sig""#, r#""key_ops":["sign","verify"]"#] {
+            assert_eq!(
+                agrees(&with(refused)),
+                Err(ErrorCode::KeyMismatch),
+                "{refused}"
+            );
+            assert_eq!(
+                encrypts_to(&with(refused)),
+                Err(ErrorCode::KeyMismatch),
+                "{refused}"
+            );
+        }
+
+        let symmetric = |members: &str| {
+            let jwk = Jwk::parse(&format!(
+                r#"{{"kty":"oct","k":"GZy6sIZ6wl9NJOKB-jnmVQ"{members}}}"#
+            ))
+            .unwrap();
+            SymmetricKey::from_jwk(&jwk, &registry)
+                .map(|_| ())
+                .map_err(|e| e.code())
+        };
+        assert_eq!(symmetric(r#","use":"enc""#), Ok(()));
+        assert_eq!(symmetric(r#","key_ops":["unwrapKey"]"#), Ok(()));
+        assert_eq!(symmetric(r#","use":"sig""#), Err(ErrorCode::KeyMismatch));
+        assert_eq!(
+            symmetric(r#","key_ops":["sign"]"#),
+            Err(ErrorCode::KeyMismatch)
+        );
     }
 }
 
