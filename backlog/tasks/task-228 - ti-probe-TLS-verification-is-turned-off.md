@@ -1,9 +1,10 @@
 ---
 id: TASK-228
 title: 'ti probe: TLS verification is turned off'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T07:36:00Z'
+updated_date: '2026-11-06T11:35:00Z'
 labels:
   - ti-cli
   - security
@@ -22,3 +23,13 @@ Found while planning TASK-97: ti-cli/src/commands/probe.rs disables certificate 
 <!-- AC:BEGIN -->
 - [ ] #1 the probe verifies with the endpoint's profile and reports the TLS verdict
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+On spec/pki-validation (with TASK-97):
+1. endpoints.json: a tls field per endpoint, ti or web, web by default (internet and catalog instances); epa-1/epa-2 ti in every env. idpd-ti and erx stay web (the IDP-Dienst and E-Rezept present public certificates); a refusal shows it if not.
+2. probe.rs: one agent per profile through ti_tls::ureq::agent. web: http::web_config (system roots or --cacert/--capath). ti: the env's TSL and roots loaded once through Session/load_trust, ServerCheck plus OcspChecker over a probe-timed transport; loaded only when an endpoint needs it, a load failure fails those endpoints with its reason instead of aborting.
+3. A refused certificate is an answer: status fail, answered true, detail 'TLS <profile>: <reason>'; JSON gains tls {profile, verified}.
+4. Tests: endpoint profiles per env; refusal classification; end to end against a local TLS server with a self-signed P-256 fixture (web refuses: unknown issuer). Schema, AGENTS, README, release notes.
+<!-- SECTION:PLAN:END -->
