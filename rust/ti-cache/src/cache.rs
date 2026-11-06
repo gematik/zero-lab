@@ -24,31 +24,67 @@
 //! [`Cache`]: HTTP-style caching of named bodies in any [`CacheStore`].
 
 use core::time::Duration;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
-use ti_types::Clock;
+use ti_types::{Clock, Timestamp};
 
 use crate::cache_store::{CacheEntry, CacheError, CacheStore, Meta, Source};
 
 /// How [`Cache`] uses its store.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CachePolicy {
-    /// Serve from the store without asking the origin while an entry is younger than this.
+    /// Serve from the store without asking the origin while an entry is younger than this;
+    /// with [`origin_freshness`](Self::origin_freshness), only for an entry whose origin
+    /// stated no lifetime.
     pub max_age: Duration,
-    /// When the origin fails, keep serving an entry for this long past `max_age`.
+    /// When the origin fails, keep serving an entry for this long past its lifetime.
     pub stale_if_error: Duration,
     /// Never contact the origin; serve whatever the store holds, however old. For
     /// air-gapped setups with a pre-populated store; callers age entries out by their
     /// own freshness rules.
     pub offline: bool,
+    /// Let the origin's lifetime ([`Meta::max_age`], from its `Cache-Control`) decide
+    /// freshness, within these bounds. `None`: every entry lives `max_age`, whatever the
+    /// origin says.
+    pub origin_freshness: Option<FreshnessBounds>,
+    /// [`Cache::force`] asks the origin at most once in this interval per key.
+    pub min_forced_interval: Duration,
+}
+
+/// The shortest and longest lifetime an origin may give its responses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FreshnessBounds {
+    /// A shorter lifetime, `no-cache` and `no-store` among them, is raised to this, so an
+    /// origin cannot make every lookup a request.
+    pub min: Duration,
+    /// A longer lifetime is cut to this, so a change at the origin is seen in time.
+    pub max: Duration,
 }
 
 impl Default for CachePolicy {
-    /// One hour fresh, a day of grace on origin errors, online.
+    /// One hour fresh whatever the origin says, a day of grace on origin errors, online,
+    /// every [`Cache::force`] honoured.
     fn default() -> Self {
         CachePolicy {
             max_age: Duration::from_hours(1),
             stale_if_error: Duration::from_hours(24),
             offline: false,
+            origin_freshness: None,
+            min_forced_interval: Duration::ZERO,
+        }
+    }
+}
+
+impl CachePolicy {
+    /// How long `meta`'s body is fresh.
+    fn lifetime(&self, meta: &Meta) -> Duration {
+        match self.origin_freshness {
+            None => self.max_age,
+            Some(bounds) => meta
+                .max_age
+                .unwrap_or(self.max_age)
+                .clamp(bounds.min, bounds.max.max(bounds.min)),
         }
     }
 }
@@ -125,6 +161,8 @@ pub struct Cache<S, C> {
     store: S,
     clock: C,
     policy: CachePolicy,
+    /// When [`Cache::force`] last let a key through, in this process.
+    forced: Mutex<HashMap<String, Timestamp>>,
 }
 
 impl<S: CacheStore, C: Clock> Cache<S, C> {
@@ -134,6 +172,7 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
             store,
             clock,
             policy,
+            forced: Mutex::new(HashMap::new()),
         }
     }
 
@@ -143,9 +182,9 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
     }
 
     /// Makes the next [`get`](Self::get) of `key` ask the origin, without validators it
-    /// could answer "not modified" to. The entry just passes `max_age`, so it still serves
-    /// an origin that fails, for the rest of `stale_if_error`. Does nothing when offline,
-    /// where nothing could replace it.
+    /// could answer "not modified" to. The entry just passes its lifetime, so it still
+    /// serves an origin that fails, for the rest of `stale_if_error`. Does nothing when
+    /// offline, where nothing could replace it.
     ///
     /// # Errors
     ///
@@ -157,13 +196,37 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
         let Some(mut entry) = self.store.get(key).await? else {
             return Ok(());
         };
-        entry.meta.fetched_at = entry
-            .meta
-            .fetched_at
-            .min(self.clock.now() - self.policy.max_age);
+        let lifetime = self.policy.lifetime(&entry.meta);
+        entry.meta.fetched_at = entry.meta.fetched_at.min(self.clock.now() - lifetime);
         entry.meta.etag = None;
         entry.meta.last_modified = None;
         self.store.put(key, &entry).await
+    }
+
+    /// [`expire`](Self::expire) for a caller that suspects the origin has news (a key it
+    /// does not know yet), at most once per `min_forced_interval` and key, so a stream of
+    /// such suspicions does not become a stream of requests. Whether the entry was
+    /// expired.
+    ///
+    /// # Errors
+    ///
+    /// A fault of the store.
+    pub async fn force(&self, key: &str) -> Result<bool, CacheError> {
+        let now = self.clock.now();
+        {
+            let mut forced = self.forced.lock().map_err(|_| CacheError {
+                message: "forced-refresh times poisoned".into(),
+            })?;
+            if forced
+                .get(key)
+                .is_some_and(|last| now.since(*last) < self.policy.min_forced_interval)
+            {
+                return Ok(false);
+            }
+            forced.insert(key.to_owned(), now);
+        }
+        self.expire(key).await?;
+        Ok(true)
     }
 
     /// The entry under `key` whatever its age, for a body that stays usable past
@@ -193,7 +256,7 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
         let now = self.clock.now();
         if let Some(entry) = &cached {
             let age = now.since(entry.meta.fetched_at);
-            if age < self.policy.max_age || self.policy.offline {
+            if age < self.policy.lifetime(&entry.meta) || self.policy.offline {
                 return Ok(stored(entry.clone(), None));
             }
         } else if self.policy.offline {
@@ -230,7 +293,7 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
             Err(error) => match cached {
                 Some(entry)
                     if now.since(entry.meta.fetched_at)
-                        < self.policy.max_age + self.policy.stale_if_error =>
+                        < self.policy.lifetime(&entry.meta) + self.policy.stale_if_error =>
                 {
                     Ok(stored(entry, Some(error)))
                 }
@@ -283,6 +346,7 @@ mod tests {
             max_age: HOUR,
             stale_if_error: 5 * HOUR,
             offline,
+            ..CachePolicy::default()
         }
     }
 
@@ -394,6 +458,101 @@ mod tests {
         clock.advance(100 * HOUR);
         let old = block_on(offline.get("k", origin(&calls, Err("unused"), &clock))).unwrap();
         assert_eq!((old.meta.source, calls.get()), (Source::Cache, 1));
+    }
+
+    fn with_max_age(at: Timestamp, max_age: Option<Duration>) -> OriginResponse {
+        OriginResponse::Body(CacheEntry {
+            body: b"jwks".to_vec(),
+            meta: Meta {
+                max_age,
+                ..meta(at)
+            },
+        })
+    }
+
+    /// Without `origin_freshness` the origin's lifetime is ignored: what ti-pki and
+    /// ti-connector-client rely on.
+    #[test]
+    fn the_policy_alone_decides_freshness_unless_the_origin_is_asked() {
+        let (store, clock, calls) = (
+            MemoryCacheStore::new(),
+            TestClock(Cell::new(T0)),
+            Cell::new(0),
+        );
+        let cache = Cache::new(&store, &clock, policy(false));
+        let long = Some(10 * HOUR);
+        block_on(cache.get("k", origin(&calls, Ok(with_max_age(T0, long)), &clock))).unwrap();
+        clock.advance(2 * HOUR);
+        block_on(cache.get("k", origin(&calls, Ok(with_max_age(T0, long)), &clock))).unwrap();
+        assert_eq!(calls.get(), 2, "max_age, not the origin's 10 h");
+    }
+
+    /// The origin's lifetime counts within the bounds: shorter is raised, longer cut,
+    /// none means `max_age`.
+    #[test]
+    fn the_origins_lifetime_counts_within_the_bounds() {
+        let bounded = CachePolicy {
+            origin_freshness: Some(FreshnessBounds {
+                min: Duration::from_mins(5),
+                max: 24 * HOUR,
+            }),
+            stale_if_error: Duration::ZERO,
+            ..policy(false)
+        };
+        for (stated, lifetime) in [
+            (Some(Duration::ZERO), Duration::from_mins(5)),
+            (Some(2 * HOUR), 2 * HOUR),
+            (Some(100 * HOUR), 24 * HOUR),
+            (None, HOUR),
+        ] {
+            let (store, clock, calls) = (
+                MemoryCacheStore::new(),
+                TestClock(Cell::new(T0)),
+                Cell::new(0),
+            );
+            let cache = Cache::new(&store, &clock, bounded.clone());
+            block_on(cache.get("k", origin(&calls, Ok(with_max_age(T0, stated)), &clock))).unwrap();
+            clock.advance(lifetime.saturating_sub(Duration::from_secs(1)));
+            block_on(cache.get("k", origin(&calls, Err("unused"), &clock))).unwrap();
+            assert_eq!(calls.get(), 1, "{stated:?}: still fresh");
+            clock.advance(Duration::from_secs(1));
+            assert_eq!(
+                block_on(cache.get("k", origin(&calls, Err("down"), &clock))),
+                Err(CacheLookupError::Origin("down")),
+                "{stated:?}: stale after {lifetime:?}, and no grace"
+            );
+        }
+    }
+
+    /// A stream of forced refreshes reaches the origin once per `min_forced_interval`.
+    #[test]
+    fn force_asks_the_origin_at_most_once_per_interval() {
+        let (store, clock, calls) = (
+            MemoryCacheStore::new(),
+            TestClock(Cell::new(T0)),
+            Cell::new(0),
+        );
+        let cache = Cache::new(
+            &store,
+            &clock,
+            CachePolicy {
+                min_forced_interval: Duration::from_mins(1),
+                ..policy(false)
+            },
+        );
+        block_on(cache.get("k", origin(&calls, Ok(body(T0)), &clock))).unwrap();
+        assert!(block_on(cache.force("k")).unwrap());
+        block_on(cache.get("k", origin(&calls, Ok(body(T0)), &clock))).unwrap();
+        assert_eq!(calls.get(), 2, "the forced refresh went out");
+        clock.advance(Duration::from_secs(59));
+        assert!(!block_on(cache.force("k")).unwrap(), "too soon");
+        block_on(cache.get("k", origin(&calls, Err("unused"), &clock))).unwrap();
+        assert_eq!(calls.get(), 2, "served from the store");
+        assert!(block_on(cache.force("other")).unwrap(), "per key");
+        clock.advance(Duration::from_secs(1));
+        assert!(block_on(cache.force("k")).unwrap());
+        block_on(cache.get("k", origin(&calls, Ok(body(T0)), &clock))).unwrap();
+        assert_eq!(calls.get(), 3);
     }
 
     #[test]

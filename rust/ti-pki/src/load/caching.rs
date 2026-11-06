@@ -285,6 +285,7 @@ mod tests {
             max_age: HOUR,
             stale_if_error: 5 * HOUR,
             offline,
+            ..CachePolicy::default()
         }
     }
 

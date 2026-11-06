@@ -1,13 +1,17 @@
 # ti-cache
 
 HTTP-style caching for gematik Telematikinfrastruktur (TI) clients: whatever a client
-downloads (roots.json, the TSL, a Konnektor's service directory) goes through one
+downloads (roots.json, the TSL, a Konnektor's service directory, a JWK Set) goes through one
 `Cache`, which
 - serves an entry without asking the origin while it is younger than `max_age`;
 - then revalidates it with its `ETag`/`Last-Modified`, so an unchanged body is not
   downloaded again;
 - keeps serving the stored copy for `stale_if_error` when the origin fails, and says so;
-- in offline mode never asks the origin at all.
+- in offline mode never asks the origin at all;
+- with `origin_freshness`, lets the origin's `Cache-Control` decide how long an entry is
+  fresh, within a floor and a cap (`CacheControl` reads the field, RFC 9111 §5.2);
+- with `force`, refreshes an entry on a caller's suspicion (a JWK Set without the key a
+  token names), at most once per `min_forced_interval`.
 
 The store is a dumb key/value trait (`CacheStore`); the semantics live in `Cache`, so a
 store is trivial to back with memory, files, Redis or a browser API. The origin is a

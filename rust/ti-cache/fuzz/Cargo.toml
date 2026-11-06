@@ -1,0 +1,25 @@
+# cargo-fuzz target for what an origin sends ti-cache: the `Cache-Control` field (nightly;
+# `just fuzz-ti-cache`). Outside the workspace so that libfuzzer never enters the workspace's
+# lock file and checks.
+[package]
+name = "ti-cache-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+ti-cache = { path = ".." }
+
+[[bin]]
+name = "cache_control"
+path = "fuzz_targets/cache_control.rs"
+test = false
+doc = false
+bench = false
