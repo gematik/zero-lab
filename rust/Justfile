@@ -912,15 +912,17 @@ mutants crate:
     cargo mutants -p {{crate}} --in-place {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }}
 
 # `just release` checks the score; commit mutation-scores.toml afterwards.
-# Measure a crate's mutation score on the committed tree and record it in mutation-scores.toml
-mutants-record crate:
+# Measure a crate's mutation score on the committed tree and record it in mutation-scores.toml;
+# JOBS > 1 tests that many mutants at once, each in its own copy of the tree
+mutants-record crate jobs="1":
     #!/usr/bin/env bash
     set -euo pipefail
     [[ -z "$(git status --porcelain -- {{crate}})" ]] || { echo "mutants-record: {{crate}} has uncommitted changes" >&2; exit 1; }
     out=target/mutants/{{crate}}
     mkdir -p "$out"
     # A missed mutant makes cargo-mutants exit non-zero; the score is the verdict here.
-    cargo mutants -p {{crate}} --in-place --output "$out" {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }} || true
+    # In place one at a time; more jobs need a copy of the tree each, as they mutate at once.
+    cargo mutants -p {{crate}} {{ if jobs == "1" { "--in-place" } else { "--jobs " + jobs } }} --output "$out" {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }} || true
     python3 -I scripts/mutation.py record {{crate}} "$out/mutants.out/outcomes.json"
 
 # Each score must exist, belong to the crate as it is now, and reach the crate's threshold.
