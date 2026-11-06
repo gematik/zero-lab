@@ -89,9 +89,10 @@ the inner channels of the VAU and ZETA/ASL, Certificate Transparency, and the se
   path and verdict rules of [`spec/pki-path`](../pki-path/README.md) (PATH-001 to 007, VALID-001 to 007), the
   type among the TLS server types of Tab_PKI_405, C.FD.TLS-S and C.ZD.TLS-S (`profile_type_mismatch`), its
   baseline of Tab_PKI_250 and Tab_PKI_247, and its key under VALID-002.
-- **TLSV-031** The name is exact: the commonName MUST be the reference host name, and a `dNSName` subject
-  alternative name, where present, MUST be too (GS-A_5077, Tab_PKI_250, A_30046 (5)). A wildcard matches
-  nothing: a TI service's certificate names its own FQDN.
+- **TLSV-031** The reference host name MUST equal the commonName or one of the `dNSName` subject
+  alternative names (GS-A_5077, Tab_PKI_247, Tab_PKI_250); a certificate may name a service under several
+  names. The match is exact: a wildcard matches nothing, since a TI service's certificate names its own
+  FQDNs.
 - **TLSV-032** Revocation is OCSP and cannot be switched off (Tab_PKI_273: Prüfmodus OCSP, no offline mode,
   TOLERATE_OCSP_FAILURE false). A stapled response (RFC 6066 §8) is used when it verifies under OCSP-001 and
   is within the OCSP grace period, 10 minutes by default and configurable (A_24913, TUC_PKI_018 7b).
@@ -166,7 +167,7 @@ The first failing step's code is the result.
 |---|---|
 | GS-A_4662, GS-A_5542 | TLSV-002 |
 | GS-A_4663, Tab_PKI_273, TUC_PKI_018 | TLSV-030, TLSV-032 |
-| GS-A_5077, A_30046 (5) | TLSV-031 |
+| GS-A_5077 | TLSV-031 |
 | GS-A_5336 | TLSV-033 |
 | GS-A_4385, A_18467, A_18464, GS-A_4387, GS-A_5035, A_29774 | TLSV-010 |
 | GS-A_4384-03, A_29775, A_29776 | TLSV-011, TLSV-012 |
