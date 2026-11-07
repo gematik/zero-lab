@@ -3,10 +3,10 @@ id: TASK-232
 title: >-
   ti-tls: bound the verdict cache and swap a verifier's trust snapshot (TASK-97
   AC 2)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T12:16:00Z'
-updated_date: '2026-11-07T08:54:00Z'
+updated_date: '2026-11-07T10:19:00Z'
 labels:
   - ti-tls
   - security
@@ -40,3 +40,9 @@ TASK-98.2 review: the Go verifiers also stop reuse at the status's nextUpdate (T
 
 2026-11-07: done on branch task-232 (3d30052d). Verdicts keep at most 4096; each insert drops expired entries, at the bound the entry expiring first goes. TiVerifier::replace swaps check and verdicts as one Arc'd snapshot behind an RwLock held only to clone the Arc (no arc-swap); a handshake in flight finishes on its snapshot. ti-pki tls::Verdict gains status_next_update; ti and CRL-based web verdicts end at nextUpdate (TLSV-050), as in Go. Tests: tlsv_050_the_verdict_cache_is_bounded_and_drops_expired_verdicts, tlsv_050_nothing_without_reuse_left_is_kept, tlsv_050_a_ti_verdict_ends_at_its_status_next_update, tlsv_050_a_crl_verdict_ends_at_the_lists_next_update, tlsv_050_a_ti_verifiers_trust_material_is_replaced_in_use. tls-bench: ti cold 815us, cached 584ns.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-tls's verdict cache keeps at most 4096 verdicts and drops expired ones on insert; TiVerifier::replace swaps the TI trust snapshot and its verdicts atomically while connections use the verifier; ti and CRL-based web verdicts end at their status's nextUpdate (TLSV-050). No new dependency. Merged from task-232 (3d30052d).
+<!-- SECTION:FINAL_SUMMARY:END -->

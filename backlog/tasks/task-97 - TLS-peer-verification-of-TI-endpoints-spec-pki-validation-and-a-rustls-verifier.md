@@ -1,10 +1,10 @@
 ---
 id: TASK-97
 title: 'TLS server verification as core hooks: TI-PKI and hardened Web-PKI'
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-10-15 05:20
-updated_date: '2026-11-07T08:54:00Z'
+updated_date: '2026-11-07T10:19:00Z'
 labels:
   - ti-pki
   - spec
@@ -60,3 +60,9 @@ Maintainer, 2026-11-06: web profile uses the system's default roots, as the Go i
 
 2026-11-07: AC 2 met by TASK-232 (branch task-232): bounded verdict cache, ti snapshot swapped atomically. The profiles live in ti-tls (verifiers, web) over ti-pki (ti check), as decided.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Both TLS profiles as core hooks: spec/pki-validation (ti, web) with corpus; ti profile in ti-pki and rustls verifiers in ti-tls with a bounded verdict cache over a replaceable trust snapshot (TASK-232); benchmarks with a budget (just tls-bench); ureq adapter and ti-cli take the profile per endpoint without system-store fallback, .kon pinning unchanged. Go follows in TASK-98.
+<!-- SECTION:FINAL_SUMMARY:END -->
