@@ -22,8 +22,7 @@ ti-pkcs12 = { workspace = true, features = ["encode"] }
 ti-connector-client = { workspace = true, features = ["ureq"] }
 # base64url of the IDP's signed discovery document in `probe`.
 base64ct.workspace = true
-ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod"] }
-ti-report.workspace = true
+ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod", "serde"] }
 # `identity sign`: JWS with the SMC-B or HBA key, ES256 on brainpoolP256r1 (ti-jwz's brainpool) or
 # P-256 (jwz's own backend); the keys come from PKCS#8 (`pkcs8`, `sec1`), not from JWKs.
 jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }

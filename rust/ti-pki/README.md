@@ -123,7 +123,8 @@ let config = TrustConfig {
 | `test-util` | `TrustConfig::for_lab_ca`, `FixedClock` and `MockTransport` for tests in downstream crates |
 | `brainpool` (default) | ECDSA on brainpoolP256r1 / brainpoolP384r1 in the default algorithm set; most TI roots and CAs and both TSL signer CAs need it |
 | `rsa` (default) | RSA PKCS#1 v1.5 and PSS in the default algorithm set; the historical RSA roots GEM.RCA2/6/9 need it for the roots walk |
-| `load` | Loaders, cache, reloader; no HTTP client or executor; builds for wasm32 |
+| `load` | Loaders, cache, reloader, and `offline`: a TSL and roots.json the host holds verified, certificates checked against them; no HTTP client or executor; builds for wasm32 |
+| `serde` | `Serialize` for the types of `model`, the JSON of the `ti` CLI and of `ti-wasm` |
 | `os` | `FileTransport`, `Timestamp::now`, bundle files |
 
 ## License

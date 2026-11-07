@@ -27,6 +27,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use ti_pki::key::{KeyStatus, classify_key};
+use ti_pki::model;
 use ti_pki::{Env, Timestamp};
 use x509_cert::der::oid::ObjectIdentifier;
 
@@ -34,7 +35,7 @@ use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, date, span, when};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex};
+use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone, hex};
 use crate::trust::Session;
 
 /// The JSON document.
@@ -89,11 +90,11 @@ struct P12KeyInfo {
     certificate: Option<usize>,
 }
 
-/// A certificate as `ti_report` describes it, with what a PKCS#12 file adds.
+/// A certificate as `ti_pki::model` describes it, with what a PKCS#12 file adds.
 #[derive(Serialize)]
 pub(super) struct CertificateInfo {
     #[serde(flatten)]
-    info: ti_report::CertificateInfo,
+    info: model::Certificate,
     /// The input is a PKCS#12 file that also holds this certificate's private key.
     private_key: bool,
     /// The `friendlyName` of its bag, in a PKCS#12 file.
@@ -103,7 +104,7 @@ pub(super) struct CertificateInfo {
 }
 
 impl core::ops::Deref for CertificateInfo {
-    type Target = ti_report::CertificateInfo;
+    type Target = model::Certificate;
 
     fn deref(&self) -> &Self::Target {
         &self.info
@@ -391,7 +392,7 @@ pub(super) fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInf
         (name.clone(), id.as_deref().map(hex_id))
     });
     CertificateInfo {
-        info: ti_report::describe(&loaded.certificate, now),
+        info: model::Certificate::new(&loaded.certificate, now),
         private_key: loaded.private_key,
         friendly_name,
         local_key_id,
@@ -818,7 +819,7 @@ fn validity(cert: &CertificateInfo, now: Timestamp) -> Line {
     }
 }
 
-fn oid_line(o: &OidInfo) -> Line {
+fn oid_line(o: &Oid) -> Line {
     let line = Line::code(&o.oid);
     match o.name {
         Some(name) => line.and_dim(format!(" {name}")),

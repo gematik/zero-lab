@@ -1640,7 +1640,6 @@ dependencies = [
  "ti-jwz",
  "ti-pkcs12",
  "ti-pki",
- "ti-report",
  "ti-tls",
  "ti-types",
  "traceability",
@@ -1780,17 +1779,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-report"
-version = "0.1.0"
-dependencies = [
- "const-oid",
- "serde",
- "serde_json",
- "sha2",
- "ti-pki",
-]
-
-[[package]]
 name = "ti-tls"
 version = "0.1.0"
 dependencies = [
@@ -1824,7 +1812,6 @@ dependencies = [
  "serde",
  "serde_json",
  "ti-pki",
- "ti-report",
  "traceability",
  "wasm-bindgen",
 ]

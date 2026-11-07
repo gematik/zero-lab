@@ -364,7 +364,7 @@ check-changed base="main":
         just jwz-rsa-guard brainpool-absent jwz
     fi
     # wasm32 holds the cores; a crate outside them leaves it as it was.
-    if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-report|ti-wasm|jwz|ti-jwz|ti-idpd-client|ti-directory-client' <<<"$CRATES"; then
+    if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-wasm|jwz|ti-jwz|ti-idpd-client|ti-directory-client' <<<"$CRATES"; then
         just wasm32 wasm-unsafe-free
     fi
     if grep -qw ti-pki <<<"$CRATES"; then just nonprod-absent; fi
@@ -427,7 +427,6 @@ wasm32:
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
-    cargo check -p ti-report --target wasm32-unknown-unknown
     cargo check -p ti-wasm --target wasm32-unknown-unknown
     cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
     cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
@@ -577,14 +576,15 @@ fuzz-ti-cli seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz every ti-pki parser of network bytes for `seconds` each (design time; nightly and
+# Fuzz every ti-pki parser of network bytes, and what ti-wasm hands ti-pki from a web page
+# (certificates, the TSL, a supplied roots.json), for `seconds` each (design time; nightly and
 # cargo-fuzz). Corpora start from ti-pki/fuzz/seeds and grow in ti-pki/fuzz/corpus (not
 # committed).
 fuzz-ti-pki seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
     cd ti-pki/fuzz
-    for target in detached_signature tsl_xml ocsp_response bundle certificate roots_json; do
+    for target in detached_signature tsl_xml ocsp_response bundle certificate roots_json describe_certificate verify_tsl verify_tsl_roots; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
             -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
@@ -642,19 +642,6 @@ fuzz-ti-cache seconds="30":
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
             -max_total_time={{seconds}} -max_len=4096 -print_final_stats=1 2>&1 \
-            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
-        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
-    done
-
-# Fuzz what ti-wasm hands ti-report from a web page: certificates, the TSL, a supplied roots.json
-fuzz-ti-report seconds="30":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd ti-report/fuzz
-    for target in describe_certificate verify_tsl verify_tsl_roots; do
-        mkdir -p "corpus/$target"
-        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
-            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
             | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done

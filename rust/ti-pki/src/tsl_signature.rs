@@ -265,7 +265,7 @@ pub struct SignedTsl {
     pub content: Vec<u8>,
 }
 
-/// The detached files of a list, as the loaders hand them on and ti-report takes them:
+/// The detached files of a list, as the loaders hand them on and `offline` takes them:
 /// the signature file and, when published with it, the signer's OCSP response.
 #[derive(Clone, Copy, Debug)]
 pub struct DetachedTsl<'a> {

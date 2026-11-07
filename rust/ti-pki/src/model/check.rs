@@ -23,31 +23,23 @@
 
 //! A certificate checked against an environment's verified TSL and roots, offline: what
 //! `ti pki verify --profile auto --offline` decides, as one document for a web view.
-//! `ti-wasm/schemas/check.json` describes it.
-//!
-//! [`CheckContext`] maps ti-pki's [`offline::Check`] to the document. Revocation is never
-//! checked: OCSP needs a network, and the report says so.
+//! `ti-wasm/schemas/check.json` describes it. Revocation is never checked: OCSP needs a
+//! network, and the document says so.
 
+#[cfg(feature = "load")]
 use std::borrow::Cow;
-use std::collections::HashSet;
 
-use serde::Serialize;
-use ti_pki::offline::{self, Outcome, ProfileChoice, RootsSource};
-use ti_pki::{Certificate, ChainPosition, Env, Timestamp, TrustConfig, ValidationResult};
-
-use crate::tsl::Finding;
-use crate::{CertificateInfo, SCHEMA, describe, fingerprint};
-
-/// The trust material of one environment, verified, ready to check certificates against.
-pub struct CheckContext {
-    check: offline::Check,
-    tsl: TslState,
-    /// Fingerprints of the certificates the TSL lists as services.
-    listed: HashSet<String>,
-}
+use super::{Certificate, Finding};
+#[cfg(feature = "load")]
+use super::{SCHEMA, fingerprint, roots_source};
+#[cfg(feature = "load")]
+use crate::offline::{self, Material, Outcome, ProfileChoice};
+#[cfg(feature = "load")]
+use crate::{ChainPosition, Timestamp, ValidationResult};
 
 /// The state of the trust material a check ran against.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct TslState {
     /// `valid` or `invalid`; nothing is trusted from an invalid list.
     pub result: &'static str,
@@ -63,10 +55,11 @@ pub struct TslState {
     pub roots_warning: Option<String>,
 }
 
-/// The document.
-#[derive(Clone, Debug, Serialize)]
-pub struct CheckReport {
-    /// [`SCHEMA`].
+/// An offline check of a certificate, as one document.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Check {
+    /// [`SCHEMA`](super::SCHEMA).
     pub schema: u32,
     /// The environment checked against, e.g. `prod`.
     pub environment: &'static str,
@@ -88,11 +81,12 @@ pub struct CheckReport {
     /// The end entity first, each issuer below it, the root last.
     pub tree: Vec<TrustNode>,
     /// Every certificate of the input, the end entity first, as `ti pki inspect` shows them.
-    pub certificates: Vec<CertificateInfo>,
+    pub certificates: Vec<Certificate>,
 }
 
 /// The profile a certificate was checked under.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ProfileUsed {
     /// The profile, e.g. `smcb`.
     pub name: &'static str,
@@ -103,7 +97,8 @@ pub struct ProfileUsed {
 }
 
 /// An error or warning of the validation.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Issue {
     /// The stable code, e.g. `expired`.
     pub code: &'static str,
@@ -114,9 +109,11 @@ pub struct Issue {
 }
 
 /// A node of the trust tree.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct TrustNode {
-    /// The certificate's [`fingerprint`] when the TSL lists it as a service.
+    /// The certificate's SHA-256 as lower-case hex, as the TSL view files it, when the
+    /// TSL lists it as a service.
     pub id: Option<String>,
     /// The common name.
     pub name: String,
@@ -128,46 +125,24 @@ pub struct TrustNode {
     pub state: &'static str,
 }
 
-impl CheckContext {
-    /// Verifies the TSL `tsl_xml` by its detached signature `tsl_signature` for `env` under `config` at `now`, with the roots of
-    /// `supplied_roots` if that roots.json walks from the anchor, else `config.roots`.
-    /// An invalid list is not an error: every check against it then reports it.
-    pub fn new(
-        env: Env,
-        config: TrustConfig,
-        supplied_roots: Option<&[u8]>,
-        tsl_xml: &[u8],
-        tsl_signature: &[u8],
-        now: Timestamp,
-    ) -> Self {
-        let check = offline::Check::new(env, config, supplied_roots, tsl_xml, tsl_signature, now);
-        let material = check.material();
-        let roots_source = match material.roots_source {
-            RootsSource::Supplied => "supplied",
-            RootsSource::Embedded => "embedded",
-        };
+#[cfg(feature = "load")]
+impl TslState {
+    /// The state of `material`.
+    pub fn new(material: &Material) -> Self {
+        let roots_source = roots_source(material.roots_source);
         let roots_warning = material.roots_warning.clone();
-        let (tsl, listed) = match &material.tsl {
-            Ok(verified) => {
-                let list = &verified.tsl;
-                let listed = list
-                    .services
-                    .iter()
-                    .filter_map(|s| s.certificate.as_ref())
-                    .map(|c| fingerprint(c.der()))
-                    .collect();
-                let state = TslState {
-                    result: "valid",
-                    error: None,
-                    sequence_number: Some(list.sequence_number),
-                    next_update: list.next_update.map(|t| t.to_string()),
-                    roots_source,
-                    roots_warning,
-                };
-                (state, listed)
-            }
-            Err(e) => {
-                let error = e.tsl.as_ref().map_or_else(
+        match &material.tsl {
+            Ok(verified) => TslState {
+                result: "valid",
+                error: None,
+                sequence_number: Some(verified.tsl.sequence_number),
+                next_update: verified.tsl.next_update.map(|t| t.to_string()),
+                roots_source,
+                roots_warning,
+            },
+            Err(e) => TslState {
+                result: "invalid",
+                error: Some(e.tsl.as_ref().map_or_else(
                     || Finding {
                         code: "roots_error",
                         code_number: None,
@@ -175,47 +150,46 @@ impl CheckContext {
                         detail: e.reason.clone(),
                     },
                     Finding::from,
-                );
-                let state = TslState {
-                    result: "invalid",
-                    error: Some(error),
-                    sequence_number: None,
-                    next_update: None,
-                    roots_source,
-                    roots_warning,
-                };
-                (state, HashSet::new())
-            }
-        };
-        CheckContext { check, tsl, listed }
+                )),
+                sequence_number: None,
+                next_update: None,
+                roots_source,
+                roots_warning,
+            },
+        }
     }
+}
 
-    /// The state of the trust material.
-    pub fn tsl(&self) -> &TslState {
-        &self.tsl
-    }
-
-    /// `certs`, the end entity first and any intermediates after it, checked at `now`.
+#[cfg(feature = "load")]
+impl Check {
+    /// The document of `outcome`, what `check` found for `certs` (the end entity first)
+    /// at `now`.
     ///
     /// # Panics
     ///
     /// If `certs` is empty.
-    pub fn check(&self, certs: &[Certificate], now: Timestamp) -> CheckReport {
+    pub fn new(
+        check: &offline::Check,
+        certs: &[crate::Certificate],
+        outcome: &Outcome,
+        now: Timestamp,
+    ) -> Self {
         let ee = &certs[0];
-        let mut report = CheckReport {
+        let tree = Tree { check, now };
+        let mut report = Check {
             schema: SCHEMA,
-            environment: self.check.env().as_str(),
+            environment: check.env().as_str(),
             result: "invalid",
-            tsl: self.tsl.clone(),
+            tsl: TslState::new(check.material()),
             profile: None,
             certificate_type: None,
             errors: Vec::new(),
             warnings: Vec::new(),
             revocation: "not_checked",
             tree: Vec::new(),
-            certificates: certs.iter().map(|c| describe(c, now)).collect(),
+            certificates: certs.iter().map(|c| Certificate::new(c, now)).collect(),
         };
-        let (profile, result) = match self.check.check(certs, now) {
+        let (profile, result) = match outcome {
             Outcome::Untrusted => {
                 report.errors.push(Issue {
                     code: "tsl_invalid",
@@ -223,7 +197,7 @@ impl CheckContext {
                     message: "the TSL of this environment is not valid; nothing can be trusted"
                         .to_owned(),
                 });
-                report.tree = vec![self.node(ee, &ee_role(ee, None), now, false)];
+                report.tree = vec![tree.node(ee, &ee_role(ee, None), false)];
                 return report;
             }
             Outcome::Validated { profile, result } => (profile, result),
@@ -238,7 +212,7 @@ impl CheckContext {
                 report.profile = Some(ProfileUsed {
                     name: profile.name,
                     reason: reason.as_str(),
-                    detail,
+                    detail: detail.clone(),
                 });
                 report.certificate_type = Some(cert_type.to_string());
             }
@@ -256,7 +230,7 @@ impl CheckContext {
                     subject: ee.subject_cn().to_owned(),
                     message: e.to_string(),
                 });
-                report.tree = vec![self.node(ee, &ee_role(ee, None), now, false)];
+                report.tree = vec![tree.node(ee, &ee_role(ee, None), false)];
                 return report;
             }
         };
@@ -277,26 +251,34 @@ impl CheckContext {
                 subject: w.subject.clone(),
                 message: w.message.clone(),
             }));
-        report.tree = self.tree(ee, &result, report.certificate_type.as_deref(), now);
+        report.tree = tree.chain(ee, result, report.certificate_type.as_deref());
         report
     }
+}
 
+#[cfg(feature = "load")]
+struct Tree<'a> {
+    check: &'a offline::Check,
+    now: Timestamp,
+}
+
+#[cfg(feature = "load")]
+impl Tree<'_> {
     /// The chain as built, end entity first; a chain that reaches no trusted root ends in
     /// its missing issuer.
-    fn tree(
+    fn chain(
         &self,
-        ee: &Certificate,
+        ee: &crate::Certificate,
         result: &ValidationResult,
         cert_type: Option<&str>,
-        now: Timestamp,
     ) -> Vec<TrustNode> {
         let reaches_root = result.positions.last() == Some(&ChainPosition::Root);
-        let chain: Cow<'_, [Certificate]> = if result.chain.is_empty() {
+        let chain: Cow<'_, [crate::Certificate]> = if result.chain.is_empty() {
             Cow::Owned(vec![ee.clone()])
         } else {
             Cow::Borrowed(&result.chain)
         };
-        let failed = |cert: &Certificate| {
+        let failed = |cert: &crate::Certificate| {
             result
                 .errors
                 .iter()
@@ -312,7 +294,7 @@ impl CheckContext {
                     _ if i == 0 => ee_role(cert, cert_type),
                     _ => "CA".to_owned(),
                 };
-                self.node(cert, &role, now, reaches_root && !failed(cert))
+                self.node(cert, &role, reaches_root && !failed(cert))
             })
             .collect();
         if !reaches_root {
@@ -328,8 +310,8 @@ impl CheckContext {
         nodes
     }
 
-    fn node(&self, cert: &Certificate, role: &str, now: Timestamp, trusted: bool) -> TrustNode {
-        let fp = fingerprint(cert.der());
+    fn node(&self, cert: &crate::Certificate, role: &str, trusted: bool) -> TrustNode {
+        let now = self.now;
         let note = if now > cert.not_after() {
             format!("expired {}", day(cert.not_after()))
         } else if now < cert.not_before() {
@@ -345,16 +327,28 @@ impl CheckContext {
             "warn"
         };
         TrustNode {
-            id: self.listed.contains(&fp).then_some(fp),
+            id: self.listed(cert).then(|| fingerprint(cert)),
             name: name_of(cert.subject_cn(), &cert.subject().to_string()),
             role: role.to_owned(),
             note,
             state,
         }
     }
+
+    /// Whether the TSL lists `cert` as a service's certificate.
+    fn listed(&self, cert: &crate::Certificate) -> bool {
+        self.check.material().tsl.as_ref().is_ok_and(|verified| {
+            verified
+                .tsl
+                .services
+                .iter()
+                .any(|s| s.certificate.as_ref() == Some(cert))
+        })
+    }
 }
 
-fn ee_role(cert: &Certificate, cert_type: Option<&str>) -> String {
+#[cfg(feature = "load")]
+fn ee_role(cert: &crate::Certificate, cert_type: Option<&str>) -> String {
     cert_type.map_or_else(
         || {
             if cert.is_ca() {
@@ -367,6 +361,7 @@ fn ee_role(cert: &Certificate, cert_type: Option<&str>) -> String {
     )
 }
 
+#[cfg(feature = "load")]
 fn name_of(cn: &str, dn: &str) -> String {
     if cn.is_empty() {
         dn.to_owned()
@@ -375,6 +370,7 @@ fn name_of(cn: &str, dn: &str) -> String {
     }
 }
 
+#[cfg(feature = "load")]
 fn day(t: Timestamp) -> String {
     t.to_string()
         .split('T')

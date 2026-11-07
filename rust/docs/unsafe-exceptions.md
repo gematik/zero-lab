@@ -20,10 +20,9 @@ task.
 |---|---|
 | ti-types | std, serde |
 | ti-cache | – |
-| ti-pki | brainpool, rsa, load, os, dangerous-nonprod |
+| ti-pki | brainpool, rsa, load, os, dangerous-nonprod, serde |
 | ti-pkcs12 | legacy, encode |
 | ti-connector-client | – |
-| ti-report | – |
 | jwz | std, jws, jwe, jwt, crypto-rustcrypto, hmac |
 | ti-jwz | legacy |
 | ti-jwks | – |

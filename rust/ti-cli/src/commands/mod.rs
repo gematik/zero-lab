@@ -222,7 +222,7 @@ fn probe_target(
 
 /// `valid`, `expired` or `not_yet_valid` at `now`.
 fn validity(cert: &Certificate, now: Timestamp) -> &'static str {
-    ti_report::validity(cert, now)
+    ti_pki::model::validity(cert, now)
 }
 
 /// ` · until 2029-11-06`, or ` · expired 2022-10-25` / ` · not yet valid` in red: the

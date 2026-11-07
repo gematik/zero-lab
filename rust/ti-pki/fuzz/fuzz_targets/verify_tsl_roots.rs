@@ -21,12 +21,18 @@
  * find details in the "Readme" file.
  */
 
-//! Any bytes as the TSL a web page hands ti-wasm, with the reference environment's published detached
-//! signature and signer status: the report is never "valid" for bytes other than the signed list.
+//! Any bytes as the roots.json a web page supplies next to the reference environment's published TSL:
+//! supplied roots never break or widen trust, so the verdict stays the one of the embedded roots.
 #![no_main]
 
+use std::sync::LazyLock;
+
+use core::time::Duration;
+
 use libfuzzer_sys::fuzz_target;
-use ti_wasm::api;
+use ti_pki::offline::Tsl;
+use ti_pki::tsl_signature::DetachedTsl;
+use ti_pki::{Env, Timestamp, TrustConfig, model};
 
 const XML: &[u8] = include_bytes!("../../../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.xml");
 const SIGNATURE: &[u8] = include_bytes!("../../../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.sig");
@@ -34,12 +40,24 @@ const SIGNER_STATUS: &[u8] =
     include_bytes!("../../../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref.ocsp");
 /// The capture time of the published set (spec/tsl-detached/testdata/README.md).
 const NOW: &str = "2026-11-02T16:47:42Z";
-const VALID: &str = "\"result\":\"valid\"";
+
+/// The view ti-wasm's `verify_tsl` returns for the reference environment without a grace period.
+fn view(xml: &[u8], roots: Option<&[u8]>) -> model::Tsl {
+    let now = Timestamp::parse_rfc3339(NOW).expect("a fixed time");
+    let config = TrustConfig {
+        tsl_grace_period: Duration::ZERO,
+        ..TrustConfig::preset(Env::Ref)
+    };
+    let files = DetachedTsl {
+        signature: SIGNATURE,
+        signer_status: Some(SIGNER_STATUS),
+    };
+    model::Tsl::new(Env::Ref, &Tsl::verify(xml, files, Env::Ref, &config, roots, now), now)
+}
+
+static EMBEDDED: LazyLock<&'static str> = LazyLock::new(|| view(XML, None).result);
 
 fuzz_target!(|data: &[u8]| {
-    let report = api::verify_tsl(data, SIGNATURE, Some(SIGNER_STATUS), "ref", NOW, None, 0)
-        .expect("environment, time and grace are fixed and valid");
-    if data != XML {
-        assert!(!report.contains(VALID), "unsigned bytes verified as the TSL");
-    }
+    assert_eq!(*EMBEDDED, "valid", "the published set does not verify at NOW: the target would prove nothing");
+    assert_eq!(view(XML, Some(data)).result, *EMBEDDED, "the supplied roots changed the verdict");
 });

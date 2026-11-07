@@ -36,11 +36,11 @@ use der::asn1::ObjectIdentifier;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_pki::load::{Detached, Meta, Source};
+use ti_pki::model::{CertSummary, Finding, rejection_code};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Tsl};
 use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
 use ti_pki::{Certificate, Tier, Timestamp, TrustConfig, TrustStore};
-use ti_report::tsl::{CertSummary, Finding, rejection_code};
 
 use crate::block::block_on;
 use crate::cli::{
@@ -49,7 +49,7 @@ use crate::cli::{
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex};
+use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone, hex};
 use crate::trust::{Session, VerifiedSet};
 
 /// The JSON document.
@@ -125,7 +125,7 @@ struct CaInfo {
     /// `valid`, `expired` or `not_yet_valid`, now.
     validity: &'static str,
     /// The certificate policies the CA certificate asserts.
-    policies: Vec<OidInfo>,
+    policies: Vec<Oid>,
     /// The certificate's path length constraint.
     path_len: Option<u8>,
     /// For a CA the TSL lists as revoked, its `StatusStartingTime` (RFC 3339): end
@@ -866,7 +866,7 @@ fn describe(
         not_after: cert.not_after().to_string(),
         not_after_at: cert.not_after(),
         validity: super::validity(cert, now),
-        policies: cert.policies().iter().map(OidInfo::new).collect(),
+        policies: cert.policies().iter().map(Oid::new).collect(),
         path_len: cert.basic_constraints().and_then(|b| b.path_len_constraint),
         rejection,
         sha256: cert.fingerprint_sha256(),

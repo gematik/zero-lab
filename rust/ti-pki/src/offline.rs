@@ -27,7 +27,12 @@
 //!
 //! [`Check::new`] verifies the trust material once; [`Check::check`] then judges any
 //! number of certificates against it. Revocation is never checked: OCSP needs a network.
+//!
+//! [`Tsl::verify`] verifies a TSL for one environment the same way and matches its CAs and
+//! every service certificate to the verified roots, for a host that shows the list.
 
+#[cfg(feature = "brainpool")]
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use core::pin::pin;
@@ -37,7 +42,10 @@ use crate::cert_type::CertificateType;
 use crate::load::VerifyError;
 use crate::profile::{Profile, SelectReason, select_for_cert};
 use crate::revocation::{RevocationMode, Unchecked};
-use crate::tsl_signature::{DetachedTsl, VerifiedTsl};
+use crate::tsl::{Matched, Rejection};
+#[cfg(feature = "brainpool")]
+use crate::tsl_signature::TslCode;
+use crate::tsl_signature::{DetachedTsl, TslError, VerifiedTsl};
 use crate::{
     Certificate, Env, Error, Timestamp, TrustConfig, TrustStore, ValidationResult, Validator,
 };
@@ -208,6 +216,219 @@ impl Check {
         let result = block_on(validator.validate(certs, now, &Unchecked));
         Outcome::Validated { profile, result }
     }
+}
+
+/// A TSL verified for one environment, with its CAs and service certificates matched to
+/// the verified roots.
+#[derive(Clone, Debug)]
+pub struct Tsl {
+    /// The list, its signer and the signer's CA.
+    pub verified: VerifiedTsl,
+    /// The roots the CAs were matched against, the anchor first, then in walk order.
+    pub roots: Vec<Certificate>,
+    /// Which roots.json they came from.
+    pub roots_source: RootsSource,
+    /// Why the supplied roots.json was not used.
+    pub roots_warning: Option<String>,
+    /// The list's CA candidates, split by whether a root signed them.
+    pub matched: Matched,
+    /// The kept CAs, each with the root that signed it, in list order.
+    pub kept: Vec<SignedCa>,
+    /// For each service of the list, in list order: the chain of its certificate, for a
+    /// service in accord that has one.
+    pub chains: Vec<Option<ServiceChain>>,
+}
+
+/// A CA of the list a verified root signed, with that root.
+#[derive(Clone, Debug)]
+pub struct SignedCa {
+    /// The CA.
+    pub ca: Certificate,
+    /// The root that signed it.
+    pub root: Certificate,
+}
+
+/// The chain from a service certificate towards a verified root.
+#[derive(Clone, Debug)]
+pub struct ServiceChain {
+    /// The certificates, the service's first, as far as the chain was built.
+    pub path: Vec<Certificate>,
+    /// Why it does not end in a verified root; `None` when it does.
+    pub rejection: Option<Rejection>,
+}
+
+/// Why a TSL cannot be used.
+#[derive(Clone, Debug)]
+pub enum TslFailure {
+    /// The list, its signature or its signer was rejected, or it is signed for the other
+    /// tier.
+    Tsl(TslError),
+    /// No roots verified, not even the embedded ones.
+    Roots(String),
+}
+
+impl Tsl {
+    /// Verifies `xml` by its detached `files` as the TSL of `env` under `config` at
+    /// `now`, and matches it to the roots of `supplied_roots` if that roots.json walks
+    /// from the anchor of `config` at `now`, to those of `config.roots` otherwise. The
+    /// anchored walk cannot add a root the anchor does not reach (A_28419), so supplied
+    /// roots never widen trust. `config` should have passed [`TrustConfig::validate`]
+    /// for the tier of `env`.
+    ///
+    /// # Errors
+    ///
+    /// [`TslFailure`]: nothing from the list may be used.
+    #[cfg(feature = "brainpool")]
+    pub fn verify(
+        xml: &[u8],
+        files: DetachedTsl<'_>,
+        env: Env,
+        config: &TrustConfig,
+        supplied_roots: Option<&[u8]>,
+        now: Timestamp,
+    ) -> Result<Self, TslFailure> {
+        let verified = crate::tsl::Tsl::parse_verified_with_status(xml, files, config, now)
+            .map_err(TslFailure::Tsl)?;
+        // The presets keep the tiers apart already; this holds even for a hand-built config.
+        if verified.tier != env.tier() {
+            return Err(TslFailure::Tsl(TslError {
+                code: TslCode::CertificateNotValidMath,
+                rule: "TSLSIG-031",
+                detail: format!(
+                    "the list is signed for {}, not for {}",
+                    verified.tier.as_str(),
+                    env.as_str()
+                ),
+            }));
+        }
+        let (roots, roots_source, roots_warning) =
+            load_roots(config, supplied_roots, now).map_err(TslFailure::Roots)?;
+        let store = TrustStore::new(roots.iter().cloned());
+        let matched =
+            crate::tsl::match_to_roots(verified.tsl.intermediate_cas(), &store, &config.algorithms);
+        // Each kept CA with its root, found once: signature checks dominate the time.
+        let kept: Vec<SignedCa> = matched
+            .intermediates
+            .iter()
+            .filter_map(|i| {
+                let root = issuing_root(&i.certificate, &store, config)?;
+                Some(SignedCa {
+                    ca: i.certificate.clone(),
+                    root: root.clone(),
+                })
+            })
+            .collect();
+        let chains = verified
+            .tsl
+            .services
+            .iter()
+            .map(|service| service_chain(service, &store, &kept, &matched.rejected, config))
+            .collect();
+        Ok(Tsl {
+            verified,
+            roots,
+            roots_source,
+            roots_warning,
+            matched,
+            kept,
+            chains,
+        })
+    }
+}
+
+#[cfg(feature = "brainpool")]
+fn load_roots(
+    config: &TrustConfig,
+    supplied: Option<&[u8]>,
+    now: Timestamp,
+) -> Result<(Vec<Certificate>, RootsSource, Option<String>), String> {
+    let mut warning = None;
+    if let Some(json) = supplied {
+        let with_supplied = TrustConfig {
+            roots: Cow::Owned(json.to_vec()),
+            ..config.clone()
+        };
+        match crate::roots::load(&with_supplied, now) {
+            Ok(walk) => return Ok((walk.trusted, RootsSource::Supplied, None)),
+            Err(e) => warning = Some(format!("supplied roots.json: {e}")),
+        }
+    }
+    let walk = crate::roots::load(config, now).map_err(|e| format!("embedded roots.json: {e}"))?;
+    Ok((walk.trusted, RootsSource::Embedded, warning))
+}
+
+#[cfg(feature = "brainpool")]
+/// The chain of a service in accord with a certificate.
+fn service_chain(
+    service: &crate::tsl::Service,
+    store: &TrustStore,
+    kept: &[SignedCa],
+    rejected: &[(crate::tsl::Intermediate, Rejection)],
+    config: &TrustConfig,
+) -> Option<ServiceChain> {
+    let cert = service.certificate.as_ref()?;
+    service
+        .is_in_accord()
+        .then(|| chain(cert, store, kept, rejected, config))
+}
+
+#[cfg(feature = "brainpool")]
+/// The path from `cert` up to a verified root: a CA the roots kept goes straight to its
+/// root, any other certificate through the kept CA that signed it, or a root.
+fn chain(
+    cert: &Certificate,
+    store: &TrustStore,
+    kept: &[SignedCa],
+    rejected: &[(crate::tsl::Intermediate, Rejection)],
+    config: &TrustConfig,
+) -> ServiceChain {
+    let ends =
+        |path: Vec<Certificate>, rejection: Option<Rejection>| ServiceChain { path, rejection };
+    let mut path = vec![cert.clone()];
+    if store.contains(cert) {
+        return ends(path, None);
+    }
+    if let Some((_, reason)) = rejected.iter().find(|(i, _)| &i.certificate == cert) {
+        return ends(path, Some(*reason));
+    }
+    if let Some(k) = kept.iter().find(|k| &k.ca == cert) {
+        path.push(k.root.clone());
+        return ends(path, None);
+    }
+    if let Some(k) = kept.iter().find(|k| signed_by(cert, &k.ca, config)) {
+        path.push(k.ca.clone());
+        path.push(k.root.clone());
+        return ends(path, None);
+    }
+    if let Some(root) = issuing_root(cert, store, config) {
+        path.push(root.clone());
+        return ends(path, None);
+    }
+    let named = kept.iter().any(|k| k.ca.subject_der() == cert.issuer_der());
+    let reason = if named {
+        Rejection::BadSignature
+    } else {
+        Rejection::UnknownIssuer
+    };
+    ends(path, Some(reason))
+}
+
+#[cfg(feature = "brainpool")]
+fn issuing_root<'s>(
+    cert: &Certificate,
+    store: &'s TrustStore,
+    config: &TrustConfig,
+) -> Option<&'s Certificate> {
+    store
+        .roots()
+        .iter()
+        .find(|root| signed_by(cert, root, config))
+}
+
+#[cfg(feature = "brainpool")]
+fn signed_by(cert: &Certificate, issuer: &Certificate, config: &TrustConfig) -> bool {
+    cert.issuer_der() == issuer.subject_der()
+        && cert.verify_signed_by(issuer, &config.algorithms).is_ok()
 }
 
 /// Runs the async validation without a runtime: with revocation unchecked nothing in it

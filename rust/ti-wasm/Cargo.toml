@@ -15,10 +15,10 @@ publish.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# No load/os: the module cannot reach the network by construction. The web view
-# shows the test environments, hence the TEST-ONLY presets.
-ti-pki = { workspace = true, features = ["brainpool", "rsa", "dangerous-nonprod"] }
-ti-report.workspace = true
+# No os: the module cannot reach the network by construction; load verifies the material
+# the caller hands in (`offline`), with no transport of its own. The web view shows the
+# test environments, hence the TEST-ONLY presets.
+ti-pki = { workspace = true, features = ["brainpool", "rsa", "load", "dangerous-nonprod", "serde"] }
 serde.workspace = true
 serde_json.workspace = true
 # Must equal the installed wasm-bindgen-cli (`just tools`).

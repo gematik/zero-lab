@@ -30,7 +30,7 @@ use ti_pki::{CertificateType, checks};
 
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA};
+use crate::output::{Document, Line, Oid, Output, SCHEMA};
 use crate::trust::Session;
 
 #[derive(Serialize)]
@@ -72,7 +72,7 @@ struct ProfileInfo {
     revocation: &'static str,
     accepts_types: Vec<&'static str>,
     default_for: Vec<&'static str>,
-    required_role_oids: Vec<OidInfo>,
+    required_role_oids: Vec<Oid>,
 }
 
 #[derive(Serialize)]
@@ -80,9 +80,9 @@ struct TypeRequirements {
     certificate_type: &'static str,
     key_usage: Vec<&'static str>,
     extended_key_usage: Vec<String>,
-    policies: Vec<OidInfo>,
+    policies: Vec<Oid>,
     /// One of these must be asserted; empty for no requirement.
-    role_oids: Vec<OidInfo>,
+    role_oids: Vec<Oid>,
 }
 
 fn revocation(mode: RevocationMode) -> &'static str {
@@ -100,7 +100,7 @@ fn info(p: &Profile) -> ProfileInfo {
         revocation: revocation(p.revocation),
         accepts_types: p.accepts_types.iter().map(|t| t.as_str()).collect(),
         default_for: p.default_for.iter().map(|t| t.as_str()).collect(),
-        required_role_oids: p.required_role_oids.iter().map(OidInfo::new).collect(),
+        required_role_oids: p.required_role_oids.iter().map(Oid::new).collect(),
     }
 }
 
@@ -122,9 +122,9 @@ fn requirements(p: &Profile, t: CertificateType) -> TypeRequirements {
             .policies
             .iter()
             .chain(p.extra_policies)
-            .map(OidInfo::new)
+            .map(Oid::new)
             .collect(),
-        role_oids: p.effective_role_oids(t).iter().map(OidInfo::new).collect(),
+        role_oids: p.effective_role_oids(t).iter().map(Oid::new).collect(),
     }
 }
 
@@ -275,7 +275,7 @@ fn tsl_cas(
     })
 }
 
-fn oid_line(o: &OidInfo) -> Line {
+fn oid_line(o: &Oid) -> Line {
     let line = Line::code(&o.oid);
     match o.name {
         Some(name) => line.and_dim(format!(" {name}")),

@@ -127,6 +127,12 @@
 //! and the TSL through pluggable loaders; the host brings the transport and decides
 //! when to reload. `offline` checks certificates against a TSL and roots.json the host
 //! holds already, without a network.
+//!
+//! # Response model
+//!
+//! [`model`] maps certificates, a verified TSL and an offline check to the documents the
+//! front ends show; with the `serde` feature they serialize to the JSON the `ti` CLI and
+//! its WebAssembly build publish.
 
 pub mod admission;
 pub mod algorithms;
@@ -140,6 +146,7 @@ pub mod error;
 pub mod key;
 #[cfg(feature = "load")]
 pub mod load;
+pub mod model;
 pub mod ocsp;
 #[cfg(feature = "load")]
 pub mod offline;

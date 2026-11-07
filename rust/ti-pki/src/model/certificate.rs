@@ -25,37 +25,37 @@
 //! `ti pki inspect` (`ti-cli/schemas/pki-inspect.json`, `certificates[]`).
 
 use const_oid::ObjectIdentifier;
-use serde::Serialize;
-use ti_pki::key::classify_key;
-use ti_pki::{Certificate, CertificateType, Timestamp, checks, detect_certificate_type, profile};
 
-use crate::{OidInfo, hex, validity};
+use super::{Oid, hex, validity};
+use crate::key::classify_key;
+use crate::{CertificateType, Timestamp, checks, detect_certificate_type, profile};
 
 /// What a certificate says, for display.
-#[derive(Clone, Debug, Serialize)]
-pub struct CertificateInfo {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Certificate {
     /// The subject DN, RFC 4514.
     pub subject: String,
     /// In OpenSSL's notation, e.g. `DNS:host`.
     pub subject_alt_names: Vec<String>,
     /// The issuer DN, RFC 4514.
     pub issuer: String,
-    /// The serial number in [`hex`].
+    /// The serial number as upper-case hex pairs joined by `:`.
     pub serial: String,
     /// RFC 3339, UTC.
     pub not_before: String,
     /// RFC 3339, UTC.
     pub not_after: String,
     /// `not_before` as a timestamp, for views.
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub not_before_at: Timestamp,
     /// `not_after` as a timestamp, for views.
-    #[serde(skip)]
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub not_after_at: Timestamp,
     /// `valid`, `expired` or `not_yet_valid`, at the instant described.
     pub validity: &'static str,
     /// The subject key.
-    pub key: KeyInfo,
+    pub key: Key,
     /// The certificate's signature algorithm, e.g. `ecdsa-with-SHA256`.
     pub signature_algorithm: String,
     /// The Tab_PKI_405 type, e.g. `C.HCI.AUT`, if one is detected.
@@ -63,9 +63,9 @@ pub struct CertificateInfo {
     /// The profile it would be validated under.
     pub profile: Option<ProfileHint>,
     /// The admission extension, if present.
-    pub admission: Option<AdmissionInfo>,
+    pub admission: Option<Admission>,
     /// The certificate policies.
-    pub policies: Vec<OidInfo>,
+    pub policies: Vec<Oid>,
     /// The key usage bits, by RFC 5280 name.
     pub key_usage: Vec<&'static str>,
     /// The extended key usages, by name or OID.
@@ -78,19 +78,20 @@ pub struct CertificateInfo {
     pub ocsp_urls: Vec<String>,
     /// The extensions marked critical, by name or OID.
     pub critical_extensions: Vec<String>,
-    /// The subject key identifier in [`hex`].
+    /// The subject key identifier as upper-case hex pairs joined by `:`.
     pub subject_key_id: Option<String>,
-    /// The authority key identifier in [`hex`].
+    /// The authority key identifier as upper-case hex pairs joined by `:`.
     pub authority_key_id: Option<String>,
-    /// [`Certificate::fingerprint_sha256`].
+    /// [`crate::Certificate::fingerprint_sha256`].
     pub sha256: String,
     /// The certificate as PEM.
     pub pem: String,
 }
 
 /// The subject key.
-#[derive(Clone, Debug, Serialize)]
-pub struct KeyInfo {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Key {
     /// In words, e.g. `ECDSA brainpoolP256r1`.
     pub algorithm: String,
     /// gemSpec_Krypt: `admissible`, `phased out`, `not admissible`.
@@ -98,7 +99,8 @@ pub struct KeyInfo {
 }
 
 /// The validation profile the certificate would be checked under.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ProfileHint {
     /// The profile's name, e.g. `hci-aut`.
     pub name: &'static str,
@@ -109,68 +111,71 @@ pub struct ProfileHint {
 }
 
 /// The admission extension: who the certificate was issued to, in TI terms.
-#[derive(Clone, Debug, Serialize)]
-pub struct AdmissionInfo {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Admission {
     /// The professions in words.
     pub profession_items: Vec<String>,
     /// The profession or institution OIDs.
-    pub profession_oids: Vec<OidInfo>,
+    pub profession_oids: Vec<Oid>,
     /// The registration number, e.g. a Telematik-ID.
     pub registration_number: Option<String>,
 }
 
-/// `cert` as the TI reads it, its validity and key status judged at `now`.
-pub fn describe(cert: &Certificate, now: Timestamp) -> CertificateInfo {
-    let (status, algorithm) = classify_key(cert.public_key_info(), now);
-    let selection = profile::select_for_cert(cert);
-    let basic = cert.basic_constraints();
-    CertificateInfo {
-        subject: cert.subject().to_string(),
-        subject_alt_names: cert.subject_alt_names(),
-        issuer: cert.issuer().to_string(),
-        serial: hex(cert.serial()),
-        not_before: cert.not_before().to_string(),
-        not_after: cert.not_after().to_string(),
-        not_before_at: cert.not_before(),
-        not_after_at: cert.not_after(),
-        validity: validity(cert, now),
-        key: KeyInfo {
-            algorithm,
-            status: status.as_str(),
-        },
-        signature_algorithm: cert.signature_algorithm(),
-        certificate_type: detect_certificate_type(cert).map(CertificateType::as_str),
-        profile: selection.profile.map(|p| ProfileHint {
-            name: p.name,
-            reason: selection.reason.as_str(),
-            detail: selection.detail.clone(),
-        }),
-        admission: cert.admission().ok().flatten().map(|a| AdmissionInfo {
-            profession_items: a.profession_items,
-            profession_oids: a.profession_oids.iter().map(OidInfo::new).collect(),
-            registration_number: a.registration_number,
-        }),
-        policies: cert.policies().iter().map(OidInfo::new).collect(),
-        key_usage: cert
-            .key_usage()
-            .map(|ku| ku.0.into_iter().map(checks::key_usage_name).collect())
-            .unwrap_or_default(),
-        extended_key_usage: cert
-            .ext_key_usage()
-            .iter()
-            .map(checks::ext_key_usage_name)
-            .collect(),
-        ca: cert.is_ca(),
-        path_len: basic.and_then(|b| b.path_len_constraint),
-        ocsp_urls: cert.ocsp_urls().to_vec(),
-        critical_extensions: cert
-            .critical_extensions()
-            .map(|oid| extension_name(&oid))
-            .collect(),
-        subject_key_id: cert.subject_key_id().map(hex),
-        authority_key_id: cert.authority_key_id().map(hex),
-        sha256: cert.fingerprint_sha256(),
-        pem: cert.to_pem(),
+impl Certificate {
+    /// `cert` as the TI reads it, its validity and key status judged at `now`.
+    pub fn new(cert: &crate::Certificate, now: Timestamp) -> Self {
+        let (status, algorithm) = classify_key(cert.public_key_info(), now);
+        let selection = profile::select_for_cert(cert);
+        let basic = cert.basic_constraints();
+        Certificate {
+            subject: cert.subject().to_string(),
+            subject_alt_names: cert.subject_alt_names(),
+            issuer: cert.issuer().to_string(),
+            serial: hex(cert.serial()),
+            not_before: cert.not_before().to_string(),
+            not_after: cert.not_after().to_string(),
+            not_before_at: cert.not_before(),
+            not_after_at: cert.not_after(),
+            validity: validity(cert, now),
+            key: Key {
+                algorithm,
+                status: status.as_str(),
+            },
+            signature_algorithm: cert.signature_algorithm(),
+            certificate_type: detect_certificate_type(cert).map(CertificateType::as_str),
+            profile: selection.profile.map(|p| ProfileHint {
+                name: p.name,
+                reason: selection.reason.as_str(),
+                detail: selection.detail.clone(),
+            }),
+            admission: cert.admission().ok().flatten().map(|a| Admission {
+                profession_items: a.profession_items,
+                profession_oids: a.profession_oids.iter().map(Oid::new).collect(),
+                registration_number: a.registration_number,
+            }),
+            policies: cert.policies().iter().map(Oid::new).collect(),
+            key_usage: cert
+                .key_usage()
+                .map(|ku| ku.0.into_iter().map(checks::key_usage_name).collect())
+                .unwrap_or_default(),
+            extended_key_usage: cert
+                .ext_key_usage()
+                .iter()
+                .map(checks::ext_key_usage_name)
+                .collect(),
+            ca: cert.is_ca(),
+            path_len: basic.and_then(|b| b.path_len_constraint),
+            ocsp_urls: cert.ocsp_urls().to_vec(),
+            critical_extensions: cert
+                .critical_extensions()
+                .map(|oid| extension_name(&oid))
+                .collect(),
+            subject_key_id: cert.subject_key_id().map(hex),
+            authority_key_id: cert.authority_key_id().map(hex),
+            sha256: cert.fingerprint_sha256(),
+            pem: cert.to_pem(),
+        }
     }
 }
 

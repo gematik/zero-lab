@@ -30,6 +30,7 @@ use jwz::jwa::SignatureAlgorithm;
 use serde::Serialize;
 use serde_json::Value;
 use ti_pki::Timestamp;
+use ti_pki::model;
 
 use crate::cli::{GlobalArgs, IdentityArgs, IdentitySignArgs};
 use crate::error::{CliError, Exit};
@@ -44,8 +45,8 @@ struct InspectReport {
     source: SourceInfo,
     telematik_id: Option<String>,
     signing: Signing,
-    certificate: ti_report::CertificateInfo,
-    chain: Vec<ti_report::CertificateInfo>,
+    certificate: model::Certificate,
+    chain: Vec<model::Certificate>,
 }
 
 #[derive(Serialize)]
@@ -97,11 +98,11 @@ pub fn inspect(args: &IdentityArgs, global: &GlobalArgs, out: &Output) -> Result
             alg: "ES256",
             curve: identity.curve.name(),
         },
-        certificate: ti_report::describe(&identity.certificate, now),
+        certificate: model::Certificate::new(&identity.certificate, now),
         chain: identity
             .chain
             .iter()
-            .map(|cert| ti_report::describe(cert, now))
+            .map(|cert| model::Certificate::new(cert, now))
             .collect(),
     };
     if out.is_json() {

@@ -15,7 +15,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │                            │                        │
  adapters   `ureq` / `os` features, ti-tls (rustls): the only code that does I/O or holds a TLS library
               │
- engines    ti-idpd-client  ti-directory-client  ti-connector-client  ti-report  ti-jwks   (sans I/O)
+ engines    ti-idpd-client  ti-directory-client  ti-connector-client  ti-jwks   (sans I/O)
               │
  core       ti-pki (+ load)  jwz (+ ti-jwz)         ti-pkcs12
               │
@@ -152,13 +152,12 @@ with `cargo fuzz tmin`; structure-aware targets with `arbitrary`.
 | Crate | Entry points |
 |---|---|
 | jwz | JWS and JWE compact and JSON, JWK and JWK Set, JWT claims (exist) |
-| ti-pki | certificate and chain parsing, roots.json, the detached TSL signature, TSL (`quick-xml`), OCSP responses, `TrustStore` validation of a parsed chain, offline bundle |
+| ti-pki | certificate and chain parsing, roots.json, the detached TSL signature, TSL (`quick-xml`), OCSP responses, `TrustStore` validation of a parsed chain, offline bundle; the TSL view and certificate description (what ti-wasm hands to JavaScript) |
 | ti-pkcs12 | `decode` with password, MAC and KDF parameters, legacy PBEs |
 | ti-connector-client | `.kon` files, SOAP responses and faults, service directory |
 | ti-idpd-client, ti-directory-client | discovery document, IDP keys and challenge, redirects, token responses |
 | ti-jwks | a `jwks_uri`'s answers: status, `Cache-Control`, the set within its limits |
 | ti-tls | the chain a TLS server presents, under the `web` profile (`fuzz-ti-tls`) |
-| ti-report | TSL view and certificate description (what ti-wasm hands to JavaScript) |
 
 ## 8. Dependencies
 
@@ -171,7 +170,7 @@ and semver in `just audit` before tagging. Known compromises, each with its exit
 are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
-ti-cache, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
+ti-cache, ti-pki, ti-pkcs12, ti-connector-client, jwz,
 ti-jwz, ti-jwks, ti-idpd-client and ti-directory-client, with every feature but their
 adapters (the `ureq` transports) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system

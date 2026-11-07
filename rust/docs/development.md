@@ -295,16 +295,16 @@ is released, every suite listed for it runs green and the release PR records the
 
 ## WebAssembly (ti-wasm)
 
-`ti-wasm` exposes `ti-report` to JavaScript: `verify_tsl` gives the TSL view (signature
-verdict, roots, services with chains, certificate details), `describe_certificate` what `ti
-pki inspect` shows. Its exports are pure; downloads, caching and the clock belong to the
+`ti-wasm` exposes ti-pki's `offline` and `model` to JavaScript: `verify_tsl` gives the TSL
+view (signature verdict, roots, services with chains, certificate details),
+`describe_certificate` what `ti pki inspect` shows. Its exports are pure; downloads, caching and the clock belong to the
 caller, since the TI download hosts send no CORS headers and the OCSP responders speak
 plain HTTP. One module serves Node (`initSync` with the bytes) and the browser (`init`
 with a URL).
 
 `#[wasm_bindgen]` expands to `unsafe` glue, so ti-wasm has its own lint table without
 `unsafe_code = "forbid"`; its sources are thin wrappers, `just wasm-unsafe-free` keeps
-`unsafe` out of them, and all logic stays in `ti-report` under the workspace lints.
+`unsafe` out of them, and all logic stays in `ti-pki` under the workspace lints.
 
 The `wasm` profile is `release` (opt-level 3) and `wasm-build` runs `wasm-opt -O3`:
 verification speed before size. `wasm-build` needs `wasm-bindgen-cli` at the version
@@ -490,7 +490,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `cli-check` | `cli-targets check`: clippy with `-D warnings` for the Linux (musl) and Windows targets of `ti` in their cross containers; needs Docker |
 | `check-changed [base]` | While working on a branch: the fast checks of the crates it changed against `base` (default `main`) and of their dependents; `wasm32`, `nonprod-absent`, the manifest checks (`unsafe-free`, `core-deps`, `jwz-backends`, `machete`, `deny`, `vet`) and `scripts-test` only when their inputs changed |
 | `check` | Tier 1, once per branch before it merges: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `vet`, `brainpool-absent` for jwz and ti-jwz |
-| `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer, ti-report, ti-wasm and the jwz crates |
+| `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
 | `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz or ti-jwz |

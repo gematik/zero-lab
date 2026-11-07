@@ -41,7 +41,7 @@ use serde::Serialize;
 use crate::cli::{Format, GlobalArgs};
 use crate::error::CliError;
 pub use document::{Document, Line, Tone};
-pub use ti_report::OidInfo;
+pub use ti_pki::model::Oid;
 pub use waiting::Waiting;
 
 /// The JSON contract version every document carries as `"schema"`.

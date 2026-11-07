@@ -24,15 +24,13 @@
 //! The findings of a TSL verification (`spec/tsl-xmldsig`), as `ti pki tsl verify`
 //! reports them.
 
-use serde::Serialize;
-use ti_pki::Certificate;
-use ti_pki::tsl::Rejection;
-use ti_pki::tsl_signature::TslError;
-
-use crate::hex;
+use super::hex;
+use crate::tsl::Rejection;
+use crate::tsl_signature::TslError;
 
 /// A result code with its Tab_PKI_274 number, the rule and what happened.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Finding {
     /// The code, e.g. `detached_signature_error`.
     pub code: &'static str,
@@ -56,7 +54,8 @@ impl From<&TslError> for Finding {
 }
 
 /// A certificate named in a TSL report.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CertSummary {
     /// The subject's common name.
     pub common_name: String,
@@ -68,13 +67,13 @@ pub struct CertSummary {
     pub not_before: String,
     /// RFC 3339, UTC.
     pub not_after: String,
-    /// [`Certificate::fingerprint_sha256`].
+    /// [`crate::Certificate::fingerprint_sha256`].
     pub sha256: String,
 }
 
 impl CertSummary {
     /// The summary of `cert`.
-    pub fn new(cert: &Certificate) -> Self {
+    pub fn new(cert: &crate::Certificate) -> Self {
         CertSummary {
             common_name: cert.subject_cn().to_owned(),
             subject: cert.subject().to_string(),
@@ -94,6 +93,5 @@ pub fn rejection_code(reason: Rejection) -> &'static str {
         Rejection::SelfSigned => "self_signed",
         Rejection::UnknownIssuer => "unknown_issuer",
         Rejection::BadSignature => "bad_signature",
-        _ => "other",
     }
 }

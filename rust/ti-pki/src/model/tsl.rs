@@ -24,27 +24,26 @@
 //! The verified TSL of one environment as a single document for a web view: the
 //! signature verdict, the list's metadata, the verified roots, every service grouped by
 //! provider with the chain of its certificate, and the details of every certificate
-//! named, keyed by [`fingerprint`]. `ti-wasm/schemas/tsl-view.json` describes it.
+//! named, keyed by their SHA-256 in lower-case hex. `ti-wasm/schemas/tsl-view.json` describes it.
 //!
 //! An invalid list yields the verdict only: nothing from it may be used, so nothing from
 //! it is shown as content.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use serde::Serialize;
-use ti_pki::tsl::{self, Intermediate, Rejection, Service, Tsl};
-use ti_pki::tsl_signature::{DetachedTsl, TslCode, VerifiedTsl};
-use ti_pki::{Certificate, Env, Tier, Timestamp, TrustConfig, TrustStore, roots};
+use super::{Certificate, Finding, TypeOid};
+#[cfg(feature = "load")]
+use super::{SCHEMA, fingerprint, rejection_code, roots_source, validity};
+#[cfg(feature = "load")]
+use crate::offline::{self, TslFailure};
+#[cfg(feature = "load")]
+use crate::{Env, Timestamp};
 
-use crate::oid::TypeOid;
-use crate::tsl::{Finding, rejection_code};
-use crate::{CertificateInfo, SCHEMA, describe, fingerprint, validity};
-
-/// The document.
-#[derive(Clone, Debug, Serialize)]
-pub struct TslView {
-    /// [`SCHEMA`].
+/// A verified TSL as one document.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Tsl {
+    /// [`SCHEMA`](super::SCHEMA).
     pub schema: u32,
     /// The environment the list was verified for, e.g. `prod`.
     pub environment: &'static str,
@@ -56,24 +55,25 @@ pub struct TslView {
     /// Why the list is invalid.
     pub error: Option<Finding>,
     /// The signature, for a valid list.
-    pub signature: Option<SignatureView>,
+    pub signature: Option<Signature>,
     /// The list's metadata, for a valid list.
-    pub list: Option<ListView>,
+    pub list: Option<List>,
     /// The roots the CAs were matched against, for a valid list.
-    pub roots: Option<RootsView>,
+    pub roots: Option<Roots>,
     /// Totals over the whole list.
     pub counts: Option<Counts>,
     /// The providers in list order, each with its services.
-    pub providers: Vec<ProviderView>,
+    pub providers: Vec<Provider>,
     /// Services the parser left out, with the reason.
-    pub skipped: Vec<SkippedView>,
-    /// Every certificate the document refers to, by [`fingerprint`].
-    pub certificates: BTreeMap<String, CertificateInfo>,
+    pub skipped: Vec<Skipped>,
+    /// Every certificate the document refers to, by their SHA-256 in lower-case hex.
+    pub certificates: BTreeMap<String, Certificate>,
 }
 
 /// The signature over the list (`spec/tsl-detached`, `spec/tsl-xmldsig` part B).
-#[derive(Clone, Debug, Serialize)]
-pub struct SignatureView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Signature {
     /// The C.TSL.SIG certificate, by fingerprint.
     pub signer: String,
     /// The TSL signer CA that issued it, by fingerprint.
@@ -83,8 +83,9 @@ pub struct SignatureView {
 }
 
 /// The list's metadata.
-#[derive(Clone, Debug, Serialize)]
-pub struct ListView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct List {
     /// The `Id` attribute.
     pub id: String,
     /// `TSLSequenceNumber`.
@@ -96,12 +97,13 @@ pub struct ListView {
     /// Past `next_update`, within the grace period.
     pub overdue: bool,
     /// `SchemeInformation`.
-    pub scheme: SchemeView,
+    pub scheme: Scheme,
 }
 
 /// `SchemeInformation`.
-#[derive(Clone, Debug, Serialize)]
-pub struct SchemeView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Scheme {
     /// `TSLVersionIdentifier`.
     pub version_identifier: Option<u32>,
     /// `TSLType`.
@@ -111,7 +113,7 @@ pub struct SchemeView {
     /// `SchemeOperatorName`.
     pub operator_name: String,
     /// The operator's postal addresses.
-    pub postal_addresses: Vec<PostalAddressView>,
+    pub postal_addresses: Vec<PostalAddress>,
     /// The operator's electronic addresses (mail, web).
     pub electronic_addresses: Vec<String>,
     /// Where the list is published: `TSLLocation` of the primary pointer.
@@ -119,12 +121,13 @@ pub struct SchemeView {
     /// `TSLLocation` of the backup pointer.
     pub backup_location: Option<String>,
     /// Every pointer to other lists.
-    pub pointers: Vec<PointerView>,
+    pub pointers: Vec<Pointer>,
 }
 
 /// A postal address of the scheme operator.
-#[derive(Clone, Debug, Serialize)]
-pub struct PostalAddressView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct PostalAddress {
     /// `StreetAddress`.
     pub street: String,
     /// `PostalCode`.
@@ -138,8 +141,9 @@ pub struct PostalAddressView {
 }
 
 /// A `PointersToOtherTSL` entry.
-#[derive(Clone, Debug, Serialize)]
-pub struct PointerView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Pointer {
     /// `TSLLocation`.
     pub location: String,
     /// The `AdditionalInformation` OIDs and texts.
@@ -147,20 +151,22 @@ pub struct PointerView {
 }
 
 /// The roots the list's CAs were matched against.
-#[derive(Clone, Debug, Serialize)]
-pub struct RootsView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Roots {
     /// `supplied` if the caller's roots.json walked from the anchor, `embedded`
     /// otherwise.
     pub source: &'static str,
     /// Why the supplied roots.json was not used.
     pub warning: Option<String>,
     /// The roots, anchor first, then in walk order.
-    pub trusted: Vec<RootView>,
+    pub trusted: Vec<Root>,
 }
 
 /// A verified root with the CAs of the list it signed.
-#[derive(Clone, Debug, Serialize)]
-pub struct RootView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Root {
     /// By fingerprint.
     pub fingerprint: String,
     /// The subject's common name.
@@ -174,7 +180,8 @@ pub struct RootView {
 }
 
 /// Totals over the whole list.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Counts {
     /// The providers.
     pub providers: usize,
@@ -193,17 +200,19 @@ pub struct Counts {
 }
 
 /// A trust service provider.
-#[derive(Clone, Debug, Serialize)]
-pub struct ProviderView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Provider {
     /// `TSPName`.
     pub name: String,
     /// Its services in list order.
-    pub services: Vec<ServiceView>,
+    pub services: Vec<Service>,
 }
 
 /// A trust service.
-#[derive(Clone, Debug, Serialize)]
-pub struct ServiceView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Service {
     /// `ServiceName`.
     pub name: String,
     /// `ServiceTypeIdentifier`.
@@ -223,12 +232,13 @@ pub struct ServiceView {
     /// The service certificate, by fingerprint.
     pub certificate: Option<String>,
     /// The chain from the certificate to a verified root, for a service in accord.
-    pub chain: Option<ChainView>,
+    pub chain: Option<Chain>,
 }
 
 /// The chain of a service certificate.
-#[derive(Clone, Debug, Serialize)]
-pub struct ChainView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Chain {
     /// Whether the chain ends in a verified root.
     pub trusted: bool,
     /// The certificates by fingerprint, the service's first, as far as it was built.
@@ -238,8 +248,9 @@ pub struct ChainView {
 }
 
 /// A service the parser left out.
-#[derive(Clone, Debug, Serialize)]
-pub struct SkippedView {
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Skipped {
     /// `TSPName`.
     pub provider: String,
     /// `ServiceName`.
@@ -248,199 +259,108 @@ pub struct SkippedView {
     pub reason: String,
 }
 
-/// Verifies `xml` as the TSL of `env` under `config` at `now` and builds the view.
-///
-/// The roots come from `supplied_roots` if that roots.json walks from the anchor of
-/// `config` at `now`, from `config.roots` otherwise; the anchored walk cannot add a root
-/// the anchor does not reach, so supplied roots never widen trust. `config` should have
-/// passed [`TrustConfig::validate`] for the tier of `env`.
-pub fn tsl_view(
-    xml: &[u8],
-    files: DetachedTsl<'_>,
-    env: Env,
-    config: &TrustConfig,
-    supplied_roots: Option<&[u8]>,
-    now: Timestamp,
-) -> TslView {
-    let tier = env.tier();
-    let mut view = TslView {
-        schema: SCHEMA,
-        environment: env.as_str(),
-        tier: tier_name(tier),
-        result: "invalid",
-        error: None,
-        signature: None,
-        list: None,
-        roots: None,
-        counts: None,
-        providers: Vec::new(),
-        skipped: Vec::new(),
-        certificates: BTreeMap::new(),
-    };
-    let verified = Tsl::parse_verified_with_status(xml, files, config, now);
-    let verified = match verified {
-        Ok(verified) => verified,
-        Err(e) => {
-            view.error = Some(Finding::from(&e));
-            return view;
-        }
-    };
-    // The presets keep the tiers apart already; this holds even for a hand-built config.
-    if verified.tier != tier {
-        view.error = Some(Finding {
-            code: TslCode::CertificateNotValidMath.as_str(),
-            code_number: TslCode::CertificateNotValidMath.number(),
-            rule: "TSLSIG-031",
-            detail: format!(
-                "the list is signed for {}, not for {}",
-                tier_name(verified.tier),
-                env.as_str()
-            ),
-        });
-        return view;
-    }
-    view.result = "valid";
-    let roots = match load_roots(config, supplied_roots, now) {
-        Ok(roots) => roots,
-        Err(e) => {
-            view.result = "invalid";
-            view.error = Some(Finding {
-                code: "roots_error",
-                code_number: None,
-                rule: "A_28419",
-                detail: e,
-            });
-            return view;
-        }
-    };
-    Builder {
-        view: &mut view,
-        config,
-        now,
-    }
-    .build(&verified, roots);
-    view
-}
-
-struct Roots {
-    trusted: Vec<Certificate>,
-    source: &'static str,
-    warning: Option<String>,
-}
-
-fn load_roots(
-    config: &TrustConfig,
-    supplied: Option<&[u8]>,
-    now: Timestamp,
-) -> Result<Roots, String> {
-    let mut warning = None;
-    if let Some(json) = supplied {
-        let with_supplied = TrustConfig {
-            roots: Cow::Owned(json.to_vec()),
-            ..config.clone()
+#[cfg(feature = "load")]
+impl Tsl {
+    /// The view of `verified`, the outcome of [`offline::Tsl::verify`] for `env`, its
+    /// certificates described at `now`. A failed list yields the verdict only: nothing
+    /// from it may be used, so nothing from it is shown as content.
+    pub fn new(env: Env, verified: &Result<offline::Tsl, TslFailure>, now: Timestamp) -> Self {
+        let mut view = Tsl {
+            schema: SCHEMA,
+            environment: env.as_str(),
+            tier: env.tier().as_str(),
+            result: "invalid",
+            error: None,
+            signature: None,
+            list: None,
+            roots: None,
+            counts: None,
+            providers: Vec::new(),
+            skipped: Vec::new(),
+            certificates: BTreeMap::new(),
         };
-        match roots::load(&with_supplied, now) {
-            Ok(walk) => {
-                return Ok(Roots {
-                    trusted: walk.trusted,
-                    source: "supplied",
-                    warning: None,
+        match verified {
+            Ok(tsl) => {
+                view.result = "valid";
+                Builder {
+                    view: &mut view,
+                    now,
+                }
+                .build(tsl);
+            }
+            Err(TslFailure::Tsl(e)) => view.error = Some(Finding::from(e)),
+            Err(TslFailure::Roots(reason)) => {
+                view.error = Some(Finding {
+                    code: "roots_error",
+                    code_number: None,
+                    rule: "A_28419",
+                    detail: reason.clone(),
                 });
             }
-            Err(e) => warning = Some(format!("supplied roots.json: {e}")),
         }
-    }
-    let walk = roots::load(config, now).map_err(|e| format!("embedded roots.json: {e}"))?;
-    Ok(Roots {
-        trusted: walk.trusted,
-        source: "embedded",
-        warning,
-    })
-}
-
-const fn tier_name(tier: Tier) -> &'static str {
-    match tier {
-        Tier::Prod => "prod",
-        Tier::NonProd => "nonprod",
+        view
     }
 }
 
-/// A CA of the list a verified root signed, with that root.
-struct Kept<'a> {
-    ca: &'a Certificate,
-    root: &'a Certificate,
-}
-
+#[cfg(feature = "load")]
 struct Builder<'a> {
-    view: &'a mut TslView,
-    config: &'a TrustConfig,
+    view: &'a mut Tsl,
     now: Timestamp,
 }
 
+#[cfg(feature = "load")]
 impl Builder<'_> {
-    fn build(mut self, verified: &VerifiedTsl, roots: Roots) {
+    fn build(mut self, tsl: &offline::Tsl) {
+        let verified = &tsl.verified;
         let list = &verified.tsl;
-        self.view.signature = Some(SignatureView {
+        self.view.signature = Some(Signature {
             signer: self.file(&verified.signer),
             tsl_signer_ca: self.file(&verified.anchor),
             warnings: verified.warnings.iter().map(Finding::from).collect(),
         });
-        self.view.list = Some(ListView {
+        self.view.list = Some(List {
             id: list.id.clone(),
             sequence_number: list.sequence_number,
             issued_at: list.issued_at.to_string(),
             next_update: list.next_update.map(|t| t.to_string()),
             overdue: list.next_update.is_some_and(|t| self.now >= t),
-            scheme: scheme_view(&list.scheme),
+            scheme: scheme(&list.scheme),
         });
 
-        let store = TrustStore::new(roots.trusted.iter().cloned());
-        let matched = tsl::match_to_roots(list.intermediate_cas(), &store, &self.config.algorithms);
-        // Each kept CA with its root, found once: signature checks dominate the time.
-        let kept: Vec<Kept> = matched
-            .intermediates
+        let trusted = tsl
+            .roots
             .iter()
-            .filter_map(|i| {
-                let root = self.issuing_root(&i.certificate, &store)?;
-                Some(Kept {
-                    ca: &i.certificate,
-                    root,
-                })
-            })
-            .collect();
-
-        let trusted = roots
-            .trusted
-            .iter()
-            .map(|root| RootView {
+            .map(|root| Root {
                 fingerprint: self.file(root),
                 common_name: root.subject_cn().to_owned(),
                 not_after: root.not_after().to_string(),
                 validity: validity(root, self.now),
-                cas: kept
+                cas: tsl
+                    .kept
                     .iter()
-                    .filter(|k| k.root == root)
-                    .map(|k| fingerprint(k.ca.der()))
+                    .filter(|k| &k.root == root)
+                    .map(|k| fingerprint(&k.ca))
                     .collect(),
             })
             .collect();
-        self.view.roots = Some(RootsView {
-            source: roots.source,
-            warning: roots.warning,
+        self.view.roots = Some(Roots {
+            source: roots_source(tsl.roots_source),
+            warning: tsl.roots_warning.clone(),
             trusted,
         });
 
-        let mut providers: Vec<ProviderView> = Vec::new();
-        for service in &list.services {
-            let entry = self.service(service, &store, &kept, &matched.rejected);
+        let mut providers: Vec<Provider> = Vec::new();
+        for (service, chain) in list.services.iter().zip(&tsl.chains) {
+            let entry = self.service(service, chain.as_ref());
             match providers.last_mut() {
                 Some(current) if current.name == service.provider => current.services.push(entry),
-                _ => providers.push(ProviderView {
+                _ => providers.push(Provider {
                     name: service.provider.clone(),
                     services: vec![entry],
                 }),
             }
         }
+        let matched = &tsl.matched;
         self.view.counts = Some(Counts {
             providers: providers.len(),
             services: list.services.len(),
@@ -450,7 +370,7 @@ impl Builder<'_> {
             ocsp: list
                 .services
                 .iter()
-                .filter(|s| s.service_type == tsl::SERVICE_TYPE_OCSP)
+                .filter(|s| s.service_type == crate::tsl::SERVICE_TYPE_OCSP)
                 .count(),
             skipped: list.skipped.len(),
         });
@@ -458,7 +378,7 @@ impl Builder<'_> {
         self.view.skipped = list
             .skipped
             .iter()
-            .map(|s| SkippedView {
+            .map(|s| Skipped {
                 provider: s.provider.clone(),
                 name: s.name.clone(),
                 reason: s.reason.clone(),
@@ -468,23 +388,22 @@ impl Builder<'_> {
 
     fn service(
         &mut self,
-        service: &Service,
-        store: &TrustStore,
-        kept: &[Kept],
-        rejected: &[(Intermediate, Rejection)],
-    ) -> ServiceView {
+        service: &crate::tsl::Service,
+        chain: Option<&offline::ServiceChain>,
+    ) -> Service {
         let kind = match service.service_type.as_str() {
-            tsl::SERVICE_TYPE_CA_PKC => "ca",
-            tsl::SERVICE_TYPE_OCSP => "ocsp",
-            tsl::SERVICE_TYPE_TSL_CERT_CHANGE => "tsl_cert_change",
+            crate::tsl::SERVICE_TYPE_CA_PKC => "ca",
+            crate::tsl::SERVICE_TYPE_OCSP => "ocsp",
+            crate::tsl::SERVICE_TYPE_TSL_CERT_CHANGE => "tsl_cert_change",
             _ => "other",
         };
         let certificate = service.certificate.as_ref().map(|c| self.file(c));
-        let chain = match &service.certificate {
-            Some(cert) if service.is_in_accord() => Some(self.chain(cert, store, kept, rejected)),
-            _ => None,
-        };
-        ServiceView {
+        let chain = chain.map(|chain| Chain {
+            trusted: chain.rejection.is_none(),
+            path: chain.path.iter().map(|c| self.file(c)).collect(),
+            rejection: chain.rejection.map(rejection_code),
+        });
+        Service {
             name: service.name.clone(),
             service_type: service.service_type.clone(),
             kind,
@@ -498,91 +417,21 @@ impl Builder<'_> {
         }
     }
 
-    /// The path from `cert` up to a verified root: a CA the roots kept goes straight to
-    /// its root, any other certificate through the kept CA that signed it, or a root.
-    fn chain(
-        &mut self,
-        cert: &Certificate,
-        store: &TrustStore,
-        kept: &[Kept],
-        rejected: &[(Intermediate, Rejection)],
-    ) -> ChainView {
-        let mut path = vec![self.file(cert)];
-        if store.contains(cert) {
-            return trusted(path);
-        }
-        if let Some((_, reason)) = rejected.iter().find(|(i, _)| &i.certificate == cert) {
-            return untrusted(path, *reason);
-        }
-        if let Some(k) = kept.iter().find(|k| k.ca == cert) {
-            path.push(self.file(k.root));
-            return trusted(path);
-        }
-        if let Some(k) = kept.iter().find(|k| self.signed_by(cert, k.ca)) {
-            path.push(self.file(k.ca));
-            path.push(self.file(k.root));
-            return trusted(path);
-        }
-        if let Some(root) = self.issuing_root(cert, store) {
-            path.push(self.file(root));
-            return trusted(path);
-        }
-        let named = kept.iter().any(|k| k.ca.subject_der() == cert.issuer_der());
-        untrusted(
-            path,
-            if named {
-                Rejection::BadSignature
-            } else {
-                Rejection::UnknownIssuer
-            },
-        )
-    }
-
-    fn issuing_root<'s>(
-        &self,
-        cert: &Certificate,
-        store: &'s TrustStore,
-    ) -> Option<&'s Certificate> {
-        store.roots().iter().find(|root| self.signed_by(cert, root))
-    }
-
-    fn signed_by(&self, cert: &Certificate, issuer: &Certificate) -> bool {
-        cert.issuer_der() == issuer.subject_der()
-            && cert
-                .verify_signed_by(issuer, &self.config.algorithms)
-                .is_ok()
-    }
-
     /// Files `cert` under its fingerprint and returns that.
-    fn file(&mut self, cert: &Certificate) -> String {
-        let key = fingerprint(cert.der());
+    fn file(&mut self, cert: &crate::Certificate) -> String {
+        let key = fingerprint(cert);
         if !self.view.certificates.contains_key(&key) {
             self.view
                 .certificates
-                .insert(key.clone(), describe(cert, self.now));
+                .insert(key.clone(), Certificate::new(cert, self.now));
         }
         key
     }
 }
 
-fn trusted(path: Vec<String>) -> ChainView {
-    ChainView {
-        trusted: true,
-        path,
-        rejection: None,
-    }
-}
-
-fn untrusted(path: Vec<String>, reason: Rejection) -> ChainView {
-    ChainView {
-        trusted: false,
-        path,
-        rejection: Some(rejection_code(reason)),
-    }
-}
-
-fn scheme_view(scheme: &tsl::SchemeInfo) -> SchemeView {
-    SchemeView {
+#[cfg(feature = "load")]
+fn scheme(scheme: &crate::tsl::SchemeInfo) -> Scheme {
+    Scheme {
         version_identifier: scheme.version_identifier,
         tsl_type: scheme.tsl_type.clone(),
         scheme_name: scheme.scheme_name.clone(),
@@ -590,7 +439,7 @@ fn scheme_view(scheme: &tsl::SchemeInfo) -> SchemeView {
         postal_addresses: scheme
             .postal_addresses
             .iter()
-            .map(|a| PostalAddressView {
+            .map(|a| PostalAddress {
                 street: a.street.clone(),
                 postal_code: a.postal_code.clone(),
                 locality: a.locality.clone(),
@@ -604,7 +453,7 @@ fn scheme_view(scheme: &tsl::SchemeInfo) -> SchemeView {
         pointers: scheme
             .pointers
             .iter()
-            .map(|p| PointerView {
+            .map(|p| Pointer {
                 location: p.location.clone(),
                 additional_information: p.additional_information.clone(),
             })

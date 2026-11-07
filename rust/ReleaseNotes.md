@@ -281,31 +281,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (TSLSIG-023). The ECDSA check and the certificate are left to the caller; the
   `verify` example shows both.
 
-### ti-report
-
-#### changed
-- `CheckContext` maps ti-pki's `offline::Check`; its reports are unchanged. `pem` and
-  `sha256` are gone for `Certificate::to_pem` and `Certificate::fingerprint_sha256`
-  (TASK-247).
-
-#### added
-- `tsl_view` and `CheckContext::new` take the list's detached files; `SignatureView` loses
-  `signing_time` (TASK-166).
-- `check::CheckContext`: an environment's TSL and roots verified once, then any number of
-  certificates checked against them offline as `ti pki verify --profile auto` does
-  (`CheckReport`: verdict, profile, type, errors, warnings and the trust tree, end entity
-  first). Revocation is not checked.
-- New crate: the JSON reports on certificates and TSLs that the `ti` CLI and its
-  WebAssembly build share. `describe(cert, now)` gives a certificate as `ti pki inspect`
-  shows it (`CertificateInfo`, `OidInfo`); `tsl::Finding`, `tsl::CertSummary` and
-  `tsl::rejection_code` give the TSL findings as `ti pki tsl verify` and `tsl show` report
-  them. No I/O, no clock; builds for `wasm32-unknown-unknown`.
-- `tsl_view(xml, env, config, roots, now)`: a TSL verified for one environment as one
-  document for web views (`TslView`): signature verdict and warnings, list and scheme
-  metadata, the roots walked from the anchor with the CAs each signed, every service by
-  provider with its certificate types (`TypeOid`) and the chain of its certificate, and
-  every certificate named, keyed by `fingerprint` (lower-case SHA-256 hex).
-
 ### ti-wasm
 
 #### added
@@ -315,7 +290,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `TrustContext`: `new TrustContext(xml, env, now, roots_json?, grace)` verifies once,
   `check(der_or_pem, now)` returns `schemas/check.json`; for certificate checks in the
   browser. The smoke test cross-checks it with `ti pki verify --offline`.
-- New crate: `ti-report` for JavaScript through wasm-bindgen, server and browser alike.
+- New crate: the TSL view and certificate description for JavaScript through wasm-bindgen,
+  server and browser alike.
   `verify_tsl`, `describe_certificate`, `trust_urls` and `version` return JSON
   (`schemas/tsl-view.json`, `schemas/certificates.json`, typed in `js/types.d.ts`); the
   caller passes the bytes and the instant, the module has no network and no clock.
@@ -406,6 +382,27 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `model` (TASK-248): the response model of ti-pki's use cases, plain types that only map,
+  with no I/O, no validation and no clock of their own, always compiled; `Serialize` with the
+  new `serde` feature. They are the JSON the `ti` CLI and its WebAssembly build publish, which
+  their schemas describe, and replace the ti-report crate:
+  - `Certificate::new(cert, now)`: a certificate as `ti pki inspect` shows it (`Key`,
+    `ProfileHint`, `Admission`, `Oid`, `TypeOid`); `validity(cert, now)`.
+  - `Finding`, `CertSummary` and `rejection_code`: the TSL findings as `ti pki tsl verify` and
+    `tsl show` report them.
+  - `Tsl::new(env, &offline::Tsl::verify(..), now)`: a TSL verified for one environment as
+    one document for web views: signature verdict and warnings, list and scheme metadata,
+    the roots walked from the anchor with the CAs each signed, every service by provider
+    with its certificate types and the chain of its certificate, and every certificate
+    named, keyed by its lower-case SHA-256 hex. A failed list yields the verdict only.
+  - `Check::new(&check, certs, &outcome, now)` and `TslState::new(material)`: an offline
+    check as one document: verdict, profile, type, errors, warnings and the trust tree, end
+    entity first; revocation is not checked.
+  - `SCHEMA`, the version of every document.
+- `offline::Tsl::verify` (features `load`, `brainpool`): a TSL verified for one environment
+  by its detached files, its CAs matched to the roots of a supplied roots.json if that walks
+  from the anchor, of the embedded one otherwise, and the chain of every service certificate
+  in accord towards a verified root (TASK-248).
 - `offline::Check` (feature `load`): an environment's TSL and roots.json verified once
   without a network, a supplied roots.json used only if it walks from the anchor, then any
   number of certificates validated against them with revocation disabled, under the profile

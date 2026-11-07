@@ -21,15 +21,22 @@
  * find details in the "Readme" file.
  */
 
-//! Any bytes as a certificate a web page hands ti-wasm, DER or PEM: describing it errors or yields a
-//! JSON report, never panics. The seeds are the test PKI's certificates.
+//! Any bytes as a certificate a web page hands ti-wasm, DER or PEM, as ti-wasm reads them:
+//! describing every certificate found never panics. The seeds are the test PKI's certificates.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use ti_wasm::api;
+use ti_pki::{Certificate, Timestamp, model, parse_pem_certificates};
 
 fuzz_target!(|data: &[u8]| {
-    if let Ok(json) = api::describe_certificate(data, "2026-11-02T16:47:42Z") {
-        assert!(json.starts_with('{') && json.ends_with('}'), "not a JSON object: {json}");
+    let now = Timestamp::parse_rfc3339("2026-11-02T16:47:42Z").expect("a fixed time");
+    let certificates = if data.trim_ascii_start().starts_with(b"-----") {
+        parse_pem_certificates(data).unwrap_or_default()
+    } else {
+        Certificate::from_der(data).into_iter().collect()
+    };
+    for cert in &certificates {
+        let info = model::Certificate::new(cert, now);
+        assert_eq!(info.sha256, cert.fingerprint_sha256());
     }
 });

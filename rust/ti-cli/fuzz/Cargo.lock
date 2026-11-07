@@ -1583,7 +1583,6 @@ dependencies = [
  "ti-jwz",
  "ti-pkcs12",
  "ti-pki",
- "ti-report",
  "ti-tls",
  "ti-types",
  "ureq",
@@ -1703,17 +1702,6 @@ dependencies = [
  "ti-cache",
  "ti-types",
  "x509-cert",
-]
-
-[[package]]
-name = "ti-report"
-version = "0.1.0"
-dependencies = [
- "const-oid",
- "pem-rfc7468",
- "serde",
- "sha2",
- "ti-pki",
 ]
 
 [[package]]
