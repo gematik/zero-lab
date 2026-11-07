@@ -28,11 +28,8 @@
 
 use core::fmt;
 use std::cell::{OnceCell, RefCell};
-use std::fmt::Write as _;
 use std::sync::Arc;
 
-use serde::Serialize;
-use sha2::{Digest, Sha256};
 use ti_idpd_client::trust::{CertificateTrust, Checked, IdpCertificate};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::profile::IDPD_SIG;
@@ -186,46 +183,4 @@ impl<E: From<Error> + fmt::Display> TslTrust<'_, E> {
             session,
         })
     }
-}
-
-/// One of the IDP's certificates as a report shows it.
-#[derive(Serialize)]
-pub struct CertificateInfo {
-    /// `puk_disc_sig` or `puk_idp_sig`.
-    pub key: &'static str,
-    /// Its subject; empty if it does not parse.
-    pub subject: String,
-    /// SHA-256 of the DER, hex.
-    pub sha256: String,
-    /// Checked against the TSL and valid; false when not checked.
-    pub verified: bool,
-}
-
-/// The report entries for the certificates a flow checked.
-pub fn certificate_infos(
-    certificates: &[ti_idpd_client::authenticator::CheckedCertificate],
-) -> Vec<CertificateInfo> {
-    certificates
-        .iter()
-        .map(|c| CertificateInfo {
-            key: c.which.as_str(),
-            subject: Certificate::from_der(&c.der)
-                .map(|cert| cert.subject().to_string())
-                .unwrap_or_default(),
-            sha256: hex(&Sha256::digest(&c.der)),
-            verified: c.checked == Checked::Verified,
-        })
-        .collect()
-}
-
-/// Upper-case hex pairs separated by colons, as certificate fingerprints are shown.
-fn hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len() * 3);
-    for (i, b) in bytes.iter().enumerate() {
-        if i > 0 {
-            out.push(':');
-        }
-        let _ = write!(out, "{b:02X}");
-    }
-    out
 }

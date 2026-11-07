@@ -104,6 +104,11 @@ pub enum Error {
     SignatureMalformed(String),
     /// The system's randomness, which salts and IVs come from, failed.
     Randomness,
+    /// The IDP-Dienst refused, did not answer, or answered outside the protocol.
+    Idpd(ti_idpd_client::Error),
+    /// The FHIR-Directory refused, did not answer, or answered outside the protocol; a
+    /// failure of the IDP-Dienst flow inside it is [`Error::Idpd`].
+    Directory(Box<ti_directory_client::Error>),
 }
 
 impl fmt::Display for Error {
@@ -141,6 +146,8 @@ impl fmt::Display for Error {
             Error::Cache { path, reason } => write!(f, "cache {path}: {reason}"),
             Error::State { path, reason } => write!(f, "state file {path}: {reason}"),
             Error::Randomness => f.write_str("no system randomness"),
+            Error::Idpd(error) => error.fmt(f),
+            Error::Directory(error) => error.fmt(f),
         }
     }
 }
@@ -153,6 +160,8 @@ impl std::error::Error for Error {
             Error::Write(error) => Some(error),
             Error::Certificate { source, .. } | Error::Trust(source) => Some(source),
             Error::Pkcs12 { source, .. } => Some(source),
+            Error::Idpd(error) => Some(error),
+            Error::Directory(error) => Some(error),
             _ => None,
         }
     }

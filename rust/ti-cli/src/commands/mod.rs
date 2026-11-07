@@ -36,7 +36,6 @@ mod identity;
 mod idp_trust;
 mod idpd;
 mod inspect;
-mod owner_login;
 mod pkcs12;
 mod probe;
 mod profile;

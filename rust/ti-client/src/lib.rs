@@ -27,12 +27,14 @@
 mod block;
 mod client;
 pub mod connector;
+pub mod directory;
 mod error;
 pub mod file_cache;
 pub mod files;
 pub mod http;
 pub mod identity;
 pub mod idp_trust;
+pub mod idpd;
 pub mod input;
 pub mod net;
 pub mod peer;

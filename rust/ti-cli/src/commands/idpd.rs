@@ -26,12 +26,11 @@
 //! `send_authorization_request_sc` → `send_authcode_sc`.
 
 use serde::Serialize;
-use ti_client::block_on;
-use ti_idpd_client::authenticator;
-use ti_idpd_client::{Idp, Warning};
-use ti_pki::Timestamp;
+use ti_client::idpd::{self, Authentication, Card};
+use ti_idpd_client::Idp;
+use ti_idpd_client::model::CertificateInfo;
 
-use super::idp_trust::{CertificateInfo, certificate_infos, idp_trust};
+use super::idp_trust::idp_trust;
 use crate::cli::{GlobalArgs, IdpdAuthenticateArgs};
 use crate::error::{CliError, Exit};
 use crate::http;
@@ -39,42 +38,10 @@ use crate::output::{Document, Line, Output, SCHEMA, Tone};
 
 /// The JSON document.
 #[derive(Serialize)]
-struct Report {
+struct Report<'a> {
     schema: u32,
-    /// The authorization code for the relying party.
-    code: String,
-    /// The `state` the relying party sent, if any.
-    state: Option<String>,
-    /// The redirect the IDP answered with, as sent.
-    redirect_url: String,
-    idp: IdpInfo,
-    identity: IdentityInfo,
-    /// Claims of the challenge, for the record.
-    challenge: ChallengeInfo,
-    /// What was not proven: `idp_certificates_unverified` with `--idp-unverified`.
-    warnings: Vec<&'static str>,
-}
-
-#[derive(Serialize)]
-struct IdpInfo {
-    base_url: String,
-    issuer: String,
-    authorization_endpoint: String,
-    /// The discovery document's and `PuK_IDP_SIG`'s certificates.
-    certificates: Vec<CertificateInfo>,
-}
-
-#[derive(Serialize)]
-struct IdentityInfo {
-    subject: String,
-    telematik_id: Option<String>,
-}
-
-#[derive(Serialize)]
-struct ChallengeInfo {
-    client_id: Option<String>,
-    scope: Option<String>,
-    redirect_uri: Option<String>,
+    #[serde(flatten)]
+    authentication: &'a Authentication,
 }
 
 /// Runs `ti idpd authenticate`.
@@ -94,72 +61,36 @@ pub fn authenticate(
         (None, None) => return Err(CliError::Environment("--env or --idp-url".into())),
     };
     let identity = crate::identity::load(&args.identity, global, out)?;
-    let signer = identity.signer(ti_jwz::brainpool::BP256R1)?;
+    let card = Card::new(&identity)?;
     let transport = http::Logged::new(&global.net, out)?;
     out.verbose(1, format_args!("IDP-Dienst {}", idp.base_url()));
     let trust = idp_trust(args.idp_unverified, args.env, global, out);
-    let done = block_on(authenticator::authenticate(
-        &transport,
-        &idp,
-        &authenticator::Identity {
-            signer: &*signer,
-            certificate_der: identity.certificate.der(),
-        },
-        &args.auth_url,
-        Timestamp::now,
-        &trust,
-    ))
-    .map_err(|error| trust.take_error().unwrap_or(CliError::Idpd(error)))?;
-    let claim = |name: &str| {
-        done.challenge_claims
-            .get(name)
-            .and_then(|v| v.as_str())
-            .map(str::to_owned)
-    };
-    let report = Report {
-        schema: SCHEMA,
-        code: done.redirect.code,
-        state: done.redirect.state,
-        redirect_url: done.redirect.url,
-        idp: IdpInfo {
-            base_url: idp.base_url().to_owned(),
-            issuer: done.discovery.metadata.issuer,
-            authorization_endpoint: done.discovery.metadata.authorization_endpoint,
-            certificates: certificate_infos(&done.certificates),
-        },
-        identity: IdentityInfo {
-            subject: identity.certificate.subject().to_string(),
-            telematik_id: identity.telematik_id(),
-        },
-        challenge: ChallengeInfo {
-            client_id: claim("client_id"),
-            scope: claim("scope"),
-            redirect_uri: claim("redirect_uri"),
-        },
-        warnings: done.warnings.iter().map(|w| Warning::as_str(*w)).collect(),
-    };
+    let done = idpd::authenticate(&transport, &idp, &card, &args.auth_url, &trust)?;
     if out.is_json() {
-        out.json(&report)?;
+        out.json(&Report {
+            schema: SCHEMA,
+            authentication: &done,
+        })?;
         return Ok(Exit::Ok);
     }
     let mut doc = Document::default();
     doc.field("authenticated", Line::status(Tone::Good, "code received"));
-    doc.field("IDP", Line::text(&report.idp.issuer));
-    certificate_lines(&mut doc, &report.idp.certificates);
+    doc.field("IDP", Line::text(&done.idp.issuer));
+    certificate_lines(&mut doc, &done.idp.certificates);
     doc.field(
         "client",
-        Line::text(report.challenge.client_id.as_deref().unwrap_or("-")),
+        Line::text(done.challenge.client_id.as_deref().unwrap_or("-")),
     );
-    doc.field("identity", Line::text(&report.identity.subject));
-    if let Some(id) = &report.identity.telematik_id {
+    doc.field("identity", Line::text(&done.identity.subject));
+    if let Some(id) = &done.identity.telematik_id {
         doc.field("Telematik-ID", Line::code(id));
     }
-    doc.field("code", Line::code(&report.code));
-    if let Some(state) = &report.state {
+    doc.field("code", Line::code(&done.code));
+    if let Some(state) = &done.state {
         doc.field("state", Line::code(state));
     }
-    doc.field("redirect", Line::link(&report.redirect_url));
-    for warning in &report.warnings {
+    doc.field("redirect", Line::link(&done.redirect_url));
+    for warning in &done.warnings {
         doc.field("warning", Line::status(Tone::Warn, *warning));
     }
     out.render(&doc)?;

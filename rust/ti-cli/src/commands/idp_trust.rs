@@ -24,8 +24,6 @@
 //! The IDP-Dienst's certificates checked against the TSL ([`ti_client::idp_trust`]),
 //! as the command line asks for it.
 
-pub use ti_client::idp_trust::{CertificateInfo, certificate_infos};
-
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::CliError;
 use crate::output::Output;

@@ -436,6 +436,8 @@ impl From<ti_client::Error> for CliError {
             ti_client::Error::KeyUnsupported(message) => CliError::KeyUnsupported(message),
             ti_client::Error::Signing(message) => CliError::Signing(message),
             ti_client::Error::SignatureMalformed(message) => CliError::SignatureMalformed(message),
+            ti_client::Error::Idpd(error) => CliError::Idpd(error),
+            ti_client::Error::Directory(error) => CliError::Directory(error),
             ti_client::Error::Randomness => {
                 CliError::Output(io::Error::other("no system randomness"))
             }

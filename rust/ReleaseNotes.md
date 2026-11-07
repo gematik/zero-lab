@@ -207,6 +207,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   terminal reaches the front end as a closure called with a `Wait`, documents come and go
   as bytes, and no PIN passes through. `pkcs12::keep_pair` keeps one pair of a file.
   `Error` gains `ConnectorConfig`, `CardRestricted`, `PinType`, `Refused` and `Write`.
+- The operations of `ti idpd authenticate` and `ti directory login` (TASK-250), moved from
+  ti-cli: `idpd::authenticate` (the Authenticator-Modul flow with an identity, as a `Card`
+  that signs `BP256R1`), `directory::{card, search, regservice, client_credentials}`, and
+  `directory::owner`, the owner login that joins the directory's steps and the IDP-Dienst
+  flow, with `OwnerTokens`, the host's `ti_directory_client::tokens::Tokens` (renewed
+  before expiry and after a refusal). They return ti-idpd-client's and
+  ti-directory-client's `model`; the transport is the caller's, so a front end can wrap it
+  to show each request. `Error` gains `Idpd` and `Directory`.
 
 ### ti-tls
 

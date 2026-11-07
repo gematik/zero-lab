@@ -16,8 +16,8 @@ ti-cache.workspace = true
 ti-types.workspace = true
 # The model the operations return (`serde`).
 ti-connector-client = { workspace = true, features = ["serde"] }
-ti-idpd-client.workspace = true
-ti-directory-client.workspace = true
+ti-idpd-client = { workspace = true, features = ["serde"] }
+ti-directory-client = { workspace = true, features = ["serde"] }
 # The transport of roots.json, the TSL and OCSP (`load`), and the OCSP media types; the
 # system clock (`os`); the trust material of every environment, the non-prod presets fenced by TrustConfig::validate;
 # a server's handshake signature on brainpool and RSA keys too (`peer`); the model the

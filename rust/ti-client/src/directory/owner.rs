@@ -38,13 +38,16 @@ use ti_pki::Timestamp;
 /// Seconds before its expiry that a token is renewed: one handed out must still be valid
 /// when its request reaches the directory, over a slow network and with the directory's
 /// clock a little ahead of this one.
-const RENEW_BEFORE: u64 = 60;
+pub const RENEW_BEFORE: u64 = 60;
 
 /// A token the directory issued, when it expires by this host's clock, and how it was had.
 #[derive(Clone, Debug)]
 pub struct Issued<R> {
+    /// The token.
     pub token: AccessToken,
+    /// When it expires, from this host's clock and `expires_in`.
     pub expires_at: Timestamp,
+    /// How it was had.
     pub how: R,
 }
 
@@ -60,7 +63,9 @@ pub struct ByCard {
 /// The step that failed, by product: each keeps its own kinds of error.
 #[derive(Debug)]
 pub enum OwnerError {
+    /// A step at the directory.
     Directory(ti_directory_client::Error),
+    /// A step of the IDP-Dienst flow.
     Idpd(ti_idpd_client::Error),
 }
 
@@ -146,6 +151,7 @@ where
     N: Fn() -> Timestamp,
     R: Clone,
 {
+    /// Tokens from `login`, their validity judged at `now`.
     pub fn new(login: L, now: N) -> OwnerTokens<L, N, R> {
         OwnerTokens {
             login,
@@ -207,7 +213,7 @@ mod tests {
     use ti_idpd_client::trust::Unverified;
 
     use super::*;
-    use ti_client::block_on;
+    use crate::block_on;
 
     const DIRECTORY: &str = "https://directory.test";
     const IDP: &str = "https://idp.test";

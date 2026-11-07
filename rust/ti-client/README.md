@@ -38,7 +38,11 @@ command-line tool and the desktop app: the I/O the product clients leave to thei
   (the `.kon` files as the Go `ti` keeps them), `connector::Session` with `card_user` (one
   user ID per HBA, kept in a private file of the profile's state), `connector::cards`,
   `connector::documents` (documents in and out as bytes) and `connector::setup` (a `.kon`
-  file shown, judged and tested). What only a front end can give comes in as a parameter
+  file shown, judged and tested). `idpd::authenticate` and `directory` (the
+  FHIR-Directory's token by card, for its search, by RegService token or by client
+  credentials) return ti-idpd-client's and ti-directory-client's model; `directory::owner`
+  joins the two products' flows for the owner login and keeps its token (`OwnerTokens`,
+  ti-directory-client's `Tokens` implemented by this host). What only a front end can give comes in as a parameter
   or a closure: a password, the session's warnings, the opening of a session or a cache
   when it is needed, what to show while a call waits at the card terminal. No PIN passes
   through: the user enters it at the terminal.
