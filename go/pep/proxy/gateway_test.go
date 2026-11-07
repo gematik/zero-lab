@@ -24,6 +24,8 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -220,6 +222,43 @@ func TestGatewayIdentityInjection(t *testing.T) {
 	}
 	if claims["sub"] != "u-1" {
 		t.Errorf("identity claims = %v", claims)
+	}
+}
+
+// TLSV-001: an https upstream is verified by the transport the host hands over, under the profile it chose;
+// without one the gateway does not start, so no route reaches an upstream whose TLS no profile verifies.
+func TestTLSV001_AnHTTPSUpstreamGoesThroughTheHostsTransportOnly(t *testing.T) {
+	hit := false
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { hit = true }))
+	defer upstream.Close()
+	routes := []Route{{PathPrefix: "/public", Upstream: upstream.URL, Gate: GateNone}}
+	deps := func(transport http.RoundTripper) gatewayDeps {
+		return gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, transport: transport}
+	}
+
+	if _, err := newGateway(routes, deps(nil)); err == nil || !strings.Contains(err.Error(), "https upstream") {
+		t.Fatalf("an https route without a transport: %v", err)
+	}
+
+	untrusting := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: x509.NewCertPool(), MinVersion: tls.VersionTLS12}}
+	gw, err := newGateway(routes, deps(untrusting))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	gw.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/public/x", nil))
+	if hit || rec.Code != http.StatusBadGateway {
+		t.Fatalf("an upstream the transport does not trust was reached: %d, hit %v", rec.Code, hit)
+	}
+
+	gw, err = newGateway(routes, deps(upstream.Client().Transport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec = httptest.NewRecorder()
+	gw.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/public/x", nil))
+	if !hit {
+		t.Errorf("the trusted upstream was not reached: %d", rec.Code)
 	}
 }
 

@@ -45,6 +45,8 @@ type gatewayDeps struct {
 	snapshotKeys   [][]byte
 	// now is the time requests are judged at; nil means the system clock.
 	now func() time.Time
+	// transport reaches the upstreams; nil is only allowed when none is https.
+	transport http.RoundTripper
 }
 
 // Gateway gates and reverse-proxies the configured routes. Gating runs as a pep.Enforcer chain (the gate,
@@ -67,6 +69,9 @@ func newGateway(routes []Route, deps gatewayDeps) (*Gateway, error) {
 		return nil, err
 	}
 	for _, rt := range validated {
+		if rt.upstream.Scheme == "https" && deps.transport == nil {
+			return nil, fmt.Errorf("route %q: https upstream without an upstream transport: its TLS would be verified by no profile", rt.PathPrefix)
+		}
 		if rt.Gate == GateSnapshot && len(deps.snapshotKeys) == 0 {
 			return nil, fmt.Errorf("route %q uses gate: snapshot, but the snapshot fast path is not configured (set the session key)", rt.PathPrefix)
 		}
@@ -159,6 +164,7 @@ func (g *Gateway) handleDenied(w http.ResponseWriter, r *http.Request, err pep.E
 
 func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 	return &httputil.ReverseProxy{
+		Transport: g.deps.transport,
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(rt.upstream)
 			if rt.StripPrefix {

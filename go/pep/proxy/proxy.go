@@ -66,6 +66,12 @@ type Config struct {
 	// path (SnapshotKeyPath).
 	Routes []Route
 
+	// UpstreamTransport carries the gateway's requests to its upstreams. An https upstream needs it, verifying
+	// under the profile of spec/pki-validation the host chose for it (titls' web profile for one on the
+	// internet), and New refuses an https route without one. A plain http upstream, a service beside pep in the
+	// same pod or network, has no TLS to verify and goes through Go's default transport when this is nil.
+	UpstreamTransport http.RoundTripper
+
 	// Clock is the time sessions, snapshots, revocations and tokens are judged at; nil means the system
 	// clock.
 	Clock func() time.Time
@@ -153,7 +159,7 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	if len(cfg.Routes) > 0 {
-		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now}
+		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now, transport: cfg.UpstreamTransport}
 		if snap != nil {
 			deps.cookieName = s.snapCookie.Name // the snapshot gate validates the -SNAP cookie
 			deps.snapshotKeys = snap.decKeys

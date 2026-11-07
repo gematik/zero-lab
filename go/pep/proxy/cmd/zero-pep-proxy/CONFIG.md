@@ -114,6 +114,10 @@ DPoP-bound access token. With a PDP, run `zero-pdp` + `zero-pep-proxy` (gateway 
 | `PEP_API_UPSTREAM` | shortcut → `{ /api, inject: dpop, gate: session, strip }` |
 | `PEP_WEBAPP_UPSTREAM` | shortcut → `{ /, inject: identity, gate: snapshot }` |
 
+An `https` upstream's certificate is verified under the `web` profile of spec/pki-validation (the
+system's roots plus gematik's key, hash and revocation rules), as every other outbound call of pep.
+An `http` upstream is meant for a service beside pep in the same pod or network: it has no TLS.
+
 A `routes.yaml`:
 
 ```yaml
