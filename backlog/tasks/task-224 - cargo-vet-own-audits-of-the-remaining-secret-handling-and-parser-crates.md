@@ -1,10 +1,10 @@
 ---
 id: TASK-224
 title: 'cargo-vet: own audits of the remaining secret-handling and parser crates'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-05T22:12:00Z'
-updated_date: '2026-11-07T16:39:00Z'
+updated_date: '2026-11-07T17:19:00Z'
 labels:
   - deps
   - supply-chain
@@ -31,3 +31,9 @@ pbkdf2 0.13.0 mcf finding reported to RustCrypto privately on 2026-11-06, per th
 
 zeroize 1.9.1: unsafe diff reviewed (barrier reads MaybeUninit<u8>; redundant optimization_barrier calls removed; Vec spare capacity zeroed before clear; Debug hides contents); covered by Mozilla 1.8.1 + bytecode-alliance 1.8.1->1.8.2 + Mozilla 1.8.2->1.9.1, exemption pruned (futures-io too). base64ct, block-padding, aes-kw, aes-gcm are no longer exempted (covered by imports). Remaining exemptions carry notes: quick-xml (core, hostile XML, no audit), ureq/ureq-proto/http/httparse/base64 (host only), security-framework(-sys)/schannel (host only, OS root stores), jiff (ti-cli), tls_codec (x509-cert), num-bigint (cfg(hax), note already there). Own audits were not recorded: cargo vet certify records a person, which an agent cannot be. Rule corrected: rust/docs/design.md §8 and unsafe-exceptions.md, the maintainer approves crates, a new version needs an unsafe review only.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zeroize 1.9.1 after reviewing its unsafe diff; covered by imported Mozilla and Bytecode Alliance audits, exemption pruned (futures-io too). Every remaining security-relevant exemption has a note; jwz marked first-party (policy.jwz). rust/docs/design.md §8 and unsafe-exceptions.md: the maintainer approves crates, a new version needs an unsafe review only. quick-xml's own audit is its own task.
+<!-- SECTION:FINAL_SUMMARY:END -->

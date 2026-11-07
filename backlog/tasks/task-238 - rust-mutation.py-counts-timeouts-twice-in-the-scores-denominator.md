@@ -1,10 +1,10 @@
 ---
 id: TASK-238
 title: 'rust: mutation.py counts timeouts twice in the score''s denominator'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T19:41:00Z'
-updated_date: '2026-11-07T16:08:00Z'
+updated_date: '2026-11-07T17:19:00Z'
 labels:
   - rust
   - testing
@@ -29,3 +29,9 @@ Found while recording jwz's score (TASK-22): record() computes killed = caught +
 <!-- SECTION:NOTES:BEGIN -->
 score() computes (caught + timeout) / (caught + missed + timeout); gate recomputes from counts; jwz record 0.8853 -> 0.9472 (same counts, same commit); scripts/test_mutation.py run by just scripts-test in just check.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+scripts/mutation.py: score() is (caught + timeout) / (caught + missed + timeout); the gate recomputes from the recorded counts; jwz's record rescored 88.5% -> 94.7% (same counts and commit). scripts/test_mutation.py runs as just scripts-test in just check.
+<!-- SECTION:FINAL_SUMMARY:END -->
