@@ -200,4 +200,39 @@ mod tests {
         let err = decrypt(&pbe_algorithm(0), "pw", &[0; 16]).unwrap_err();
         assert!(matches!(err, Error::Malformed { .. }), "{err}");
     }
+
+    /// P12-033: RC4, with parameters a PKCS#12 PBE would accept, is unsupported rather
+    /// than decrypted under another PBE.
+    #[test]
+    fn p12_033_rc4_is_unsupported() {
+        let rc4 = der::asn1::ObjectIdentifier::new_unwrap("1.2.840.113549.1.12.1.1");
+        let algorithm = AlgorithmIdentifierOwned {
+            oid: rc4,
+            ..pbe_algorithm(1)
+        };
+        let err = decrypt(&algorithm, "pw", &[0; 16]).unwrap_err();
+        assert!(
+            matches!(err, Error::UnsupportedAlgorithm(oid) if oid == rc4),
+            "{err}"
+        );
+    }
+
+    /// What a file is encrypted with is reported by name: an API property, no rule.
+    #[test]
+    fn pkcs12_pbes_are_reported_by_name() {
+        for (oid, expected) in [
+            (oids::PBE_SHA1_3DES, "PKCS#12 3DES"),
+            (oids::PBE_SHA1_2DES, "PKCS#12 2-key 3DES"),
+            (oids::PBE_SHA1_RC2_128, "PKCS#12 RC2-128"),
+            (oids::PBE_SHA1_RC2_40, "PKCS#12 RC2-40"),
+        ] {
+            assert_eq!(
+                name(&AlgorithmIdentifierOwned {
+                    oid,
+                    parameters: None
+                }),
+                expected
+            );
+        }
+    }
 }

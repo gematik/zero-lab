@@ -376,8 +376,8 @@ pub fn is_pkcs12(bytes: &[u8]) -> bool {
         return false;
     };
     let body = match rest.split_first() {
-        Some((&0x80, body)) => body,
-        Some((&len, body)) if len < 0x80 => body,
+        // Short form, or BER's indefinite length: the content follows at once.
+        Some((&(0x00..=0x80), body)) => body,
         Some((&len, body)) => body.get(usize::from(len & 0x7f)..).unwrap_or_default(),
         None => return false,
     };
