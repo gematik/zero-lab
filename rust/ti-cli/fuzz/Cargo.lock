@@ -1576,7 +1576,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
- "ti-cache",
+ "ti-client",
  "ti-connector-client",
  "ti-directory-client",
  "ti-idpd-client",
@@ -1600,16 +1600,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ti-client"
+version = "0.1.0"
+dependencies = [
+ "p256",
+ "p384",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ti-cache",
+ "ti-connector-client",
+ "ti-directory-client",
+ "ti-idpd-client",
+ "ti-pki",
+ "ti-tls",
+ "ti-types",
+ "ureq",
+]
+
+[[package]]
 name = "ti-connector-client"
 version = "0.1.0"
 dependencies = [
  "base64ct",
- "p256",
- "p384",
  "quick-xml",
- "rustls",
- "rustls-pki-types",
- "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sha2",
@@ -1618,7 +1635,6 @@ dependencies = [
  "ti-pkcs12",
  "ti-pki",
  "ti-types",
- "ureq",
 ]
 
 [[package]]
@@ -1644,7 +1660,6 @@ dependencies = [
  "ti-jwz",
  "ti-pki",
  "ti-types",
- "ureq",
 ]
 
 [[package]]
@@ -1716,7 +1731,6 @@ dependencies = [
  "rustls-webpki",
  "sha2",
  "ti-pki",
- "ureq",
  "x509-cert",
 ]
 
