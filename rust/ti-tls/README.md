@@ -14,6 +14,13 @@ profiles of [`spec/pki-validation`](../../spec/pki-validation/README.md):
 
 The profile is the endpoint's, by configuration; neither falls back to the other.
 
+A Konnektor is verified by neither: `konnektor::Trust` holds the trust its `.kon` file
+configures, as the Go client verifies it. An end-entity certificate in the trust store is a
+pin, accepted by equality; otherwise the chain must lead to one of its CA certificates and
+name `expectedHost`, else the URL's host, which `konnektor::server_name` also makes the SNI;
+an empty trust store means the operating system's, through a verifier the host supplies; and
+`insecureSkipVerify` accepts any certificate, still checking the handshake signatures.
+
 - `client_config(verifier)`: a rustls `ClientConfig` offering TLS 1.3 and 1.2, AES-GCM with
   ECDHE, and P-256/P-384 only, as `testdata/handshake.json` lists it.
 - `TiVerifier` and `WebVerifier`: the profiles as rustls `ServerCertVerifier`s, over one snapshot

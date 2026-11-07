@@ -174,6 +174,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   rustls-webpki paths, gematik's and the ZETA SDK's key, hash, name, validity and revocation
   rules) as rustls verifiers; `client_config` offers TLS 1.3/1.2, AES-GCM with ECDHE, P-256 and
   P-384 only. Verdicts are reused until their certificate, status or snapshot ends.
+- `konnektor`: the Konnektor's TLS as its `.kon` file configures it, moved from
+  ti-connector-client's ureq transport (decision-15, TASK-249). `konnektor::Trust` verifies
+  pins by equality, CA chains for `expectedHost` (or the URL's host), the operating system's
+  trust through a verifier the host supplies for an empty trust store, and any certificate
+  with `insecureSkipVerify`; `Trust::client_config` takes the client certificate and key the
+  host decoded. `konnektor::server_name` is `expectedHost`, else the URL's host.
 
 ### ti-jwks
 
