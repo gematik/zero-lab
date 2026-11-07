@@ -45,7 +45,8 @@ pub enum Error {
     },
     /// A PIN that does not fit the card, or none named where the card has several.
     PinType(ti_connector_client::UnfitPin),
-    /// A change of a `.kon` file its rules refuse, or a value that cannot be set.
+    /// A change of a `.kon` file its rules refuse, a value that cannot be set, or a
+    /// profile name outside the rules.
     Refused(String),
     /// A file could not be written; the error names it.
     Write(std::io::Error),

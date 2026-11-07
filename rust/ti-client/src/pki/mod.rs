@@ -27,6 +27,7 @@
 pub mod bundle;
 pub mod export;
 pub mod inspect;
+pub mod profiles;
 pub mod roots;
 pub mod signature;
 pub mod tsl;

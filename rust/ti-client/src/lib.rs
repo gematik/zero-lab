@@ -41,6 +41,7 @@ pub mod peer;
 pub mod pkcs12;
 pub mod pki;
 pub mod probe;
+pub mod profile;
 pub mod text;
 pub mod tls;
 pub mod trust;

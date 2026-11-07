@@ -230,6 +230,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   run in parallel with progress through a closure (`run`), what an answer means per kind
   and path (`Status`, `available`), and the `Report` in the shape of the JSON. The live
   table stays the front end's. `Error` gains `ProbeEndpoints`.
+- `profile` and `pki::profiles` (TASK-250): the profiles' directories below their bases
+  (`Bases`, `validate_name`), listed with their sizes and deleted, a symlink removed rather
+  than followed; the validation profiles listed and described, with the CAs of a verified
+  TSL that may issue a profile's types. Which bases and profile are in effect stays the
+  front end's configuration.
 
 ### ti-tls
 
@@ -505,6 +510,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `model::{ValidationProfile, TypeRequirements, TslCas, TslCa}` (TASK-250): a validation
+  profile as `ti pki profiles` shows it, what it requires of each type it accepts, and the
+  CAs of a verified TSL that may issue those types.
 - `Tsl::verify_file` (feature `brainpool`, TASK-250): a TSL file verified the way
   `spec/tsl-detached` asks of a consumer, in one operation: the detached signature and the
   signer, the sequence against a previous list (TSLSIG-053), a supplied signer status taking

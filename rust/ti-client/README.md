@@ -32,7 +32,8 @@ command-line tool and the desktop app: the I/O the product clients leave to thei
   ti-pki either way, the TSL state that rejects an older list, the embedded roots offline.
 - The operations of the `ti` commands, synchronous, with typed inputs, returning ti-pki's
   model or a result of their own that derives `Serialize` in the shape of the command's
-  JSON: `pki` (`verify`, `inspect`, `signature`, `tsl`, `roots`, `bundle`, `export`),
+  JSON: `pki` (`verify`, `inspect`, `signature`, `tsl`, `roots`, `bundle`, `export`,
+  `profiles`), `profile` (the profiles' directories listed and deleted),
   `pkcs12`, `identity` (the SMC-B or HBA identity and its JWS, its key in a file or on a
   card at the Konnektor), `idp_trust` (the IDP-Dienst's certificates against the TSL),
   `input` (certificates from PEM, DER or PKCS#12) and `peer` (the chain a TLS server

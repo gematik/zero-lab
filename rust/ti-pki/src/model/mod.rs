@@ -25,7 +25,7 @@
 //! TSL and an offline check as the front ends show them. [`Certificate`] is a certificate
 //! as `ti pki inspect` shows it, [`Finding`] and [`CertSummary`] the findings of a TSL
 //! verification, [`Tsl`] a verified TSL as one document for a web view, [`Check`] an
-//! offline check.
+//! offline check, [`ValidationProfile`] a validation profile with what it requires.
 //!
 //! The types only map: no I/O, no validation, no clock of their own; whatever is judged
 //! at an instant takes it from the caller. With the `serde` feature they serialize to the
@@ -37,6 +37,7 @@ mod certificate;
 mod check;
 mod finding;
 mod oid;
+mod profile;
 mod tsl;
 
 #[cfg(feature = "load")]
@@ -49,6 +50,7 @@ pub use certificate::{Admission, Certificate, Key, ProfileHint};
 pub use check::{Check, Issue, ProfileUsed, TrustNode, TslState};
 pub use finding::{CertSummary, Finding, rejection_code};
 pub use oid::{Oid, TypeOid};
+pub use profile::{TslCa, TslCas, TypeRequirements, ValidationProfile};
 pub use tsl::{
     Chain, Counts, List, Pointer, PostalAddress, Provider, Root, Roots, Scheme, Service, Signature,
     Skipped, Tsl,
