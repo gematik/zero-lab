@@ -320,7 +320,7 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// A copy of `json` to edit, next to `path` and only its owner's, so the file itself is
-/// replaced only by a valid copy ([`write()`]). The caller removes it.
+/// replaced only by a valid copy ([`write()`]). The caller removes it ([`remove_copy`]).
 ///
 /// # Errors
 ///
@@ -329,6 +329,12 @@ pub fn editable_copy(path: &Path, json: &[u8]) -> Result<PathBuf, Error> {
     let copy = sibling(path, "edit");
     write_private(&copy, json).map_err(|e| write_error(&copy, &e))?;
     Ok(copy)
+}
+
+/// Removes the copy [`editable_copy`] made; one already gone, or one that cannot be
+/// removed, is left as it is: the file itself is unchanged either way.
+pub fn remove_copy(copy: &Path) {
+    let _ = std::fs::remove_file(copy);
 }
 
 /// Reads the copy [`editable_copy`] made.

@@ -74,6 +74,19 @@ pub struct Loaded {
     pub insecure: bool,
 }
 
+impl Loaded {
+    /// The SHA-256 of the TSL as published, in upper-case hex pairs separated by `:`, as
+    /// certificate fingerprints are shown.
+    pub fn sha256(&self) -> String {
+        use sha2::{Digest as _, Sha256};
+        let pairs: Vec<String> = Sha256::digest(&self.bytes)
+            .iter()
+            .map(|b| format!("{b:02X}"))
+            .collect();
+        pairs.join(":")
+    }
+}
+
 /// `env`'s TSL, verified at `at` or now. The roots first: they decide which of the TSL's
 /// CAs count, and loading them refreshes the cached TSL too. The TSL is then read from its
 /// signed bytes once it verified.

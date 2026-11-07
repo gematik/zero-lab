@@ -735,7 +735,7 @@ fn in_editor(
             Err(e) => break Err(e),
         }
     };
-    let _ = std::fs::remove_file(&copy);
+    store::remove_copy(&copy);
     result
 }
 

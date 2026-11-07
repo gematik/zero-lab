@@ -33,7 +33,6 @@
 use std::time::Duration;
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use ti_client::pki::tsl::{self as engine, CaFilter, CaInfo, Files, Loaded, Overview, Verdict};
 use ti_pki::{Certificate, Timestamp};
 
@@ -42,7 +41,7 @@ use crate::cli::{
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
-use crate::output::{Document, Line, Output, SCHEMA, Tone, hex};
+use crate::output::{Document, Line, Output, SCHEMA, Tone};
 
 /// The JSON document of `ti pki tsl show`.
 #[derive(Serialize)]
@@ -302,6 +301,8 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
     {
         return Err(CliError::OutputExists(path.display().to_string()));
     }
+    let loaded = load(&args.trust, global, out)?;
+    let sha256 = loaded.sha256();
     let Loaded {
         env,
         config,
@@ -310,7 +311,7 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
         detached,
         verified,
         ..
-    } = load(&args.trust, global, out)?;
+    } = loaded;
     // The list cannot be verified later without its signature (TSLDET-013).
     let mut signature_file = None;
     let mut signer_status_file = None;
@@ -341,7 +342,7 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
         sequence_number: list.sequence_number,
         issued_at: list.issued_at.to_string(),
         next_update: list.next_update.map(|t| t.to_string()),
-        sha256: hex(&Sha256::digest(&bytes)),
+        sha256,
         bytes: bytes.len(),
         url: config.tsl_url.to_string(),
         source: engine::source_name(&meta),

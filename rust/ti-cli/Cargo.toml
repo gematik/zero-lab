@@ -43,13 +43,14 @@ ti-types.workspace = true
 rpassword.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 traceability.workspace = true
 # The fakes' TLS servers: a Konnektor, and a host the probe refuses.
 rustls.workspace = true
+# The digests the tests recompute: the cache's file names, a pinned certificate's.
+sha2.workspace = true
 # The fakes' certificates and keys, read from PEM.
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
 sec1.workspace = true

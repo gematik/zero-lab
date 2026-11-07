@@ -1569,7 +1569,6 @@ dependencies = [
  "rpassword",
  "serde",
  "serde_json",
- "sha2",
  "thiserror",
  "ti-client",
  "ti-connector-client",

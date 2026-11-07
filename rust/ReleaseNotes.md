@@ -235,6 +235,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   than followed; the validation profiles listed and described, with the CAs of a verified
   TSL that may issue a profile's types. Which bases and profile are in effect stays the
   front end's configuration.
+- `pki::tsl::Loaded::sha256` and `connector::store::remove_copy` (TASK-250): the digest
+  `tsl export` reports and the removal of an edited `.kon` copy, which ti-cli did itself.
 
 ### ti-tls
 
