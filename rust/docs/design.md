@@ -13,7 +13,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
 ```text
  hosts      ti-cli, the desktop app      ti-wasm (wasm-bindgen)   servers (their own)
               │                            │                        │
- adapters   ti-client (ureq, files), ti-tls (rustls), ti-pki's `os`: the only code that does I/O or holds a TLS library
+ adapters   ti-client (ureq, files, the commands' operations), ti-tls (rustls), ti-pki's `os`: the only code that does I/O or holds a TLS library
               │
  engines    ti-idpd-client  ti-directory-client  ti-connector-client  ti-jwks   (sans I/O)
               │
@@ -24,7 +24,8 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
 
 A crate depends only downwards. The native adapters live in ti-client, the host library
 ti-cli and the desktop app share, and hold no protocol logic; the TLS trust they wire in
-is ti-tls's. `just core-deps` proves the product clients and `ti-pki` without its adapter
+is ti-tls's. ti-client also holds the commands' operations, synchronous and with typed
+inputs and results, so that a front end only parses, prompts and prints. `just core-deps` proves the product clients and `ti-pki` without its adapter
 features contain no HTTP client and no executor, and `just wasm32` that the cores build
 for the browser. The protocol and
 crypto cores are `no_std` + `alloc` where the crates they build on allow it.
@@ -178,7 +179,7 @@ ti-jwz, ti-jwks, ti-idpd-client and ti-directory-client, with every feature but 
 The hosts are ti-client, ti-cli and ti-wasm: a crate that reaches the terminal, the
 operating system or foreign code through `unsafe` (rpassword, rustls-platform-verifier)
 belongs there. ti-client is the native host library ti-cli and the desktop app share; it
-holds I/O adapters and no protocol logic. What counts is what
+holds I/O adapters and the commands' operations, and no protocol logic. What counts is what
 ends up in the program on the release targets and wasm32: normal dependencies, not proc
 macros or build scripts. A crate with `unsafe` enters a core only through an entry in
 [unsafe-exceptions.md](./unsafe-exceptions.md) with its exact version, the reason and the

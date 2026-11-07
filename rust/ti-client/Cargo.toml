@@ -1,7 +1,7 @@
 [package]
 name = "ti-client"
 version = "0.1.0"
-description = "The native host of the gematik Telematikinfrastruktur (TI) crates: their transports over ureq, the file storage and block_on, shared by the command-line tool and the desktop app"
+description = "The native host of the gematik Telematikinfrastruktur (TI) crates: their transports over ureq, the file storage, block_on and the commands' operations, shared by the command-line tool and the desktop app"
 keywords = ["gematik", "telematik"]
 categories = ["network-programming"]
 edition.workspace = true

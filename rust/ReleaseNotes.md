@@ -180,6 +180,20 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   clients' traits.
 - `Client`: the transports made from one `Net` and observer (`downloads`, `idp`,
   `connector`). It is Send and Sync and every method blocks.
+- The operations of `ti`'s pki commands (TASK-250), moved from ti-cli with typed inputs and
+  results, the results deriving `Serialize` in the shape of the commands' JSON:
+  `trust::Session` (roots.json and the TSL loaded, cached and verified, the TSL state that
+  rejects an older list, the embedded roots offline) over the profile's `Dirs`;
+  `pki::verify`, `pki::inspect`, `pki::signature`, `pki::tsl` (overview, CA filter, bundle
+  selection, a TSL file's verdict), `pki::roots`, `pki::bundle`, `pki::export` (the trust
+  bundle); `pkcs12` (re-encoding), `identity` (the SMC-B or HBA AUT identity from PKCS#12,
+  PEM or a card at the Konnektor, and its JWS), `idp_trust` (the IDP-Dienst's certificates
+  against the TSL), `input` (PEM, DER, PKCS#12), `peer` (a TLS server's chain) and
+  `text::span`.
+- `Error` covers what the operations report (certificates, PKCS#12 files, trust material, the
+  TSL rollback, state and cache files, identities, signatures); it moved from `net`, which
+  re-exports it. A session's warnings reach the front end through a closure, and what it
+  reads and keeps through the client's `Observer`.
 
 ### ti-tls
 
