@@ -265,6 +265,15 @@ impl ServerCheck {
         if result.chain.len() < 2 {
             return refusal(&result.errors, Code::ChainIncomplete);
         }
+        // The path comes before its links (TLSV-020 before TLSV-023): a partial chain that
+        // reaches no anchor is incomplete, however its links are signed.
+        if let Some(e) = result
+            .errors
+            .iter()
+            .find(|e| e.code == ErrorCode::ChainIncomplete)
+        {
+            return Verdict::refuse(Code::ChainIncomplete, e.message.clone(), Vec::new());
+        }
         if let Some(weak) = result.chain[..result.chain.len() - 1]
             .iter()
             .find(|c| WEAK_SIGNATURES.contains(&c.inner().signature_algorithm().oid))

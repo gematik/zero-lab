@@ -77,7 +77,8 @@ take `web`.
 
 - **TLSV-020** A path is built from the server's end-entity certificate, the first it sends, to an anchor
   of the profile, through the other certificates it sent and, under `ti`, the CAs of the trust material.
-  Certificates the path does not need are ignored. A path that cannot be built is `chain_incomplete`.
+  Certificates the path does not need are ignored. A path that cannot be built is `chain_incomplete`,
+  whatever its links are signed with: the path is judged before TLSV-021 to 023 judge its certificates.
 - **TLSV-021** The end entity and every CA of the path are valid at the reference time, the clock's (TUC_PKI_002),
   or the result is `not_yet_valid` or `expired`.
 - **TLSV-022** The end entity's extended key usage contains `id-kp-serverAuth`, and its key usage, where

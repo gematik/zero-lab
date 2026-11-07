@@ -62,6 +62,9 @@ ti("ti-extra-certificates", "ti-good", "svc.ti.test", "valid", ["TLSV-020"],
    chain=["ti-good.pem", "web-ca.pem", "ti-ca.pem", "web-root.pem"])
 case("ti-public-certificate", "ti", ["web-p256.pem", "web-ca.pem", "web-root.pem"], "www.web.test",
      "chain_incomplete", ["TLSV-001", "TLSV-020", "TLSV-030"], stapled="web-p256-good")
+# A path that reaches no anchor is chain_incomplete before its links are judged (TLSV-020 before TLSV-023).
+case("ti-partial-path-weak-link", "ti", ["web-sha1.pem", "web-ca.pem"], "www.web.test",
+     "chain_incomplete", ["TLSV-020", "TLSV-023"])
 
 # web
 web("web-p256", "web-p256", "www.web.test", "valid", ["TLSV-040", "TLSV-041", "TLSV-043", "TLSV-044"])
@@ -97,6 +100,8 @@ web("web-no-status-source", "web-no-status", "www.web.test", "revocation_unavail
 web("web-sources-down", "web-p256", "www.web.test", "revocation_unavailable", ["TLSV-044"], stapled=None)
 case("web-ti-certificate", "web", ["ti-good.pem", "ti-ca.pem", "ti-root.pem"], "svc.ti.test",
      "chain_incomplete", ["TLSV-001", "TLSV-020", "TLSV-040"], stapled="ti-good-good")
+case("web-partial-path-weak-link", "web", ["ti-sha1.pem", "ti-ca.pem"], "svc.ti.test",
+     "chain_incomplete", ["TLSV-020", "TLSV-023"])
 
 here = pathlib.Path(__file__).parent
 for c in cases:

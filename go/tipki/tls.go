@@ -159,6 +159,11 @@ func (c *ServerCheck) Verify(ctx context.Context, chain []*x509.Certificate, hos
 	if len(result.Chain) < 2 {
 		return refusal(result.Errors, VerdictChainIncomplete)
 	}
+	// The path comes before its links (TLSV-020 before TLSV-023): a partial chain that reaches no
+	// anchor is incomplete, however its links are signed.
+	if i := slices.IndexFunc(result.Errors, func(f Finding) bool { return f.Code == CodeChainIncomplete }); i >= 0 {
+		return refuse(VerdictChainIncomplete, result.Errors[i].Message, nil)
+	}
 	for _, cert := range result.Chain[:len(result.Chain)-1] {
 		if name, weak := WeakSignature(cert); weak {
 			return refuse(VerdictSignatureAlgorithmNotAllowed, fmt.Sprintf("%q is signed with %s", cert.Subject.CommonName, name), nil)

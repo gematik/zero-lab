@@ -459,6 +459,25 @@
    ]
   },
   {
+   "name": "ti-partial-path-weak-link",
+   "trust": "ti",
+   "chain": [
+    "web-sha1.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "chain_incomplete",
+   "warnings": [],
+   "rules": [
+    "TLSV-020",
+    "TLSV-023"
+   ]
+  },
+  {
    "name": "web-p256",
    "trust": "web",
    "chain": [
@@ -950,6 +969,25 @@
     "TLSV-001",
     "TLSV-020",
     "TLSV-040"
+   ]
+  },
+  {
+   "name": "web-partial-path-weak-link",
+   "trust": "web",
+   "chain": [
+    "ti-sha1.pem",
+    "ti-ca.pem"
+   ],
+   "host": "svc.ti.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "chain_incomplete",
+   "warnings": [],
+   "rules": [
+    "TLSV-020",
+    "TLSV-023"
    ]
   }
  ]
