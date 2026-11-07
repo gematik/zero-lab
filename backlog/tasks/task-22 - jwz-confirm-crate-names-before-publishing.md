@@ -1,10 +1,10 @@
 ---
 id: TASK-22
 title: 'jwz: confirm crate names before publishing'
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-10-10 05:58
-updated_date: '2026-11-06T22:03:00Z'
+updated_date: '2026-11-07T08:47:00Z'
 labels:
   - jwz
   - decision
@@ -22,7 +22,7 @@ jwz, jwz-brainpool and ti-jwz are publish = false until the crate names are conf
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Crate names confirmed and recorded (ADR 0001)
-- [ ] #2 Publishing enabled in Cargo.toml and release-plz.toml once the registry decision is made
+- [x] #2 Publishing enabled in Cargo.toml and release-plz.toml once the registry decision is made
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -40,3 +40,9 @@ Maintainer, 2026-11-06: names jwz and ti-jwz (jwz-brainpool merged into ti-jwz, 
 
 2026-11-06: jwz 0.1.0 published to crates.io (release 86c91895, tag rust/jwz/v0.1.0, mutation score 0.885), first publish by the maintainer's account. Open: add the gematik GitHub team as owner (cargo owner --add github:gematik:<team> jwz) once a gematik org owner approved crates.io's OAuth access; ti-jwz not published yet.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+jwz 0.1.0 is published on crates.io (release 86c91895, tag rust/jwz/v0.1.0, mutation score 0.885). Publishing is enabled for jwz only, in Cargo.toml (publish = ["crates-io"], include list) and release-plz.toml. ti-jwz stays unpublished. The gematik team as crates.io owner moves to TASK-239.
+<!-- SECTION:FINAL_SUMMARY:END -->
