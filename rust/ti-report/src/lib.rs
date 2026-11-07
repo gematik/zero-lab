@@ -52,11 +52,6 @@ pub fn hex(bytes: &[u8]) -> String {
     pairs.join(":")
 }
 
-/// The SHA-256 of `der` in [`hex`].
-pub fn sha256(der: &[u8]) -> String {
-    hex(&Sha256::digest(der))
-}
-
 /// The SHA-256 of `der` as lower-case hex without separators: the key the TSL view
 /// files certificates under, safe in URLs.
 pub fn fingerprint(der: &[u8]) -> String {
@@ -66,16 +61,6 @@ pub fn fingerprint(der: &[u8]) -> String {
             let _ = write!(out, "{b:02x}");
             out
         })
-}
-
-/// `der` as a PEM `CERTIFICATE` block, LF line endings.
-///
-/// # Panics
-///
-/// Never: base64 of bytes held in memory cannot fail.
-pub fn pem(der: &[u8]) -> String {
-    pem_rfc7468::encode_string("CERTIFICATE", pem_rfc7468::LineEnding::LF, der)
-        .expect("base64 of a certificate held in memory cannot fail")
 }
 
 /// `valid`, `expired` or `not_yet_valid` at `now`; both bounds are inside the period

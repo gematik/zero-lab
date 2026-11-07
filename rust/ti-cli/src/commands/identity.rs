@@ -29,14 +29,13 @@ use jwz::header::HeaderParams;
 use jwz::jwa::SignatureAlgorithm;
 use serde::Serialize;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
-use ti_pki::{Certificate, Timestamp};
+use ti_pki::Timestamp;
 
 use crate::cli::{GlobalArgs, IdentityArgs, IdentitySignArgs};
 use crate::error::{CliError, Exit};
 use crate::identity::{Identity, SourceKind};
 use crate::input;
-use crate::output::{Document, Line, Output, SCHEMA, hex};
+use crate::output::{Document, Line, Output, SCHEMA};
 
 /// `ti identity inspect` as JSON.
 #[derive(Serialize)]
@@ -84,10 +83,6 @@ fn source_info(identity: &Identity) -> SourceInfo {
         kind: identity.kind,
         name: identity.name.clone(),
     }
-}
-
-fn fingerprint(cert: &Certificate) -> String {
-    hex(&Sha256::digest(cert.der()))
 }
 
 /// Runs `ti identity inspect`.
@@ -183,7 +178,7 @@ pub fn sign(args: &IdentitySignArgs, global: &GlobalArgs, out: &Output) -> Resul
         identity: IdentityInfo {
             subject: identity.certificate.subject().to_string(),
             telematik_id: identity.telematik_id(),
-            sha256: fingerprint(&identity.certificate),
+            sha256: identity.certificate.fingerprint_sha256(),
         },
         jws,
     };

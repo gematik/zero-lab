@@ -42,7 +42,7 @@ use crate::connector::Session;
 use crate::error::{CliError, Exit};
 use crate::files::{create_private_dir, path_component, write_atomic};
 use crate::input;
-use crate::output::{Line, Output, Tone, Waiting, pem, warning};
+use crate::output::{Line, Output, Tone, Waiting, warning};
 
 /// The media type of a file by its extension; a PDF to sign with PAdES is PDF/A.
 fn mime_type(path: &Path, pdfa: bool) -> &'static str {
@@ -854,7 +854,7 @@ pub fn export(session: &Session, args: &ExportArgs, out: &Output) -> Result<Exit
         read[0].certificate.der().to_vec()
     } else {
         read.iter()
-            .map(|c| pem(c.certificate.der()))
+            .map(|c| c.certificate.to_pem())
             .collect::<String>()
             .into_bytes()
     };
@@ -875,7 +875,7 @@ pub fn export(session: &Session, args: &ExportArgs, out: &Output) -> Result<Exit
                 cert_ref: c.cert_ref.as_str(),
                 crypt: c.crypt.as_str(),
                 subject: c.certificate.subject_cn().to_owned(),
-                pem: pem(c.certificate.der()),
+                pem: c.certificate.to_pem(),
             })
             .collect(),
         output: args.output.as_ref().map(|p| p.display().to_string()),

@@ -35,7 +35,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 use ti_pki::tsl_signature::DetachedTsl;
 use ti_pki::{Certificate, Env, Timestamp, TrustConfig, parse_pem_certificates};
-use ti_report::{CheckContext, describe, fingerprint, hex, pem, sha256, tsl_view, validity};
+use ti_report::{CheckContext, describe, fingerprint, hex, tsl_view, validity};
 
 /// The capture time of the published sets in `spec/tsl-detached/testdata`.
 const NOW: &str = "2026-11-01T16:47:42Z";
@@ -82,20 +82,13 @@ fn hex_is_upper_case_pairs_joined_by_colons() {
 fn sha256_and_fingerprint_are_the_same_digest_in_two_notations() {
     let empty = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
     assert_eq!(fingerprint(b""), empty);
-    assert_eq!(sha256(b"").replace(':', "").to_lowercase(), empty);
-    assert_eq!(sha256(b"").len(), 32 * 3 - 1);
-}
-
-#[test]
-fn pem_is_one_certificate_block_with_lf_line_endings() {
-    let der = smcb().der().to_vec();
-    let text = pem(&der);
-    assert!(text.starts_with("-----BEGIN CERTIFICATE-----\n"));
-    assert!(text.ends_with("-----END CERTIFICATE-----\n"));
-    assert!(!text.contains('\r'));
-    assert!(text.lines().all(|l| l.len() <= 64));
-    let (label, decoded) = pem_rfc7468::decode_vec(text.as_bytes()).unwrap();
-    assert_eq!((label, decoded), ("CERTIFICATE", der));
+    let cert = smcb();
+    let sha256 = cert.fingerprint_sha256();
+    assert_eq!(
+        fingerprint(cert.der()),
+        sha256.replace(':', "").to_lowercase()
+    );
+    assert_eq!(sha256.len(), 32 * 3 - 1);
 }
 
 /// Both bounds belong to the validity period.
@@ -128,8 +121,8 @@ fn describe_reads_what_the_certificate_says() {
             .iter()
             .any(|e| e == "basicConstraints")
     );
-    assert_eq!(info.sha256, sha256(cert.der()));
-    assert_eq!(info.pem, pem(cert.der()));
+    assert_eq!(info.sha256, cert.fingerprint_sha256());
+    assert_eq!(info.pem, cert.to_pem());
 }
 
 #[test]
@@ -259,7 +252,7 @@ fn a_check_against_the_production_tsl_reports_its_trust_material() {
     assert_eq!(report.revocation, "not_checked");
     assert!(!report.errors.is_empty());
     assert_eq!(report.certificates.len(), 1);
-    assert_eq!(report.certificates[0].sha256, sha256(cert.der()));
+    assert_eq!(report.certificates[0].sha256, cert.fingerprint_sha256());
     assert!(!report.tree.is_empty());
     conforms(
         "../ti-wasm/schemas/check.json",

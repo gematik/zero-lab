@@ -29,7 +29,7 @@ use ti_pki::Certificate;
 use ti_pki::tsl::Rejection;
 use ti_pki::tsl_signature::TslError;
 
-use crate::{hex, sha256};
+use crate::hex;
 
 /// A result code with its Tab_PKI_274 number, the rule and what happened.
 #[derive(Clone, Debug, Serialize)]
@@ -68,7 +68,7 @@ pub struct CertSummary {
     pub not_before: String,
     /// RFC 3339, UTC.
     pub not_after: String,
-    /// The SHA-256 fingerprint in [`hex`].
+    /// [`Certificate::fingerprint_sha256`].
     pub sha256: String,
 }
 
@@ -81,7 +81,7 @@ impl CertSummary {
             serial: hex(cert.serial()),
             not_before: cert.not_before().to_string(),
             not_after: cert.not_after().to_string(),
-            sha256: sha256(cert.der()),
+            sha256: cert.fingerprint_sha256(),
         }
     }
 }

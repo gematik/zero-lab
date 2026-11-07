@@ -283,6 +283,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-report
 
+#### changed
+- `CheckContext` maps ti-pki's `offline::Check`; its reports are unchanged. `pem` and
+  `sha256` are gone for `Certificate::to_pem` and `Certificate::fingerprint_sha256`
+  (TASK-247).
+
 #### added
 - `tsl_view` and `CheckContext::new` take the list's detached files; `SignatureView` loses
   `signing_time` (TASK-166).
@@ -401,6 +406,15 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `offline::Check` (feature `load`): an environment's TSL and roots.json verified once
+  without a network, a supplied roots.json used only if it walks from the anchor, then any
+  number of certificates validated against them with revocation disabled, under the profile
+  picked for the end entity or as a chain only. It returns Rust types: `Material` (the
+  roots' `RootsSource` and why supplied roots were not used, the verified TSL or why it was
+  rejected) and `Outcome` (`ProfileChoice` and the `ValidationResult`). Taken from
+  ti-report's `CheckContext` (TASK-247).
+- `Certificate::fingerprint_sha256` (upper-case hex pairs joined by `:`, as OpenSSL prints
+  them) and `Certificate::to_pem` (TASK-247).
 - `tls::ServerCheck`: a TLS server of the TI under the `ti` profile of `spec/pki-validation`
   (TUC_PKI_018 with Tab_PKI_273, C.FD.TLS-S and C.ZD.TLS-S, the host in the commonName or a
   `dNSName`, wildcards as RFC 9525 has them, OCSP stapled within the grace period or asked),

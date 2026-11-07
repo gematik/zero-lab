@@ -28,6 +28,7 @@
 //! is decided later — by the anchor a chain must reach and by
 //! [`classify_key`](crate::key::classify_key) — never at parse time.
 
+use core::fmt::Write as _;
 use std::sync::Arc;
 
 use const_oid::ObjectIdentifier;
@@ -35,6 +36,7 @@ use const_oid::db::rfc4519::CN;
 use const_oid::db::rfc5280::{ID_AD_OCSP, ID_CE_CERTIFICATE_POLICIES};
 use der::asn1::AnyRef;
 use der::{Decode, Encode, Reader, SliceReader};
+use sha2::{Digest, Sha256};
 use x509_cert::ext::pkix::name::{DirectoryString, GeneralName};
 use x509_cert::ext::pkix::{
     AuthorityInfoAccessSyntax, AuthorityKeyIdentifier, BasicConstraints, CertificatePolicies,
@@ -152,6 +154,29 @@ impl Certificate {
     /// The original DER encoding.
     pub fn der(&self) -> &[u8] {
         &self.0.der
+    }
+
+    /// The SHA-256 of the DER encoding as upper-case hex pairs separated by `:`, as
+    /// OpenSSL prints fingerprints.
+    pub fn fingerprint_sha256(&self) -> String {
+        Sha256::digest(&self.0.der).iter().enumerate().fold(
+            String::with_capacity(32 * 3),
+            |mut out, (i, b)| {
+                let sep = if i == 0 { "" } else { ":" };
+                write!(out, "{sep}{b:02X}").expect("writing to a String cannot fail");
+                out
+            },
+        )
+    }
+
+    /// The certificate as a PEM `CERTIFICATE` block, LF line endings.
+    ///
+    /// # Panics
+    ///
+    /// Never: base64 of bytes held in memory cannot fail.
+    pub fn to_pem(&self) -> String {
+        pem_rfc7468::encode_string("CERTIFICATE", pem_rfc7468::LineEnding::LF, &self.0.der)
+            .expect("base64 of a certificate held in memory cannot fail")
     }
 
     /// The signed part (`tbsCertificate`), exactly as encoded in [`der`](Self::der).
@@ -710,5 +735,26 @@ pub(crate) mod tests {
             let certs = parse_pem_certificates(input).unwrap();
             assert!(certs.is_empty(), "{certs:?}");
         }
+    }
+
+    /// The notation OpenSSL's `x509 -fingerprint -sha256` prints.
+    #[test]
+    fn fingerprint_sha256_is_upper_case_pairs_joined_by_colons() {
+        assert_eq!(
+            fixture(SMCB_EE).fingerprint_sha256(),
+            "D9:54:2D:88:20:02:A9:F8:91:8B:41:EB:98:AA:AE:C9:37:C4:18:E3:72:26:7B:20:6B:A6:63:40:44:24:6E:73"
+        );
+    }
+
+    #[test]
+    fn pem_is_one_certificate_block_with_lf_line_endings() {
+        let cert = fixture(SMCB_EE);
+        let text = cert.to_pem();
+        assert!(text.starts_with("-----BEGIN CERTIFICATE-----\n"));
+        assert!(text.ends_with("-----END CERTIFICATE-----\n"));
+        assert!(!text.contains('\r'));
+        assert!(text.lines().all(|l| l.len() <= 64));
+        let (label, decoded) = pem_rfc7468::decode_vec(text.as_bytes()).unwrap();
+        assert_eq!((label, decoded.as_slice()), ("CERTIFICATE", cert.der()));
     }
 }

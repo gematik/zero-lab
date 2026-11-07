@@ -44,7 +44,7 @@ use crate::connector::{self, Session};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{date, when};
-use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting, pem};
+use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting};
 
 /// Runs `ti connector …`.
 pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
@@ -636,7 +636,7 @@ fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, Cli
                 not_after_at: c.certificate.not_after(),
                 validity: super::validity(&c.certificate, now),
                 key: inspect::key_algorithm(&c.certificate, now),
-                pem: pem(c.certificate.der()),
+                pem: c.certificate.to_pem(),
             })
             .collect(),
     };

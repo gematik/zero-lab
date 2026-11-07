@@ -25,34 +25,22 @@
 //! `ti pki verify --profile auto --offline` decides, as one document for a web view.
 //! `ti-wasm/schemas/check.json` describes it.
 //!
-//! [`CheckContext`] verifies the trust material once; [`CheckContext::check`] then judges
-//! any number of certificates against it. Revocation is never checked: OCSP needs a
-//! network, and the report says so.
+//! [`CheckContext`] maps ti-pki's [`offline::Check`] to the document. Revocation is never
+//! checked: OCSP needs a network, and the report says so.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::sync::Arc;
-
-use core::pin::pin;
-use core::task::{Context, Poll, Waker};
 
 use serde::Serialize;
-use ti_pki::profile::select_for_cert;
-use ti_pki::revocation::{RevocationMode, Unchecked};
-use ti_pki::tsl_signature::DetachedTsl;
-use ti_pki::{
-    Certificate, ChainPosition, Env, Timestamp, TrustConfig, TrustStore, ValidationResult,
-    Validator,
-};
+use ti_pki::offline::{self, Outcome, ProfileChoice, RootsSource};
+use ti_pki::{Certificate, ChainPosition, Env, Timestamp, TrustConfig, ValidationResult};
 
 use crate::tsl::Finding;
 use crate::{CertificateInfo, SCHEMA, describe, fingerprint};
 
 /// The trust material of one environment, verified, ready to check certificates against.
 pub struct CheckContext {
-    env: Env,
-    config: TrustConfig,
-    store: Option<Arc<TrustStore>>,
+    check: offline::Check,
     tsl: TslState,
     /// Fingerprints of the certificates the TSL lists as services.
     listed: HashSet<String>,
@@ -152,25 +140,15 @@ impl CheckContext {
         tsl_signature: &[u8],
         now: Timestamp,
     ) -> Self {
-        let mut roots_warning = None;
-        let files = DetachedTsl {
-            signature: tsl_signature,
-            signer_status: None,
+        let check = offline::Check::new(env, config, supplied_roots, tsl_xml, tsl_signature, now);
+        let material = check.material();
+        let roots_source = match material.roots_source {
+            RootsSource::Supplied => "supplied",
+            RootsSource::Embedded => "embedded",
         };
-        let attempt = |roots: &[u8]| TrustStore::from_material(&config, roots, tsl_xml, files, now);
-        let outcome = match supplied_roots {
-            Some(json) => match attempt(json) {
-                // A TSL that fails fails with any roots; only a roots failure falls back.
-                Err(e) if e.tsl.is_none() => {
-                    roots_warning = Some(format!("supplied roots.json: {e}"));
-                    attempt(&config.roots).map(|ok| (ok, "embedded"))
-                }
-                other => other.map(|ok| (ok, "supplied")),
-            },
-            None => attempt(&config.roots).map(|ok| (ok, "embedded")),
-        };
-        let (store, tsl, listed) = match outcome {
-            Ok(((store, verified), source)) => {
+        let roots_warning = material.roots_warning.clone();
+        let (tsl, listed) = match &material.tsl {
+            Ok(verified) => {
                 let list = &verified.tsl;
                 let listed = list
                     .services
@@ -183,10 +161,10 @@ impl CheckContext {
                     error: None,
                     sequence_number: Some(list.sequence_number),
                     next_update: list.next_update.map(|t| t.to_string()),
-                    roots_source: source,
+                    roots_source,
                     roots_warning,
                 };
-                (Some(Arc::new(store)), state, listed)
+                (state, listed)
             }
             Err(e) => {
                 let error = e.tsl.as_ref().map_or_else(
@@ -203,19 +181,13 @@ impl CheckContext {
                     error: Some(error),
                     sequence_number: None,
                     next_update: None,
-                    roots_source: "embedded",
+                    roots_source,
                     roots_warning,
                 };
-                (None, state, HashSet::new())
+                (state, HashSet::new())
             }
         };
-        CheckContext {
-            env,
-            config,
-            store,
-            tsl,
-            listed,
-        }
+        CheckContext { check, tsl, listed }
     }
 
     /// The state of the trust material.
@@ -232,7 +204,7 @@ impl CheckContext {
         let ee = &certs[0];
         let mut report = CheckReport {
             schema: SCHEMA,
-            environment: self.env.as_str(),
+            environment: self.check.env().as_str(),
             result: "invalid",
             tsl: self.tsl.clone(),
             profile: None,
@@ -243,37 +215,40 @@ impl CheckContext {
             tree: Vec::new(),
             certificates: certs.iter().map(|c| describe(c, now)).collect(),
         };
-        let Some(store) = &self.store else {
-            report.errors.push(Issue {
-                code: "tsl_invalid",
-                subject: String::new(),
-                message: "the TSL of this environment is not valid; nothing can be trusted"
-                    .to_owned(),
-            });
-            report.tree = vec![self.node(ee, &ee_role(ee, None), now, false)];
-            return report;
+        let (profile, result) = match self.check.check(certs, now) {
+            Outcome::Untrusted => {
+                report.errors.push(Issue {
+                    code: "tsl_invalid",
+                    subject: String::new(),
+                    message: "the TSL of this environment is not valid; nothing can be trusted"
+                        .to_owned(),
+                });
+                report.tree = vec![self.node(ee, &ee_role(ee, None), now, false)];
+                return report;
+            }
+            Outcome::Validated { profile, result } => (profile, result),
         };
-
-        let selection = select_for_cert(ee);
-        let mut validator =
-            if let (Some(profile), Some(t)) = (selection.profile, selection.cert_type) {
+        match profile {
+            ProfileChoice::Detected {
+                profile,
+                cert_type,
+                reason,
+                detail,
+            } => {
                 report.profile = Some(ProfileUsed {
                     name: profile.name,
-                    reason: selection.reason.as_str(),
-                    detail: selection.detail,
+                    reason: reason.as_str(),
+                    detail,
                 });
-                report.certificate_type = Some(t.to_string());
-                profile.validator(&self.config, Arc::clone(store), t)
-            } else {
-                report.warnings.push(Issue {
-                    code: "profile_not_detected",
-                    subject: ee.subject_cn().to_owned(),
-                    message: format!("{}; checked the chain only", selection.detail),
-                });
-                Validator::new(&self.config, Arc::clone(store))
-            };
-        validator.revocation = RevocationMode::Disabled;
-        let result = match block_on(validator.validate(certs, now, &Unchecked)) {
+                report.certificate_type = Some(cert_type.to_string());
+            }
+            ProfileChoice::ChainOnly { detail } => report.warnings.push(Issue {
+                code: "profile_not_detected",
+                subject: ee.subject_cn().to_owned(),
+                message: format!("{detail}; checked the chain only"),
+            }),
+        }
+        let result = match result {
             Ok(result) => result,
             Err(e) => {
                 report.errors.push(Issue {
@@ -406,13 +381,4 @@ fn day(t: Timestamp) -> String {
         .next()
         .unwrap_or_default()
         .to_owned()
-}
-
-/// Runs ti-pki's async validation without a runtime: with revocation unchecked nothing in
-/// it waits, so the future is complete when first polled.
-fn block_on<F: Future>(future: F) -> F::Output {
-    match pin!(future).poll(&mut Context::from_waker(Waker::noop())) {
-        Poll::Ready(output) => output,
-        Poll::Pending => unreachable!("validation without revocation never waits"),
-    }
 }

@@ -25,12 +25,11 @@
 //! embedded anchor through roots.json yields them.
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use ti_pki::{Certificate, Timestamp, TrustConfig};
 
 use crate::cli::{GlobalArgs, RootsArgs};
 use crate::error::{CliError, Exit};
-use crate::output::{Document, Line, Output, SCHEMA, Tone, hex, pem};
+use crate::output::{Document, Line, Output, SCHEMA, Tone};
 use crate::trust::{Session, TrustInfo};
 
 /// The JSON document.
@@ -97,8 +96,8 @@ fn describe(root: &Certificate, config: &TrustConfig, now: Timestamp) -> RootInf
         validity: super::validity(root, now),
         anchor: root.der() == &*config.anchor,
         key: super::inspect::key_algorithm(root, now),
-        sha256: hex(&Sha256::digest(root.der())),
-        pem: pem(root.der()),
+        sha256: root.fingerprint_sha256(),
+        pem: root.to_pem(),
     }
 }
 

@@ -45,7 +45,7 @@ use crate::cli::{Environment, GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, when};
-use crate::output::{Document, Line, Output, SCHEMA, Tone, pem};
+use crate::output::{Document, Line, Output, SCHEMA, Tone};
 use crate::trust::{Session, TrustInfo};
 
 /// Whether `at` is now or `--at`: OCSP still answers for the time of the query.
@@ -504,7 +504,7 @@ fn report(
                     .get(i)
                     .and_then(|r| r.revocation.as_ref())
                     .map(revocation_entry),
-                pem: pem(cert.der()),
+                pem: cert.to_pem(),
             })
             .collect(),
         errors: result

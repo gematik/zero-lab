@@ -41,11 +41,17 @@ use serde::Serialize;
 use crate::cli::{Format, GlobalArgs};
 use crate::error::CliError;
 pub use document::{Document, Line, Tone};
-pub use ti_report::{OidInfo, hex, pem};
+pub use ti_report::OidInfo;
 pub use waiting::Waiting;
 
 /// The JSON contract version every document carries as `"schema"`.
 pub const SCHEMA: u32 = 1;
+
+/// `bytes` as upper-case hex pairs separated by `:`, as OpenSSL prints fingerprints.
+pub fn hex(bytes: &[u8]) -> String {
+    let pairs: Vec<String> = bytes.iter().map(|b| format!("{b:02X}")).collect();
+    pairs.join(":")
+}
 
 /// How this invocation writes its results.
 pub struct Output {

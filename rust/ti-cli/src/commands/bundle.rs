@@ -30,14 +30,13 @@
 use std::io::{IsTerminal as _, Write as _};
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 use ti_pkcs12::{CertificateBag, Pkcs12, oids};
 use ti_pki::{Certificate, Timestamp};
 
 use crate::cli::{BundleArgs, GlobalArgs, RootsBundleArgs};
 use crate::error::{CliError, Exit};
 use crate::output::document::date;
-use crate::output::{Document, Line, Output, hex, pem};
+use crate::output::{Document, Line, Output};
 use crate::trust::{Session, TrustInfo};
 
 /// The JSON document; `schema` is added on output.
@@ -126,7 +125,7 @@ pub(super) fn write(found: Found, args: &BundleArgs, out: &Output) -> Result<Exi
         _ => found
             .certificates
             .iter()
-            .map(|c| pem(c.der()))
+            .map(Certificate::to_pem)
             .collect::<String>()
             .into_bytes(),
     };
@@ -155,9 +154,9 @@ pub(super) fn write(found: Found, args: &BundleArgs, out: &Output) -> Result<Exi
                 common_name: c.subject_cn().to_owned(),
                 not_after: c.not_after().to_string(),
                 not_after_at: c.not_after(),
-                sha256: hex(&Sha256::digest(c.der())),
+                sha256: c.fingerprint_sha256(),
                 alias: aliases.as_ref().map(|a| a[i].clone()),
-                pem: with_pem.then(|| pem(c.der())),
+                pem: with_pem.then(|| c.to_pem()),
             })
             .collect(),
         output: args.output.as_ref().map(|p| p.display().to_string()),

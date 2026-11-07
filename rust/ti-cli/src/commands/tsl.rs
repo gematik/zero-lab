@@ -49,7 +49,7 @@ use crate::cli::{
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
+use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex};
 use crate::trust::{Session, VerifiedSet};
 
 /// The JSON document.
@@ -869,8 +869,8 @@ fn describe(
         policies: cert.policies().iter().map(OidInfo::new).collect(),
         path_len: cert.basic_constraints().and_then(|b| b.path_len_constraint),
         rejection,
-        sha256: hex(&Sha256::digest(cert.der())),
-        pem: pem(cert.der()),
+        sha256: cert.fingerprint_sha256(),
+        pem: cert.to_pem(),
     }
 }
 

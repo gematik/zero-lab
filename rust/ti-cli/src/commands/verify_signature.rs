@@ -26,15 +26,13 @@
 //! `signed_pub_keys` this way; the certificate's own standing is `pki verify`'s job.
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use ti_pki::Certificate;
 use ti_pki::key::classify_key;
 use ti_pki::{Timestamp, algorithms};
 
 use crate::cli::VerifySignatureArgs;
 use crate::error::{CliError, Exit};
 use crate::input;
-use crate::output::{Document, Line, Output, SCHEMA, Tone, hex};
+use crate::output::{Document, Line, Output, SCHEMA, Tone};
 
 /// DER contents of the `ecdsa-with-SHA256` AlgorithmIdentifier (RFC 5758 §3.2: no
 /// parameters), the form [`algorithms::find`] takes.
@@ -98,7 +96,7 @@ pub fn run(args: &VerifySignatureArgs, out: &Output) -> Result<Exit, CliError> {
         data_bytes: data.bytes.len(),
         certificate: CertificateInfo {
             subject: cert.subject().to_string(),
-            sha256: fingerprint(&cert),
+            sha256: cert.fingerprint_sha256(),
             key: KeyInfo {
                 algorithm,
                 status: status.as_str(),
@@ -126,10 +124,6 @@ pub fn run(args: &VerifySignatureArgs, out: &Output) -> Result<Exit, CliError> {
         out.render(&doc)?;
     }
     Ok(if valid { Exit::Ok } else { Exit::Invalid })
-}
-
-fn fingerprint(cert: &Certificate) -> String {
-    hex(&Sha256::digest(cert.der()))
 }
 
 /// `signature` as a DER `ECDSA-Sig-Value`, and which form it came in.

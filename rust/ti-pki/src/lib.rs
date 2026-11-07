@@ -125,7 +125,8 @@
 //!
 //! With the `load` feature, `load` fetches, caches, verifies and hot-reloads roots.json
 //! and the TSL through pluggable loaders; the host brings the transport and decides
-//! when to reload.
+//! when to reload. `offline` checks certificates against a TSL and roots.json the host
+//! holds already, without a network.
 
 pub mod admission;
 pub mod algorithms;
@@ -140,6 +141,8 @@ pub mod key;
 #[cfg(feature = "load")]
 pub mod load;
 pub mod ocsp;
+#[cfg(feature = "load")]
+pub mod offline;
 pub mod oid;
 pub mod path;
 pub mod profile;

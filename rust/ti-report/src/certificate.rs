@@ -29,7 +29,7 @@ use serde::Serialize;
 use ti_pki::key::classify_key;
 use ti_pki::{Certificate, CertificateType, Timestamp, checks, detect_certificate_type, profile};
 
-use crate::{OidInfo, hex, pem, sha256, validity};
+use crate::{OidInfo, hex, validity};
 
 /// What a certificate says, for display.
 #[derive(Clone, Debug, Serialize)]
@@ -82,7 +82,7 @@ pub struct CertificateInfo {
     pub subject_key_id: Option<String>,
     /// The authority key identifier in [`hex`].
     pub authority_key_id: Option<String>,
-    /// The SHA-256 fingerprint in [`hex`].
+    /// [`Certificate::fingerprint_sha256`].
     pub sha256: String,
     /// The certificate as PEM.
     pub pem: String,
@@ -169,8 +169,8 @@ pub fn describe(cert: &Certificate, now: Timestamp) -> CertificateInfo {
             .collect(),
         subject_key_id: cert.subject_key_id().map(hex),
         authority_key_id: cert.authority_key_id().map(hex),
-        sha256: sha256(cert.der()),
-        pem: pem(cert.der()),
+        sha256: cert.fingerprint_sha256(),
+        pem: cert.to_pem(),
     }
 }
 
