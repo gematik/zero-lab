@@ -1,10 +1,10 @@
 ---
 id: TASK-257
 title: 'ti-tls / go titls: a weak certificate whose issuer the server did not send'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07T17:19:00Z'
-updated_date: '2026-11-07T18:08:00Z'
+updated_date: '2026-11-07T18:54:00Z'
 labels:
   - ti-tls
   - go
@@ -32,3 +32,9 @@ Under the web profile, a certificate signed with SHA-1, MD5 or SHA-224 whose iss
 <!-- SECTION:NOTES:BEGIN -->
 Maintainer chose: the spec allows either code (TLSV-023). No corpus case: it would need a new SHA-1 certificate under web-root (generate.sh regenerates every certificate) and an either-code field in both adapters.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+TLSV-023 allows chain_incomplete for a weakly signed certificate whose issuer the server did not send under web (Go's store cannot say whether that issuer is an anchor); both implementations refuse. No corpus case: it needs new certificates and an either-code field.
+<!-- SECTION:FINAL_SUMMARY:END -->

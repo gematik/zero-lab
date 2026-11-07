@@ -1,10 +1,10 @@
 ---
 id: TASK-260
 title: 'Workflow: several tasks per branch, one full check per merge'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07T18:29:00Z'
-updated_date: '2026-11-07T18:41:00Z'
+updated_date: '2026-11-07T18:54:00Z'
 labels:
   - rust
   - go
@@ -37,3 +37,9 @@ Maintainer, 2026-11-07: branches are bigger and carry several tasks; the full ch
 <!-- SECTION:NOTES:BEGIN -->
 AC 2 adjusted openly: the repository has no CI (.github is absent), so the full just check before the merge is the only gate; the pull request reports it. Done: backlog.md (a branch carries several tasks, Done on merge), git-and-releases.md (checks follow the branch: check-changed while working, the full check once before the merge), CLAUDE.md, testing.md, rust development.md. rust: just check-changed [base] via scripts/changed.py (changed crates and their dependents from cargo metadata, with unit tests in scripts/test_changed.py); wasm32 only for core crates, nonprod-absent for ti-pki, unsafe-free/core-deps/jwz-backends/machete/deny/vet only when a manifest, the lock, supply-chain or unsafe-exceptions.md changed, scripts-test for scripts/. go: just check-changed [base] runs lint, golangci, modernize and test for the changed modules and those that require them (GO_MODULES narrows _each and _each_check); race, vuln, mod-check and api-lint stay in check. modernize ignores go: downloading lines (a cold module cache failed it). Measured on 2026-11-07: rust check-changed on this branch (ti-pkcs12, ti-cli, ti-connector-client, manifests, scripts) 219 s against 15 to 25 min for just check; go check-changed for tipki and its four dependents 34 s.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Branches carry several tasks; while working just check-changed (rust: changed crates and dependents via scripts/changed.py, slow checks by input; go: changed modules and those requiring them), the full just check once before the merge. Documented in backlog.md, git-and-releases.md, CLAUDE.md, testing.md, rust development.md. Measured: rust 219 s against 15-25 min, go 34 s for five modules. No CI exists, so the pre-merge check is the gate.
+<!-- SECTION:FINAL_SUMMARY:END -->
