@@ -79,6 +79,7 @@ mod file;
 mod http;
 mod loader;
 mod maybe_send;
+mod read_back;
 mod reload;
 mod static_;
 mod transport;
@@ -98,6 +99,9 @@ pub use file::FileTransport;
 pub use http::HttpLoader;
 pub use loader::{Fetched, LoadError, Loaded, Loader};
 pub use maybe_send::{MaybeSend, MaybeSync};
+pub use read_back::{AtTime, NoNetwork, read_back};
+#[cfg(feature = "brainpool")]
+pub use read_back::{ReadBackError, verify_read_back};
 pub use reload::{
     Expired, MAX_PROD_HARD_EXPIRY, MAX_RELOAD_INTERVAL, ReloadError, ReloadOutcome, ReloadPolicy,
     ReloadStatus, Reloader, State, TrustStoreHandle,

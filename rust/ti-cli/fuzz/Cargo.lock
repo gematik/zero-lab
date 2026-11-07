@@ -1621,7 +1621,6 @@ dependencies = [
  "ti-tls",
  "ti-types",
  "ureq",
- "x509-cert",
  "zeroize",
 ]
 

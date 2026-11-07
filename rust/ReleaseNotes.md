@@ -189,7 +189,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   bundle); `pkcs12` (re-encoding), `identity` (the SMC-B or HBA AUT identity from PKCS#12,
   PEM or a card at the Konnektor, and its JWS), `idp_trust` (the IDP-Dienst's certificates
   against the TSL), `input` (PEM, DER, PKCS#12), `peer` (a TLS server's chain) and
-  `text::span`.
+  `text::span`. The TSL and key-usage rules they apply are ti-pki's (`Tsl::verify_file`,
+  `load::verify_read_back`, `load::AtTime`, `cert_type::is_authentication`).
 - `Error` covers what the operations report (certificates, PKCS#12 files, trust material, the
   TSL rollback, state and cache files, identities, signatures); it moved from `net`, which
   re-exports it. A session's warnings reach the front end through a closure, and what it
@@ -447,6 +448,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `Tsl::verify_file` (feature `brainpool`, TASK-250): a TSL file verified the way
+  `spec/tsl-detached` asks of a consumer, in one operation: the detached signature and the
+  signer, the sequence against a previous list (TSLSIG-053), a supplied signer status taking
+  the place of the query (TSLDET-020), and the query only at the current time (TSLDET-023),
+  through a checker the host opens when it is needed. `TslFile`, `FileVerdict`, `FileError`.
+- `load::AtTime`, `load::NoNetwork`, `load::read_back` and `load::verify_read_back` (the last
+  with `brainpool`, TASK-250): the loader of a validation at another time, which never loads
+  the published signer status (TSLDET-023); the set a load verified, read back from the
+  cache without the network under the load's age rules (TSLDET-015), and checked to be the
+  very list the load verified (TSLSIG-053, `ReadBackError`). Moved from the `ti` CLI.
+- `cert_type::is_authentication`: an AUT certificate by its key usage (PROF-002), as an SMC-B's
+  or HBA's identity needs it. Moved from the `ti` CLI.
 - `model` (TASK-248): the response model of ti-pki's use cases, plain types that only map,
   with no I/O, no validation and no clock of their own, always compiled; `Serialize` with the
   new `serde` feature. They are the JSON the `ti` CLI and its WebAssembly build publish, which

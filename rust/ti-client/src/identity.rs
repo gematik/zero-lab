@@ -45,7 +45,7 @@ use sha2::{Digest, Sha256};
 use ti_connector_client::{ComfortUserId, Connector, SignatureType, Transport};
 use ti_jwz::brainpool::BrainpoolEs256Key;
 use ti_pki::Certificate;
-use x509_cert::ext::pkix::KeyUsages;
+use ti_pki::cert_type::is_authentication;
 use zeroize::Zeroizing;
 
 use crate::block_on;
@@ -221,7 +221,7 @@ impl Identity {
         handle: String,
         user: Option<ComfortUserId>,
     ) -> Result<Identity, Error> {
-        if !is_aut(&certificate) {
+        if !is_authentication(&certificate) {
             return Err(Error::IdentityNotFound(format!(
                 "{name}: C.AUT has no authentication key usage"
             )));
@@ -420,15 +420,6 @@ impl PrivateKey {
     }
 }
 
-/// Whether `cert` is an authentication certificate: digitalSignature set,
-/// contentCommitment (nonRepudiation, the OSIG certificate's mark) not set.
-fn is_aut(cert: &Certificate) -> bool {
-    cert.key_usage().is_some_and(|ku| {
-        let usages = ku.0;
-        usages.contains(KeyUsages::DigitalSignature) && !usages.contains(KeyUsages::NonRepudiation)
-    })
-}
-
 /// The AUT pair among `candidates` (certificates with a key each); `others` are the
 /// chain.
 fn select(
@@ -442,7 +433,7 @@ fn select(
     let chain = others;
     let mut found: Option<(Certificate, PrivateKey)> = None;
     for (cert, key) in candidates {
-        if found.is_none() && is_aut(&cert) {
+        if found.is_none() && is_authentication(&cert) {
             if key.matches(&cert) {
                 found = Some((cert, key));
             } else {
@@ -452,7 +443,7 @@ fn select(
             seen.push(format!(
                 "{} ({})",
                 cert.subject_cn(),
-                if is_aut(&cert) {
+                if is_authentication(&cert) {
                     "another AUT"
                 } else {
                     "not an AUT key usage"
@@ -592,16 +583,6 @@ mod tests {
         ti_pki::parse_pem_certificates(&fixture(name))
             .unwrap()
             .remove(0)
-    }
-
-    #[test]
-    fn aut_is_digital_signature_without_content_commitment() {
-        assert!(is_aut(&cert("aut.pem")));
-        assert!(!is_aut(&cert("osig.pem")), "OSIG carries contentCommitment");
-        assert!(!is_aut(&cert("enc.pem")), "ENC has no digitalSignature");
-        assert!(!is_aut(&cert("ca.pem")));
-        assert!(is_aut(&cert("hba-aut.pem")), "an HBA's C.HP.AUT");
-        assert!(!is_aut(&cert("hba-qes.pem")), "an HBA's C.HP.QES");
     }
 
     #[test]

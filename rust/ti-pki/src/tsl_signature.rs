@@ -719,6 +719,105 @@ impl Tsl {
     }
 }
 
+/// A TSL file and what is published or kept with it, to verify as a consumer would
+/// ([`Tsl::verify_file`]).
+#[derive(Clone, Copy, Debug)]
+pub struct TslFile<'a> {
+    /// The list as received.
+    pub xml: &'a [u8],
+    /// Its detached signature.
+    pub signature: &'a [u8],
+    /// The signer's OCSP response published with it, if supplied.
+    pub signer_status: Option<&'a [u8]>,
+    /// A list it may not roll back behind (TSLSIG-053).
+    pub previous: Option<&'a TslState>,
+}
+
+/// What [`Tsl::verify_file`] found.
+#[derive(Debug)]
+pub struct FileVerdict<E> {
+    /// The verified list, or why it must not be used.
+    pub verified: Result<VerifiedTsl, FileError<E>>,
+    /// How the list compares with [`TslFile::previous`], once that check passed: also
+    /// when a later step failed, so a report can say both.
+    pub sequence: Option<Sequence>,
+}
+
+/// Why [`Tsl::verify_file`] stopped: a verdict on the list, or the host that could not
+/// provide the status query.
+#[derive(Debug)]
+pub enum FileError<E> {
+    /// The list must not be used.
+    Tsl(TslError),
+    /// The host's error.
+    Host(E),
+}
+
+#[cfg(feature = "brainpool")]
+impl Tsl {
+    /// Verifies `file` against `config` at `now`, the way a consumer does
+    /// (`spec/tsl-detached`): the detached signature over the bytes as received, before
+    /// any parsing (TSLDET-005), and the signer ([`Tsl::parse_verified`]); the sequence
+    /// against [`TslFile::previous`] (TSLSIG-053); the supplied signer status, verified
+    /// like a queried one and taking its place (TSLDET-020); without one, a query through
+    /// the checker `query` gives (TSLSIG-040 – 042), but only at the current time: a status
+    /// now says nothing about another (TSLDET-023). Without `query` the status stays
+    /// unqueried (TSLDET-022). `query` runs only when the query is made.
+    ///
+    /// The result is [`FileVerdict::verified`]: a [`FileError::Tsl`] with the code and rule
+    /// of the first check that failed, or [`FileError::Host`] with what `query` failed
+    /// with.
+    pub async fn verify_file<C, E>(
+        file: &TslFile<'_>,
+        config: &TrustConfig,
+        now: Timestamp,
+        current_time: bool,
+        query: Option<impl FnOnce() -> Result<C, E>>,
+    ) -> FileVerdict<E>
+    where
+        C: RevocationChecker,
+    {
+        let mut sequence = None;
+        let verified =
+            Self::verify_file_steps(file, config, now, current_time, query, &mut sequence).await;
+        FileVerdict { verified, sequence }
+    }
+
+    async fn verify_file_steps<C, E>(
+        file: &TslFile<'_>,
+        config: &TrustConfig,
+        now: Timestamp,
+        current_time: bool,
+        query: Option<impl FnOnce() -> Result<C, E>>,
+        sequence: &mut Option<Sequence>,
+    ) -> Result<VerifiedTsl, FileError<E>>
+    where
+        C: RevocationChecker,
+    {
+        let mut verified =
+            Tsl::parse_verified(file.xml, file.signature, config, now).map_err(FileError::Tsl)?;
+        if let Some(previous) = file.previous {
+            *sequence = Some(
+                verified
+                    .check_sequence(Some(previous))
+                    .map_err(FileError::Tsl)?,
+            );
+        }
+        if let Some(status) = file.signer_status {
+            verified
+                .check_signer_status_supplied(status, now, &config.algorithms)
+                .map_err(FileError::Tsl)?;
+        } else if current_time && let Some(query) = query {
+            let checker = query().map_err(FileError::Host)?;
+            verified
+                .check_signer_status(&checker)
+                .await
+                .map_err(FileError::Tsl)?;
+        }
+        Ok(verified)
+    }
+}
+
 #[cfg(feature = "brainpool")]
 /// TSLDET-030: parts B – G for a list whose signature verified: the signer under one of
 /// [`TrustConfig::tsl_signer_anchors`] (TSLSIG-030 – 035), the list from the signed
@@ -1756,6 +1855,140 @@ mod tests {
         let mut verified = pu_list("2026-10-03T00:00:00Z", 0).unwrap();
         futures_lite::future::block_on(verified.check_signer_status(&Scripted(outcome)))?;
         Ok(verified)
+    }
+
+    /// `verify_file` of the production set at `now`, the query counted in `asked`.
+    fn verify_file(
+        status: Option<&[u8]>,
+        previous: Option<&TslState>,
+        now: &str,
+        current_time: bool,
+        asked: &core::cell::Cell<u32>,
+    ) -> Result<(VerifiedTsl, Option<Sequence>), FileError<&'static str>> {
+        let (xml, sig) = (real("prod"), sig("prod"));
+        let file = TslFile {
+            xml: &xml,
+            signature: &sig,
+            signer_status: status,
+            previous,
+        };
+        let query = || {
+            asked.set(asked.get() + 1);
+            Ok::<_, &'static str>(Scripted(Ok(result(RevocationStatus::Good, ""))))
+        };
+        let found = futures_lite::future::block_on(Tsl::verify_file(
+            &file,
+            &TrustConfig::preset_prod(),
+            at(now),
+            current_time,
+            Some(query),
+        ));
+        found.verified.map(|verified| (verified, found.sequence))
+    }
+
+    /// TSLDET-023: at another time than now the signer's status is not queried, and the
+    /// warning of TSLSIG-043 stays; at the current time it is.
+    #[test]
+    fn tsldet_023_a_file_verified_at_another_time_queries_no_status() {
+        let asked = core::cell::Cell::new(0);
+        let (verified, _) = verify_file(None, None, "2026-11-01T16:47:42Z", false, &asked).unwrap();
+        assert_eq!(asked.get(), 0);
+        assert_eq!(codes(&verified.warnings), [TslCode::NoOcspCheck]);
+
+        let (verified, _) = verify_file(None, None, "2026-11-01T16:47:42Z", true, &asked).unwrap();
+        assert_eq!(asked.get(), 1, "the current time asks");
+        assert!(verified.warnings.is_empty(), "{:?}", verified.warnings);
+    }
+
+    /// TSLDET-020: a supplied status is verified like a queried one and takes its place:
+    /// no query is made, and one that does not verify stops the list.
+    #[test]
+    fn tsldet_020_a_supplied_status_takes_the_place_of_the_query() {
+        let asked = core::cell::Cell::new(0);
+        let ocsp = detached("prod").2;
+        let (verified, _) =
+            verify_file(Some(&ocsp), None, "2026-11-01T16:47:42Z", true, &asked).unwrap();
+        assert_eq!(asked.get(), 0);
+        assert_eq!(
+            verified.signer_status.map(|r| r.status),
+            Some(RevocationStatus::Good)
+        );
+        let Err(FileError::Tsl(_)) =
+            verify_file(Some(b"garbage"), None, "2026-11-01T16:47:42Z", true, &asked)
+        else {
+            panic!("an unparsable status stops the list");
+        };
+    }
+
+    /// TSLSIG-053: the list may not roll back behind the previous one; the same list
+    /// again is no error.
+    #[test]
+    fn tslsig_053_a_file_behind_the_previous_list_is_refused() {
+        let asked = core::cell::Cell::new(0);
+        let (verified, sequence) =
+            verify_file(None, None, "2026-11-01T16:47:42Z", false, &asked).unwrap();
+        assert_eq!(sequence, None, "nothing to compare with");
+        let same = TslState::of(&verified.tsl);
+        let (_, sequence) =
+            verify_file(None, Some(&same), "2026-11-01T16:47:42Z", false, &asked).unwrap();
+        assert_eq!(sequence, Some(Sequence::Same));
+        let newer = TslState {
+            id: "newer".into(),
+            sequence_number: same.sequence_number + 1,
+        };
+        match verify_file(None, Some(&newer), "2026-11-01T16:47:42Z", false, &asked) {
+            Err(FileError::Tsl(e)) => assert_eq!(e.code, TslCode::TslIdIncorrect),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// TSLSIG-053: the comparison with the previous list is kept when a later step stops
+    /// the list, so a report can say both.
+    #[test]
+    fn tslsig_053_the_sequence_is_kept_when_the_status_fails() {
+        let (xml, sig) = (real("prod"), sig("prod"));
+        let previous = TslState {
+            id: "older".into(),
+            sequence_number: 10_000,
+        };
+        let file = TslFile {
+            xml: &xml,
+            signature: &sig,
+            signer_status: Some(b"garbage"),
+            previous: Some(&previous),
+        };
+        let found = futures_lite::future::block_on(Tsl::verify_file(
+            &file,
+            &TrustConfig::preset_prod(),
+            at("2026-11-01T16:47:42Z"),
+            true,
+            None::<fn() -> Result<Scripted, ()>>,
+        ));
+        assert!(matches!(found.verified, Err(FileError::Tsl(_))));
+        assert_eq!(found.sequence, Some(Sequence::Newer));
+    }
+
+    /// The host's failure to provide the query is its own, not a verdict on the list.
+    #[test]
+    fn a_query_the_host_cannot_provide_is_the_hosts_error() {
+        let (xml, sig) = (real("prod"), sig("prod"));
+        let file = TslFile {
+            xml: &xml,
+            signature: &sig,
+            signer_status: None,
+            previous: None,
+        };
+        let failed = futures_lite::future::block_on(Tsl::verify_file(
+            &file,
+            &TrustConfig::preset_prod(),
+            at("2026-11-01T16:47:42Z"),
+            true,
+            Some(|| Err::<Scripted, _>("no network")),
+        ));
+        assert!(matches!(
+            failed.verified,
+            Err(FileError::Host("no network"))
+        ));
     }
 
     /// TSLSIG-040, lifting the warning of TSLSIG-043.

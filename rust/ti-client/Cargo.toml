@@ -33,8 +33,6 @@ ti-jwz = { workspace = true, features = ["legacy"] }
 pkcs8.workspace = true
 sec1.workspace = true
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
-# An AUT certificate's key usage.
-x509-cert.workspace = true
 zeroize.workspace = true
 # The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
 ti-tls.workspace = true

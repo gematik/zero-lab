@@ -37,15 +37,14 @@ use core::fmt;
 
 use serde::Serialize;
 use ti_pki::load::{
-    Artifact, ArtifactRequest, ArtifactResponse, CacheEntry, CacheError, CachePolicy, CacheStore,
-    CachingLoader, HttpLoader, LoadError, Loader, MemoryCacheStore, PostRequest, ReloadError,
-    ReloadOutcome, ReloadPolicy, Reloader, Source, Transport, TransportError, TransportErrorKind,
-    TrustMaterial,
+    Artifact, ArtifactRequest, ArtifactResponse, AtTime, CacheEntry, CacheError, CachePolicy,
+    CacheStore, CachingLoader, HttpLoader, LoadError, Loader, MemoryCacheStore, NoNetwork,
+    PostRequest, ReadBackError, ReloadError, ReloadOutcome, ReloadPolicy, Reloader, Source,
+    Transport, TransportError, TrustMaterial, read_back, verify_read_back,
 };
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::revocation::RevocationChecker;
-use ti_pki::tsl::Tsl;
-use ti_pki::tsl_signature::{DetachedTsl, Sequence, TslCode, TslState, VerifiedTsl};
+use ti_pki::tsl_signature::{TslCode, TslState, VerifiedTsl};
 use ti_pki::{Env, Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::block_on;
@@ -499,12 +498,7 @@ impl<T: Transport + Send + Sync> Session<T> {
         material: &Material,
         at: Option<Timestamp>,
     ) -> Result<VerifiedSet, Error> {
-        let mut set = self.cached_set(config)?;
-        if at.is_some()
-            && let Some(detached) = &mut set.detached
-        {
-            detached.signer_status = None;
-        }
+        let set = self.cached_set(config)?;
         let Some(loaded) = &material.tsl_state else {
             return Err(Error::TrustLoad(
                 material
@@ -514,31 +508,18 @@ impl<T: Transport + Send + Sync> Session<T> {
                     .unwrap_or_else(|| "no verified TSL".into()),
             ));
         };
-        let detached = set
-            .detached
-            .as_ref()
-            .ok_or_else(|| Error::TrustLoad("the TSL came without its signature".into()))?;
-        let files = DetachedTsl {
-            signature: &detached.signature,
-            signer_status: detached
-                .signer_status
-                .as_ref()
-                .map(|(body, _)| body.as_slice()),
-        };
-        let verified = Tsl::parse_verified_with_status(
-            &set.tsl,
-            files,
-            config,
-            at.unwrap_or_else(Timestamp::now),
-        )
-        .map_err(|error| Error::TrustLoad(format!("TSL: {error}")))?;
-        if !matches!(verified.check_sequence(Some(loaded)), Ok(Sequence::Same)) {
-            return Err(Error::TrustLoad(format!(
-                "the cached TSL (#{} {}) is not the one this run verified (#{} {}): another \
-                 process replaced it; run again",
-                verified.tsl.sequence_number, verified.tsl.id, loaded.sequence_number, loaded.id
-            )));
-        }
+        let (set, verified) =
+            verify_read_back(set, config, loaded, at, Timestamp::now()).map_err(|error| {
+                Error::TrustLoad(match error {
+                    ReadBackError::Unsigned => "the TSL came without its signature".into(),
+                    ReadBackError::Tsl(error) => format!("TSL: {error}"),
+                    ReadBackError::Replaced { cached } => format!(
+                        "the cached TSL (#{} {}) is not the one this run verified (#{} {}): \
+                         another process replaced it; run again",
+                        cached.sequence_number, cached.id, loaded.sequence_number, loaded.id
+                    ),
+                })
+            })?;
         Ok(VerifiedSet { set, verified })
     }
 
@@ -546,7 +527,13 @@ impl<T: Transport + Send + Sync> Session<T> {
     /// an entry past its age counts as stale, which keeps a stale status out as it did
     /// there; offline, any age is served, as it was there.
     fn cached_set(&self, config: &TrustConfig) -> Result<TrustMaterial, Error> {
-        block_on(self.loader(config, NoNetwork).load_all()).map_err(|error| match error {
+        block_on(read_back(
+            config,
+            self.store(),
+            Timestamp::now,
+            self.is_offline(),
+        ))
+        .map_err(|error| match error {
             LoadError::Offline(_) => {
                 Error::TrustLoad("offline and no TSL cached; run once without --offline".into())
             }
@@ -596,43 +583,6 @@ pub fn trust_config(env: Env, nist_only: bool) -> TrustConfig {
         }
     } else {
         config
-    }
-}
-
-/// A loader for a validation at another time: the published signer status is left out, since
-/// it says nothing about another time (`spec/tsl-detached` TSLDET-023).
-struct AtTime<L> {
-    inner: L,
-    past: bool,
-}
-
-impl<L> AtTime<L> {
-    fn new(inner: L, at: Option<Timestamp>) -> Self {
-        AtTime {
-            inner,
-            past: at.is_some(),
-        }
-    }
-}
-
-impl<L: Loader + Send + Sync> Loader for AtTime<L> {
-    async fn fetch(
-        &self,
-        artifact: Artifact,
-        cond: ti_pki::load::Conditional<'_>,
-    ) -> Result<ti_pki::load::Fetched, LoadError> {
-        if self.past && artifact == Artifact::TslSignerStatus {
-            return Err(LoadError::Unavailable(artifact));
-        }
-        self.inner.fetch(artifact, cond).await
-    }
-
-    fn cache_key(&self, artifact: Artifact) -> String {
-        self.inner.cache_key(artifact)
-    }
-
-    async fn revalidate(&self) -> Result<(), LoadError> {
-        self.inner.revalidate().await
     }
 }
 
@@ -791,20 +741,6 @@ impl CacheStore for Store {
     }
 }
 
-/// The transport of `--offline`: every request fails, so nothing leaves the machine
-/// even where a component would otherwise ask the network.
-struct NoNetwork;
-
-impl Transport for NoNetwork {
-    async fn get(&self, req: &ArtifactRequest<'_>) -> Result<ArtifactResponse, TransportError> {
-        Err(refused(req.url))
-    }
-
-    async fn post(&self, req: &PostRequest<'_>) -> Result<Vec<u8>, TransportError> {
-        Err(refused(req.url))
-    }
-}
-
 /// The session's transport, or [`NoNetwork`] without one: so that online and `--offline`
 /// runs verify through one and the same reloader, and only differ in what they fall back to.
 struct Reach<'a, T>(Option<&'a T>);
@@ -825,19 +761,11 @@ impl<T: Transport + Sync> Transport for Reach<'_, T> {
     }
 }
 
-fn refused(url: &str) -> TransportError {
-    TransportError {
-        kind: TransportErrorKind::Other,
-        message: format!("offline: not requesting {url}"),
-        retryable: false,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-    use ti_pki::load::ResponseMeta;
+    use ti_pki::load::{ResponseMeta, TransportErrorKind};
 
     use super::*;
 
@@ -1039,7 +967,7 @@ mod tests {
         }
 
         async fn post(&self, req: &PostRequest<'_>) -> Result<Vec<u8>, TransportError> {
-            Err(refused(req.url))
+            NoNetwork.post(req).await
         }
     }
 

@@ -37,7 +37,9 @@ use ti_pki::load::{Detached, Meta, Source};
 use ti_pki::model::{CertSummary, Finding, Oid, rejection_code};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Tsl};
-use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
+use ti_pki::tsl_signature::{
+    FileError, Sequence, TslError, TslFile, TslState, VerifiedTsl, embedded_config_for,
+};
 use ti_pki::{Certificate, Env, Tier, Timestamp, TrustConfig, TrustStore};
 
 use super::bundle::Found;
@@ -531,36 +533,33 @@ pub fn verify<E: From<Error>>(
         config.validate(env.tier()).map_err(Error::Trust)?;
     }
     let mut sequence = None;
-    let result = config.map_err(Failure::Tsl).and_then(|config| {
-        // TSLDET-005: the detached signature over the bytes as read, before any parsing.
-        let mut verified =
-            Tsl::parse_verified(files.list, files.signature, &config, now).map_err(Failure::Tsl)?;
-        if previous.is_some() {
-            // TSLSIG-053: a list may not roll back behind the one given as previous.
-            sequence = Some(
-                verified
-                    .check_sequence(previous.as_ref())
-                    .map_err(Failure::Tsl)?,
-            );
+    let result = match config {
+        Err(e) => Err(e),
+        Ok(config) => {
+            let file = TslFile {
+                xml: files.list,
+                signature: files.signature,
+                signer_status: files.signer_status,
+                previous: previous.as_ref(),
+            };
+            let query = || {
+                let (transport, store) = online()?;
+                Ok(OcspChecker::new(&config, transport, Timestamp::now).with_store(store))
+            };
+            let found = block_on(Tsl::verify_file(
+                &file,
+                &config,
+                now,
+                at.is_none(),
+                (!offline).then_some(query),
+            ));
+            sequence = found.sequence;
+            match found.verified {
+                Ok(verified) => Ok(verified),
+                Err(FileError::Tsl(e)) => Err(e),
+                Err(FileError::Host(e)) => return Err(e),
+            }
         }
-        // TSLDET-020: a supplied status is verified like a queried one and replaces it.
-        if let Some(status) = files.signer_status {
-            verified
-                .check_signer_status_supplied(status, now, &config.algorithms)
-                .map_err(Failure::Tsl)?;
-        }
-        // The status now says nothing about another time (TSLDET-023).
-        if files.signer_status.is_none() && !offline && at.is_none() {
-            let (transport, store) = online().map_err(Failure::Host)?;
-            let checker = OcspChecker::new(&config, &transport, Timestamp::now).with_store(store);
-            block_on(verified.check_signer_status(&checker)).map_err(Failure::Tsl)?;
-        }
-        Ok(verified)
-    });
-    let result = match result {
-        Err(Failure::Host(e)) => return Err(e),
-        Err(Failure::Tsl(e)) => Err(e),
-        Ok(verified) => Ok(verified),
     };
     let mut verdict = verdict(files.source.clone(), env, now, &result);
     verdict.sequence = sequence.map(|s| match s {
@@ -568,12 +567,6 @@ pub fn verify<E: From<Error>>(
         _ => "newer",
     });
     Ok(verdict)
-}
-
-/// What can stop a verification: a verdict on the list, or the host.
-enum Failure<E> {
-    Tsl(TslError),
-    Host(E),
 }
 
 fn verdict(
