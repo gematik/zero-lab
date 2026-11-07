@@ -109,7 +109,7 @@ ti *ARGS:
 
 REPO := "gematik/zero-lab"
 # The GitHub user or organization whose homebrew-tap repository carries the formula.
-TAP_OWNER := "spilikin"
+TAP_OWNER := "gematik"
 
 # A crate's release notes from ReleaseNotes.md: those of a version, or its pending ones (just release-notes Unreleased ti-pki)
 release-notes version="Unreleased" crate="ti-cli":
@@ -242,7 +242,7 @@ publish-brew owner version:
     work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
     gh release download "$tag" --repo {{REPO}} -p SHA256SUMS -D "$work"
     assets=$(gh release view "$tag" --repo {{REPO}} --json assets --jq '.assets[] | "\(.name) \(.url)"')
-    args=(-e "s|@VERSION@|$v|g")
+    args=()
     for target in aarch64-apple-darwin x86_64-unknown-linux-musl; do
         name="ti-$v-$target"
         sum=$(awk -v f="$name" '$2 == f {print $1}' "$work/SHA256SUMS")

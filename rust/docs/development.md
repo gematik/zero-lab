@@ -457,7 +457,7 @@ one crate with binaries. A release takes two commands from `main`:
    main` with every crate tag of the release commit, `gh release create` with the
    binaries, the checksums and that version's notes (plus install and verify lines), then
    `just publish-brew OWNER X.Y.Z`. `OWNER` defaults to `TAP_OWNER` in the Justfile
-   (`spilikin`). A release without `ti-cli` is pushed as the recipe prints it.
+   (`gematik`). A release without `ti-cli` is pushed as the recipe prints it.
 
 `just audit`'s semver step compares each tagged crate's public API with its last tag
 (0.x: a breaking change needs the next minor). It skips `ti-cli`, a binary whose contract
