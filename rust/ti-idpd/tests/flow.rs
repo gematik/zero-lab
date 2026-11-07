@@ -42,13 +42,16 @@ use ti_idpd::trust::{CertificateTrust, Checked, IdpCertificate, Unverified};
 use ti_idpd::{Error, Idp, Warning, challenge, discovery};
 use ti_pki::Certificate;
 
-/// The flow awaits only the signer, which answers at once here: one poll completes it.
+/// The flow awaits only the transport and the signer, which answer at once here: one
+/// poll completes it.
 fn ready<F: std::future::Future>(future: F) -> F::Output {
     let mut future = std::pin::pin!(future);
     let mut context = std::task::Context::from_waker(std::task::Waker::noop());
     match future.as_mut().poll(&mut context) {
         std::task::Poll::Ready(output) => output,
-        std::task::Poll::Pending => panic!("a synchronous signer never leaves the flow pending"),
+        std::task::Poll::Pending => {
+            panic!("a synchronous transport and signer never leave the flow pending")
+        }
     }
 }
 
@@ -235,7 +238,7 @@ impl FakeIdp {
 }
 
 impl Transport for FakeIdp {
-    fn send(&self, request: &Request) -> Result<Response, TransportError> {
+    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
         let (path, _) = request.url.split_once('?').unwrap_or((&request.url, ""));
         Ok(match (request.method, path) {
             (Method::Get, "https://idp.test/.well-known/openid-configuration") => Self::respond(
@@ -420,7 +423,7 @@ fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate()
     let idp = FakeIdp::new(Behaviour::default());
     let (key, cert) = card();
     let challenge = challenge::parse(
-        &idp.send(&challenge::request(AUTH_URL)).unwrap(),
+        &ready(idp.send(&challenge::request(AUTH_URL))).unwrap(),
         &idp.idp_sig.public_jwk(),
         NOW,
     )
@@ -447,8 +450,7 @@ fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate()
     let es256 = ti_jwz::brainpool::BrainpoolEs256Key::generate(backend().as_ref().rng()).unwrap();
     let metadata = discovery::parse(
         &Idp::new("https://idp.test"),
-        &idp.send(&discovery::request(&Idp::new("https://idp.test")))
-            .unwrap(),
+        &ready(idp.send(&discovery::request(&Idp::new("https://idp.test")))).unwrap(),
         NOW,
         &Unverified,
     )
@@ -563,8 +565,7 @@ fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
     let idp = FakeIdp::new(Behaviour::Normal);
     let error = discovery::parse(
         &Idp::new("https://idp.other"),
-        &idp.send(&discovery::request(&Idp::new("https://idp.test")))
-            .unwrap(),
+        &ready(idp.send(&discovery::request(&Idp::new("https://idp.test")))).unwrap(),
         NOW,
         &Unverified,
     )
@@ -577,8 +578,7 @@ fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
     let idp = FakeIdp::new(Behaviour::DiscoveryWithoutX5c);
     let error = discovery::parse(
         &Idp::new("https://idp.test"),
-        &idp.send(&discovery::request(&Idp::new("https://idp.test")))
-            .unwrap(),
+        &ready(idp.send(&discovery::request(&Idp::new("https://idp.test")))).unwrap(),
         NOW,
         &Unverified,
     )
@@ -685,9 +685,7 @@ fn idpv_001_a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
 #[test]
 fn idpv_001_the_discovery_signer_is_checked_before_its_key_verifies_anything() {
     let idp = FakeIdp::new(Behaviour::DiscoverySignedByOtherKey);
-    let response = idp
-        .send(&discovery::request(&Idp::new("https://idp.test")))
-        .unwrap();
+    let response = ready(idp.send(&discovery::request(&Idp::new("https://idp.test")))).unwrap();
     let refusing = Recording {
         answer: Err("revoked".into()),
         seen: RefCell::new(Vec::new()),

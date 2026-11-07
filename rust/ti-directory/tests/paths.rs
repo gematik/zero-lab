@@ -35,6 +35,19 @@ use serde_json::json;
 use ti_directory::http::{Method, Request, Response, Transport, TransportError};
 use ti_directory::{Directory, Endpoint, Env, Error, Idp, exchange, keycloak};
 
+/// The exchange awaits only the transport, which answers at once here: one poll
+/// completes it.
+fn ready<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match future.as_mut().poll(&mut context) {
+        std::task::Poll::Ready(output) => output,
+        std::task::Poll::Pending => {
+            panic!("a synchronous transport never leaves the exchange pending")
+        }
+    }
+}
+
 const DIRECTORY: &str = "https://directory.test";
 const AUTH: &str = "https://auth.test:9443";
 const IDP: &str = "https://idp.test";
@@ -90,7 +103,7 @@ impl Scripted {
 }
 
 impl Transport for Scripted {
-    fn send(&self, request: &Request) -> Result<Response, TransportError> {
+    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
         self.seen.borrow_mut().push(request.clone());
         self.answers
             .borrow_mut()
@@ -205,13 +218,13 @@ fn client_credentials_exchange_the_keycloak_token_at_the_endpoint() {
             &directory_token("https://directory.test/service-authenticate", "fdv-1"),
         ),
     ]);
-    let token = exchange::login_client_credentials(
+    let token = ready(exchange::login_client_credentials(
         &transport,
         &directory(),
         Endpoint::Service,
         "fdv-1",
         "s",
-    )
+    ))
     .unwrap();
     assert_eq!(token.claims.sub.as_deref(), Some("fdv-1"));
     assert_eq!(
@@ -231,9 +244,14 @@ fn client_credentials_exchange_the_keycloak_token_at_the_endpoint() {
 
     // Keycloak refuses: the directory is never asked.
     let transport = Scripted::new(vec![response(401, r#"{"error":"invalid_client"}"#)]);
-    let error =
-        exchange::login_client_credentials(&transport, &directory(), Endpoint::Holder, "x", "y")
-            .unwrap_err();
+    let error = ready(exchange::login_client_credentials(
+        &transport,
+        &directory(),
+        Endpoint::Holder,
+        "x",
+        "y",
+    ))
+    .unwrap_err();
     assert!(matches!(error, Error::AuthServer(_)), "{error}");
     assert_eq!(transport.seen.borrow().len(), 1);
 }
@@ -247,9 +265,13 @@ fn a_regservice_token_is_a_bearer_at_owner_authenticate() {
             "1-2-ARZTPRAXIS-X",
         ),
     )]);
-    let token =
-        exchange::login_bearer(&transport, &directory(), Endpoint::Owner, "REG.SERVICE.JWT")
-            .unwrap();
+    let token = ready(exchange::login_bearer(
+        &transport,
+        &directory(),
+        Endpoint::Owner,
+        "REG.SERVICE.JWT",
+    ))
+    .unwrap();
     assert_eq!(token.claims.sub.as_deref(), Some("1-2-ARZTPRAXIS-X"));
     let seen = transport.seen.borrow();
     assert_eq!(seen[0].url, "https://directory.test/owner-authenticate");
@@ -263,6 +285,12 @@ fn a_regservice_token_is_a_bearer_at_owner_authenticate() {
         400,
         r#"{"errors":null,"message":"Authorization token missing. ErrorCode=[7589180c]"}"#,
     )]);
-    let error = exchange::login_bearer(&transport, &directory(), Endpoint::Holder, "").unwrap_err();
+    let error = ready(exchange::login_bearer(
+        &transport,
+        &directory(),
+        Endpoint::Holder,
+        "",
+    ))
+    .unwrap_err();
     assert!(matches!(error, Error::Directory(_)), "{error}");
 }

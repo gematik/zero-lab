@@ -108,13 +108,10 @@ pub async fn login<T: Transport>(
     now: u64,
     trust: &dyn CertificateTrust,
 ) -> Result<Login, Error> {
-    let send = |what: &'static str, request: &Request| {
-        transport
-            .send(request)
-            .map_err(|source| Error::Transport { what, source })
-    };
-    let authorization_url =
-        authorization_url(directory, &send("owner-authenticate", &start(directory))?)?;
+    let authorization_url = authorization_url(
+        directory,
+        &send(transport, "owner-authenticate", &start(directory)).await?,
+    )?;
     let authenticated = authenticator::authenticate(
         transport,
         directory.idp(),
@@ -125,12 +122,24 @@ pub async fn login<T: Transport>(
     )
     .await?;
     let request = sign_in(directory, &authenticated.redirect)?;
-    let token = token(&send("signin-gematik-idp-dienst", &request)?)?;
+    let token = token(&send(transport, "signin-gematik-idp-dienst", &request).await?)?;
     Ok(Login {
         token,
         authorization_url,
         authenticated,
     })
+}
+
+/// `request`'s response; no response is the failure of step `what`.
+async fn send<T: Transport>(
+    transport: &T,
+    what: &'static str,
+    request: &Request,
+) -> Result<Response, Error> {
+    transport
+        .send(request)
+        .await
+        .map_err(|source| Error::Transport { what, source })
 }
 
 /// `url` must be at the directory's IDP-Dienst: the identity signs for that IDP only.

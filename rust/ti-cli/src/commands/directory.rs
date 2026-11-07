@@ -201,13 +201,13 @@ fn login_client(
             endpoint.realm().unwrap_or("-")
         ),
     );
-    let token = exchange::login_client_credentials(
+    let token = block_on(exchange::login_client_credentials(
         &transport,
         &directory,
         endpoint,
         &args.client_id,
         &secret,
-    )
+    ))
     .map_err(|error| directory_error(error, None))?;
     let mut report = report(&directory, endpoint, "client_credentials", token);
     report.client_id = Some(args.client_id.clone());
@@ -223,8 +223,13 @@ fn login_owner(
         let directory = directory(&args.target, Needs::Nothing)?;
         let bearer = crate::input::first_line(path)?;
         let transport = http::Logged::new(&global.net, out)?;
-        let token = exchange::login_bearer(&transport, &directory, Endpoint::Owner, &bearer)
-            .map_err(|error| directory_error(error, None))?;
+        let token = block_on(exchange::login_bearer(
+            &transport,
+            &directory,
+            Endpoint::Owner,
+            &bearer,
+        ))
+        .map_err(|error| directory_error(error, None))?;
         let report = report(&directory, Endpoint::Owner, "regservice", token);
         return emit(&report, &args.target, out);
     }

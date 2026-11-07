@@ -204,12 +204,17 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `jwz::keys::AsyncSigner`, so a card at the Konnektor signs without blocking;
   `authenticator::authenticate` and `challenge::respond` are `async`. Every `Signer` is
   an `AsyncSigner`, and with one the future is ready at its first poll (TASK-60).
+- `http::Transport::send` is `async` without a `Send` bound, as the other TI crates'
+  transports, so a browser's fetch can carry the flow (decision-15). `ureq::UreqTransport`
+  stays blocking: its future is ready at its first poll (TASK-245).
 
 ### ti-directory
 
 #### changed
 - `owner::login` is `async`: it awaits the IDP-Dienst flow's asynchronous signer
   (ti-idpd, TASK-60).
+- `exchange::login_bearer` and `exchange::login_client_credentials` are `async`, as
+  ti-idpd's transport is (TASK-245).
 
 #### added
 - New crate: the gematik FHIR-Directory's Auth-Service (gemSpec_VZD_FHIR_Directory

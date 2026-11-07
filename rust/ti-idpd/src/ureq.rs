@@ -21,7 +21,8 @@
  * find details in the "Readme" file.
  */
 
-//! A blocking [`Transport`] over ureq 3 (feature `ureq`).
+//! A blocking [`Transport`] over ureq 3 (feature `ureq`): its futures are complete when
+//! first polled.
 
 use crate::http::{Method, Request, Response, Transport, TransportError};
 
@@ -55,7 +56,7 @@ impl UreqTransport {
 }
 
 impl Transport for UreqTransport {
-    fn send(&self, request: &Request) -> Result<Response, TransportError> {
+    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
         let failed = |e: ureq::Error| TransportError(e.to_string());
         let mut response = match request.method {
             Method::Get => {

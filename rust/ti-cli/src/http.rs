@@ -145,11 +145,11 @@ impl<'a> Logged<'a> {
 }
 
 impl ti_idpd::http::Transport for Logged<'_> {
-    fn send(
+    async fn send(
         &self,
         request: &ti_idpd::http::Request,
     ) -> Result<ti_idpd::http::Response, ti_idpd::http::TransportError> {
-        let response = self.inner.send(request);
+        let response = self.inner.send(request).await;
         match &response {
             Ok(r) => {
                 self.out.verbose(

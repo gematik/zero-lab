@@ -28,7 +28,7 @@ use jwz::keys::AsyncSigner;
 use crate::challenge::{self, CodeRedirect};
 use crate::discovery::{self, Discovery};
 use crate::error::Error;
-use crate::http::Transport;
+use crate::http::{Request, Response, Transport};
 use crate::trust::{CertificateTrust, Checked, IdpCertificate};
 use crate::{Idp, Warning};
 
@@ -77,8 +77,8 @@ pub struct CheckedCertificate {
 /// The first failing step's [`Error`]; [`Error::Untrusted`] when `trust` refuses a
 /// certificate.
 ///
-/// Only the signature is awaited; the transport answers synchronously, so a caller
-/// with a synchronous signer can run the future with any executor, or poll it once.
+/// The future waits only on `transport` and the signer: with a blocking transport and
+/// a synchronous signer it is complete when first polled.
 pub async fn authenticate<T: Transport>(
     transport: &T,
     idp: &Idp,
@@ -87,15 +87,10 @@ pub async fn authenticate<T: Transport>(
     now: u64,
     trust: &dyn CertificateTrust,
 ) -> Result<Authenticated, Error> {
-    let send = |what: &'static str, request| {
-        transport
-            .send(&request)
-            .map_err(|source| Error::Transport { what, source })
-    };
     // IDPV-001: the discovery signer is checked inside `parse`, before its key is used.
     let discovery = discovery::parse(
         idp,
-        &send("discovery document", discovery::request(idp))?,
+        &send(transport, "discovery document", discovery::request(idp)).await?,
         now,
         trust,
     )?;
@@ -108,9 +103,11 @@ pub async fn authenticate<T: Transport>(
     let puk_idp_sig = discovery::parse_key(
         "PuK_IDP_SIG",
         &send(
+            transport,
             "PuK_IDP_SIG",
             discovery::key_request(&metadata.uri_puk_idp_sig),
-        )?,
+        )
+        .await?,
     )?;
     // IDPV-002: `puk_idp_sig`'s own certificate is checked before its key verifies the
     // challenge.
@@ -127,12 +124,19 @@ pub async fn authenticate<T: Transport>(
     let puk_idp_enc = discovery::parse_key(
         "PuK_IDP_ENC",
         &send(
+            transport,
             "PuK_IDP_ENC",
             discovery::key_request(&metadata.uri_puk_idp_enc),
-        )?,
+        )
+        .await?,
     )?;
     let challenge = challenge::parse(
-        &send("challenge", challenge::request(authorization_url))?,
+        &send(
+            transport,
+            "challenge",
+            challenge::request(authorization_url),
+        )
+        .await?,
         &puk_idp_sig,
         now,
     )?;
@@ -146,7 +150,7 @@ pub async fn authenticate<T: Transport>(
     .await?;
     // gemSpec_IDP_Frontend A_20527: the code goes back to the caller, the
     // Anwendungsfrontend.
-    let redirect = challenge::code(&send("signed challenge", answer)?)?;
+    let redirect = challenge::code(&send(transport, "signed challenge", answer).await?)?;
     let warnings = if certificates.iter().any(|c| c.checked == Checked::Unchecked) {
         vec![Warning::IdpCertificatesUnverified]
     } else {
@@ -159,4 +163,16 @@ pub async fn authenticate<T: Transport>(
         certificates,
         warnings,
     })
+}
+
+/// `request`'s response; no response is the failure of step `what`.
+async fn send<T: Transport>(
+    transport: &T,
+    what: &'static str,
+    request: Request,
+) -> Result<Response, Error> {
+    transport
+        .send(&request)
+        .await
+        .map_err(|source| Error::Transport { what, source })
 }

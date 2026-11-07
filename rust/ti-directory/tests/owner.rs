@@ -41,13 +41,16 @@ use ti_idpd::authenticator::Identity;
 use ti_idpd::challenge::CodeRedirect;
 use ti_idpd::trust::Unverified;
 
-/// The flow awaits only the signer, which answers at once here: one poll completes it.
+/// The flow awaits only the transport and the signer, which answer at once here: one
+/// poll completes it.
 fn ready<F: std::future::Future>(future: F) -> F::Output {
     let mut future = std::pin::pin!(future);
     let mut context = std::task::Context::from_waker(std::task::Waker::noop());
     match future.as_mut().poll(&mut context) {
         std::task::Poll::Ready(output) => output,
-        std::task::Poll::Pending => panic!("a synchronous signer never leaves the flow pending"),
+        std::task::Poll::Pending => {
+            panic!("a synchronous transport and signer never leave the flow pending")
+        }
     }
 }
 
@@ -309,7 +312,7 @@ struct Scripted {
 }
 
 impl Transport for Scripted {
-    fn send(&self, request: &Request) -> Result<Response, TransportError> {
+    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
         self.seen.borrow_mut().push(request.clone());
         if self.seen.borrow().len() == 1 {
             Ok(self.first.clone())

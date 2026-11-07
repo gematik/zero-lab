@@ -42,7 +42,7 @@ pub fn request(directory: &Directory, endpoint: Endpoint, bearer: &str) -> Reque
 ///
 /// [`Error::Transport`] when the directory does not answer, else as
 /// [`token::parse`].
-pub fn login_bearer<T: Transport>(
+pub async fn login_bearer<T: Transport>(
     transport: &T,
     directory: &Directory,
     endpoint: Endpoint,
@@ -57,6 +57,7 @@ pub fn login_bearer<T: Transport>(
     debug_assert_eq!(what, endpoint.path().trim_start_matches('/'));
     let response = transport
         .send(&request(directory, endpoint, bearer))
+        .await
         .map_err(|source| Error::Transport { what, source })?;
     token::parse(what, &response)
 }
@@ -68,7 +69,7 @@ pub fn login_bearer<T: Transport>(
 ///
 /// [`Error::AuthServer`] when Keycloak refuses the credentials, else the first failing
 /// step's [`Error`].
-pub fn login_client_credentials<T: Transport>(
+pub async fn login_client_credentials<T: Transport>(
     transport: &T,
     directory: &Directory,
     endpoint: Endpoint,
@@ -78,10 +79,11 @@ pub fn login_client_credentials<T: Transport>(
     let request = keycloak::token_request(directory, endpoint, client_id, client_secret)?;
     let response = transport
         .send(&request)
+        .await
         .map_err(|source| Error::Transport {
             what: "Keycloak token",
             source,
         })?;
     let keycloak = keycloak::token(&response)?;
-    login_bearer(transport, directory, endpoint, &keycloak.access_token)
+    login_bearer(transport, directory, endpoint, &keycloak.access_token).await
 }

@@ -105,18 +105,22 @@ impl Response {
 
 /// Performs requests. Implementations must not follow redirects and must return
 /// non-2xx responses as responses, not errors.
+#[allow(
+    async_fn_in_trait,
+    reason = "no Send bound on purpose: implementable on wasm32"
+)]
 pub trait Transport {
     /// Performs `request`.
     ///
     /// # Errors
     ///
     /// [`TransportError`] when no response was obtained (DNS, connection, TLS, timeout).
-    fn send(&self, request: &Request) -> Result<Response, TransportError>;
+    async fn send(&self, request: &Request) -> Result<Response, TransportError>;
 }
 
 impl<T: Transport + ?Sized> Transport for &T {
-    fn send(&self, request: &Request) -> Result<Response, TransportError> {
-        (**self).send(request)
+    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
+        (**self).send(request).await
     }
 }
 
