@@ -4,7 +4,7 @@ title: 'ti-client: commands as a synchronous API, ti-cli a thin front end'
 status: In Progress
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
-updated_date: '2026-11-07T21:38:00Z'
+updated_date: '2026-11-07T21:57:00Z'
 labels:
   - ti-client
   - ti-cli
@@ -37,4 +37,6 @@ Decision-15: the command-line tool and the Tauri app run the same operations, so
 
 <!-- SECTION:NOTES:BEGIN -->
 Group pki (2026-11-07): the operations of pki verify, verify-signature, inspect, tsl show/verify/bundle/export, roots list/bundle, trust export, pkcs12 convert, identity inspect/sign and the IDP certificate check are in ti-client: trust::Session (from ti-cli trust.rs, over ti_client::Dirs; warnings through a closure, TSL state lines through the client's Observer), pki::{verify, inspect, signature, tsl, roots, bundle, export}, pkcs12, identity (card key behind a private trait, Identity::on_card takes the Konnektor), idp_trust (the session opened by a closure once needed, generic over the front end's error), input, peer, text::span. Results derive Serialize in the shape of the JSON; ti-cli wraps them with the schema field (serde flatten) and renders. ti_client::Error grew the variants ti-cli maps one to one (From<ti_client::Error> for CliError). cache clear already called ti_client::file_cache::clear; unchanged. ti-client has a traceability table now. Outputs of 37 offline invocations (text, markdown, JSON, stderr, exit codes) compared before and after: identical. Left for later groups or tasks: product rules now in ti-client rather than ti-pki (TSLDET-023 at-time loader, the AUT key-usage rule), the profile directory resolved before environment detection in verify.
+
+Group pki, follow-up (coordinator's ruling on decision 3): the rules ti-client had taken over from ti-cli are in ti-pki now and ti-client only calls them: load::AtTime (TSLDET-023), load::read_back / verify_read_back / NoNetwork (TSLDET-015, TSLSIG-053), Tsl::verify_file (TSLDET-005, 020, 022, 023, TSLSIG-053; FileVerdict keeps the sequence when a later step fails, as tsl verify's JSON did), cert_type::is_authentication (PROF-002). Tests named after the rules in ti-pki; outputs compared again, identical.
 <!-- SECTION:NOTES:END -->
