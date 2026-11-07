@@ -525,10 +525,7 @@ fn with_k_every_endpoint_answers_and_says_its_tls_was_not_checked() {
             "{report}"
         );
         assert!(
-            probe["detail"]
-                .as_str()
-                .unwrap()
-                .ends_with("TLS not checked (-k)"),
+            probe["detail"].as_str().unwrap().ends_with("TLS unchecked"),
             "{report}"
         );
         assert_eq!(probe["tls"]["verified"], Value::Null, "{report}");
