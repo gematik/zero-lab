@@ -4,7 +4,7 @@ title: 'idpd: tests named after the requirement they prove'
 status: In Progress
 assignee: []
 created_date: '2026-11-05T21:24:00Z'
-updated_date: '2026-11-07T10:27:00Z'
+updated_date: '2026-11-07T10:40:00Z'
 labels:
   - go
 dependencies: []
@@ -19,5 +19,11 @@ TASK-83 covered pdp, pep, openid, oidf, nonce and epa. idpd still has TestALogin
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 idpd's security tests carry the requirement they prove, in the prefixes TASK-83 introduced
+- [x] #1 idpd's security tests carry the requirement they prove, in the prefixes TASK-83 introduced
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-07, go-batch 5e585f11: TestServerRule14_ALoginLogsNoSecretAtDebug, TestOIDCCore_3_1_3_7_ExchangeRefusesAnIDTokenOfAnotherLogin, TestOIDCCore_3_1_3_3_ExchangeRefusesAResponseWithoutAnIDToken (the last one also cited its requirement only in a comment).
+<!-- SECTION:NOTES:END -->
