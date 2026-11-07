@@ -4,7 +4,7 @@ title: 'ti-pkcs12: tests for the 37 surviving mutants'
 status: In Progress
 assignee: []
 created_date: '2026-11-05T21:53:00Z'
-updated_date: '2026-11-07T16:07:00Z'
+updated_date: '2026-11-07T18:04:00Z'
 labels:
   - tests
   - ti-pkcs12
@@ -20,6 +20,12 @@ cargo-mutants 27.1.0 on ti-pkcs12 (default features, main at e15366b0): 37 misse
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 each surviving mutant is killed by a test named after the rule it breaks, or marked equivalent with the reason
-- [ ] #2 just mutants-record ti-pkcs12 reaches the crate's threshold
+- [x] #1 each surviving mutant is killed by a test named after the rule it breaks, or marked equivalent with the reason
+- [x] #2 just mutants-record ti-pkcs12 reaches the crate's threshold
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+All 17 survivors of the --all-features run killed (tests named after P12-012, P12-013, P12-033, RFC 5652 §8, is_wrong_password, is_pkcs12 length forms, names); the < vs <= mutant in is_pkcs12 removed by matching the length as a range. Recorded at f8704786 (with TASK-255): 161 caught, 6 timeouts, 0 missed, 60 unviable, score 1.0.
+<!-- SECTION:NOTES:END -->
