@@ -17,8 +17,11 @@ ti-types.workspace = true
 ti-connector-client.workspace = true
 ti-idpd-client.workspace = true
 ti-directory-client.workspace = true
-# The transport of roots.json, the TSL and OCSP (`load`), and the OCSP media types.
-ti-pki = { workspace = true, features = ["load"] }
+# The transport of roots.json, the TSL and OCSP (`load`), and the OCSP media types; the
+# trust material of every environment, the non-prod presets fenced by TrustConfig::validate.
+ti-pki = { workspace = true, features = ["load", "os", "dangerous-nonprod"] }
+# The error of a PKCS#12 file that cannot be opened.
+ti-pkcs12.workspace = true
 # The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
 ti-tls.workspace = true
 # Blocking HTTP without an async runtime; the TLS layer is ti-tls's rustls configuration
@@ -38,8 +41,10 @@ sha2.workspace = true
 
 [dev-dependencies]
 base64ct.workspace = true
-# The Konnektor e2e test checks an ExternalAuthenticate signature against the card's C.AUT.
-ti-pki = { workspace = true, features = ["brainpool"] }
+traceability.workspace = true
+# The Konnektor e2e test checks an ExternalAuthenticate signature against the card's C.AUT;
+# the trust tests verify the production TSL of spec/tsl-detached, read from files (`os`).
+ti-pki = { workspace = true, features = ["brainpool", "os"] }
 
 [lints]
 workspace = true

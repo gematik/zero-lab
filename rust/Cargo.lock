@@ -1665,9 +1665,11 @@ dependencies = [
  "ti-connector-client",
  "ti-directory-client",
  "ti-idpd-client",
+ "ti-pkcs12",
  "ti-pki",
  "ti-tls",
  "ti-types",
+ "traceability",
  "ureq",
 ]
 

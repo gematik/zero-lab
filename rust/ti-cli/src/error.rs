@@ -399,6 +399,39 @@ impl From<ti_client::Error> for CliError {
         match error {
             ti_client::Error::Setup(message) => CliError::HttpSetup(message),
             ti_client::Error::Connector(error) => CliError::Connector(error),
+            ti_client::Error::NoCertificate { source_name } => {
+                CliError::NoCertificate { source_name }
+            }
+            ti_client::Error::Certificate {
+                source_name,
+                source,
+            } => CliError::Certificate {
+                source_name,
+                source,
+            },
+            ti_client::Error::Pkcs12 {
+                source_name,
+                source,
+            } => CliError::Pkcs12 {
+                source_name,
+                source,
+            },
+            ti_client::Error::EnvironmentUndetected(message) => {
+                CliError::EnvironmentUndetected(message)
+            }
+            ti_client::Error::Trust(error) => CliError::Trust(error),
+            ti_client::Error::TrustLoad(message) => CliError::TrustLoad(message),
+            ti_client::Error::TslRollback(message) => CliError::TslRollback(message),
+            ti_client::Error::ServerUnreachable(message) => CliError::ServerUnreachable(message),
+            ti_client::Error::Cache { path, reason } => CliError::Cache { path, reason },
+            ti_client::Error::State { path, reason } => CliError::State { path, reason },
+            ti_client::Error::IdentityNotFound(message) => CliError::IdentityNotFound(message),
+            ti_client::Error::KeyUnsupported(message) => CliError::KeyUnsupported(message),
+            ti_client::Error::Signing(message) => CliError::Signing(message),
+            ti_client::Error::SignatureMalformed(message) => CliError::SignatureMalformed(message),
+            ti_client::Error::Randomness => {
+                CliError::Output(io::Error::other("no system randomness"))
+            }
         }
     }
 }
@@ -504,6 +537,18 @@ mod tests {
             hint(&[4000]),
             "the Konnektor refused the call; its code and text say why"
         );
+    }
+
+    /// TSLSIG-053: ti-client's rollback stays apart from a failed download, so its hint
+    /// points at the kept list, not at the network.
+    #[test]
+    fn tslsig_053_a_rejected_older_list_hints_at_the_kept_state() {
+        let error = CliError::from(ti_client::Error::TslRollback("tsl_id_incorrect".into()));
+        assert_eq!(error.kind(), "trust_material_unavailable");
+        let hint = error.hint().unwrap();
+        assert!(hint.contains("older list"), "{hint}");
+        assert!(hint.contains("tsl/ID.json"), "{hint}");
+        assert!(!hint.contains("port 80"), "not a network problem: {hint}");
     }
 
     /// One error of every kind, in the order of [`CliError`]'s variants.

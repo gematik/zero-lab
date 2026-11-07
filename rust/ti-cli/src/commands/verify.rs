@@ -46,7 +46,7 @@ use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
-use crate::trust::{Session, TrustInfo};
+use ti_client::trust::TrustInfo;
 
 /// Whether `at` is now or `--at`: OCSP still answers for the time of the query.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -190,8 +190,8 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     let at = args.at.unwrap_or_else(Timestamp::now);
 
     let (env, detection) = environment(args.env, &certs, at)?;
-    let session = Session::new(global, args.offline, out)?;
-    let (config, material) = super::load_trust(&session, env, args.nist_only, args.at)?;
+    let session = crate::trust::session(global, args.offline, out)?;
+    let (config, material) = session.load_env(env, args.nist_only, args.at)?;
     out.verbose(
         1,
         format_args!(

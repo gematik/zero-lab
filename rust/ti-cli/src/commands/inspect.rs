@@ -36,7 +36,6 @@ use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, date, span, when};
 use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone, hex};
-use crate::trust::Session;
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -253,7 +252,7 @@ fn trees(
         .ok()
         .map(|(env, _)| env);
     let material = env.and_then(|env| {
-        let session = Session::new(global, true, out).ok()?;
+        let session = crate::trust::session(global, true, out).ok()?;
         let config = ti_pki::TrustConfig::preset(env);
         session.load(&config, env.tier(), None).ok()
     });

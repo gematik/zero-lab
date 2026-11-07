@@ -50,7 +50,8 @@ use crate::cli::{
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone, hex};
-use crate::trust::{Session, VerifiedSet};
+use crate::trust::Session;
+use ti_client::trust::VerifiedSet;
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -758,7 +759,7 @@ struct Loaded {
     env: ti_pki::Env,
     config: TrustConfig,
     session: Session,
-    material: crate::trust::Material,
+    material: ti_client::trust::Material,
     /// The TSL as published, and verified.
     bytes: Vec<u8>,
     meta: Meta,
@@ -775,7 +776,7 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
     let env = super::concrete(trust.env, global)?;
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
-    let session = Session::new(global, trust.offline, out)?;
+    let session = crate::trust::session(global, trust.offline, out)?;
     let material = session.load(&config, env.tier(), trust.at)?;
     let now = trust.at.unwrap_or_else(Timestamp::now);
     let VerifiedSet { set, verified } = session.verified_set(&config, &material, trust.at)?;

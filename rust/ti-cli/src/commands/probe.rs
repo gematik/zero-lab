@@ -57,7 +57,6 @@ use crate::http;
 use crate::net::NetArgs;
 use crate::output::live::Live;
 use crate::output::{Line, Output, Tone, style, warning};
-use crate::trust::Session;
 
 /// Every request is given up after this.
 const TIMEOUT: Duration = Duration::from_secs(3);
@@ -471,8 +470,8 @@ fn ti_config(
 ) -> Result<Arc<rustls::ClientConfig>, CliError> {
     // The trust material downloads with the ordinary limits: a TSL is larger than an
     // answer the probe waits for.
-    let session = Session::new(global, false, out)?;
-    let (config, material) = super::load_trust(&session, env, false, None)?;
+    let session = crate::trust::session(global, false, out)?;
+    let (config, material) = session.load_env(env, false, None)?;
     out.verbose(
         1,
         format_args!(

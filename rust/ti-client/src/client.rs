@@ -58,7 +58,8 @@ impl Client {
         }
     }
 
-    /// The client with `observer` told about each download and OCSP request.
+    /// The client with `observer` told about each download and OCSP request, and about the
+    /// trust material and state an operation reads and keeps.
     #[must_use]
     pub fn observed(mut self, observer: Observer) -> Client {
         self.observer = Some(observer);
@@ -68,6 +69,11 @@ impl Client {
     /// The HTTP settings.
     pub fn net(&self) -> &Net {
         &self.net
+    }
+
+    /// The observer, which the operations also tell what they read and keep.
+    pub(crate) fn observer(&self) -> Option<&Observer> {
+        self.observer.as_ref()
     }
 
     /// ti-pki's transport for downloads and OCSP ([`http::transport`]).

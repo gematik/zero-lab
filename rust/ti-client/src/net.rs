@@ -24,7 +24,6 @@
 //! The HTTP settings of a host, modelled on curl's options so a command-line front end can
 //! take them as curl's flags, and the proxy as curl picks it.
 
-use core::fmt;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -32,33 +31,7 @@ use ureq::Agent;
 use ureq::config::ConfigBuilder;
 use ureq::typestate::AgentScope;
 
-/// Why the HTTP client cannot be set up from the settings, or a Konnektor's transport from its
-/// `.kon` file.
-#[derive(Debug)]
-pub enum Error {
-    /// The settings: an unusable proxy, CA file or directory.
-    Setup(String),
-    /// The `.kon` file's credentials or trust store.
-    Connector(ti_connector_client::Error),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::Setup(message) => f.write_str(message),
-            Error::Connector(error) => error.fmt(f),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::Setup(_) => None,
-            Error::Connector(error) => Some(error),
-        }
-    }
-}
+pub use crate::error::Error;
 
 /// curl-like HTTP settings.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -31,7 +31,6 @@ use ti_pki::{CertificateType, checks};
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Oid, Output, SCHEMA};
-use crate::trust::Session;
 
 #[derive(Serialize)]
 struct ListReport {
@@ -244,7 +243,7 @@ fn tsl_cas(
     let env = super::concrete(env, global)?;
     let config = ti_pki::TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
-    let session = Session::new(global, offline, out)?;
+    let session = crate::trust::session(global, offline, out)?;
     let store = session.load(&config, env.tier(), None)?.store;
     if !store.has_tsl_types() {
         return Err(CliError::TrustLoad(

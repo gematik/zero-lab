@@ -30,7 +30,7 @@ use ti_pki::{Certificate, Timestamp, TrustConfig};
 use crate::cli::{GlobalArgs, RootsArgs};
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
-use crate::trust::{Session, TrustInfo};
+use ti_client::trust::TrustInfo;
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -63,8 +63,8 @@ struct RootInfo {
 /// Runs `ti pki roots list`.
 pub fn list(args: &RootsArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let (trust, env) = (&args.trust, super::concrete(args.trust.env, global)?);
-    let session = Session::new(global, trust.offline, out)?;
-    let (config, material) = super::load_trust(&session, env, args.nist_only, trust.at)?;
+    let session = crate::trust::session(global, trust.offline, out)?;
+    let (config, material) = session.load_env(env, args.nist_only, trust.at)?;
     let now = trust.at.unwrap_or_else(Timestamp::now);
     let report = Report {
         schema: SCHEMA,

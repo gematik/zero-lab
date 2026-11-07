@@ -73,6 +73,14 @@ struct Inputs<'a> {
 }
 
 impl Profile {
+    /// The directories as ti-client takes them.
+    pub fn dirs(&self) -> ti_client::Dirs {
+        ti_client::Dirs {
+            state: self.state_dir.clone(),
+            cache: self.cache_dir.clone(),
+        }
+    }
+
     /// `--profile`, else `TI_PROFILE`; `TI_STATE_DIR` and `--cache-dir` (`TI_CACHE_DIR`)
     /// override the bases.
     ///

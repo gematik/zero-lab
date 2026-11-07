@@ -37,7 +37,7 @@ use crate::cli::{BundleArgs, GlobalArgs, RootsBundleArgs};
 use crate::error::{CliError, Exit};
 use crate::output::document::date;
 use crate::output::{Document, Line, Output};
-use crate::trust::{Session, TrustInfo};
+use ti_client::trust::TrustInfo;
 
 /// The JSON document; `schema` is added on output.
 #[derive(Serialize)]
@@ -84,8 +84,8 @@ pub fn roots(args: &RootsBundleArgs, global: &GlobalArgs, out: &Output) -> Resul
     refuse_existing(&args.bundle)?;
     let roots = &args.roots;
     let env = super::concrete(roots.trust.env, global)?;
-    let session = Session::new(global, roots.trust.offline, out)?;
-    let (_, material) = super::load_trust(&session, env, roots.nist_only, roots.trust.at)?;
+    let session = crate::trust::session(global, roots.trust.offline, out)?;
+    let (_, material) = session.load_env(env, roots.nist_only, roots.trust.at)?;
     let mut certificates = material.store.roots().to_vec();
     certificates.sort_by_key(|root| super::roots::generation(root.subject_cn()));
     write(

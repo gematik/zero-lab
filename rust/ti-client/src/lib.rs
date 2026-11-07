@@ -27,14 +27,19 @@
 mod block;
 mod client;
 pub mod connector;
+mod error;
 pub mod file_cache;
 pub mod files;
 pub mod http;
 pub mod net;
+pub mod text;
 pub mod tls;
+pub mod trust;
 
 pub use block::block_on;
 pub use client::Client;
+pub use error::Error;
 pub use file_cache::FileCache;
+pub use files::Dirs;
 pub use http::Observer;
-pub use net::{Error, Net};
+pub use net::Net;

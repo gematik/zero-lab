@@ -38,8 +38,8 @@ mod error;
 // Public for the fuzz targets only; not an API of this crate.
 #[doc(hidden)]
 pub mod fuzz {
-    pub use crate::trust::{parse_tsl_state, tsl_state_bytes};
     pub use ti_client::file_cache::{decode, encode};
+    pub use ti_client::trust::{parse_tsl_state, tsl_state_bytes};
 }
 mod http;
 mod identity;

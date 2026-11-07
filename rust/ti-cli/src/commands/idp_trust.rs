@@ -195,8 +195,8 @@ impl TslTrust<'_> {
             None => Environment::Auto,
         };
         let (env, _) = super::verify::environment(choice, certs, at)?;
-        let session = Session::new(self.global, false, self.out)?;
-        let (config, material) = super::load_trust(&session, env, false, None)?;
+        let session = crate::trust::session(self.global, false, self.out)?;
+        let (config, material) = session.load_env(env, false, None)?;
         self.out.verbose(
             1,
             format_args!(

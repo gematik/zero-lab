@@ -27,12 +27,22 @@
 use std::fmt::Write as _;
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write as _};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use sha2::{Digest, Sha256};
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Where a profile's files live: its state (the TSL state, comfort IDs), which only the
+/// user removes, and its download cache, which may be cleared at any time.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Dirs {
+    /// The state directory.
+    pub state: PathBuf,
+    /// The cache directory.
+    pub cache: PathBuf,
+}
 
 /// Replaces `path` with `bytes` in one step: a reader sees the old file or the new one,
 /// and a crash leaves one of them, never a mixture. The temporary file sits in the same

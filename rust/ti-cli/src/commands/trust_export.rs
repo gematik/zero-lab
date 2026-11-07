@@ -39,7 +39,6 @@ use crate::cli::{GlobalArgs, TrustExportArgs};
 use crate::error::{CliError, Exit};
 use crate::output::document::when;
 use crate::output::{Line, Output};
-use crate::trust::Session;
 
 /// What fits a ConfigMap: its limit of 1 MiB, less room for the object's own fields.
 const CONFIG_MAP_ROOM: usize = 1_000_000;
@@ -69,7 +68,7 @@ pub fn export(args: &TrustExportArgs, global: &GlobalArgs, out: &Output) -> Resu
     let env = super::concrete(args.trust.env, global)?;
     let config = TrustConfig::preset(env);
     config.validate(env.tier()).map_err(CliError::Trust)?;
-    let session = Session::new(global, args.trust.offline, out)?;
+    let session = crate::trust::session(global, args.trust.offline, out)?;
     let loaded = session.load(&config, env.tier(), args.trust.at)?;
     let material = session.verified_set(&config, &loaded, args.trust.at)?.set;
     let label = format!("{env} {}", material.fetched_at);
