@@ -2,20 +2,34 @@
 class Ti < Formula
   desc "Command-line tool for the gematik Telematikinfrastruktur (TI)"
   homepage "https://github.com/gematik/zero-lab/tree/main/rust/ti-cli"
-  version "@VERSION@"
   license "EUPL-1.2"
 
-  # Released for Apple silicon Macs and x86_64 Linux only.
+  # Released for Apple silicon Macs and x86_64 Linux only. Homebrew allows url only
+  # in an architecture block inside an OS block. The unsupported architecture of each
+  # OS gets that OS's binary too, only so the formula still loads there and the arch
+  # requirement refuses it with a clear message.
   on_macos do
     depends_on arch: :arm64
-    url "@URL_aarch64-apple-darwin@"
-    sha256 "@SHA256_aarch64-apple-darwin@"
+    on_arm do
+      url "@URL_aarch64-apple-darwin@"
+      sha256 "@SHA256_aarch64-apple-darwin@"
+    end
+    on_intel do
+      url "@URL_aarch64-apple-darwin@"
+      sha256 "@SHA256_aarch64-apple-darwin@"
+    end
   end
 
   on_linux do
     depends_on arch: :x86_64
-    url "@URL_x86_64-unknown-linux-musl@"
-    sha256 "@SHA256_x86_64-unknown-linux-musl@"
+    on_intel do
+      url "@URL_x86_64-unknown-linux-musl@"
+      sha256 "@SHA256_x86_64-unknown-linux-musl@"
+    end
+    on_arm do
+      url "@URL_x86_64-unknown-linux-musl@"
+      sha256 "@SHA256_x86_64-unknown-linux-musl@"
+    end
   end
 
   def install

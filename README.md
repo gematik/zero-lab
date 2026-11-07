@@ -38,7 +38,13 @@ See [ReleaseNotes.md](./ReleaseNotes.md) and [rust/ReleaseNotes.md](./rust/Relea
 
 ### Installation
 
-Install the `ti` command-line tool from source:
+Install the `ti` command-line tool with Homebrew on macOS (Apple silicon) and Linux (x86_64):
+
+```
+brew install gematik/tap/ti
+```
+
+or from source:
 
 ```
 git clone https://github.com/gematik/zero-lab.git

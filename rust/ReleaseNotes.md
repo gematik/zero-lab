@@ -77,6 +77,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   longer sealed, as `hba-user/KONNEKTOR/CARD`. Existing IDs, sealed or in `comfort/`, are not
   migrated: **activate comfort signature again.** On POSIX such a file or directory that is a symbolic
   link or open to group or others is refused.
+- Homebrew releases go to `gematik/tap` (`brew install gematik/tap/ti`), with the earlier
+  versions from `spilikin/tap`. Installs from `spilikin/tap` stay at 0.5.0: `brew uninstall ti
+  && brew install gematik/tap/ti` switches.
 
 #### fixed
 - `ti probe` puts the Bestandsnetze on one line, the names grouped by result (TASK-235):

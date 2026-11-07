@@ -80,7 +80,7 @@ Releases are on [GitHub](https://github.com/gematik/zero-lab/releases), tagged
 `rust/ti-cli/vX.Y.Z`, with a binary for macOS on Apple silicon, Linux x86_64 (static)
 and Windows x86_64.
 
-- **Homebrew** (macOS, Linux): `brew install spilikin/tap/ti`; `brew upgrade ti`
+- **Homebrew** (macOS, Linux): `brew install gematik/tap/ti`; `brew upgrade ti`
   updates, `brew autoupdate` keeps it current. `ti` itself never checks for updates.
 - **Download:** take the binary for your platform with `SHA256SUMS`, then check it:
 
