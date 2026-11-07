@@ -8,6 +8,8 @@ command-line tool and the desktop app: the I/O the product clients leave to thei
   the client certificate of `pkcs12` credentials, basic auth; the TCP and TLS probe of
   `config test` (`check_config`) and the certificates a Konnektor presents
   (`server_certificate`).
+- `tls`: an agent per ti-tls profile, its rustls configuration in ureq's connector chain
+  (`agent`), and the `web` profile's OCSP responders and CRL hosts over ureq (`UreqFetch`).
 - `block_on`: runs a product client's future on the calling thread. Everything this crate
   plugs into a client blocks, so each future is complete at its first poll; an executor
   would only add dependencies.

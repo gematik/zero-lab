@@ -36,11 +36,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustls::pki_types::CertificateDer;
+use ti_client::tls::UreqFetch;
 use ti_pki::load::{
     ArtifactRequest, ArtifactResponse, PostRequest, ResponseMeta, Source, Transport,
     TransportError, TransportErrorKind,
 };
-use ti_tls::ureq::UreqFetch;
 use ti_tls::{WebCheck, WebVerifier};
 use ureq::Agent;
 use ureq::config::ConfigBuilder;
@@ -108,7 +108,7 @@ pub fn transport(net: &NetArgs, verbose: u8) -> Result<Http, CliError> {
             .build()
             .new_agent()
     } else {
-        ti_tls::ureq::agent(builder(net, "https")?, web_config(net)?)
+        ti_client::tls::agent(builder(net, "https")?, web_config(net)?)
     };
     Ok(Http {
         tls,
@@ -122,7 +122,7 @@ pub fn transport(net: &NetArgs, verbose: u8) -> Result<Http, CliError> {
 /// server always verified under `web` (`-k` does not reach it), redirects not followed and no
 /// status an error: a `302` is the flow's answer.
 pub fn idp_agent(net: &NetArgs) -> Result<Agent, CliError> {
-    Ok(ti_tls::ureq::agent(
+    Ok(ti_client::tls::agent(
         builder(net, "https")?.max_redirects(0),
         web_config(net)?,
     ))

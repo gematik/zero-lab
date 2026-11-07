@@ -107,8 +107,8 @@ pub struct TransportError {
     pub timed_out: bool,
 }
 
-/// Sends requests to the Konnektor. Implemented by the caller over its HTTP client, or
-/// by the `ureq` feature's adapter.
+/// Sends requests to the Konnektor. Implemented by the caller over its HTTP client, as
+/// ti-client does over ureq.
 #[allow(
     async_fn_in_trait,
     reason = "no Send bound on purpose: implementable on wasm32"

@@ -23,12 +23,11 @@
 
 //! gematik's internet endpoints under the `web` profile, live: the system's roots, OCSP and CRLs
 //! fetched for real. Network required, so not part of `just check`:
-//! `cargo test -p ti-tls --features ureq --test real_world -- --ignored`.
-#![cfg(feature = "ureq")]
+//! `cargo test -p ti-client --test web_real_world -- --ignored`.
 
 use std::sync::Arc;
 
-use ti_tls::ureq::{UreqFetch, agent};
+use ti_client::tls::{UreqFetch, agent};
 use ti_tls::{WebCheck, WebVerifier, client_config};
 
 /// The TSL download points, the IDP-Dienst and the FHIR-Directory with its Keycloak: each

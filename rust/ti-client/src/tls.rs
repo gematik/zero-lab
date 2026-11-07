@@ -21,9 +21,9 @@
  * find details in the "Readme" file.
  */
 
-//! ureq 3 with a profile's verifier (feature `ureq`): a connector that does the handshake with a
-//! rustls configuration from [`crate::client_config`], and a [`Fetch`] for the `web` profile's
-//! OCSP responders and CRL hosts over plain HTTP.
+//! ureq 3 with a ti-tls profile's verifier: a connector that does the handshake with a rustls
+//! configuration from [`ti_tls::client_config`], one agent per profile, and a [`Fetch`] for the
+//! `web` profile's OCSP responders and CRL hosts over plain HTTP.
 //!
 //! ureq's stable TLS settings take root certificates, not a verifier, so the connector uses its
 //! semver-exempt `unversioned` transport API (ureq pinned `~3.4`, as for the Konnektor).
@@ -43,7 +43,7 @@ use ureq::unversioned::transport::{
     TcpConnector, Transport, TransportAdapter,
 };
 
-use crate::fetch::Fetch;
+use ti_tls::Fetch;
 
 /// Largest OCSP response or CRL read: CRLs of public CAs are kilobytes to a few megabytes.
 const MAX_REVOCATION_BODY: u64 = 16 * 1024 * 1024;

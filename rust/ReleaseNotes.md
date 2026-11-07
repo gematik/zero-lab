@@ -33,7 +33,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the OS roots or those of `--cacert`/`--capath`, end-entity keys ECDSA P-256/P-384 or
   RSA ≥ 3000, no SHA-1, MD5 or SHA-224, serverAuth, at most 398 days of validity, and a
   revocation status by OCSP or CRL, or no connection. The TSL download points, the IDP-Dienst
-  and the FHIR-Directory pass it (`cargo test -p ti-tls --features ureq --test real_world --
+  and the FHIR-Directory pass it (`cargo test -p ti-client --test web_real_world --
   --ignored`). `-k` no longer reaches the IDP-Dienst and the FHIR-Directory, as documented: it
   skips the check for downloads only. `-v` names the profile.
 - `ti probe` verifies every https endpoint, where it checked none (TASK-228): ePA under the
@@ -169,6 +169,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   probe of `config test` (`probe`, `check_config`, `TestOptions`) and `server_certificate`,
   moved from ti-connector-client's `ureq` feature. TLS is ti-tls's `konnektor` profile, with the
   operating system's verifier (rustls-platform-verifier) for an empty trust store.
+- `tls`: an agent per ti-tls profile (`agent`, the profile's rustls configuration in ureq's
+  connector chain) and the `web` profile's revocation sources over ureq (`UreqFetch`), moved
+  from ti-tls's `ureq` feature.
 
 ### ti-tls
 
@@ -184,6 +187,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   trust through a verifier the host supplies for an empty trust store, and any certificate
   with `insecureSkipVerify`; `Trust::client_config` takes the client certificate and key the
   host decoded. `konnektor::server_name` is `expectedHost`, else the URL's host.
+
+#### removed
+- The `ureq` feature and the module `ureq` (decision-15, TASK-249): `agent` and `UreqFetch`
+  are ti-client's (`ti_client::tls`). ti-tls holds no HTTP client.
 
 ### ti-jwks
 

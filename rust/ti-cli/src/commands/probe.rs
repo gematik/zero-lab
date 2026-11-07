@@ -443,10 +443,10 @@ fn agents(
     } else {
         None
     };
-    let web = ti_tls::ureq::agent(http::builder(&net, "https")?, http::web_config(&net)?);
+    let web = ti_client::tls::agent(http::builder(&net, "https")?, http::web_config(&net)?);
     let ti = if unchecked.is_none() && endpoints.iter().any(|e| e.tls == TlsProfile::Ti) {
         ti_config(env, &net, global, out)
-            .and_then(|config| Ok(ti_tls::ureq::agent(http::builder(&net, "https")?, config)))
+            .and_then(|config| Ok(ti_client::tls::agent(http::builder(&net, "https")?, config)))
             .map_err(|error| error.to_string())
     } else {
         Err("no endpoint is verified under ti".into())

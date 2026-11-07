@@ -28,6 +28,7 @@ mod block;
 pub mod connector;
 pub mod file_cache;
 pub mod files;
+pub mod tls;
 
 pub use block::block_on;
 pub use file_cache::FileCache;
