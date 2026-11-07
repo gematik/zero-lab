@@ -30,5 +30,5 @@ ti-connector-client's and ti-tls's ureq adapters use ureq's semver-exempt unvers
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-2026-11-07: ureq bumped 3.4.2 -> 3.5.1 (68480725): TransportAdapter::new takes the connection's clock (details.current_time). Upstream checked: CHANGELOG to 3.5.1 and src/tls/mod.rs on main have no verifier hook.
+2026-11-07: the bump to ureq 3.5.1 waits on branch chore/ureq-3.5 (TransportAdapter::new takes the connection's clock, details.current_time): it changes the workspace Cargo.toml, which jwz's browser stamp hashes, and jwz is stamped again only after its pending tasks. Upstream checked: CHANGELOG to 3.5.1 and src/tls/mod.rs on main have no verifier hook.
 <!-- SECTION:NOTES:END -->
