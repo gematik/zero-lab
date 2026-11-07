@@ -1,9 +1,10 @@
 ---
 id: TASK-226
 title: 'Rust: one Transport trait for the TI crates'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T06:43:00Z'
+updated_date: '2026-11-07T10:57:00Z'
 labels:
   - deps
   - architecture

@@ -3,9 +3,10 @@ id: TASK-227
 title: >-
   SPIKE: crate structure for ti-report with ti-cli, a ti GUI app and ti-wasm as
   hosts
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T06:54:00Z'
+updated_date: '2026-11-07T10:57:00Z'
 labels:
   - ti-report
   - architecture
