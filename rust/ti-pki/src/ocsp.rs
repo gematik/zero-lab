@@ -789,7 +789,7 @@ mod checker {
     use crate::error::{ErrorCode, ValidationError};
     use crate::load::{CacheEntry, CacheError, CacheStore, Meta, PostRequest, Source, Transport};
     use crate::revocation::{RevocationChecker, RevocationResult, RevocationStatus};
-    use crate::time::{Clock, Timestamp};
+    use crate::time::Timestamp;
     use crate::{Certificate, TrustConfig, TrustStore};
 
     /// Results with the instant they expire, keyed by the DER request: its CertID names
@@ -813,9 +813,9 @@ mod checker {
     /// instant it was fetched, so a store that is written to by others can withhold a
     /// response but not forge one.
     #[derive(Clone, Debug)]
-    pub struct OcspChecker<T, C, S = NoStore> {
+    pub struct OcspChecker<T, N, S = NoStore> {
         transport: T,
-        clock: C,
+        now: N,
         algorithms: Cow<'static, AlgorithmSet>,
         clock_tolerance: core::time::Duration,
         max_response_age: core::time::Duration,
@@ -853,13 +853,13 @@ mod checker {
         key
     }
 
-    impl<T: Transport, C: Clock> OcspChecker<T, C> {
+    impl<T: Transport, N: Fn() -> Timestamp> OcspChecker<T, N> {
         /// A strict checker with `config`'s algorithms and clock skew, asking the
         /// responder named in each certificate's authority information access.
-        pub fn new(config: &TrustConfig, transport: T, clock: C) -> Self {
+        pub fn new(config: &TrustConfig, transport: T, now: N) -> Self {
             OcspChecker {
                 transport,
-                clock,
+                now,
                 algorithms: config.algorithms.clone(),
                 clock_tolerance: config.max_clock_skew,
                 max_response_age: DEFAULT_MAX_RESPONSE_AGE,
@@ -873,14 +873,14 @@ mod checker {
         }
     }
 
-    impl<T: Transport, C: Clock, S: CacheStore> OcspChecker<T, C, S> {
+    impl<T: Transport, N: Fn() -> Timestamp, S: CacheStore> OcspChecker<T, N, S> {
         /// Keeps `good` and `revoked` responses in `store` too, under the same bounds as
         /// in memory, and asks it before the responder. A store that fails is passed
         /// over: the responder answers instead.
-        pub fn with_store<S2: CacheStore>(self, store: S2) -> OcspChecker<T, C, S2> {
+        pub fn with_store<S2: CacheStore>(self, store: S2) -> OcspChecker<T, N, S2> {
             OcspChecker {
                 transport: self.transport,
-                clock: self.clock,
+                now: self.now,
                 algorithms: self.algorithms,
                 clock_tolerance: self.clock_tolerance,
                 max_response_age: self.max_response_age,
@@ -1076,7 +1076,7 @@ mod checker {
                     .with_cause(e),
                 });
             }
-            let until = Timestamp(self.clock.now().0 + OCSP_STATUS_PAUSE.as_secs());
+            let until = Timestamp((self.now)().0 + OCSP_STATUS_PAUSE.as_secs());
             self.rest(url, until);
             let failure = failure.expect("at least one attempt was made");
             Err(ValidationError {
@@ -1091,7 +1091,7 @@ mod checker {
         }
     }
 
-    impl<T: Transport, C: Clock, S: CacheStore> RevocationChecker for OcspChecker<T, C, S> {
+    impl<T: Transport, N: Fn() -> Timestamp, S: CacheStore> RevocationChecker for OcspChecker<T, N, S> {
         /// No responder URL is an [`Unknown`](crate::revocation::RevocationStatus::Unknown)
         /// result: no other source could answer for such a certificate either. An OCSP
         /// status error that outlasts the repetitions, and any query while the
@@ -1108,23 +1108,22 @@ mod checker {
                 .or_else(|| cert.ocsp_urls().first().map(String::as_str))
             else {
                 return Ok(RevocationResult::unknown(
-                    self.clock.now(),
+                    (self.now)(),
                     "no OCSP responder URL (no authority information access, no override)",
                 ));
             };
             let body = request(cert, issuer);
-            if let Some(result) = self.cached(&body, self.clock.now()) {
+            if let Some(result) = self.cached(&body, (self.now)()) {
                 return Ok(result);
             }
-            if let Some((mut result, until)) = self
-                .stored(&body, cert, issuer, store, self.clock.now())
-                .await
+            if let Some((mut result, until)) =
+                self.stored(&body, cert, issuer, store, (self.now)()).await
             {
                 url.clone_into(&mut result.responder_url);
                 self.remember(body, &result, until);
                 return Ok(result);
             }
-            if let Some(until) = self.resting_until(url, self.clock.now()) {
+            if let Some(until) = self.resting_until(url, (self.now)()) {
                 return Err(ValidationError::new(
                     ErrorCode::OcspUnavailable,
                     format!("OCSP responder {url} rests until {until} after repeated failures"),
@@ -1133,7 +1132,7 @@ mod checker {
             }
             let response = self.query(url, &body, cert).await?;
             let check = ResponseCheck {
-                now: self.clock.now(),
+                now: (self.now)(),
                 max_response_age: self.max_response_age,
                 clock_tolerance: self.clock_tolerance,
                 allow_missing_cert_hash: self.allow_missing_cert_hash,
@@ -1860,7 +1859,6 @@ mod tests {
         fn checker_posts_and_verifies() {
             use crate::load::{MockTransport, TransportError, TransportErrorKind};
             use crate::revocation::RevocationChecker;
-            use crate::time::FixedClock;
 
             let pki = TestPki::new();
             let config = crate::TrustConfig::for_anchor(pki.rca1.der().to_vec());
@@ -1879,7 +1877,7 @@ mod tests {
                 refused(),
             ]);
             let store = TrustStore::new([pki.rca1.clone()]);
-            let checker = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW))
+            let checker = OcspChecker::new(&config, &transport, || TestPki::NOW)
                 .with_responder_url("http://ocsp.test/")
                 .with_cache_ttl(Duration::ZERO);
             let result = futures_lite::future::block_on(checker.check(
@@ -1909,7 +1907,7 @@ mod tests {
             );
             assert_eq!(transport.posts().len(), 5);
 
-            let without_url = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW));
+            let without_url = OcspChecker::new(&config, &transport, || TestPki::NOW);
             let result = futures_lite::future::block_on(without_url.check(
                 &pki.ee_arzt,
                 &pki.sub_ca_hba,
@@ -1945,7 +1943,7 @@ mod tests {
                 Ok(response!("good").to_vec()),
             ]);
             let clock = FixedClock::new(TestPki::NOW);
-            let checker = OcspChecker::new(&config, &transport, &clock)
+            let checker = OcspChecker::new(&config, &transport, || clock.now())
                 .with_responder_url("http://ocsp.test/")
                 .with_cache_ttl(Duration::ZERO);
             let check = || {
@@ -2007,7 +2005,7 @@ mod tests {
                 Ok(response!("unknown").to_vec()),
             ]);
             let clock = FixedClock::new(TestPki::NOW);
-            let checker = OcspChecker::new(&config, &transport, &clock)
+            let checker = OcspChecker::new(&config, &transport, || clock.now())
                 .with_responder_url("http://ocsp.test/");
             let check = |ee: &Certificate| {
                 futures_lite::future::block_on(checker.check(ee, &pki.sub_ca_hba, &store))
@@ -2054,7 +2052,7 @@ mod tests {
             // A process: its own checker and memory, the shared store.
             let run = |answers: Vec<Result<Vec<u8>, crate::load::TransportError>>| {
                 let transport = MockTransport::posting(answers);
-                let checker = OcspChecker::new(&config, &transport, &clock)
+                let checker = OcspChecker::new(&config, &transport, || clock.now())
                     .with_responder_url("http://ocsp.test/")
                     .with_store(std::sync::Arc::clone(&shared));
                 let result = futures_lite::future::block_on(checker.check(

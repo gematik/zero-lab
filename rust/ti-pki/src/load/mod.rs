@@ -50,9 +50,10 @@
 //! [`Cache`] to a [`Loader`], and other crates cache their own artefacts with the same
 //! [`CacheStore`] and [`CachePolicy`].
 //!
-//! The traits ([`Transport`], [`CacheStore`], [`Loader`], [`Clock`]) have no `Send`
-//! bounds, so they can be implemented over single-threaded browser APIs; the loader
-//! structs bound their parameters with [`MaybeSend`]/[`MaybeSync`] instead.
+//! The traits ([`Transport`], [`CacheStore`], [`Loader`]) and the time function
+//! (`impl Fn() -> Timestamp`) have no `Send` bounds, so they can be implemented over
+//! single-threaded browser APIs; the loader structs bound their parameters with
+//! [`MaybeSend`]/[`MaybeSync`] instead.
 //!
 //! # Failure handling
 //!
@@ -85,12 +86,7 @@ pub(crate) mod verify;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use crate::time::FixedClock;
-#[cfg(all(
-    feature = "os",
-    not(all(target_family = "wasm", target_os = "unknown"))
-))]
-pub use crate::time::SystemClock;
-pub use crate::time::{Clock, Timestamp};
+pub use crate::time::Timestamp;
 pub use artifact::{
     Artifact, ArtifactRequest, ArtifactResponse, Detached, ResponseMeta, TrustMaterial,
     content_etag,

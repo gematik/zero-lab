@@ -27,7 +27,7 @@ use core::time::Duration;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use ti_types::{Clock, Timestamp};
+use ti_types::Timestamp;
 
 use crate::cache_store::{CacheEntry, CacheError, CacheStore, Meta, Source};
 
@@ -155,30 +155,40 @@ pub enum CacheLookupError<E> {
 /// Serves fresh entries from `store`, revalidates older ones with the stored
 /// validators, and falls back to the stored copy for `stale_if_error` when the origin
 /// fails. Keyed by string, so any crate can cache any artefact with the same policy;
-/// the origin is a closure per call.
-#[derive(Debug)]
-pub struct Cache<S, C> {
+/// the origin is a closure per call. `now` is the time the cache ages entries by, read
+/// afresh on every call.
+pub struct Cache<S, N> {
     store: S,
-    clock: C,
+    now: N,
     policy: CachePolicy,
     /// When [`Cache::force`] last let a key through, in this process.
     forced: Mutex<HashMap<String, Timestamp>>,
 }
 
-impl<S: CacheStore, C: Clock> Cache<S, C> {
-    /// A cache over `store`.
-    pub fn new(store: S, clock: C, policy: CachePolicy) -> Self {
+impl<S: core::fmt::Debug, N> core::fmt::Debug for Cache<S, N> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Cache")
+            .field("store", &self.store)
+            .field("policy", &self.policy)
+            .field("forced", &self.forced)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<S: CacheStore, N: Fn() -> Timestamp> Cache<S, N> {
+    /// A cache over `store`, aging entries by the time `now` returns.
+    pub fn new(store: S, now: N, policy: CachePolicy) -> Self {
         Cache {
             store,
-            clock,
+            now,
             policy,
             forced: Mutex::new(HashMap::new()),
         }
     }
 
-    /// The clock the cache ages entries by; origins stamp `fetched_at` with it.
-    pub fn clock(&self) -> &C {
-        &self.clock
+    /// The time the cache ages entries by; origins stamp `fetched_at` with it.
+    pub fn now(&self) -> Timestamp {
+        (self.now)()
     }
 
     /// Makes the next [`get`](Self::get) of `key` ask the origin, without validators it
@@ -197,7 +207,7 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
             return Ok(());
         };
         let lifetime = self.policy.lifetime(&entry.meta);
-        entry.meta.fetched_at = entry.meta.fetched_at.min(self.clock.now() - lifetime);
+        entry.meta.fetched_at = entry.meta.fetched_at.min(self.now() - lifetime);
         entry.meta.etag = None;
         entry.meta.last_modified = None;
         self.store.put(key, &entry).await
@@ -212,7 +222,7 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
     ///
     /// A fault of the store.
     pub async fn force(&self, key: &str) -> Result<bool, CacheError> {
-        let now = self.clock.now();
+        let now = self.now();
         {
             let mut forced = self.forced.lock().map_err(|_| CacheError {
                 message: "forced-refresh times poisoned".into(),
@@ -253,7 +263,7 @@ impl<S: CacheStore, C: Clock> Cache<S, C> {
         origin: impl AsyncFnOnce(Conditional<'_>) -> Result<OriginResponse, E>,
     ) -> Result<Cached<E>, CacheLookupError<E>> {
         let cached = self.store.get(key).await.map_err(CacheLookupError::Store)?;
-        let now = self.clock.now();
+        let now = self.now();
         if let Some(entry) = &cached {
             let age = now.since(entry.meta.fetched_at);
             if age < self.policy.lifetime(&entry.meta) || self.policy.offline {
@@ -329,13 +339,11 @@ mod tests {
 
     struct TestClock(Cell<Timestamp>);
 
-    impl Clock for TestClock {
+    impl TestClock {
         fn now(&self) -> Timestamp {
             self.0.get()
         }
-    }
 
-    impl TestClock {
         fn advance(&self, by: Duration) {
             self.0.set(self.0.get() + by);
         }
@@ -393,7 +401,7 @@ mod tests {
             TestClock(Cell::new(T0)),
             Cell::new(0),
         );
-        let cache = Cache::new(&store, &clock, policy(false));
+        let cache = Cache::new(&store, || clock.now(), policy(false));
         let key = "ti-connector/v1/sds/abc";
 
         let first = block_on(cache.get(key, origin(&calls, Ok(body(T0)), &clock))).unwrap();
@@ -447,13 +455,13 @@ mod tests {
             TestClock(Cell::new(T0)),
             Cell::new(0),
         );
-        let offline = Cache::new(&store, &clock, policy(true));
+        let offline = Cache::new(&store, || clock.now(), policy(true));
         assert_eq!(
             block_on(offline.get("k", origin(&calls, Ok(body(T0)), &clock))),
             Err(CacheLookupError::OfflineMiss)
         );
         assert_eq!(calls.get(), 0);
-        let online = Cache::new(&store, &clock, policy(false));
+        let online = Cache::new(&store, || clock.now(), policy(false));
         block_on(online.get("k", origin(&calls, Ok(body(T0)), &clock))).unwrap();
         clock.advance(100 * HOUR);
         let old = block_on(offline.get("k", origin(&calls, Err("unused"), &clock))).unwrap();
@@ -479,7 +487,7 @@ mod tests {
             TestClock(Cell::new(T0)),
             Cell::new(0),
         );
-        let cache = Cache::new(&store, &clock, policy(false));
+        let cache = Cache::new(&store, || clock.now(), policy(false));
         let long = Some(10 * HOUR);
         block_on(cache.get("k", origin(&calls, Ok(with_max_age(T0, long)), &clock))).unwrap();
         clock.advance(2 * HOUR);
@@ -510,7 +518,7 @@ mod tests {
                 TestClock(Cell::new(T0)),
                 Cell::new(0),
             );
-            let cache = Cache::new(&store, &clock, bounded.clone());
+            let cache = Cache::new(&store, || clock.now(), bounded.clone());
             block_on(cache.get("k", origin(&calls, Ok(with_max_age(T0, stated)), &clock))).unwrap();
             clock.advance(lifetime.saturating_sub(Duration::from_secs(1)));
             block_on(cache.get("k", origin(&calls, Err("unused"), &clock))).unwrap();
@@ -534,7 +542,7 @@ mod tests {
         );
         let cache = Cache::new(
             &store,
-            &clock,
+            || clock.now(),
             CachePolicy {
                 min_forced_interval: Duration::from_mins(1),
                 ..policy(false)
@@ -558,7 +566,7 @@ mod tests {
     #[test]
     fn not_modified_without_a_stored_copy_is_an_error() {
         let (store, clock) = (MemoryCacheStore::new(), TestClock(Cell::new(T0)));
-        let cache = Cache::new(&store, &clock, policy(false));
+        let cache = Cache::new(&store, || clock.now(), policy(false));
         let answer =
             async |_: Conditional<'_>| Ok::<_, &str>(OriginResponse::NotModified(meta(T0)));
         assert_eq!(

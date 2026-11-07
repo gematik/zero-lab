@@ -31,11 +31,10 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use ti_idpd::trust::{CertificateTrust, Checked, IdpCertificate};
-use ti_pki::load::SystemClock;
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::profile::IDPD_SIG;
 use ti_pki::revocation::{RevocationMode, Unchecked};
-use ti_pki::{Certificate, CertificateType, Clock, Env, TrustConfig, TrustStore};
+use ti_pki::{Certificate, CertificateType, Env, Timestamp, TrustConfig, TrustStore};
 
 use crate::block::block_on;
 use crate::cli::{Environment, GlobalArgs};
@@ -129,7 +128,7 @@ impl TslTrust<'_> {
             .map(Certificate::from_der)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
-        let at = SystemClock.now();
+        let at = Timestamp::now();
         if self.loaded.borrow().is_none() {
             let loaded = self.load(&certs, at).map_err(|error| {
                 let message = error.to_string();
@@ -149,7 +148,7 @@ impl TslTrust<'_> {
         );
         let result = block_on(async {
             if let Some(transport) = loaded.session.transport() {
-                let checker = OcspChecker::new(&loaded.config, transport, SystemClock)
+                let checker = OcspChecker::new(&loaded.config, transport, Timestamp::now)
                     .with_store(loaded.session.store());
                 validator.validate(&certs, at, &checker).await
             } else {

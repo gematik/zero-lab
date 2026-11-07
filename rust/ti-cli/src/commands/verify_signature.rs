@@ -29,8 +29,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_pki::Certificate;
 use ti_pki::key::classify_key;
-use ti_pki::load::SystemClock;
-use ti_pki::{Clock, algorithms};
+use ti_pki::{Timestamp, algorithms};
 
 use crate::cli::VerifySignatureArgs;
 use crate::error::{CliError, Exit};
@@ -76,7 +75,7 @@ pub fn run(args: &VerifySignatureArgs, out: &Output) -> Result<Exit, CliError> {
     let data = input::read(&args.data)?;
     let signature = input::read(&args.signature)?;
     let (der, format) = normalize(&signature.bytes, &signature.name)?;
-    let (status, algorithm) = classify_key(cert.public_key_info(), SystemClock.now());
+    let (status, algorithm) = classify_key(cert.public_key_info(), Timestamp::now());
     let verifier = algorithms::find(
         algorithms::DEFAULT,
         &cert.public_key_alg_id(),

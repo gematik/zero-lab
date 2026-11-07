@@ -41,7 +41,8 @@ conditional requests (`ETag`, `If-Modified-Since`) and posts OCSP.
   generic structs bound their parameters with `MaybeSend`/`MaybeSync` instead.
 - Async where a host may need it (browser, servers), sync where the only host is blocking
   (the IDP flow in the CLI). Every sync implementation can serve an async trait.
-- Time is a parameter (`Clock`, or a `now` argument), never `SystemTime::now()` in a core.
+- Time is a parameter (a function `impl Fn() -> Timestamp`, or a `now` argument), never
+  `SystemTime::now()` in a core; a host passes `Timestamp::now`.
 - Randomness comes from the crypto backend (`getrandom` underneath), never from a
   global the host cannot replace.
 - The core does not log; it returns outcomes (`ReloadOutcome`, warnings in results) and
@@ -168,7 +169,7 @@ are in [development.md](./development.md#known-compromises).
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
 ti-cache, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
 ti-jwz, ti-jwks, ti-idpd and ti-directory, with every feature but their adapters
-(the `ureq` transports, ti-types' `clap`) and `test-util`.
+(the `ureq` transports) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
 or foreign code through `unsafe` (rpassword) belongs there. What counts is what
 ends up in the program on the release targets and wasm32: normal dependencies, not proc

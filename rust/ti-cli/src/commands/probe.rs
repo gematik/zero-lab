@@ -44,10 +44,9 @@ use std::time::{Duration, Instant};
 use base64ct::{Base64UrlUnpadded, Encoding};
 use rustls::CertificateError;
 use serde::{Deserialize, Serialize};
-use ti_pki::Env;
-use ti_pki::load::SystemClock;
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tls::ServerCheck;
+use ti_pki::{Env, Timestamp};
 use ti_tls::TiVerifier;
 use ureq::Agent;
 
@@ -473,8 +472,12 @@ fn ti_config(
             material.info.roots, material.info.intermediates, material.info.source
         ),
     );
-    let responder = OcspChecker::new(&config, http::transport(net, out.verbosity())?, SystemClock)
-        .with_store(session.store());
+    let responder = OcspChecker::new(
+        &config,
+        http::transport(net, out.verbosity())?,
+        Timestamp::now,
+    )
+    .with_store(session.store());
     let check = ServerCheck::new(config, Some(material.store));
     let verifier = TiVerifier::new(check, responder);
     Ok(Arc::new(ti_tls::client_config(Arc::new(verifier))))

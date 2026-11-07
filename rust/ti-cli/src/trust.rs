@@ -37,14 +37,14 @@ use serde::Serialize;
 use ti_pki::load::{
     Artifact, ArtifactRequest, ArtifactResponse, CacheEntry, CacheError, CachePolicy, CacheStore,
     CachingLoader, HttpLoader, LoadError, Loader, MemoryCacheStore, PostRequest, ReloadError,
-    ReloadOutcome, ReloadPolicy, Reloader, Source, SystemClock, Transport, TransportError,
-    TransportErrorKind, TrustMaterial,
+    ReloadOutcome, ReloadPolicy, Reloader, Source, Transport, TransportError, TransportErrorKind,
+    TrustMaterial,
 };
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::revocation::RevocationChecker;
 use ti_pki::tsl::Tsl;
 use ti_pki::tsl_signature::{DetachedTsl, Sequence, TslCode, TslState, VerifiedTsl};
-use ti_pki::{Clock, Tier, Timestamp, TrustConfig, TrustStore, roots};
+use ti_pki::{Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::block::block_on;
 use crate::cli::GlobalArgs;
@@ -69,14 +69,12 @@ pub struct Material {
     tsl_state: Option<TslState>,
 }
 
-/// `--at`, or the system clock.
-#[derive(Clone, Copy)]
-struct At(Option<Timestamp>);
+/// The system clock as a type the loaders below can name.
+type Now = fn() -> Timestamp;
 
-impl Clock for At {
-    fn now(&self) -> Timestamp {
-        self.0.unwrap_or_else(|| SystemClock.now())
-    }
+/// `--at`, or the system clock.
+fn at_or_now(at: Option<Timestamp>) -> impl Fn() -> Timestamp + Copy + Send + Sync {
+    move || at.unwrap_or_else(Timestamp::now)
 }
 
 /// The `Id` and sequence number of the TSL last used from one URL, kept as a plain file
@@ -378,13 +376,13 @@ impl<T: Transport + Send + Sync> Session<T> {
                 config,
                 tier,
                 AtTime::new(self.loader(config, reach), at),
-                At(at),
+                at_or_now(at),
                 stored,
             )?;
             match &self.transport {
                 Some(transport) if at.is_none() => {
-                    let checker =
-                        OcspChecker::new(config, transport, SystemClock).with_store(self.store());
+                    let checker = OcspChecker::new(config, transport, Timestamp::now)
+                        .with_store(self.store());
                     first_tick(&reloader.with_signer_status(checker))
                         .await
                         .map_err(CliError::from)
@@ -461,7 +459,7 @@ impl<T: Transport + Send + Sync> Session<T> {
             &set.tsl,
             files,
             config,
-            at.unwrap_or_else(|| SystemClock.now()),
+            at.unwrap_or_else(Timestamp::now),
         )
         .map_err(|error| CliError::TrustLoad(format!("TSL: {error}")))?;
         if !matches!(verified.check_sequence(Some(loaded)), Ok(Sequence::Same)) {
@@ -502,12 +500,12 @@ impl<T: Transport + Send + Sync> Session<T> {
         &self,
         config: &TrustConfig,
         transport: N,
-    ) -> CachingLoader<HttpLoader<N, SystemClock>, Store, SystemClock> {
+    ) -> CachingLoader<HttpLoader<N, Now>, Store, Now> {
         let store = self.store();
         CachingLoader::new(
-            HttpLoader::new(config, transport, SystemClock),
+            HttpLoader::new(config, transport, Timestamp::now),
             store,
-            SystemClock,
+            Timestamp::now,
             CachePolicy {
                 offline: self.is_offline(),
                 ..CachePolicy::default()
@@ -574,15 +572,16 @@ impl From<Expired> for CliError {
     }
 }
 
-fn reloader<L>(
+fn reloader<L, N>(
     config: &TrustConfig,
     tier: Tier,
     loader: L,
-    clock: At,
+    now: N,
     stored: Option<TslState>,
-) -> Result<Reloader<L, At>, CliError>
+) -> Result<Reloader<L, N>, CliError>
 where
     L: Loader + Send + Sync,
+    N: Fn() -> Timestamp + Send + Sync,
 {
     let hard_expiry = match tier {
         Tier::Prod => ReloadPolicy::default().hard_expiry,
@@ -593,16 +592,17 @@ where
         ..ReloadPolicy::default()
     };
     let reloader =
-        Reloader::new(config.clone(), tier, loader, clock, policy).map_err(CliError::Trust)?;
+        Reloader::new(config.clone(), tier, loader, now, policy).map_err(CliError::Trust)?;
     Ok(match stored {
         Some(state) => reloader.with_stored_tsl(state),
         None => reloader,
     })
 }
 
-async fn first_tick<L, R>(reloader: &Reloader<L, At, R>) -> Result<Material, Expired>
+async fn first_tick<L, N, R>(reloader: &Reloader<L, N, R>) -> Result<Material, Expired>
 where
     L: Loader + Send + Sync,
+    N: Fn() -> Timestamp + Send + Sync,
     R: RevocationChecker + Send + Sync,
 {
     // The first tick either swaps in material or expires; any other outcome (one added
@@ -650,7 +650,7 @@ where
 }
 
 fn embedded(config: &TrustConfig, note: &str) -> Result<Material, CliError> {
-    let store = roots::load(config, SystemClock.now())
+    let store = roots::load(config, Timestamp::now())
         .map_err(CliError::Trust)?
         .store();
     Ok(Material {
@@ -809,12 +809,12 @@ mod tests {
             set.with_extension("xml"),
             set.with_extension("sig"),
         );
-        let at = At(Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap()));
+        let at = at_or_now(Some(Timestamp::parse_rfc3339(CAPTURED_AT).unwrap()));
         async move {
             let reloader = reloader(
                 &config,
                 Tier::Prod,
-                HttpLoader::new(&config, transport, SystemClock),
+                HttpLoader::new(&config, transport, Timestamp::now),
                 at,
                 stored,
             )?;
@@ -884,9 +884,9 @@ mod tests {
             set.with_extension("sig"),
         );
         let filler = CachingLoader::new(
-            HttpLoader::new(&config, transport, SystemClock),
+            HttpLoader::new(&config, transport, Timestamp::now),
             session.store(),
-            SystemClock,
+            Timestamp::now,
             CachePolicy::default(),
         );
         block_on(filler.load_all()).unwrap();
@@ -981,7 +981,7 @@ mod tests {
             let key = filler.cache_key(artifact);
             let store = session.store();
             let mut entry = block_on(store.get(&key)).unwrap().unwrap();
-            entry.meta.fetched_at = SystemClock.now() - Duration::from_hours(2);
+            entry.meta.fetched_at = Timestamp::now() - Duration::from_hours(2);
             block_on(store.put(&key, &entry)).unwrap();
         }
         session
@@ -990,8 +990,7 @@ mod tests {
     fn fixture_loader(
         store: &Store,
         config: &TrustConfig,
-    ) -> CachingLoader<HttpLoader<ti_pki::load::FileTransport, SystemClock>, Store, SystemClock>
-    {
+    ) -> CachingLoader<HttpLoader<ti_pki::load::FileTransport, Now>, Store, Now> {
         let set = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../spec/tsl-detached/testdata/prod/ECC-RSA_TSL");
         let transport = ti_pki::load::FileTransport::new(
@@ -1004,9 +1003,9 @@ mod tests {
             Store::Memory(memory) => Store::Memory(Arc::clone(memory)),
         };
         CachingLoader::new(
-            HttpLoader::new(config, transport, SystemClock),
+            HttpLoader::new(config, transport, Timestamp::now),
             store,
-            SystemClock,
+            Timestamp::now,
             CachePolicy::default(),
         )
     }
@@ -1115,7 +1114,7 @@ mod tests {
             .unwrap()
             .unwrap()
             .meta;
-        meta.fetched_at = SystemClock.now() - age;
+        meta.fetched_at = Timestamp::now() - age;
         let entry = CacheEntry {
             body: body.to_vec(),
             meta,

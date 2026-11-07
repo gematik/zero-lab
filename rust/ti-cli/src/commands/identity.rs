@@ -30,8 +30,7 @@ use jwz::jwa::SignatureAlgorithm;
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use ti_pki::load::SystemClock;
-use ti_pki::{Certificate, Clock};
+use ti_pki::{Certificate, Timestamp};
 
 use crate::cli::{GlobalArgs, IdentityArgs, IdentitySignArgs};
 use crate::error::{CliError, Exit};
@@ -94,7 +93,7 @@ fn fingerprint(cert: &Certificate) -> String {
 /// Runs `ti identity inspect`.
 pub fn inspect(args: &IdentityArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let identity = Identity::load(args, global, out)?;
-    let now = SystemClock.now();
+    let now = Timestamp::now();
     let report = InspectReport {
         schema: SCHEMA,
         source: source_info(&identity),

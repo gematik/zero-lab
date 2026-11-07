@@ -27,8 +27,7 @@ use std::path::Path;
 
 use serde::Serialize;
 use ti_pki::key::{KeyStatus, classify_key};
-use ti_pki::load::SystemClock;
-use ti_pki::{Clock, Env, Timestamp};
+use ti_pki::{Env, Timestamp};
 use x509_cert::der::oid::ObjectIdentifier;
 
 use crate::cli::{Environment, GlobalArgs};
@@ -120,7 +119,7 @@ pub fn run(
 ) -> Result<Exit, CliError> {
     let source = input::read(file)?;
     let input = input::load(&source, p12_password)?;
-    let now = SystemClock.now();
+    let now = Timestamp::now();
     let certificates: Vec<CertificateInfo> = input
         .certificates
         .iter()
@@ -204,7 +203,7 @@ pub fn show(
     global: &GlobalArgs,
     out: &Output,
 ) -> Result<Exit, CliError> {
-    let now = SystemClock.now();
+    let now = Timestamp::now();
     let trees = if out.is_json() {
         Vec::new()
     } else {

@@ -35,11 +35,11 @@ use std::time::Duration;
 use der::asn1::ObjectIdentifier;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use ti_pki::load::{Detached, Meta, Source, SystemClock};
+use ti_pki::load::{Detached, Meta, Source};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tsl::{self, Intermediate, Tsl};
 use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
-use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
+use ti_pki::{Certificate, Tier, Timestamp, TrustConfig, TrustStore};
 use ti_report::tsl::{CertSummary, Finding, rejection_code};
 
 use crate::block::block_on;
@@ -311,7 +311,7 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
                 .map_err(|e| CliError::TrustLoad(format!("{}: {e}", previous.name)))
         })
         .transpose()?;
-    let now = args.at.unwrap_or_else(|| SystemClock.now());
+    let now = args.at.unwrap_or_else(Timestamp::now);
     let grace = Duration::from_hours(24 * u64::from(args.grace));
     let config = match args.env.concrete() {
         Some(env) => Ok(TrustConfig::preset(env)),
@@ -341,7 +341,7 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
         if supplied_status.is_none() && !args.offline && args.at.is_none() {
             let transport = crate::http::transport(&global.net, out.verbosity())?;
             let store = crate::file_cache::open_cache(global)?;
-            let checker = OcspChecker::new(&config, &transport, SystemClock).with_store(store);
+            let checker = OcspChecker::new(&config, &transport, Timestamp::now).with_store(store);
             block_on(verified.check_signer_status(&checker))?;
         }
         Ok(verified)
@@ -777,7 +777,7 @@ fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, 
     config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = Session::new(global, trust.offline, out)?;
     let material = session.load(&config, env.tier(), trust.at)?;
-    let now = trust.at.unwrap_or_else(|| SystemClock.now());
+    let now = trust.at.unwrap_or_else(Timestamp::now);
     let VerifiedSet { set, verified } = session.verified_set(&config, &material, trust.at)?;
     let matched = tsl::match_to_roots(
         verified.tsl.intermediate_cas(),

@@ -164,6 +164,6 @@ pub use error::{Error, ErrorCode, ValidationError, ValidationWarning};
 pub use path::{PathOptions, ValidityModel, validate_path};
 pub use revocation::{RevocationChecker, RevocationMode, RevocationResult, RevocationStatus};
 pub use ti_types::{Env, Tier};
-pub use time::{Clock, Timestamp};
+pub use time::Timestamp;
 pub use truststore::TrustStore;
 pub use validate::{CertResult, ChainPosition, ValidationResult, Validator};

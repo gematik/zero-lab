@@ -55,14 +55,7 @@
 //! use ti_cache::{Cache, MemoryCacheStore};
 //! use ti_jwks::http::{Request, Response, Transport, TransportError};
 //! use ti_jwks::{JwksSource, policy};
-//! use ti_types::{Clock, Timestamp};
-//!
-//! struct Fixed;
-//! impl Clock for Fixed {
-//!     fn now(&self) -> Timestamp {
-//!         Timestamp(1_700_000_000)
-//!     }
-//! }
+//! use ti_types::Timestamp;
 //!
 //! // Any HTTP client: here, an issuer that serves one key.
 //! struct Issuer;
@@ -80,7 +73,7 @@
 //! }
 //!
 //! # futures_lite::future::block_on(async {
-//! let cache = Cache::new(MemoryCacheStore::new(), Fixed, policy());
+//! let cache = Cache::new(MemoryCacheStore::new(), || Timestamp(1_700_000_000), policy());
 //! let source = JwksSource::new("https://issuer.example/jwks", cache, Issuer)?;
 //! let keys = source.keys(Some("k1"), "ES256").await?;
 //! assert_eq!(keys[0].kid.as_deref(), Some("k1"));

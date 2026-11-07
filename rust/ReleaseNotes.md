@@ -551,7 +551,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `STANDARD` (ECDSA P-256, P-384), `brainpool` module (brainpoolP256r1, brainpoolP384r1,
   default feature `brainpool`), `DEFAULT`, `find`. `TrustConfig::algorithms`, checked by
   `validate` against the anchor's key type. Wycheproof vectors for all four.
-- `load` feature: `Transport`, `CacheStore`, `Clock` and `Loader` traits; `HttpLoader`,
+- `load` feature: `Transport`, `CacheStore` and `Loader` traits; `HttpLoader`,
   `CachingLoader`, `StaticLoader` with CBOR `Bundle`, `FallbackLoader`, `FileTransport`
   (`os`); `Reloader` with `TrustStoreHandle`, `ReloadPolicy` (production `hard_expiry`
   capped at 24 h) and `ReloadStatus`. Verification of loaded material is stubbed until
@@ -654,9 +654,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Tsl` has new fields `id`, `skipped` and `scheme` (`SchemeInfo`: version, type, scheme
   and operator name, postal and electronic addresses, `PointersToOtherTSL` with
   `primary_location()` / `backup_location()`).
-- `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
-  shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
-  stay as re-exports.
+- `Timestamp` comes from `ti-types`, so every TI crate shares it; the paths
+  `ti_pki::Timestamp` and `ti_pki::load::Timestamp` stay as re-exports.
+- Time enters as a function `impl Fn() -> Timestamp`, no longer as a `Clock`
+  (decision-15): `HttpLoader`, `CachingLoader`, `Reloader`, `TrustStoreHandle` and
+  `OcspChecker` take one, a host passes `Timestamp::now`. `Clock` and `SystemClock` are
+  gone; `FixedClock` (`test-util`) is a settable time for tests, passed as
+  `|| clock.now()`.
 - The caching layer lives in `ti-store`, so other crates cache their own artefacts
   (e.g. a Konnektor's service directory) with the same store and policy.
   `load::{CacheStore, CacheEntry, CacheError, CachePolicy, MemoryCacheStore, Meta,
@@ -731,14 +735,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   keyed by string, with the origin passed per call (moved from ti-pki's
   `CachingLoader`). `CacheStore`, `CacheEntry`, `Meta`, `Source`, `CachePolicy`,
   `Conditional`, `OriginResponse`, `Cached`, `CacheLookupError`, `MemoryCacheStore`.
-- `Cache::clock`, so origins stamp `fetched_at` with the clock the cache ages by.
+- `Cache::now`, so origins stamp `fetched_at` with the time the cache ages by.
+- The cache reads the time through a function `impl Fn() -> Timestamp` it keeps as its
+  type parameter, no longer through a `Clock` (decision-15).
 
 ### ti-types
 
 #### added
-- `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
-- `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std` (not on
-  wasm32-unknown-unknown, where std has no clock and every call would panic).
+- `Env`, `Tier`, `EnvParseError`; `serde` feature, the crate's only dependency.
+- `Timestamp` (moved from ti-pki); `Timestamp::now`, the system clock, behind `std` (not
+  on wasm32-unknown-unknown, where std has no clock and every call would panic). Time
+  enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
+  `Timestamp::now` and tests a closure (decision-15).
 
 ## Release jwz 0.1.0, 2026-11-06
 

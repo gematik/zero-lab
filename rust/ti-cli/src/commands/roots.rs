@@ -26,8 +26,7 @@
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use ti_pki::load::SystemClock;
-use ti_pki::{Certificate, Clock, Timestamp, TrustConfig};
+use ti_pki::{Certificate, Timestamp, TrustConfig};
 
 use crate::cli::{GlobalArgs, RootsArgs};
 use crate::error::{CliError, Exit};
@@ -67,7 +66,7 @@ pub fn list(args: &RootsArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     let (trust, env) = (&args.trust, super::concrete(args.trust.env, global)?);
     let session = Session::new(global, trust.offline, out)?;
     let (config, material) = super::load_trust(&session, env, args.nist_only, trust.at)?;
-    let now = trust.at.unwrap_or_else(|| SystemClock.now());
+    let now = trust.at.unwrap_or_else(Timestamp::now);
     let report = Report {
         schema: SCHEMA,
         environment: env.as_str(),

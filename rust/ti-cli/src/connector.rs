@@ -33,7 +33,8 @@ use ti_connector_client::ureq::UreqTransport;
 use ti_connector_client::{
     Connector, Dotkon, Request, Response, Timeouts, Transport, TransportError,
 };
-use ti_pki::load::{Cache, CachePolicy, SystemClock};
+use ti_pki::Timestamp;
+use ti_pki::load::{Cache, CachePolicy};
 
 use crate::block::block_on;
 use crate::cli::{ConnectorArgs, GlobalArgs};
@@ -181,7 +182,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         block_on(Connector::connect(&dotkon, transport, timeouts)).map_err(CliError::Connector)?
     } else {
         let store = crate::file_cache::open_cache(global)?;
-        let cache = Cache::new(store, SystemClock, CachePolicy::default());
+        let cache = Cache::new(store, Timestamp::now, CachePolicy::default());
         let (connector, meta) = block_on(Connector::connect_cached(
             &dotkon, transport, timeouts, &cache,
         ))

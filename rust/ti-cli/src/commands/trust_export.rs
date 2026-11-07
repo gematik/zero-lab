@@ -30,9 +30,9 @@ use std::io::Write as _;
 use std::path::Path;
 
 use serde::Serialize;
-use ti_pki::load::{Bundle, ReloadOutcome, ReloadPolicy, Reloader, StaticLoader, SystemClock};
+use ti_pki::load::{Bundle, ReloadOutcome, ReloadPolicy, Reloader, StaticLoader};
 use ti_pki::revocation::RevocationStatus;
-use ti_pki::{Clock, Timestamp, TrustConfig};
+use ti_pki::{Timestamp, TrustConfig};
 
 use crate::block::block_on;
 use crate::cli::{GlobalArgs, TrustExportArgs};
@@ -61,16 +61,6 @@ struct Report {
     output: String,
 }
 
-/// The time the set is checked at: now, or `--at`.
-#[derive(Clone, Copy)]
-struct CheckedAt(Option<Timestamp>);
-
-impl Clock for CheckedAt {
-    fn now(&self) -> Timestamp {
-        self.0.unwrap_or_else(|| SystemClock.now())
-    }
-}
-
 /// Runs `ti pki trust export`.
 pub fn export(args: &TrustExportArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     if !args.force && args.output.exists() {
@@ -85,12 +75,19 @@ pub fn export(args: &TrustExportArgs, global: &GlobalArgs, out: &Output) -> Resu
     let label = format!("{env} {}", material.fetched_at);
     let bytes = Bundle::new(&config, label.clone(), material).to_vec();
 
-    let clock = CheckedAt(args.trust.at);
+    // The time the set is checked at: now, or `--at`.
+    let at = args.trust.at;
     let consumer = Bundle::from_slice(&bytes)
         .and_then(|bundle| StaticLoader::from_bundle(bundle, &config))
         .map_err(|e| CliError::TrustLoad(e.to_string()))?;
-    let reloader = Reloader::new(config, env.tier(), consumer, clock, ReloadPolicy::default())
-        .map_err(CliError::Trust)?;
+    let reloader = Reloader::new(
+        config,
+        env.tier(),
+        consumer,
+        move || at.unwrap_or_else(Timestamp::now),
+        ReloadPolicy::default(),
+    )
+    .map_err(CliError::Trust)?;
     match block_on(reloader.tick()) {
         ReloadOutcome::Swapped { .. } => {}
         other => return Err(CliError::TrustLoad(format!("the set: {other:?}"))),

@@ -27,7 +27,7 @@
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use ti_cache::{Cache, CacheEntry, CacheStore, Meta, OriginResponse, Source};
-use ti_types::Clock;
+use ti_types::Timestamp;
 
 use crate::error::{DiscoveryError, Error};
 use crate::soap::{Method, Request, Response, Transport};
@@ -225,10 +225,10 @@ impl ServiceDirectory {
     /// # Errors
     ///
     /// As [`fetch`](Self::fetch), plus [`Error::Cache`].
-    pub async fn fetch_cached<S: CacheStore, C: Clock>(
+    pub async fn fetch_cached<S: CacheStore, N: Fn() -> Timestamp>(
         transport: &impl Transport,
         target: &Target<'_>,
-        cache: &Cache<S, C>,
+        cache: &Cache<S, N>,
     ) -> Result<(Self, Meta), Error> {
         let url = sds_url(target.base_url);
         let key = format!(
@@ -243,7 +243,7 @@ impl ServiceDirectory {
                     etag: response.etag.clone(),
                     last_modified: response.last_modified.clone(),
                     max_age: response.max_age,
-                    ..Meta::new(cache.clock().now(), Source::Http)
+                    ..Meta::new(cache.now(), Source::Http)
                 };
                 match response.status {
                     200 => Ok(OriginResponse::Body(CacheEntry {

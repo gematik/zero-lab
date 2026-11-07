@@ -31,20 +31,18 @@ use futures_lite::future::block_on;
 use ti_cache::{Cache, MemoryCacheStore};
 use ti_jwks::http::{Request, Response, Transport, TransportError};
 use ti_jwks::{Error, JwksSource, Limits, policy};
-use ti_types::{Clock, Timestamp};
+use ti_types::Timestamp;
 
 const T0: Timestamp = Timestamp(1_700_000_000);
 const URL: &str = "https://issuer.example/jwks";
 
 struct TestClock(Cell<Timestamp>);
 
-impl Clock for &TestClock {
+impl TestClock {
     fn now(&self) -> Timestamp {
         self.0.get()
     }
-}
 
-impl TestClock {
     fn advance(&self, by: Duration) {
         self.0.set(self.0.get() + by);
     }
@@ -125,10 +123,10 @@ fn status(status: u16) -> Response {
 fn source<'a>(
     origin: &'a Origin,
     clock: &'a TestClock,
-) -> JwksSource<MemoryCacheStore, &'a TestClock, &'a Origin> {
+) -> JwksSource<MemoryCacheStore, impl Fn() -> Timestamp + 'a, &'a Origin> {
     JwksSource::new(
         URL,
-        Cache::new(MemoryCacheStore::new(), clock, policy()),
+        Cache::new(MemoryCacheStore::new(), move || clock.now(), policy()),
         origin,
     )
     .unwrap()
@@ -148,7 +146,7 @@ fn the_set_comes_from_an_https_url_and_a_redirect_is_not_followed() {
         "issuer.example",
         "ftp://x",
     ] {
-        let cache = Cache::new(MemoryCacheStore::new(), &clock, policy());
+        let cache = Cache::new(MemoryCacheStore::new(), || clock.now(), policy());
         assert!(
             matches!(
                 JwksSource::new(url, cache, &origin),
@@ -157,7 +155,7 @@ fn the_set_comes_from_an_https_url_and_a_redirect_is_not_followed() {
             "{url}"
         );
     }
-    let cache = Cache::new(MemoryCacheStore::new(), &clock, policy());
+    let cache = Cache::new(MemoryCacheStore::new(), || clock.now(), policy());
     assert!(JwksSource::new("HTTPS://issuer.example/jwks", cache, &origin).is_ok());
 
     origin.then(status(302)).then(status(500));

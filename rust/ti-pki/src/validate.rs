@@ -1035,7 +1035,6 @@ mod tests {
             use crate::load::MockTransport;
             use crate::ocsp::OcspChecker;
             use crate::revocation::RevocationStatus;
-            use crate::time::FixedClock;
 
             let pki = TestPki::new();
             let config = TrustConfig::for_anchor(pki.rca1.der().to_vec());
@@ -1044,7 +1043,7 @@ mod tests {
             let ca_good = include_bytes!("../tests/pki/ocsp/issuer-signed.der").to_vec();
             let check = |ee: &Certificate, script: Vec<Vec<u8>>| {
                 let transport = MockTransport::posting(script.into_iter().map(Ok));
-                let checker = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW))
+                let checker = OcspChecker::new(&config, &transport, || TestPki::NOW)
                     .with_responder_url("http://ocsp.test/");
                 let v = validator(&pki, RevocationMode::HardFail);
                 let certs = [ee.clone(), pki.sub_ca_hba.clone()];
@@ -1078,7 +1077,7 @@ mod tests {
             // A delegate of another CA of the same TSP: accepted, with a warning.
             let foreign = include_bytes!("../tests/pki/ocsp/foreign-responder.der").to_vec();
             let transport = MockTransport::posting([Ok(foreign), Ok(ca_good)]);
-            let checker = OcspChecker::new(&config, &transport, FixedClock::new(TestPki::NOW))
+            let checker = OcspChecker::new(&config, &transport, || TestPki::NOW)
                 .with_responder_url("http://ocsp.test/");
             let intermediate = |ca: &Certificate| crate::tsl::Intermediate {
                 certificate: ca.clone(),

@@ -1925,7 +1925,7 @@ mod tests {
         ) -> (Result<VerifiedTsl, TslError>, Posted) {
             let clock = FixedClock::new(at(now));
             let transport = MockTransport::posting(answers);
-            let checker = OcspChecker::new(config, &transport, &clock);
+            let checker = OcspChecker::new(config, &transport, || clock.now());
             let mut verified = Tsl::parse_verified(&real(tsl), &sig(tsl), config, at(now)).unwrap();
             let result = futures_lite::future::block_on(verified.check_signer_status(&checker))
                 .map(|()| verified);
@@ -2103,7 +2103,7 @@ mod tests {
             verified.anchor = signer_fixture!("ca");
             let clock = FixedClock::new(at("2026-01-01T00:00:00Z"));
             let transport = MockTransport::posting([Ok(answer)]);
-            let checker = OcspChecker::new(&TrustConfig::preset_prod(), &transport, &clock);
+            let checker = OcspChecker::new(&TrustConfig::preset_prod(), &transport, || clock.now());
             futures_lite::future::block_on(verified.check_signer_status(&checker))?;
             assert_eq!(
                 transport.posts()[0].0,

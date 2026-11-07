@@ -15,12 +15,9 @@ publish.workspace = true
 default = []
 std = []
 serde = ["dep:serde"]
-# clap has no no_std build, so this feature pulls in std on both sides.
-clap = ["dep:clap", "clap/std", "std"]
 
 [dependencies]
 serde = { workspace = true, optional = true }
-clap = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json.workspace = true

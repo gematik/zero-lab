@@ -42,11 +42,11 @@ use std::sync::Arc;
 use futures_lite::future::block_on;
 use ti_pki::load::{
     ArtifactRequest, ArtifactResponse, HttpLoader, PostRequest, ReloadOutcome, ReloadPolicy,
-    Reloader, ResponseMeta, Source, SystemClock, Transport, TransportError, TransportErrorKind,
+    Reloader, ResponseMeta, Source, Transport, TransportError, TransportErrorKind,
 };
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::revocation::{ResponderAuthorization, RevocationChecker, RevocationStatus};
-use ti_pki::{Clock, Env, TrustConfig, TrustStore, profile, roots};
+use ti_pki::{Env, Timestamp, TrustConfig, TrustStore, profile, roots};
 
 /// A transport over the `curl` CLI, for these tests only.
 struct Curl;
@@ -126,12 +126,12 @@ impl Transport for Curl {
 /// The live roots.json and TSL of `env`, verified and loaded the way a service does.
 fn live_store(env: Env) -> (TrustConfig, Arc<TrustStore>) {
     let config = TrustConfig::preset(env);
-    let loader = HttpLoader::new(&config, Curl, SystemClock);
+    let loader = HttpLoader::new(&config, Curl, Timestamp::now);
     let reloader = Reloader::new(
         config.clone(),
         env.tier(),
         loader,
-        SystemClock,
+        Timestamp::now,
         ReloadPolicy::default(),
     )
     .unwrap();
@@ -148,7 +148,7 @@ fn live_store(env: Env) -> (TrustConfig, Arc<TrustStore>) {
 fn live_trust_material_of_every_environment() {
     for env in [Env::Prod, Env::Ref, Env::Test] {
         let (config, store) = live_store(env);
-        let embedded = roots::load(&config, SystemClock.now()).unwrap().trusted;
+        let embedded = roots::load(&config, Timestamp::now()).unwrap().trusted;
         println!(
             "{env}: {} roots ({} embedded), {} TSL CAs chain to them",
             store.len(),
@@ -181,8 +181,8 @@ fn live_smcb_end_to_end() {
     };
     assert_eq!(profile.name, "hci-aut");
     let validator = profile.validator(&config, store, t);
-    let checker = OcspChecker::new(&config, Curl, SystemClock);
-    let result = block_on(validator.validate(&certs, SystemClock.now(), &checker)).unwrap();
+    let checker = OcspChecker::new(&config, Curl, Timestamp::now);
+    let result = block_on(validator.validate(&certs, Timestamp::now(), &checker)).unwrap();
     for (cert, detail) in result.chain.iter().zip(&result.cert_results) {
         let revocation = detail
             .revocation
@@ -227,8 +227,8 @@ fn live_smcb_end_to_end() {
 #[ignore = "network: gematik download endpoints and the production root responder"]
 fn live_prod_sub_ca_at_its_root() {
     let (config, store) = live_store(Env::Prod);
-    let checker = OcspChecker::new(&config, Curl, SystemClock);
-    let now = SystemClock.now();
+    let checker = OcspChecker::new(&config, Curl, Timestamp::now);
+    let now = Timestamp::now();
     let ca = store
         .intermediates()
         .iter()

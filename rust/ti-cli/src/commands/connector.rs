@@ -31,8 +31,7 @@ use ti_connector_client::types::{
     Card, CardType, CertRef, Crypt, PinResult, PinState, VerificationResult,
 };
 use ti_connector_client::{BINDINGS, Error, PinType, Product};
-use ti_pki::load::SystemClock;
-use ti_pki::{Certificate, Clock, Timestamp};
+use ti_pki::{Certificate, Timestamp};
 
 use super::documents::card_user;
 use super::inspect;
@@ -617,7 +616,7 @@ fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, Cli
         &card,
         certificates.read_all(&card.card_handle, card.card_type),
     )?;
-    let now = SystemClock.now();
+    let now = Timestamp::now();
     let report = CertificatesReport {
         card: CardInfo::from(&card),
         certificates: read

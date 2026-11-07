@@ -101,7 +101,7 @@ fn web(ocsp: Option<&str>) -> WebVerifier<Counting> {
     )
 }
 
-type TiResponder = OcspChecker<MockTransport, Arc<FixedClock>>;
+type TiResponder = OcspChecker<MockTransport, Box<dyn Fn() -> Timestamp + Send + Sync>>;
 
 /// The corpus's TI trust: its root, and its CA as a verified TSL would list it. The
 /// responder answers once, with `answer`, and fails after that; it keeps its answers by
@@ -120,7 +120,11 @@ fn ti(answer: &str, clock: Arc<FixedClock>) -> TiVerifier<TiResponder> {
         }])
         .with_tsl_ca_types_for_tests(types);
     let config = TrustConfig::for_lab_ca(cert("ti-root.pem").der());
-    let responder = OcspChecker::new(&config, MockTransport::posting([Ok(bytes(answer))]), clock);
+    let responder = OcspChecker::new(
+        &config,
+        MockTransport::posting([Ok(bytes(answer))]),
+        Box::new(move || clock.now()) as Box<dyn Fn() -> Timestamp + Send + Sync>,
+    );
     TiVerifier::new(ServerCheck::new(config, Some(Arc::new(store))), responder)
 }
 

@@ -35,7 +35,7 @@ use ti_connector_client::Dotkon;
 use ti_connector_client::check::{Report, Status};
 use ti_connector_client::config::{self, CertificateView};
 use ti_connector_client::edit::{self, NewConfig, NewCredentials};
-use ti_pki::Certificate;
+use ti_pki::{Certificate, Timestamp};
 
 use super::connector::emit;
 use super::connector_config::{self as configs, KonFile};
@@ -511,7 +511,7 @@ fn pkcs12(
             cert.not_after,
             client.key.as_deref().unwrap_or("unknown key")
         ));
-        if cert.expires < crate::now() {
+        if cert.expires < Timestamp::now() {
             warn(
                 ask,
                 warnings,

@@ -21,8 +21,9 @@
  * find details in the "Readme" file.
  */
 
-//! Time as an injected dependency. TI libraries read the time only through [`Clock`], so
-//! tests drive it with a fixed clock and wasm32 builds need no system time.
+//! Time as an injected dependency. TI libraries read the time only through a function
+//! `impl Fn() -> Timestamp` their caller passes, so tests drive it with a closure and
+//! wasm32 builds need no system time.
 
 use core::ops::{Add, Sub};
 use core::time::Duration;
@@ -170,42 +171,17 @@ impl Sub<Duration> for Timestamp {
     }
 }
 
-/// A source of the current time.
-pub trait Clock {
-    /// The current time.
-    fn now(&self) -> Timestamp;
-}
-
-impl<C: Clock + ?Sized> Clock for &C {
-    fn now(&self) -> Timestamp {
-        (**self).now()
-    }
-}
-
-impl<C: Clock + ?Sized> Clock for alloc::sync::Arc<C> {
-    fn now(&self) -> Timestamp {
-        (**self).now()
-    }
-}
-
-/// The operating system's wall clock.
-///
-/// Not on wasm32-unknown-unknown: std has no clock there and would panic on every call.
-/// A browser caller passes the time in (as ti-wasm does) or implements [`Clock`] over
-/// `Date.now()`.
 #[cfg(all(
     feature = "std",
     not(all(target_family = "wasm", target_os = "unknown"))
 ))]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SystemClock;
-
-#[cfg(all(
-    feature = "std",
-    not(all(target_family = "wasm", target_os = "unknown"))
-))]
-impl Clock for SystemClock {
-    fn now(&self) -> Timestamp {
+impl Timestamp {
+    /// The operating system's wall clock, the function a host passes where a TI crate
+    /// takes `impl Fn() -> Timestamp`; a clock before 1970 reads as the epoch.
+    ///
+    /// Not on wasm32-unknown-unknown: std has no clock there and would panic on every
+    /// call. A browser caller passes a function over `Date.now()` instead.
+    pub fn now() -> Timestamp {
         let since_epoch = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
@@ -218,6 +194,15 @@ mod tests {
     use alloc::string::ToString as _;
 
     use super::*;
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn now_reads_the_system_clock() {
+        let since_epoch = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        assert!(Timestamp::now().0.abs_diff(since_epoch.as_secs()) <= 1);
+    }
 
     #[test]
     fn display_is_rfc3339_utc() {

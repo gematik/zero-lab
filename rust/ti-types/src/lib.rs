@@ -25,7 +25,7 @@
 #![doc = include_str!("../README.md")]
 
 extern crate alloc;
-// clap's generated code refers to std; only the clap feature enables it.
+// Only `Timestamp::now` needs std; the rest of the crate is core and alloc.
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -33,4 +33,4 @@ pub mod env;
 pub mod time;
 
 pub use env::{Env, EnvParseError, Tier};
-pub use time::{Clock, Timestamp};
+pub use time::Timestamp;

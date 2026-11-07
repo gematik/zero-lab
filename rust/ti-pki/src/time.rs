@@ -21,21 +21,17 @@
  * find details in the "Readme" file.
  */
 
-//! Time for ti-pki: [`Clock`] and [`Timestamp`] live in `ti-types`, so every TI crate
-//! shares them; [`FixedClock`] drives tests.
+//! Time for ti-pki: [`Timestamp`] lives in `ti-types`, so every TI crate shares it, and
+//! enters as a function `impl Fn() -> Timestamp`; [`FixedClock`] drives tests.
 
 #[cfg(any(test, feature = "test-util"))]
 use core::time::Duration;
 
-#[cfg(all(
-    feature = "os",
-    not(all(target_family = "wasm", target_os = "unknown"))
-))]
-pub use ti_types::time::SystemClock;
-pub use ti_types::time::{Clock, Timestamp};
+pub use ti_types::time::Timestamp;
 
-/// A clock that only moves when told to; for tests. Share it through `&FixedClock` or
-/// `Arc<FixedClock>` so the test can advance time under the code it drives.
+/// A clock that only moves when told to; for tests. Pass `|| clock.now()` (or a `move`
+/// closure over an `Arc<FixedClock>`) so the test can advance time under the code it
+/// drives.
 #[cfg(any(test, feature = "test-util"))]
 #[derive(Debug)]
 pub struct FixedClock(std::sync::atomic::AtomicU64);
@@ -57,11 +53,9 @@ impl FixedClock {
         self.0
             .fetch_add(by.as_secs(), std::sync::atomic::Ordering::SeqCst);
     }
-}
 
-#[cfg(any(test, feature = "test-util"))]
-impl Clock for FixedClock {
-    fn now(&self) -> Timestamp {
+    /// Where the clock stands.
+    pub fn now(&self) -> Timestamp {
         Timestamp(self.0.load(std::sync::atomic::Ordering::SeqCst))
     }
 }

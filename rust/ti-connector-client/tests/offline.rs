@@ -36,7 +36,7 @@ use ti_connector_client::{
     Connector, DiscoveryError, Dotkon, Error, Method, Response, ServiceDirectory, Timeouts,
     TransportError,
 };
-use ti_types::{Clock, Timestamp};
+use ti_types::Timestamp;
 
 use support::{Scripted, ok};
 
@@ -220,22 +220,10 @@ fn rewrites_endpoints_when_asked() {
     );
 }
 
-struct TestClock(Cell<Timestamp>);
-
-impl Clock for TestClock {
-    fn now(&self) -> Timestamp {
-        self.0.get()
-    }
-}
-
 #[test]
 fn the_directory_is_cached_and_revalidated() {
-    let store = MemoryCacheStore::new();
-    let cache = Cache::new(
-        &store,
-        TestClock(Cell::new(Timestamp(1_000_000))),
-        CachePolicy::default(),
-    );
+    let (store, now) = (MemoryCacheStore::new(), Cell::new(Timestamp(1_000_000)));
+    let cache = Cache::new(&store, || now.get(), CachePolicy::default());
     let first = Response {
         status: 200,
         body: go_sds().into_bytes(),
@@ -265,8 +253,7 @@ fn the_directory_is_cached_and_revalidated() {
         "fresh: served without a request"
     );
 
-    let clock = cache.clock();
-    clock.0.set(Timestamp(1_000_000) + Duration::from_hours(2));
+    now.set(Timestamp(1_000_000) + Duration::from_hours(2));
     let (connector, meta) = block_on(Connector::connect_cached(
         &dotkon(),
         &transport,
@@ -275,7 +262,7 @@ fn the_directory_is_cached_and_revalidated() {
     ))
     .unwrap();
     assert_eq!(meta.source, Source::Cache);
-    assert_eq!(meta.fetched_at, clock.now(), "304 renews the entry");
+    assert_eq!(meta.fetched_at, now.get(), "304 renews the entry");
     assert_eq!(
         transport.seen.borrow()[1].if_none_match.as_deref(),
         Some("\"sds-1\"")

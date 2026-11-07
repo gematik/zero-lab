@@ -29,7 +29,6 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use ti_pki::load::SystemClock;
 use ti_pki::ocsp::{DEFAULT_MAX_RESPONSE_AGE, OcspChecker};
 use ti_pki::profile::{self, SelectReason};
 use ti_pki::revocation::{
@@ -37,7 +36,7 @@ use ti_pki::revocation::{
 };
 use ti_pki::trustdomain::detect_trust_domain;
 use ti_pki::{
-    Certificate, ChainPosition, Clock, Env, ErrorCode, Tier, Timestamp, TrustConfig, TrustStore,
+    Certificate, ChainPosition, Env, ErrorCode, Tier, Timestamp, TrustConfig, TrustStore,
     ValidationResult, Validator, detect_certificate_type,
 };
 
@@ -188,7 +187,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
                 .map(|loaded| loaded.certificate),
         );
     }
-    let at = args.at.unwrap_or_else(|| SystemClock.now());
+    let at = args.at.unwrap_or_else(Timestamp::now);
 
     let (env, detection) = environment(args.env, &certs, at)?;
     let session = Session::new(global, args.offline, out)?;
@@ -219,7 +218,7 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     let validated = block_on(async {
         if let Some(transport) = session.transport() {
             let mut checker =
-                OcspChecker::new(&config, transport, SystemClock).with_store(session.store());
+                OcspChecker::new(&config, transport, Timestamp::now).with_store(session.store());
             if let Some(url) = &args.ocsp_responder {
                 checker = checker.with_responder_url(url.clone());
             }
