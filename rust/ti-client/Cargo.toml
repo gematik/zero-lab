@@ -15,8 +15,10 @@ publish = false
 ti-cache.workspace = true
 ti-types.workspace = true
 ti-connector-client.workspace = true
-# The OCSP media types of the web profile's revocation sources.
-ti-pki.workspace = true
+ti-idpd-client.workspace = true
+ti-directory-client.workspace = true
+# The transport of roots.json, the TSL and OCSP (`load`), and the OCSP media types.
+ti-pki = { workspace = true, features = ["load"] }
 # The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
 ti-tls.workspace = true
 # Blocking HTTP without an async runtime; the TLS layer is ti-tls's rustls configuration

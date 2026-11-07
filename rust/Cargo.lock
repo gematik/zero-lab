@@ -1663,6 +1663,8 @@ dependencies = [
  "sha2",
  "ti-cache",
  "ti-connector-client",
+ "ti-directory-client",
+ "ti-idpd-client",
  "ti-pki",
  "ti-tls",
  "ti-types",
@@ -1715,7 +1717,6 @@ dependencies = [
  "ti-pki",
  "ti-types",
  "traceability",
- "ureq",
 ]
 
 [[package]]

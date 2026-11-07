@@ -3,6 +3,14 @@
 The native host of the gematik Telematikinfrastruktur (TI) crates, shared by the `ti`
 command-line tool and the desktop app: the I/O the product clients leave to their host.
 
+- `Client`: the transports a front end needs, made from one set of HTTP settings (`Net`) and
+  an `Observer` the front end passes to see each download and OCSP request (`ti -v`). It is
+  Send and Sync, and every method blocks: a desktop app calls it from a blocking thread.
+- `net` and `http`: curl's options as settings (`-k`, `--cacert`, `--capath`, the proxy as
+  curl picks it from `-x` and the environment, timeouts, `--retry`, user agent), ti-pki's
+  transport for roots.json, the TSL and OCSP with retries (`Http`), and the transport of
+  ti-idpd-client and ti-directory-client (`UreqTransport`), every https server verified under
+  ti-tls's `web` profile.
 - `connector`: ti-connector-client's transport over blocking ureq (`UreqTransport`), its TLS
   ti-tls's `konnektor` profile with the operating system's verifier for an empty trust store,
   the client certificate of `pkcs12` credentials, basic auth; the TCP and TLS probe of

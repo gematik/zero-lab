@@ -203,7 +203,8 @@ pub fn server_chain(host: &str, port: u16, net: &NetArgs) -> Result<Vec<Vec<u8>>
 
 /// A TCP connection to `host:port`, tunnelled through an HTTP proxy when one applies.
 fn connect(host: &str, port: u16, net: &NetArgs) -> Result<TcpStream, String> {
-    let proxy = crate::http::proxy(net, "https").map_err(|e| e.to_string())?;
+    let proxy =
+        ti_client::net::proxy(&net.net(), "https").map_err(|e| CliError::from(e).to_string())?;
     let proxy = proxy.filter(|p| {
         format!("https://{host}:{port}/")
             .parse()

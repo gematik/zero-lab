@@ -54,12 +54,36 @@ use ureq::unversioned::transport::{
     TcpConnector, Transport as UreqTransportLayer, TransportAdapter,
 };
 
+use crate::net::{self, Net};
+
 mod probe;
 
 pub use probe::{TestOptions, check_config, probe, server_certificate};
 
 /// Largest response body read; signed and encrypted documents can be large.
 const MAX_BODY: u64 = 64 * 1024 * 1024;
+
+/// The HTTP settings of a Konnektor transport: `net`'s connect timeout and user agent, and
+/// only an explicit proxy.
+///
+/// # Errors
+///
+/// [`net::Error::Setup`] for an unusable proxy.
+pub fn agent_config(net: &Net) -> Result<ConfigBuilder<AgentScope>, net::Error> {
+    // Only an explicit -x: a Konnektor is in the local network, and a proxy from the
+    // environment, which ureq reads by default, would route its traffic (and credentials)
+    // elsewhere.
+    let mut config = Agent::config_builder()
+        .timeout_connect(Some(net.connect_timeout))
+        .user_agent(&net.user_agent)
+        .proxy(None);
+    if let Some(proxy) = net.explicit_proxy() {
+        let proxy =
+            ureq::Proxy::new(proxy).map_err(|e| net::Error::Setup(format!("proxy: {e}")))?;
+        config = config.proxy(Some(proxy));
+    }
+    Ok(config)
+}
 
 /// The Konnektor transport over ureq.
 #[derive(Debug)]

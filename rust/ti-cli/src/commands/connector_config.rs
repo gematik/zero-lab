@@ -243,7 +243,7 @@ pub fn test(
     out: &Output,
 ) -> Result<Exit, CliError> {
     let file = read(name, args)?;
-    let agent = connector::agent_config(global)?;
+    let agent = ti_client::connector::agent_config(&global.net.net())?;
     let report = run_checks(&file.json, file.mode, args, global, agent, out);
     let exit = if report.status == Status::Fail {
         Exit::Invalid

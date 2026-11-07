@@ -27,8 +27,8 @@
 //! an authorization URL into an authorization code with a smartcard identity.
 //!
 //! The core is sans I/O: [`discovery`], [`challenge`] and [`authenticator`] build
-//! [`http::Request`]s and consume [`http::Response`]s, so any HTTP client drives them;
-//! the `ureq` feature adds a blocking [`http::Transport`] for command-line tools.
+//! [`http::Request`]s and consume [`http::Response`]s, so any HTTP client drives them
+//! through an [`http::Transport`]: ti-client's over ureq, a browser's fetch.
 //!
 //! The flow (`tokenFlowPs` of gematik's reference implementation):
 //!
@@ -64,8 +64,6 @@ mod error;
 pub mod http;
 mod query;
 pub mod trust;
-#[cfg(feature = "ureq")]
-pub mod ureq;
 
 pub use error::{Error, IdpError};
 pub use ti_types::Env;

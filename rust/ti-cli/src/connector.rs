@@ -174,10 +174,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
             timeouts.long.as_secs()
         ),
     );
-    let transport = Logged::new(
-        UreqTransport::new(&dotkon, agent_config(global)?).map_err(CliError::Connector)?,
-        out,
-    );
+    let transport = Logged::new(crate::http::client(&global.net, 0).connector(&dotkon)?, out);
     let connector = if args.no_cache {
         block_on(Connector::connect(&dotkon, transport, timeouts)).map_err(CliError::Connector)?
     } else {
@@ -197,30 +194,6 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         comfort_user_id: args.comfort_user_id.clone(),
         profile: crate::profile::Profile::resolve(global)?,
     })
-}
-
-/// The HTTP settings of a Konnektor transport: connect timeout, user agent, and only an
-/// explicit proxy.
-///
-/// # Errors
-///
-/// [`CliError::HttpSetup`] for an unusable proxy.
-pub fn agent_config(
-    global: &GlobalArgs,
-) -> Result<ureq::config::ConfigBuilder<ureq::typestate::AgentScope>, CliError> {
-    // Only an explicit -x: a Konnektor is in the local network, and a proxy from the
-    // environment, which ureq reads by default, would route its traffic (and credentials)
-    // elsewhere.
-    let mut config = ureq::Agent::config_builder()
-        .timeout_connect(Some(global.net.connect_timeout))
-        .user_agent(global.net.user_agent())
-        .proxy(None);
-    if let Some(proxy) = explicit_proxy(global) {
-        let proxy =
-            ureq::Proxy::new(proxy).map_err(|e| CliError::HttpSetup(format!("proxy: {e}")))?;
-        config = config.proxy(Some(proxy));
-    }
-    Ok(config)
 }
 
 /// The proxy given with `-x`, if any.

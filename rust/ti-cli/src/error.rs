@@ -394,6 +394,15 @@ impl CliError {
     }
 }
 
+impl From<ti_client::Error> for CliError {
+    fn from(error: ti_client::Error) -> Self {
+        match error {
+            ti_client::Error::Setup(message) => CliError::HttpSetup(message),
+            ti_client::Error::Connector(error) => CliError::Connector(error),
+        }
+    }
+}
+
 impl From<serde_json::Error> for CliError {
     fn from(error: serde_json::Error) -> Self {
         CliError::Output(error.into())

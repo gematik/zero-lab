@@ -11,9 +11,9 @@ The crates are the reference implementation of zero-lab's TI building blocks
 server, a browser, an air-gapped installation and, through bindings, in other hosts.
 
 ```text
- hosts      ti-cli (ureq, rustls/ring)   ti-wasm (wasm-bindgen)   servers (their own)
+ hosts      ti-cli, the desktop app      ti-wasm (wasm-bindgen)   servers (their own)
               │                            │                        │
- adapters   `ureq` / `os` features, ti-tls (rustls): the only code that does I/O or holds a TLS library
+ adapters   ti-client (ureq, files), ti-tls (rustls), ti-pki's `os`: the only code that does I/O or holds a TLS library
               │
  engines    ti-idpd-client  ti-directory-client  ti-connector-client  ti-jwks   (sans I/O)
               │
@@ -22,9 +22,11 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
  vocabulary ti-types (Env, Tier; no_std, no dependencies)   ti-cache (HTTP cache policy, cache store trait)
 ```
 
-A crate depends only downwards. Adapters are Cargo features of the crate they serve,
-off by default; `just core-deps` proves `ti-pki` without them contains no HTTP client
-and no executor, and `just wasm32` that the cores build for the browser. The protocol and
+A crate depends only downwards. The native adapters live in ti-client, the host library
+ti-cli and the desktop app share, and hold no protocol logic; the TLS trust they wire in
+is ti-tls's. `just core-deps` proves the product clients and `ti-pki` without its adapter
+features contain no HTTP client and no executor, and `just wasm32` that the cores build
+for the browser. The protocol and
 crypto cores are `no_std` + `alloc` where the crates they build on allow it.
 
 ## 2. Sans I/O and transports
@@ -56,10 +58,10 @@ binaries entirely, and `just nonprod-absent` checks the bytes are absent.
 
 TLS peer verification of TI endpoints is the core's
 ([architecture](../../docs/architecture.md#the-host-owns-the-transport-the-core-owns-trust)):
-ti-pki is to supply a rustls `ServerCertVerifier` that validates the chain against the
-verified TSL with the profile, algorithm and OCSP rules, and the ureq
-adapters use it for TI endpoints (TASK-97). Today ti-connector-client verifies the
-Konnektor by its `.kon` pins and CAs, and other TLS goes through the platform verifier.
+ti-tls supplies rustls `ServerCertVerifier`s: the `ti` profile validates the chain against
+the verified TSL with ti-pki's profile, algorithm and OCSP rules, the `web` profile an
+internet server's, and the `konnektor` profile a Konnektor by its `.kon` pins and CAs.
+ti-client's ureq agents only wire them in (TASK-97, TASK-249).
 
 The `Transport` traits differ today (artefact-shaped get/post in ti-pki, request/response
 in ti-idpd-client and ti-directory-client, SOAP-shaped in ti-connector-client); whether a
@@ -171,8 +173,8 @@ are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
 ti-cache, ti-pki, ti-pkcs12, ti-connector-client, jwz,
-ti-jwz, ti-jwks, ti-idpd-client and ti-directory-client, with every feature but their
-adapters (the `ureq` transports) and `test-util`.
+ti-jwz, ti-jwks, ti-idpd-client and ti-directory-client, with every feature but ti-jwks's
+`ureq` transport and `test-util`.
 The hosts are ti-client, ti-cli and ti-wasm: a crate that reaches the terminal, the
 operating system or foreign code through `unsafe` (rpassword, rustls-platform-verifier)
 belongs there. ti-client is the native host library ti-cli and the desktop app share; it

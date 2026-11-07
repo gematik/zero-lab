@@ -439,14 +439,22 @@ fn agents(
     // -k: no certificate is checked, so no trust material is loaded for ti either.
     let unchecked = if global.net.insecure {
         warning("-k: TLS certificates are not checked");
-        Some(http::unchecked_agent(&net)?)
+        Some(ti_client::http::unchecked_agent(&net.net())?)
     } else {
         None
     };
-    let web = ti_client::tls::agent(http::builder(&net, "https")?, http::web_config(&net)?);
+    let web = ti_client::tls::agent(
+        ti_client::net::builder(&net.net(), "https")?,
+        ti_client::http::web_config(&net.net())?,
+    );
     let ti = if unchecked.is_none() && endpoints.iter().any(|e| e.tls == TlsProfile::Ti) {
         ti_config(env, &net, global, out)
-            .and_then(|config| Ok(ti_client::tls::agent(http::builder(&net, "https")?, config)))
+            .and_then(|config| {
+                Ok(ti_client::tls::agent(
+                    ti_client::net::builder(&net.net(), "https")?,
+                    config,
+                ))
+            })
             .map_err(|error| error.to_string())
     } else {
         Err("no endpoint is verified under ti".into())

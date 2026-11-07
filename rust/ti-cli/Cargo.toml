@@ -29,8 +29,8 @@ ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-no
 # P-256 (jwz's own backend); the keys come from PKCS#8 (`pkcs8`, `sec1`), not from JWKs.
 jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }
 ti-jwz = { workspace = true, features = ["legacy"] }
-# `idpd authenticate`: the IDP-Dienst flow over this tool's ureq.
-ti-idpd-client = { workspace = true, features = ["ureq"] }
+# `idpd authenticate`: the IDP-Dienst flow over ti-client's ureq.
+ti-idpd-client.workspace = true
 # `directory login`: the FHIR-Directory's token paths over the same transport; the owner
 # login by card joins its steps with ti-idpd-client's flow here.
 ti-directory-client.workspace = true

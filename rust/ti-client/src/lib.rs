@@ -25,10 +25,16 @@
 #![forbid(unsafe_code)]
 
 mod block;
+mod client;
 pub mod connector;
 pub mod file_cache;
 pub mod files;
+pub mod http;
+pub mod net;
 pub mod tls;
 
 pub use block::block_on;
+pub use client::Client;
 pub use file_cache::FileCache;
+pub use http::Observer;
+pub use net::{Error, Net};

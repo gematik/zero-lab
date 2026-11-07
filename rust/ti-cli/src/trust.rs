@@ -37,6 +37,7 @@ use serde::Serialize;
 use ti_client::FileCache;
 use ti_client::block_on;
 use ti_client::files::{create_private_dir, path_component, write_atomic};
+use ti_client::http::Http;
 use ti_pki::load::{
     Artifact, ArtifactRequest, ArtifactResponse, CacheEntry, CacheError, CachePolicy, CacheStore,
     CachingLoader, HttpLoader, LoadError, Loader, MemoryCacheStore, PostRequest, ReloadError,
@@ -51,7 +52,7 @@ use ti_pki::{Tier, Timestamp, TrustConfig, TrustStore, roots};
 
 use crate::cli::GlobalArgs;
 use crate::error::CliError;
-use crate::http::{self, Http};
+use crate::http;
 use crate::output::{Output, warning};
 use crate::profile::Profile;
 

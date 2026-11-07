@@ -93,7 +93,7 @@ fn new_with(
             break (json, None, true);
         }
         ask.say("Testing the configuration …");
-        let agent = connector::agent_config(global)?;
+        let agent = ti_client::connector::agent_config(&global.net.net())?;
         let report = configs::run_checks(&json, Some(0o600), connector_args, global, agent, out);
         if report.status != Status::Fail {
             break (json, Some(report), true);

@@ -29,6 +29,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use clap::Args;
+use ti_client::net::Net;
+pub use ti_client::net::redact;
 
 /// curl-like HTTP options.
 #[derive(Clone, Debug, Args)]
@@ -103,19 +105,19 @@ fn proxy_url(value: &str) -> Result<String, String> {
 }
 
 impl NetArgs {
-    /// The CA files and directory that replace the OS store: the options, else curl's
-    /// environment variables (`CURL_CA_BUNDLE`, then `SSL_CERT_FILE`; `SSL_CERT_DIR`).
-    pub fn ca_sources(&self) -> (Vec<PathBuf>, Option<PathBuf>) {
-        if !self.cacert.is_empty() || self.capath.is_some() {
-            return (self.cacert.clone(), self.capath.clone());
+    /// The options as ti-client's settings.
+    pub fn net(&self) -> Net {
+        Net {
+            insecure: self.insecure,
+            cacert: self.cacert.clone(),
+            capath: self.capath.clone(),
+            proxy: self.proxy.clone(),
+            noproxy: self.noproxy.clone(),
+            connect_timeout: self.connect_timeout,
+            max_time: self.max_time,
+            retry: self.retry,
+            user_agent: self.user_agent(),
         }
-        let var = |name| {
-            std::env::var_os(name)
-                .filter(|v| !v.is_empty())
-                .map(PathBuf::from)
-        };
-        let file = var("CURL_CA_BUNDLE").or_else(|| var("SSL_CERT_FILE"));
-        (file.into_iter().collect(), var("SSL_CERT_DIR"))
     }
 
     /// The effective user agent.
@@ -132,7 +134,7 @@ impl fmt::Display for NetArgs {
         let trust = if self.insecure {
             "web profile, downloads NOT VERIFIED (-k)".to_owned()
         } else {
-            let (files, dir) = self.ca_sources();
+            let (files, dir) = self.net().ca_sources();
             if files.is_empty() && dir.is_none() {
                 "web profile, OS roots".to_owned()
             } else {
@@ -161,17 +163,6 @@ impl fmt::Display for NetArgs {
             self.retry,
             self.user_agent()
         )
-    }
-}
-
-/// `scheme://user:secret@host` → `scheme://***@host`.
-pub fn redact(url: &str) -> String {
-    let Some((scheme, rest)) = url.split_once("://") else {
-        return url.to_owned();
-    };
-    match rest.split_once('@') {
-        Some((_, host)) => format!("{scheme}://***@{host}"),
-        None => url.to_owned(),
     }
 }
 

@@ -172,6 +172,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `tls`: an agent per ti-tls profile (`agent`, the profile's rustls configuration in ureq's
   connector chain) and the `web` profile's revocation sources over ureq (`UreqFetch`), moved
   from ti-tls's `ureq` feature.
+- `net` and `http`: the curl-like settings (`Net`: `-k`, `--cacert`, `--capath`, the proxy as
+  curl picks it, timeouts, `--retry`, user agent) and the transports built from them, moved
+  from ti-cli: ti-pki's `load::Transport` with retries (`Http`), reporting each request to an
+  `Observer` the host passes instead of printing, and the IDP-Dienst's and FHIR-Directory's
+  transport (`UreqTransport`, from ti-idpd-client's `ureq` feature), which implements both
+  clients' traits.
+- `Client`: the transports made from one `Net` and observer (`downloads`, `idp`,
+  `connector`). It is Send and Sync and every method blocks.
 
 ### ti-tls
 
@@ -204,6 +212,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-idpd-client
 
+#### removed
+- The `ureq` feature and `ureq::UreqTransport` (decision-15, TASK-249): the crate has no HTTP
+  client. ti-client's `http::UreqTransport` is the blocking transport, without
+  `UreqTransport::agent`; `ti_client::http::idp_agent` makes the agent, verified under ti-tls's
+  `web` profile.
+
 #### security
 - The discovery document's signer is checked before its key verifies the document
   (IDPV-001): `discovery::parse` takes the `trust::CertificateTrust` and asks it about the
@@ -233,8 +247,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `authenticator::authenticate` and `challenge::respond` are `async`. Every `Signer` is
   an `AsyncSigner`, and with one the future is ready at its first poll (TASK-60).
 - `http::Transport::send` is `async` without a `Send` bound, as the other TI crates'
-  transports, so a browser's fetch can carry the flow (decision-15). `ureq::UreqTransport`
-  stays blocking: its future is ready at its first poll (TASK-245).
+  transports, so a browser's fetch can carry the flow (decision-15, TASK-245).
 - `trust::CertificateTrust::check` is `async` without a `Send` bound: a check may need the
   TSL or OCSP, and a browser host cannot block for them. `discovery::parse` is `async`, as it
   asks the trust check; `authenticator::authenticate` takes the check as a generic `&C`
