@@ -376,6 +376,13 @@ impl<T: Transport + Send + Sync> Session<T> {
         self.transport.is_none()
     }
 
+    /// Tells the observer, if there is one.
+    pub(crate) fn observe(&self, message: fmt::Arguments<'_>) {
+        if let Some(observer) = &self.observer {
+            observer(message);
+        }
+    }
+
     /// `env`'s trust material, loaded and verified with every algorithm, then narrowed to
     /// what a client without brainpool can use when `nist_only`; and the configuration to
     /// validate with.

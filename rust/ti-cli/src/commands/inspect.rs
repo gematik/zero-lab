@@ -26,25 +26,24 @@
 use std::path::Path;
 
 use serde::Serialize;
-use ti_pki::key::{KeyStatus, classify_key};
-use ti_pki::model;
+use ti_client::pki::inspect::{
+    self as engine, CertificateInfo, EncryptionInfo, Inspection, P12KeyInfo, Pkcs12Info,
+};
+use ti_pki::key::KeyStatus;
 use ti_pki::{Env, Timestamp};
-use x509_cert::der::oid::ObjectIdentifier;
 
-use crate::cli::{Environment, GlobalArgs};
+use crate::cli::GlobalArgs;
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, date, span, when};
-use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone, hex};
+use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone};
 
 /// The JSON document.
 #[derive(Serialize)]
 struct Report {
     schema: u32,
-    source: String,
-    certificates: Vec<CertificateInfo>,
-    /// The container, when the input is a PKCS#12 file.
-    pkcs12: Option<Pkcs12Info>,
+    #[serde(flatten)]
+    inspection: Inspection,
     /// The instant validity was judged at, for the remaining-time text.
     #[serde(skip)]
     now: Timestamp,
@@ -54,59 +53,11 @@ struct Report {
     trees: Vec<Vec<TreeRow>>,
 }
 
-#[derive(Serialize)]
-struct Pkcs12Info {
-    /// `DER`, or `BER` as Java keystores and card vendors write it.
-    encoding: &'static str,
-    mac: Option<MacInfo>,
-    /// The encryption of each encrypted safe and shrouded key, in file order.
-    encryption: Vec<EncryptionInfo>,
-    keys: Vec<P12KeyInfo>,
-}
+impl core::ops::Deref for Report {
+    type Target = Inspection;
 
-#[derive(Serialize)]
-struct EncryptionInfo {
-    /// `certificates` (an encrypted safe) or `key` (a shrouded key).
-    target: &'static str,
-    algorithm: String,
-}
-
-#[derive(Serialize)]
-struct MacInfo {
-    digest: String,
-    iterations: u32,
-}
-
-#[derive(Serialize)]
-struct P12KeyInfo {
-    /// `EC`, `RSA`, or the algorithm OID.
-    algorithm: String,
-    /// The named curve of an EC key, e.g. `brainpoolP256r1`.
-    curve: Option<String>,
-    friendly_name: Option<String>,
-    local_key_id: Option<String>,
-    /// Index into `certificates` of the certificate this key belongs to.
-    certificate: Option<usize>,
-}
-
-/// A certificate as `ti_pki::model` describes it, with what a PKCS#12 file adds.
-#[derive(Serialize)]
-pub(super) struct CertificateInfo {
-    #[serde(flatten)]
-    info: model::Certificate,
-    /// The input is a PKCS#12 file that also holds this certificate's private key.
-    private_key: bool,
-    /// The `friendlyName` of its bag, in a PKCS#12 file.
-    friendly_name: Option<String>,
-    /// The `localKeyId` of its bag, in a PKCS#12 file.
-    local_key_id: Option<String>,
-}
-
-impl core::ops::Deref for CertificateInfo {
-    type Target = model::Certificate;
-
-    fn deref(&self) -> &Self::Target {
-        &self.info
+    fn deref(&self) -> &Inspection {
+        &self.inspection
     }
 }
 
@@ -118,32 +69,16 @@ pub fn run(
     out: &Output,
 ) -> Result<Exit, CliError> {
     let source = input::read(file)?;
-    let input = input::load(&source, p12_password)?;
     let now = Timestamp::now();
-    let certificates: Vec<CertificateInfo> = input
-        .certificates
-        .iter()
-        .map(|loaded| describe(loaded, now))
-        .collect();
-    let pkcs12 = input
-        .pkcs12
-        .as_ref()
-        .map(|p12| container(&source.bytes, p12, &certificates));
+    let (inspection, certs) = engine::inspect(&source.bytes, &source.name, p12_password, now)?;
     let trees = if out.is_json() || short {
         Vec::new()
     } else {
-        let certs: Vec<ti_pki::Certificate> = input
-            .certificates
-            .iter()
-            .map(|l| l.certificate.clone())
-            .collect();
         trees(&certs, global, out, now)
     };
     let report = Report {
+        inspection,
         schema: SCHEMA,
-        source: source.name,
-        certificates,
-        pkcs12,
         now,
         trees,
     };
@@ -211,21 +146,7 @@ pub fn show(
     };
     let report = Report {
         schema: SCHEMA,
-        source,
-        certificates: certificates
-            .into_iter()
-            .map(|certificate| {
-                describe(
-                    &input::Loaded {
-                        certificate,
-                        private_key: false,
-                        bag: None,
-                    },
-                    now,
-                )
-            })
-            .collect(),
-        pkcs12: None,
+        inspection: engine::describe_all(source, certificates, now),
         now,
         trees,
     };
@@ -237,56 +158,36 @@ pub fn show(
     Ok(Exit::Ok)
 }
 
-/// For each of `certs`, the path to a trusted root as the trust material suggests it:
-/// built from the cache or the embedded roots (never the network), the other
-/// certificates of the file and the TSL's CAs, by name and key identifier only. Nothing
-/// is validated; `pki verify` does that. Without a cached TSL its CAs are unknown, so
-/// an issuer that is missing then is reported as not loaded, not as untrusted.
+/// For each of `certs`, the path to a trusted root as the trust material suggests it
+/// ([`engine::paths`]), as a tree. Without a cached TSL an issuer that is missing is
+/// reported as not loaded, not as untrusted.
 fn trees(
     certs: &[ti_pki::Certificate],
     global: &GlobalArgs,
     out: &Output,
     now: Timestamp,
 ) -> Vec<Vec<TreeRow>> {
-    let env = super::verify::environment(Environment::Auto, certs, now)
+    let client = crate::http::client(&global.net, out.verbosity());
+    let dirs = crate::profile::Profile::resolve(global)
         .ok()
-        .map(|(env, _)| env);
-    let material = env.and_then(|env| {
-        let session = crate::trust::session(global, true, out).ok()?;
-        let config = ti_pki::TrustConfig::preset(env);
-        session.load(&config, env.tier(), None).ok()
-    });
-    let tsl_loaded = material.as_ref().is_some_and(|m| m.info.tsl.is_some());
-    let store = material.map(|m| m.store);
-    certs
+        .map(|profile| profile.dirs());
+    let paths = engine::paths(&client, dirs.as_ref(), certs, now, crate::trust::warn);
+    paths
+        .chains
         .iter()
-        .map(|cert| {
-            let others: Vec<ti_pki::Certificate> = certs
-                .iter()
-                .filter(|c| c.der() != cert.der())
-                .chain(store.iter().flat_map(|s| s.intermediates()))
-                .cloned()
-                .collect();
-            let built = store
-                .as_deref()
-                .map(|store| ti_pki::chain::build_chain(cert, &others, store));
-            let (chain, complete) = match built {
-                Some(Ok(chain)) => (chain, true),
-                Some(Err(e)) => (e.partial, false),
-                None => (vec![cert.clone()], false),
-            };
+        .map(|(chain, complete)| {
             let mut rows = super::chain_tree(
-                &chain,
-                complete,
+                chain,
+                *complete,
                 now,
                 |_| Line::default(),
                 |_| Line::default(),
             );
             if !complete
-                && !tsl_loaded
+                && !paths.tsl_loaded
                 && let Some(missing) = rows.last_mut()
             {
-                missing.detail = tsl_not_loaded(env);
+                missing.detail = tsl_not_loaded(paths.env);
             }
             rows
         })
@@ -301,101 +202,6 @@ fn tsl_not_loaded(env: Option<Env>) -> Line {
         None => "ti pki tsl show --env ENV".to_owned(),
     };
     Line::status(Tone::Warn, "TSL not loaded, its CAs unknown; ").and_code(fetch)
-}
-
-/// The key of `cert` in words, e.g. `ECDSA brainpoolP256r1`.
-pub fn key_algorithm(cert: &ti_pki::Certificate, now: Timestamp) -> String {
-    classify_key(cert.public_key_info(), now).1
-}
-
-/// What the PKCS#12 container says beyond its certificates: encoding, protection, and
-/// its keys with the certificate each belongs to.
-fn container(bytes: &[u8], p12: &ti_pkcs12::Pkcs12, certs: &[CertificateInfo]) -> Pkcs12Info {
-    let keys = p12
-        .keys
-        .iter()
-        .map(|key| {
-            let (algorithm, curve) = key
-                .algorithm()
-                .map_or((String::from("unknown"), None), |(a, c)| {
-                    (algorithm_name(&a), c.map(|c| curve_name(&c)))
-                });
-            let local_key_id = key.local_key_id.as_deref().map(hex_id);
-            P12KeyInfo {
-                algorithm,
-                curve,
-                friendly_name: key.friendly_name.clone(),
-                certificate: local_key_id.as_ref().and_then(|id| {
-                    certs
-                        .iter()
-                        .position(|c| c.local_key_id.as_ref() == Some(id))
-                }),
-                local_key_id,
-            }
-        })
-        .collect();
-    Pkcs12Info {
-        encoding: if bytes.get(1) == Some(&0x80) {
-            "BER"
-        } else {
-            "DER"
-        },
-        mac: p12.mac.as_ref().map(|mac| MacInfo {
-            digest: mac.digest.clone(),
-            iterations: mac.iterations,
-        }),
-        encryption: p12
-            .encryption
-            .iter()
-            .map(|e| EncryptionInfo {
-                target: if e.target == ti_pkcs12::Target::Key {
-                    "key"
-                } else {
-                    "certificates"
-                },
-                algorithm: e.algorithm.clone(),
-            })
-            .collect(),
-        keys,
-    }
-}
-
-/// `localKeyId`s are opaque bytes; lower-case hex without separators, as OpenSSL
-/// prints them compactly.
-fn hex_id(bytes: &[u8]) -> String {
-    hex(bytes).replace(':', "").to_lowercase()
-}
-
-fn algorithm_name(oid: &ObjectIdentifier) -> String {
-    match oid.to_string().as_str() {
-        "1.2.840.10045.2.1" => "EC".to_owned(),
-        "1.2.840.113549.1.1.1" => "RSA".to_owned(),
-        other => other.to_owned(),
-    }
-}
-
-fn curve_name(oid: &ObjectIdentifier) -> String {
-    match oid.to_string().as_str() {
-        "1.3.36.3.3.2.8.1.1.7" => "brainpoolP256r1".to_owned(),
-        "1.3.36.3.3.2.8.1.1.11" => "brainpoolP384r1".to_owned(),
-        "1.3.36.3.3.2.8.1.1.13" => "brainpoolP512r1".to_owned(),
-        "1.2.840.10045.3.1.7" => "P-256".to_owned(),
-        "1.3.132.0.34" => "P-384".to_owned(),
-        "1.3.132.0.35" => "P-521".to_owned(),
-        other => other.to_owned(),
-    }
-}
-
-pub(super) fn describe(loaded: &input::Loaded, now: Timestamp) -> CertificateInfo {
-    let (friendly_name, local_key_id) = loaded.bag.as_ref().map_or((None, None), |(name, id)| {
-        (name.clone(), id.as_deref().map(hex_id))
-    });
-    CertificateInfo {
-        info: model::Certificate::new(&loaded.certificate, now),
-        private_key: loaded.private_key,
-        friendly_name,
-        local_key_id,
-    }
 }
 
 /// The terminal view: a section per aspect, every detail.

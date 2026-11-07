@@ -95,7 +95,7 @@ fn describe(root: &Certificate, config: &TrustConfig, now: Timestamp) -> RootInf
         not_after_at: root.not_after(),
         validity: super::validity(root, now),
         anchor: root.der() == &*config.anchor,
-        key: super::inspect::key_algorithm(root, now),
+        key: ti_client::pki::inspect::key_algorithm(root, now),
         sha256: root.fingerprint_sha256(),
         pem: root.to_pem(),
     }

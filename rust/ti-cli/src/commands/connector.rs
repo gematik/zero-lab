@@ -635,7 +635,7 @@ fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, Cli
                 not_after: c.certificate.not_after().to_string(),
                 not_after_at: c.certificate.not_after(),
                 validity: super::validity(&c.certificate, now),
-                key: inspect::key_algorithm(&c.certificate, now),
+                key: ti_client::pki::inspect::key_algorithm(&c.certificate, now),
                 pem: c.certificate.to_pem(),
             })
             .collect(),

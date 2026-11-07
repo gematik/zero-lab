@@ -26,252 +26,89 @@
 //! or embedded trust material and skips revocation, and the report says so rather than
 //! passing silently.
 
-use std::sync::Arc;
-
 use serde::Serialize;
-use ti_client::block_on;
-use ti_pki::ocsp::{DEFAULT_MAX_RESPONSE_AGE, OcspChecker};
-use ti_pki::profile::{self, SelectReason};
-use ti_pki::revocation::{
-    ResponderAuthorization, RevocationMode, RevocationResult, RevocationStatus, Unchecked,
+use ti_client::pki::verify::{
+    self as engine, Finding, OcspSettings, ProfileChoice, ProfileInfo, Reference, RevocationEntry,
+    Verification, mode_name,
 };
-use ti_pki::trustdomain::detect_trust_domain;
-use ti_pki::{
-    Certificate, ChainPosition, Env, ErrorCode, Tier, Timestamp, TrustConfig, TrustStore,
-    ValidationResult, Validator, detect_certificate_type,
-};
+use ti_pki::profile;
+use ti_pki::revocation::{RevocationMode, RevocationStatus};
+use ti_pki::{Certificate, ChainPosition, ErrorCode};
 
-use crate::cli::{Environment, GlobalArgs, VerifyArgs};
+use crate::cli::{GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
-use ti_client::trust::TrustInfo;
-
-/// Whether `at` is now or `--at`: OCSP still answers for the time of the query.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Reference {
-    Now,
-    Given,
-}
+use crate::profile::Profile;
 
 /// The JSON document.
 #[derive(Serialize)]
 struct Report {
     schema: u32,
-    source: String,
-    valid: bool,
-    environment: EnvironmentInfo,
-    at: String,
-    #[serde(skip)]
-    at_ts: Timestamp,
-    #[serde(skip)]
-    reference: Reference,
-    certificate_type: Option<String>,
-    profile: ProfileInfo,
-    trust: TrustInfo,
-    /// False offline or with revocation disabled; the verdict then says nothing about
-    /// revocation.
-    revocation_checked: bool,
-    /// `hard-fail`, `soft-fail` or `disabled`.
-    revocation_mode: &'static str,
-    /// TLS certificates of downloads were not checked (`-k`).
-    insecure_transport: bool,
-    /// The OCSP settings given; absent with the defaults.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    ocsp: Option<OcspSettings>,
-    chain: Vec<ChainEntry>,
-    errors: Vec<Finding>,
-    warnings: Vec<Finding>,
-    /// The end entity as `pki inspect` describes it, at the instant validated at.
-    #[serde(skip)]
-    details: super::inspect::CertificateInfo,
+    #[serde(flatten)]
+    verification: Verification,
     /// The chain as a tree, with each certificate's verdict.
     #[serde(skip)]
     tree: Vec<TreeRow>,
 }
 
-#[derive(Serialize)]
-struct EnvironmentInfo {
-    name: &'static str,
-    production: bool,
-    /// How `--env auto` decided; absent when the environment was given.
-    detection: Option<Detection>,
-}
+impl core::ops::Deref for Report {
+    type Target = Verification;
 
-#[derive(Serialize)]
-pub(super) struct Detection {
-    method: &'static str,
-    detail: String,
-}
-
-#[derive(Serialize)]
-struct ProfileInfo {
-    /// The profile validated against; `None` checks the chain only.
-    name: Option<&'static str>,
-    /// `cert`, `default`, `forced`, `ambiguous`, `none` or `disabled`.
-    reason: &'static str,
-    detail: String,
-}
-
-#[derive(Serialize)]
-struct OcspSettings {
-    /// Where every request of the chain went; absent: each certificate's own responder.
-    responder_url: Option<String>,
-    max_response_age_ms: u64,
-}
-
-#[derive(Serialize)]
-struct ChainEntry {
-    position: &'static str,
-    subject: String,
-    common_name: String,
-    not_after: String,
-    /// What OCSP said; absent when not asked (offline, the root, or not reached).
-    revocation: Option<RevocationEntry>,
-    pem: String,
-}
-
-#[derive(Serialize)]
-struct RevocationEntry {
-    /// `good`, `revoked` or `unknown`.
-    status: &'static str,
-    /// Revocation reason, or why the status is unknown.
-    reason: String,
-    responder_url: String,
-    /// Common name of the response's signer.
-    responder: String,
-    /// `issuer`, `delegate`, `tsl_listed` or `same_tsp_delegate`; absent without a verified
-    /// response.
-    authorization: Option<&'static str>,
-    produced_at: Option<String>,
-    revoked_at: Option<String>,
-    /// The response came from the cache (an earlier run, within the hour and its
-    /// `nextUpdate`) and was verified again, not asked for now.
-    cached: bool,
-}
-
-#[derive(Serialize)]
-struct Finding {
-    code: String,
-    /// Common name of the certificate concerned; empty when not tied to one.
-    subject: String,
-    message: String,
-}
-
-/// What one run established, for the report.
-struct Run {
-    source: String,
-    env: Env,
-    detection: Option<Detection>,
-    at: Timestamp,
-    at_given: bool,
-    profile: ProfileInfo,
-    trust: TrustInfo,
-    revocation: RevocationMode,
-    offline: bool,
-    insecure: bool,
-    ocsp: Option<OcspSettings>,
-    warnings: Vec<Finding>,
+    fn deref(&self) -> &Verification {
+        &self.verification
+    }
 }
 
 /// Runs the command; exit 0 when valid, 1 when not.
 pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let p12_password = input::p12_password(&args.password)?;
-    let (source_label, mut certs) = chain_to_verify(args, &p12_password, global, out)?;
+    let (source, mut certificates) = chain_to_verify(args, &p12_password, global, out)?;
     for path in args.issuer.iter().chain(&args.intermediates) {
         let source = input::read(path)?;
-        certs.extend(
+        certificates.extend(
             input::certificates(&source, &p12_password)?
                 .into_iter()
                 .map(|loaded| loaded.certificate),
         );
     }
-    let at = args.at.unwrap_or_else(Timestamp::now);
-
-    let (env, detection) = environment(args.env, &certs, at)?;
-    let session = crate::trust::session(global, args.offline, out)?;
-    let (config, material) = session.load_env(env, args.nist_only, args.at)?;
-    out.verbose(
-        1,
-        format_args!(
-            "{env}: {} roots, {} TSL CAs from {}",
-            material.info.roots, material.info.intermediates, material.info.source
+    let choice = match args.validation_profile.as_str() {
+        profile::NONE => ProfileChoice::ChainOnly,
+        profile::AUTO => ProfileChoice::Auto,
+        // The value parser admits only auto, none and the profile names.
+        name => ProfileChoice::Forced(
+            profile::lookup(name)
+                .unwrap_or_else(|| unreachable!("clap restricts --validation-profile")),
         ),
-    );
-
-    let mut warnings = Vec::new();
-    let (mut validator, profile) = validator(
-        &args.validation_profile,
-        &config,
-        material.store,
-        &certs[0],
-        &mut warnings,
-    );
-    // A server reached by name must carry that name, unless another is given.
-    validator.expected_fqdn = args.fqdn.clone().or_else(|| {
-        args.connect
-            .as_ref()
-            .filter(|(host, _)| host.parse::<std::net::IpAddr>().is_err())
-            .map(|(host, _)| host.clone())
-    });
-    let validated = block_on(async {
-        if let Some(transport) = session.transport() {
-            let mut checker =
-                OcspChecker::new(&config, transport, Timestamp::now).with_store(session.store());
-            if let Some(url) = &args.ocsp_responder {
-                checker = checker.with_responder_url(url.clone());
-            }
-            if let Some(age) = args.ocsp_max_age {
-                checker = checker.with_max_response_age(age);
-            }
-            validator.validate(&certs, at, &checker).await
-        } else {
-            // No OCSP offline. Set here, after the profile: config.validate rejects
-            // Disabled under Prod, so this is the one place the relaxation happens, and
-            // the report states it.
-            validator.revocation = RevocationMode::Disabled;
-            validator.validate(&certs, at, &Unchecked).await
-        }
-    });
-    let result = validated.map_err(|source| CliError::Certificate {
-        source_name: source_label.clone(),
-        source,
-    })?;
-
-    let run = Run {
-        source: source_label,
-        env,
-        detection,
-        at,
-        at_given: args.at.is_some(),
-        profile,
-        trust: material.info,
-        revocation: validator.revocation,
-        offline: args.offline,
-        insecure: session.insecure,
-        ocsp: (args.ocsp_responder.is_some() || args.ocsp_max_age.is_some()).then(|| {
-            OcspSettings {
-                responder_url: args.ocsp_responder.clone(),
-                max_response_age_ms: u64::try_from(
-                    args.ocsp_max_age
-                        .unwrap_or(DEFAULT_MAX_RESPONSE_AGE)
-                        .as_millis(),
-                )
-                .unwrap_or(u64::MAX),
-            }
-        }),
-        warnings,
     };
-    let details = super::inspect::describe(
-        &input::Loaded {
-            certificate: certs[0].clone(),
-            private_key: false,
-            bag: None,
-        },
-        at,
-    );
-    let report = report(run, &certs[0], details, &result);
+    let request = engine::Request {
+        source,
+        certificates,
+        env: args.env.concrete(),
+        at: args.at,
+        offline: args.offline,
+        nist_only: args.nist_only,
+        profile: choice,
+        // A server reached by name must carry that name, unless another is given.
+        expected_fqdn: args.fqdn.clone().or_else(|| {
+            args.connect
+                .as_ref()
+                .filter(|(host, _)| host.parse::<std::net::IpAddr>().is_err())
+                .map(|(host, _)| host.clone())
+        }),
+        ocsp_responder: args.ocsp_responder.clone(),
+        ocsp_max_age: args.ocsp_max_age,
+    };
+    let client = crate::http::client(&global.net, out.verbosity());
+    let dirs = Profile::resolve(global)?.dirs();
+    let verification = engine::verify(&client, &dirs, &request, crate::trust::warn)?;
+    let tree = tree(&verification);
+    let report = Report {
+        schema: SCHEMA,
+        verification,
+        tree,
+    };
     if out.is_json() {
         out.json(&report)?;
     } else {
@@ -322,134 +159,18 @@ fn chain_to_verify(
     }
 }
 
-/// The environment to validate in; `auto` asks the certificates. Non-production
-/// evidence maps to ref: ref and test share their roots, so the choice only matters
-/// once the TSL and OCSP come into play.
-pub(super) fn environment(
-    choice: Environment,
-    certs: &[Certificate],
-    at: Timestamp,
-) -> Result<(Env, Option<Detection>), CliError> {
-    if let Some(env) = choice.concrete() {
-        return Ok((env, None));
-    }
-    let found = detect_trust_domain(certs, at);
-    let (Some(tier), Some(method)) = (found.domain, found.method) else {
-        let tried: Vec<String> = found
-            .steps
-            .iter()
-            .map(|step| format!("{}: {}", step.method, step.outcome))
-            .collect();
-        return Err(CliError::EnvironmentUndetected(tried.join("; ")));
-    };
-    let env = match tier {
-        Tier::Prod => Env::Prod,
-        Tier::NonProd => Env::Ref,
-    };
-    Ok((
-        env,
-        Some(Detection {
-            method: method.as_str(),
-            detail: found.detail,
-        }),
-    ))
-}
-
-fn validator(
-    selector: &str,
-    config: &TrustConfig,
-    store: Arc<TrustStore>,
-    ee: &Certificate,
-    warnings: &mut Vec<Finding>,
-) -> (Validator, ProfileInfo) {
-    let chain_only = |reason, detail: String| ProfileInfo {
-        name: None,
-        reason,
-        detail,
-    };
-    if selector == profile::NONE {
-        return (
-            Validator::new(config, store),
-            chain_only("disabled", "chain only, as requested".into()),
-        );
-    }
-    let cert_type = detect_certificate_type(ee);
-    if selector == profile::AUTO {
-        let selection = profile::select_for_cert(ee);
-        let (Some(p), Some(t)) = (selection.profile, selection.cert_type) else {
-            let code = if selection.reason == SelectReason::Ambiguous {
-                "profile_ambiguous"
-            } else {
-                "profile_not_detected"
-            };
-            warnings.push(Finding {
-                code: code.into(),
-                subject: ee.subject_cn().to_owned(),
-                message: format!(
-                    "{}; checked the chain only, pass --validation-profile",
-                    selection.detail
-                ),
-            });
-            return (
-                Validator::new(config, store),
-                chain_only(selection.reason.as_str(), selection.detail),
-            );
-        };
-        return (
-            p.validator(config, store, t),
-            ProfileInfo {
-                name: Some(p.name),
-                reason: selection.reason.as_str(),
-                detail: selection.detail,
-            },
-        );
-    }
-    // The value parser admits only auto, none and the profile names.
-    let Some(p) = profile::lookup(selector) else {
-        unreachable!("clap restricts --validation-profile to known names");
-    };
-    let forced = |detail: String| ProfileInfo {
-        name: Some(p.name),
-        reason: "forced",
-        detail,
-    };
-    let Some(t) = cert_type else {
-        let validator = Validator {
-            required_role_oids: p.required_role_oids.to_vec(),
-            accepted_types: p.accepts_types.to_vec(),
-            revocation: p.revocation_mode(config),
-            ..Validator::new(config, store)
-        };
-        return (
-            validator,
-            forced("type not detected; checked the profile's roles only".into()),
-        );
-    };
-    (p.validator(config, store, t), forced(String::new()))
-}
-
-fn report(
-    run: Run,
-    ee: &Certificate,
-    details: super::inspect::CertificateInfo,
-    result: &ValidationResult,
-) -> Report {
-    let mut warnings = run.warnings;
-    warnings.extend(result.warnings.iter().map(|w| Finding {
-        code: w.code.to_string(),
-        subject: w.subject.clone(),
-        message: w.message.clone(),
-    }));
-    let checked = !run.offline && run.revocation != RevocationMode::Disabled;
-    let complete = result.positions.last() == Some(&ChainPosition::Root);
+/// The chain as a tree: each certificate marked by whether an error concerns it, with
+/// what OCSP said of it.
+fn tree(v: &Verification) -> Vec<TreeRow> {
+    let result = &v.result;
     let failed = |i: usize| {
         let cn = result.chain[i].subject_cn();
         result.errors.iter().any(|e| e.subject == cn)
     };
-    let tree = super::chain_tree(
+    super::chain_tree(
         &result.chain,
-        complete,
-        run.at,
+        v.complete(),
+        v.at_ts,
         |i| {
             if failed(i) {
                 Line::status(Tone::Bad, "✗ ")
@@ -458,95 +179,13 @@ fn report(
             }
         },
         |i| {
-            result
-                .cert_results
+            v.chain
                 .get(i)
-                .and_then(|r| r.revocation.as_ref())
-                .map(|r| Line::text(" · ").and_line(ocsp_line(&revocation_entry(r))))
+                .and_then(|entry| entry.revocation.as_ref())
+                .map(|r| Line::text(" · ").and_line(ocsp_line(r)))
                 .unwrap_or_default()
         },
-    );
-    Report {
-        schema: SCHEMA,
-        source: run.source,
-        valid: result.valid,
-        environment: EnvironmentInfo {
-            name: run.env.as_str(),
-            production: run.env.is_prod(),
-            detection: run.detection,
-        },
-        at: run.at.to_string(),
-        at_ts: run.at,
-        reference: if run.at_given {
-            Reference::Given
-        } else {
-            Reference::Now
-        },
-        certificate_type: detect_certificate_type(ee).map(|t| t.to_string()),
-        profile: run.profile,
-        trust: run.trust,
-        revocation_checked: checked,
-        revocation_mode: mode_name(run.revocation),
-        insecure_transport: run.insecure,
-        ocsp: run.ocsp,
-        chain: result
-            .chain
-            .iter()
-            .zip(&result.positions)
-            .enumerate()
-            .map(|(i, (cert, position))| ChainEntry {
-                position: position.as_str(),
-                subject: cert.subject().to_string(),
-                common_name: cert.subject_cn().to_owned(),
-                not_after: cert.not_after().to_string(),
-                revocation: result
-                    .cert_results
-                    .get(i)
-                    .and_then(|r| r.revocation.as_ref())
-                    .map(revocation_entry),
-                pem: cert.to_pem(),
-            })
-            .collect(),
-        errors: result
-            .errors
-            .iter()
-            .map(|e| Finding {
-                code: e.code.to_string(),
-                subject: e.subject.clone(),
-                message: e.message.clone(),
-            })
-            .collect(),
-        warnings,
-        details,
-        tree,
-    }
-}
-
-fn revocation_entry(r: &RevocationResult) -> RevocationEntry {
-    RevocationEntry {
-        status: r.status.as_str(),
-        reason: r.reason.clone(),
-        responder_url: r.responder_url.clone(),
-        responder: r.responder_name.clone(),
-        authorization: r.authorization.as_ref().map(|a| match a {
-            ResponderAuthorization::Issuer => "issuer",
-            ResponderAuthorization::Delegate => "delegate",
-            ResponderAuthorization::TslListed { .. } => "tsl_listed",
-            ResponderAuthorization::SameTspDelegate { .. } => "same_tsp_delegate",
-            _ => "other",
-        }),
-        produced_at: r.produced_at.map(|t| t.to_string()),
-        revoked_at: r.revoked_at.map(|t| t.to_string()),
-        cached: r.from_cache,
-    }
-}
-
-fn mode_name(mode: RevocationMode) -> &'static str {
-    match mode {
-        RevocationMode::HardFail => "hard-fail",
-        RevocationMode::SoftFail => "soft-fail",
-        RevocationMode::Disabled => "disabled",
-    }
+    )
 }
 
 /// The terminal view: the end entity as `pki inspect` shows it, then the result, the

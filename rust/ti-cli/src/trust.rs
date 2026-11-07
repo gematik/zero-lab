@@ -30,7 +30,7 @@ use ti_client::trust::Warning;
 use crate::cli::GlobalArgs;
 use crate::error::CliError;
 use crate::http;
-use crate::output::{Output, warning};
+use crate::output::{self, Output};
 use crate::profile::Profile;
 
 /// A session for `global`'s profile and HTTP options; with `offline`, no request is ever
@@ -38,18 +38,18 @@ use crate::profile::Profile;
 pub fn session(global: &GlobalArgs, offline: bool, out: &Output) -> Result<Session, CliError> {
     let profile = Profile::resolve(global)?;
     let client = http::client(&global.net, out.verbosity());
-    Ok(Session::new(
-        &client,
-        &profile.dirs(),
-        offline,
-        |w| match w {
-            Warning::MemoryCache { dir, reason } => warning(format_args!(
-                "cache {}: {reason}; caching in memory only",
-                dir.display()
-            )),
-            Warning::Insecure => {
-                warning("-k: the TLS certificates of download servers are not checked");
-            }
-        },
-    )?)
+    Ok(Session::new(&client, &profile.dirs(), offline, warn)?)
+}
+
+/// A session's warning on stderr.
+pub fn warn(warning: Warning) {
+    match warning {
+        Warning::MemoryCache { dir, reason } => output::warning(format_args!(
+            "cache {}: {reason}; caching in memory only",
+            dir.display()
+        )),
+        Warning::Insecure => {
+            output::warning("-k: the TLS certificates of download servers are not checked");
+        }
+    }
 }

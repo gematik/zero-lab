@@ -18,15 +18,21 @@ ti-connector-client.workspace = true
 ti-idpd-client.workspace = true
 ti-directory-client.workspace = true
 # The transport of roots.json, the TSL and OCSP (`load`), and the OCSP media types; the
-# trust material of every environment, the non-prod presets fenced by TrustConfig::validate.
-ti-pki = { workspace = true, features = ["load", "os", "dangerous-nonprod"] }
-# The error of a PKCS#12 file that cannot be opened.
+# system clock (`os`); the trust material of every environment, the non-prod presets fenced by TrustConfig::validate;
+# a server's handshake signature on brainpool and RSA keys too (`peer`); the model the
+# operations return (`serde`).
+ti-pki = { workspace = true, features = ["load", "os", "dangerous-nonprod", "brainpool", "rsa", "serde"] }
+# Certificates and keys from PKCS#12 files.
 ti-pkcs12.workspace = true
+# The OIDs of a PKCS#12 file's keys and curves.
+der.workspace = true
 # The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
 ti-tls.workspace = true
 # Blocking HTTP without an async runtime; the TLS layer is ti-tls's rustls configuration
 # in a connector of our own (`unversioned` API, hence ureq pinned `~3.4`).
 ureq = { workspace = true, features = ["rustls-no-provider"] }
+# The proxy credentials of a CONNECT tunnel (`peer`).
+base64ct.workspace = true
 rustls.workspace = true
 rustls-pki-types = { workspace = true, features = ["std"] }
 # The operating system's trust store for a Konnektor without a `.kon` trust store.
@@ -40,7 +46,6 @@ serde_json.workspace = true
 sha2.workspace = true
 
 [dev-dependencies]
-base64ct.workspace = true
 traceability.workspace = true
 # The Konnektor e2e test checks an ExternalAuthenticate signature against the card's C.AUT;
 # the trust tests verify the production TSL of spec/tsl-detached, read from files (`os`).

@@ -187,14 +187,7 @@ impl TslTrust<'_> {
     }
 
     fn load(&self, certs: &[Certificate], at: ti_pki::Timestamp) -> Result<Loaded, CliError> {
-        let choice = match self.env {
-            Some(Env::Prod) => Environment::Prod,
-            Some(Env::Test) => Environment::Test,
-            Some(Env::Dev) => Environment::Dev,
-            Some(_) => Environment::Ref,
-            None => Environment::Auto,
-        };
-        let (env, _) = super::verify::environment(choice, certs, at)?;
+        let (env, _) = ti_client::pki::verify::environment(self.env, certs, at)?;
         let session = crate::trust::session(self.global, false, self.out)?;
         let (config, material) = session.load_env(env, false, None)?;
         self.out.verbose(
