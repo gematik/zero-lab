@@ -27,10 +27,11 @@
 //! production file, comes from `ti_connector_client::edit`, which other front ends
 //! share. Files are written atomically with mode 0600; secrets are never printed.
 
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use ti_client::connector::setup::{refuse, validate};
+use ti_client::connector::store::{self, KonFile};
 use ti_connector_client::Dotkon;
 use ti_connector_client::check::{Report, Status};
 use ti_connector_client::config::{self, CertificateView};
@@ -38,12 +39,11 @@ use ti_connector_client::edit::{self, NewConfig, NewCredentials};
 use ti_pki::{Certificate, Timestamp};
 
 use super::connector::emit;
-use super::connector_config::{self as configs, KonFile};
+use super::connector_config as configs;
 use crate::cli::{
     ConfigCredentialArgs, ConfigEditArgs, ConfigNewArgs, ConfigPinArgs, ConfigPinChoice,
     ConnectorArgs, GlobalArgs,
 };
-use crate::connector;
 use crate::error::{CliError, Exit};
 use crate::output::{Line, Output, Tone};
 use crate::prompt::{self, Ask};
@@ -80,7 +80,7 @@ fn new_with(
     out: &Output,
     ask: &mut dyn Ask,
 ) -> Result<Exit, CliError> {
-    let path = new_path(&args.name)?;
+    let path = store::new_path(&args.name)?;
     if path.exists() && !args.force {
         return Err(CliError::OutputExists(path.display().to_string()));
     }
@@ -93,8 +93,7 @@ fn new_with(
             break (json, None, true);
         }
         ask.say("Testing the configuration …");
-        let agent = ti_client::connector::agent_config(&global.net.net())?;
-        let report = configs::run_checks(&json, Some(0o600), connector_args, global, agent, out);
+        let report = configs::run_checks(&json, Some(0o600), connector_args, global, out)?;
         if report.status != Status::Fail {
             break (json, Some(report), true);
         }
@@ -105,7 +104,7 @@ fn new_with(
         }
     };
     if save {
-        write_kon(&path, &json, &mut warnings)?;
+        store::write(&path, &json, &mut warnings)?;
     }
     let name = path
         .file_stem()
@@ -274,25 +273,6 @@ fn call_context(config: &mut NewConfig, ask: &mut dyn Ask) -> Result<(), CliErro
 fn warn(ask: &mut dyn Ask, warnings: &mut Vec<String>, warning: &str) {
     ask.say(&format!("warning: {warning}"));
     warnings.push(warning.to_owned());
-}
-
-/// Where `config new NAME` writes: a path as given (`.kon` added), a bare name in the
-/// connectors directory.
-fn new_path(name: &str) -> Result<PathBuf, CliError> {
-    let with_ext = if Path::new(name).extension().is_some_and(|e| e == "kon") {
-        name.to_owned()
-    } else {
-        format!("{name}.kon")
-    };
-    let path = Path::new(&with_ext);
-    if path.is_absolute() || path.components().count() > 1 || with_ext == name {
-        return Ok(path.to_owned());
-    }
-    connector::connectors_dir()
-        .map(|dir| dir.join(&with_ext))
-        .ok_or_else(|| {
-            CliError::ConnectorConfig("no home directory for the connectors directory".into())
-        })
 }
 
 fn address(given: Option<&str>, ask: &mut dyn Ask) -> Result<String, CliError> {
@@ -466,7 +446,7 @@ fn pkcs12(
         None => PathBuf::from(ask.line("PKCS#12 file", "--p12", None)?),
     };
     let source = crate::input::read(&path)?;
-    if configs::mode(&path).is_some_and(|m| m & 0o077 != 0) {
+    if store::mode(&path).is_some_and(|m| m & 0o077 != 0) {
         warn(
             ask,
             warnings,
@@ -476,7 +456,7 @@ fn pkcs12(
             ),
         );
     }
-    let (mut p12, password) = loop {
+    let (p12, password) = loop {
         let password = match &args.p12_password_path {
             Some(file) => password_line(file)?,
             None => ask.secret("PKCS#12 password", "--p12-password-path")?,
@@ -498,7 +478,7 @@ fn pkcs12(
             }
         }
     };
-    let data = only_one_pair(&mut p12, &password, &source.name, args.p12_pair, ask)?
+    let data = only_one_pair(p12, &password, &source.name, args.p12_pair, ask)?
         .unwrap_or_else(|| source.bytes.clone());
     let client = config::client_certificate(&data, &password);
     if let Some(cert) = &client.certificate {
@@ -543,7 +523,7 @@ fn pkcs12(
 /// one (and the certificates without a key): the transport uses the first pair. `None`
 /// for a file with one.
 fn only_one_pair(
-    p12: &mut ti_pkcs12::Pkcs12,
+    p12: ti_pkcs12::Pkcs12,
     password: &str,
     name: &str,
     given: Option<usize>,
@@ -580,18 +560,7 @@ fn only_one_pair(
             )?
         }
     };
-    let pair = &pairs[chosen];
-    let certificate = p12.certificates[pair.certificate].clone();
-    let key = p12.keys[pair.key].clone();
-    let chain: Vec<_> = p12
-        .certificates
-        .iter()
-        .filter(|c| c.local_key_id.is_none())
-        .cloned()
-        .collect();
-    p12.certificates = std::iter::once(certificate).chain(chain).collect();
-    p12.keys = vec![key];
-    Ok(ti_client::pkcs12::encode(p12, password, name).map(Some)?)
+    Ok(ti_client::pkcs12::keep_pair(p12, chosen, password, name).map(Some)?)
 }
 
 /// The first line of a password file; empty is a password too (PKCS#12 allows it).
@@ -631,7 +600,7 @@ pub fn set(assignments: &[String], args: &ConnectorArgs, out: &Output) -> Result
     }
     let after = validate(&json)?;
     refuse(Some(&before), &after)?;
-    write_kon(&file.path, &json, &mut Vec::new())?;
+    store::write(&file.path, &json, &mut Vec::new())?;
     let report = SetReport {
         name: &file.name,
         path: file.path.display().to_string(),
@@ -695,7 +664,7 @@ fn edit_with(
         let credentials = credentials(&args.credentials, ask, &mut warnings)?;
         let json = edit::with_credentials(&file.json, &credentials).map_err(CliError::Arguments)?;
         refuse(Some(&before), &validate(&json)?)?;
-        write_kon(&file.path, &json, &mut warnings)?;
+        store::write(&file.path, &json, &mut warnings)?;
         true
     } else {
         if !ask.interactive() {
@@ -731,15 +700,14 @@ fn in_editor(
     warnings: &mut Vec<String>,
     editor: &str,
 ) -> Result<bool, CliError> {
-    let copy = sibling(&file.path, "edit");
-    write_private(&copy, &file.json).map_err(|e| output_error(&copy, &e))?;
+    let copy = store::editable_copy(&file.path, &file.json)?;
     let result = loop {
         if let Err(e) = run_editor(editor, &copy) {
             break Err(e);
         }
-        let json = match std::fs::read(&copy) {
+        let json = match store::read_copy(&copy) {
             Ok(json) => json,
-            Err(e) => break Err(output_error(&copy, &e)),
+            Err(e) => break Err(e.into()),
         };
         if json == file.json {
             break Ok(false);
@@ -752,7 +720,9 @@ fn in_editor(
             Err(e) => Some(e.to_string()),
         };
         let Some(problem) = problem else {
-            break write_kon(&file.path, &json, warnings).map(|()| true);
+            break store::write(&file.path, &json, warnings)
+                .map(|()| true)
+                .map_err(CliError::from);
         };
         ask.say(&problem);
         match ask.confirm("Edit again? (no discards the changes)", "", true) {
@@ -830,12 +800,7 @@ fn pin_with(
             dotkon.url
         )));
     }
-    let pins: Vec<Vec<u8>> = dotkon
-        .trust_store
-        .iter()
-        .filter(|der| !Certificate::from_der(der).is_ok_and(|c| c.is_ca()))
-        .cloned()
-        .collect();
+    let pins = edit::pins(&dotkon);
     let production = dotkon.env.is_some_and(ti_types::Env::is_prod);
     let Trust::Pin(der) = trust(
         &dotkon.url,
@@ -855,7 +820,7 @@ fn pin_with(
     if changed {
         let json = edit::with_pin(&file.json, &der).map_err(CliError::Arguments)?;
         validate(&json)?;
-        write_kon(&file.path, &json, &mut Vec::new())?;
+        store::write(&file.path, &json, &mut Vec::new())?;
     }
     let report = PinReport {
         name: &file.name,
@@ -895,82 +860,6 @@ fn pin_with(
 
 fn existing(name: Option<&str>) -> Result<KonFile, CliError> {
     configs::read(name, &ConnectorArgs::for_identity(None))
-}
-
-/// Parses `json` with every `${NAME}` set, so the file is judged without the
-/// environment it will run in.
-fn validate(json: &[u8]) -> Result<Dotkon, CliError> {
-    Dotkon::parse_with(json, |_| Some("MA==".to_owned()))
-        .map_err(|e| CliError::ConnectorConfig(e.to_string()))
-}
-
-/// Refuses what the change brings into a production file.
-fn refuse(before: Option<&Dotkon>, after: &Dotkon) -> Result<(), CliError> {
-    let refused = edit::refusals(before, after);
-    if refused.is_empty() {
-        Ok(())
-    } else {
-        Err(CliError::Arguments(format!(
-            "{}; nothing saved",
-            refused.join("; ")
-        )))
-    }
-}
-
-fn sibling(path: &Path, what: &str) -> PathBuf {
-    let name = path.file_name().unwrap_or_default().to_string_lossy();
-    path.with_file_name(format!(".{name}.{what}-{}", std::process::id()))
-}
-
-fn output_error(path: &Path, e: &std::io::Error) -> CliError {
-    CliError::Output(std::io::Error::new(
-        e.kind(),
-        format!("{}: {e}", path.display()),
-    ))
-}
-
-/// Writes a new file only its owner can read, failing if it exists.
-fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        options.mode(0o600);
-    }
-    let mut file = options.open(path)?;
-    file.write_all(bytes)?;
-    file.sync_all()
-}
-
-/// Replaces `path` atomically by a file with mode 0600, creating its directory with
-/// mode 0700; a directory others may read is a warning.
-fn write_kon(path: &Path, json: &[u8], warnings: &mut Vec<String>) -> Result<(), CliError> {
-    let dir = path
-        .parent()
-        .filter(|d| !d.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."));
-    if !dir.exists() {
-        std::fs::create_dir_all(dir).map_err(|e| output_error(dir, &e))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-                .map_err(|e| output_error(dir, &e))?;
-        }
-    } else if configs::mode(dir).is_some_and(|m| m & 0o077 != 0) {
-        warnings.push(format!(
-            "{}: others may list the directory; chmod 700 it",
-            dir.display()
-        ));
-    }
-    let temporary = sibling(path, "new");
-    let written = write_private(&temporary, json).and_then(|()| std::fs::rename(&temporary, path));
-    if let Err(e) = written {
-        let _ = std::fs::remove_file(&temporary);
-        return Err(output_error(path, &e));
-    }
-    Ok(())
 }
 
 #[cfg(test)]

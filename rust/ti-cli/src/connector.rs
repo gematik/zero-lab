@@ -26,109 +26,26 @@
 //! the cache, and one diagnostic line per call.
 
 use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use ti_client::block_on;
-use ti_client::connector::UreqTransport;
-use ti_connector_client::{
-    Connector, Dotkon, Request, Response, Timeouts, Transport, TransportError,
-};
-use ti_pki::Timestamp;
-use ti_pki::load::{Cache, CachePolicy};
+use ti_client::connector::store::{self, Source};
+use ti_client::connector::{UreqTransport, connect};
+use ti_connector_client::{Request, Response, Timeouts, Transport, TransportError};
 
 use crate::cli::{ConnectorArgs, GlobalArgs};
 use crate::error::CliError;
 use crate::output::{Output, diagnostic};
 
 /// A Konnektor ready for calls.
-pub struct Session {
-    /// The Konnektor.
-    pub connector: Connector<Logged<UreqTransport>>,
-    /// Its configuration.
-    pub dotkon: Dotkon,
-    /// The configuration's name, e.g. `default`.
-    pub name: String,
-    /// The profile in effect, whose state directory keeps comfort IDs.
-    pub profile: crate::profile::Profile,
-    /// `--comfort-user-id`.
-    pub comfort_user_id: Option<String>,
-}
+pub type Session = ti_client::connector::Session<Logged<UreqTransport>>;
 
-/// `$XDG_CONFIG_HOME/telematik/connectors`, or `~/.config/…` on every platform, as the
-/// Go `ti` has it.
-pub fn connectors_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .or_else(|| std::env::home_dir().map(|home| home.join(".config")))?;
-    Some(base.join("telematik").join("connectors"))
-}
-
-/// The file `connector use` writes the selected name to.
-pub fn active_file() -> Option<PathBuf> {
-    connectors_dir().map(|dir| dir.join("active"))
-}
-
-/// The configuration to use: `-c`/`TI_CONNECTOR_CONFIG`, else the active selection,
-/// else `default`; with where the choice came from.
-pub fn selected(explicit: Option<&str>) -> (String, &'static str) {
-    if let Some(name) = explicit.filter(|n| !n.is_empty()) {
-        return (name.to_owned(), "-c or TI_CONNECTOR_CONFIG");
+/// Where the configuration's name came from, as `-v` and the errors say it.
+fn source_text(source: Source) -> &'static str {
+    match source {
+        Source::Explicit => "-c or TI_CONNECTOR_CONFIG",
+        Source::Active => "the active selection",
+        Source::Default => "the default name",
     }
-    let active = active_file()
-        .and_then(|file| std::fs::read_to_string(file).ok())
-        .map(|name| name.trim().to_owned())
-        .filter(|name| !name.is_empty());
-    match active {
-        Some(name) => (name, "the active selection"),
-        None => ("default".to_owned(), "the default name"),
-    }
-}
-
-/// The file of configuration `name`: a path as given (with or without `.kon`), else
-/// `NAME`, `NAME.kon` in the current directory, then in [`connectors_dir`].
-///
-/// # Errors
-///
-/// [`CliError::ConnectorConfig`] naming where it looked.
-pub fn resolve(name: &str) -> Result<PathBuf, CliError> {
-    let name = match name.strip_prefix("~/") {
-        Some(rest) => std::env::home_dir().map_or_else(|| PathBuf::from(name), |h| h.join(rest)),
-        None => PathBuf::from(name),
-    };
-    let with_ext = |p: &Path| {
-        let mut p = p.as_os_str().to_owned();
-        p.push(".kon");
-        PathBuf::from(p)
-    };
-    let mut candidates = vec![name.clone(), with_ext(&name)];
-    let is_path = name.is_absolute() || name.components().count() > 1;
-    if !is_path && let Some(dir) = connectors_dir() {
-        candidates.push(with_ext(&dir.join(&name)));
-        candidates.push(dir.join(&name));
-    }
-    candidates.into_iter().find(|c| c.is_file()).ok_or_else(|| {
-        let searched = connectors_dir()
-            .filter(|_| !is_path)
-            .map(|dir| format!(" (searched the current directory and {})", dir.display()))
-            .unwrap_or_default();
-        CliError::ConnectorConfig(format!(
-            "connector configuration {:?} not found{searched}",
-            name.display().to_string()
-        ))
-    })
-}
-
-/// Reads and validates the `.kon` file at `path`.
-///
-/// # Errors
-///
-/// [`CliError::ConnectorConfig`].
-pub fn read(path: &Path) -> Result<Dotkon, CliError> {
-    let bytes = std::fs::read(path)
-        .map_err(|e| CliError::ConnectorConfig(format!("{}: {e}", path.display())))?;
-    Dotkon::parse(&bytes).map_err(|e| CliError::ConnectorConfig(format!("{}: {e}", path.display())))
 }
 
 /// Opens the selected Konnektor: reads its `.kon` file, sets up TLS from it, and loads
@@ -138,21 +55,25 @@ pub fn read(path: &Path) -> Result<Dotkon, CliError> {
 ///
 /// [`CliError::ConnectorConfig`] or [`CliError::Connector`].
 pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<Session, CliError> {
-    let (name, source) = selected(args.connector_config.as_deref());
-    let path = resolve(&name).map_err(|e| match (source, e) {
-        ("the active selection", CliError::ConnectorConfig(message)) => {
+    let (name, source) = store::selected(args.connector_config.as_deref());
+    let path = store::resolve(&name).map_err(|e| match (source, e) {
+        (Source::Active, ti_client::Error::ConnectorConfig(message)) => {
             CliError::ConnectorConfig(format!(
                 "{message}; it is the active selection, change it with `{} connector use`",
                 crate::BIN
             ))
         }
-        (_, e) => e,
+        (_, e) => e.into(),
     })?;
     out.verbose(
         1,
-        format_args!("connector {name} ({source}): {}", path.display()),
+        format_args!(
+            "connector {name} ({}): {}",
+            source_text(source),
+            path.display()
+        ),
     );
-    let dotkon = read(&path)?;
+    let dotkon = store::read(&path)?;
     if !dotkon.variables.is_empty() {
         out.verbose(
             1,
@@ -175,30 +96,22 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         ),
     );
     let transport = Logged::new(crate::http::client(&global.net, 0).connector(&dotkon)?, out);
-    let connector = if args.no_cache {
-        block_on(Connector::connect(&dotkon, transport, timeouts)).map_err(CliError::Connector)?
+    let cache = if args.no_cache {
+        None
     } else {
-        let store = crate::profile::open_cache(global)?;
-        let cache = Cache::new(store, Timestamp::now, CachePolicy::default());
-        let (connector, meta) = block_on(Connector::connect_cached(
-            &dotkon, transport, timeouts, &cache,
-        ))
-        .map_err(CliError::Connector)?;
-        out.verbose(1, format_args!("service directory from {:?}", meta.source));
-        connector
+        Some(crate::profile::open_cache(global)?)
     };
+    let (connector, meta) = connect(&dotkon, transport, timeouts, cache)?;
+    if let Some(meta) = meta {
+        out.verbose(1, format_args!("service directory from {:?}", meta.source));
+    }
     Ok(Session {
         connector,
         dotkon,
         name,
         comfort_user_id: args.comfort_user_id.clone(),
-        profile: crate::profile::Profile::resolve(global)?,
+        state_dir: crate::profile::Profile::resolve(global)?.state_dir,
     })
-}
-
-/// The proxy given with `-x`, if any.
-pub fn explicit_proxy(global: &GlobalArgs) -> Option<&str> {
-    global.net.proxy.as_deref().filter(|p| !p.is_empty())
 }
 
 /// The transport with a diagnostic per call: `-v` a line, `-vv` also the bodies, with
@@ -339,20 +252,5 @@ mod tests {
             short.contains("…[400 characters]</Data><Name>C.AUT</Name>"),
             "{short}"
         );
-    }
-
-    #[test]
-    fn paths_are_used_as_given() {
-        let dir = std::env::temp_dir().join(format!("ti-kon-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("praxis.kon");
-        std::fs::write(&file, "{}").unwrap();
-        assert_eq!(resolve(file.to_str().unwrap()).unwrap(), file);
-        assert_eq!(resolve(dir.join("praxis").to_str().unwrap()).unwrap(), file);
-        assert!(matches!(
-            resolve(dir.join("missing").to_str().unwrap()),
-            Err(CliError::ConnectorConfig(_))
-        ));
-        std::fs::remove_dir_all(dir).unwrap();
     }
 }

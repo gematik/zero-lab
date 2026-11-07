@@ -25,52 +25,23 @@
 //! test step by step. What is shown and how a step is judged comes from
 //! `ti_connector_client::{config, check}`, which other front ends share.
 
-use std::path::{Path, PathBuf};
-
 use serde::Serialize;
-use ti_client::connector::{TestOptions, UreqTransport, check_config};
-use ti_connector_client::Dotkon;
+use ti_client::connector::setup;
+use ti_client::connector::store::{self, KonFile};
 use ti_connector_client::Timeouts;
 use ti_connector_client::check::{Finding, Report, Status};
 use ti_connector_client::config::{CertificateView, ConfigView, Secret};
 
 use super::connector::emit;
 use crate::cli::{ConnectorArgs, GlobalArgs};
-use crate::connector::{self, Logged};
+use crate::connector::Logged;
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, Tone};
 
-/// A `.kon` file as read from disk.
-pub(super) struct KonFile {
-    pub name: String,
-    pub path: PathBuf,
-    pub json: Vec<u8>,
-    pub mode: Option<u32>,
-}
-
 /// The file of `name`, else of `-c`, else of the selected configuration.
 pub(super) fn read(name: Option<&str>, args: &ConnectorArgs) -> Result<KonFile, CliError> {
-    let (name, _) = connector::selected(name.or(args.connector_config.as_deref()));
-    let path = connector::resolve(&name)?;
-    let json = std::fs::read(&path)
-        .map_err(|e| CliError::ConnectorConfig(format!("{}: {e}", path.display())))?;
-    Ok(KonFile {
-        name,
-        mode: mode(&path),
-        path,
-        json,
-    })
-}
-
-#[cfg(unix)]
-pub(super) fn mode(path: &Path) -> Option<u32> {
-    use std::os::unix::fs::PermissionsExt as _;
-    std::fs::metadata(path).ok().map(|m| m.permissions().mode())
-}
-
-#[cfg(not(unix))]
-pub(super) fn mode(_: &Path) -> Option<u32> {
-    None
+    let (name, _) = store::selected(name.or(args.connector_config.as_deref()));
+    Ok(KonFile::read(&name)?)
 }
 
 // ---- show ---------------------------------------------------------------------------
@@ -88,9 +59,7 @@ struct ShowReport<'a> {
 /// `ti connector config show`.
 pub fn show(name: Option<&str>, args: &ConnectorArgs, out: &Output) -> Result<Exit, CliError> {
     let file = read(name, args)?;
-    let dotkon = Dotkon::parse(&file.json)
-        .map_err(|e| CliError::ConnectorConfig(format!("{}: {e}", file.path.display())))?;
-    let view = ConfigView::new(&dotkon, &file.json);
+    let view = setup::view(&file)?;
     let report = ShowReport {
         name: &file.name,
         path: file.path.display().to_string(),
@@ -243,8 +212,7 @@ pub fn test(
     out: &Output,
 ) -> Result<Exit, CliError> {
     let file = read(name, args)?;
-    let agent = ti_client::connector::agent_config(&global.net.net())?;
-    let report = run_checks(&file.json, file.mode, args, global, agent, out);
+    let report = run_checks(&file.json, file.mode, args, global, out)?;
     let exit = if report.status == Status::Fail {
         Exit::Invalid
     } else {
@@ -298,25 +266,15 @@ pub(super) fn run_checks(
     mode: Option<u32>,
     args: &ConnectorArgs,
     global: &GlobalArgs,
-    agent: ureq::config::ConfigBuilder<ureq::typestate::AgentScope>,
     out: &Output,
-) -> Report {
-    let options = TestOptions {
-        connect_timeout: global.net.connect_timeout,
-        timeouts: Timeouts {
-            short: args.connector_timeout,
-            long: args.card_timeout,
-        },
-        now: ti_pki::Timestamp::now(),
-        through_proxy: connector::explicit_proxy(global).is_some(),
+) -> Result<Report, CliError> {
+    let timeouts = Timeouts {
+        short: args.connector_timeout,
+        long: args.card_timeout,
     };
-    check_config(
-        json,
-        mode,
-        |name| std::env::var(name).ok(),
-        |dotkon| UreqTransport::new(dotkon, agent).map(|t| Logged::new(t, out)),
-        options,
-    )
+    Ok(setup::test(&global.net.net(), json, mode, timeouts, |t| {
+        Logged::new(t, out)
+    })?)
 }
 
 pub(super) fn finding_line(finding: &Finding) -> Line {

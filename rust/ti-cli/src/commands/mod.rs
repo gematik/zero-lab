@@ -61,8 +61,6 @@ use crate::output::document::{TreeRow, date, when};
 use crate::output::{Line, Output, Tone};
 use ti_client::trust::TrustInfo;
 
-pub(crate) use documents::card_user;
-
 /// Runs the parsed command line.
 pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {
     match crate::profile::Profile::resolve(&cli.global) {

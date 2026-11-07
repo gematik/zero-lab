@@ -90,7 +90,7 @@ fn from_connector(
     let session = connector::open(&args, global, out)?;
     let found =
         ti_client::block_on(session.connector.cards().find(card)).map_err(CliError::Connector)?;
-    let user = crate::commands::card_user(&session, &found)?;
+    let user = ti_client::connector::card_user(&session, &found)?;
     let certificates = session.connector.certificates().as_user(user.as_ref());
     let read =
         ti_client::block_on(certificates.read(&found.card_handle, Crypt::Ecc, &[CertRef::CAut]))

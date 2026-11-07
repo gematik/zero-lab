@@ -14,7 +14,8 @@ publish = false
 [dependencies]
 ti-cache.workspace = true
 ti-types.workspace = true
-ti-connector-client.workspace = true
+# The model the operations return (`serde`).
+ti-connector-client = { workspace = true, features = ["serde"] }
 ti-idpd-client.workspace = true
 ti-directory-client.workspace = true
 # The transport of roots.json, the TSL and OCSP (`load`), and the OCSP media types; the

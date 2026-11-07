@@ -33,6 +33,22 @@ pub enum Error {
     Setup(String),
     /// A Konnektor's `.kon` file, credentials or trust store, or a call to it.
     Connector(ti_connector_client::Error),
+    /// No usable `.kon` file: not found, not valid, or a value in it that cannot be used.
+    ConnectorConfig(String),
+    /// The Konnektor refused a call about a card of a type it restricts on its SOAP API
+    /// ([`ti_connector_client::is_restricted`]).
+    CardRestricted {
+        /// The card type, e.g. `SMC-KT`.
+        card_type: String,
+        /// The Konnektor's answer.
+        source: ti_connector_client::Error,
+    },
+    /// A PIN that does not fit the card, or none named where the card has several.
+    PinType(ti_connector_client::UnfitPin),
+    /// A change of a `.kon` file its rules refuse, or a value that cannot be set.
+    Refused(String),
+    /// A file could not be written; the error names it.
+    Write(std::io::Error),
     /// The input holds no certificate.
     NoCertificate {
         /// The input's name, e.g. its file.
@@ -101,8 +117,15 @@ impl fmt::Display for Error {
             | Error::IdentityNotFound(message)
             | Error::KeyUnsupported(message)
             | Error::Signing(message)
-            | Error::SignatureMalformed(message) => f.write_str(message),
+            | Error::SignatureMalformed(message)
+            | Error::ConnectorConfig(message)
+            | Error::Refused(message) => f.write_str(message),
             Error::Connector(error) => error.fmt(f),
+            Error::CardRestricted { card_type, source } => {
+                write!(f, "{card_type} card: {source}")
+            }
+            Error::PinType(error) => error.fmt(f),
+            Error::Write(error) => error.fmt(f),
             Error::NoCertificate { source_name } => {
                 write!(f, "{source_name}: no certificate found")
             }
@@ -125,7 +148,9 @@ impl fmt::Display for Error {
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Error::Connector(error) => Some(error),
+            Error::Connector(error) | Error::CardRestricted { source: error, .. } => Some(error),
+            Error::PinType(error) => Some(error),
+            Error::Write(error) => Some(error),
             Error::Certificate { source, .. } | Error::Trust(source) => Some(source),
             Error::Pkcs12 { source, .. } => Some(source),
             _ => None,

@@ -399,6 +399,13 @@ impl From<ti_client::Error> for CliError {
         match error {
             ti_client::Error::Setup(message) => CliError::HttpSetup(message),
             ti_client::Error::Connector(error) => CliError::Connector(error),
+            ti_client::Error::ConnectorConfig(message) => CliError::ConnectorConfig(message),
+            ti_client::Error::CardRestricted { card_type, source } => {
+                CliError::CardRestricted { card_type, source }
+            }
+            ti_client::Error::PinType(error) => CliError::PinType(error.to_string()),
+            ti_client::Error::Refused(message) => CliError::Arguments(message),
+            ti_client::Error::Write(error) => CliError::Output(error),
             ti_client::Error::NoCertificate { source_name } => {
                 CliError::NoCertificate { source_name }
             }

@@ -195,6 +195,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   TSL rollback, state and cache files, identities, signatures); it moved from `net`, which
   re-exports it. A session's warnings reach the front end through a closure, and what it
   reads and keeps through the client's `Observer`.
+- The operations of `ti`'s connector commands (TASK-250), moved from ti-cli:
+  `connector::store` (the `.kon` files found, listed, selected and written as the Go `ti`
+  keeps them), `connector::Session` and `connect` (a Konnektor with its service directory
+  through the cache), `card_user` (one user ID per HBA, kept in a private file of the
+  profile's state), `connector::cards` (info, services, cards, certificates, status,
+  identities, expiration, a card described, PIN verification and change, the Konnektor's
+  verdict on a certificate), `connector::documents` (sign, verify a signature, encrypt,
+  decrypt, comfort signature, export) and `connector::setup` (a `.kon` file shown, judged,
+  refused and tested). They return ti-connector-client's `model`; a wait at the card
+  terminal reaches the front end as a closure called with a `Wait`, documents come and go
+  as bytes, and no PIN passes through. `pkcs12::keep_pair` keeps one pair of a file.
+  `Error` gains `ConnectorConfig`, `CardRestricted`, `PinType`, `Refused` and `Write`.
 
 ### ti-tls
 

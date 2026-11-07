@@ -118,6 +118,37 @@ pub fn encode(p12: &Pkcs12, password: &str, name: &str) -> Result<Vec<u8>, Error
     })
 }
 
+/// `p12` with only its `chosen` pair of a certificate and its key ([`Pkcs12::pairs`]), and
+/// the certificates without a key, encoded with `password`: a reader that takes the
+/// first pair, as a Konnektor transport does, takes the chosen one.
+///
+/// # Panics
+///
+/// When `chosen` is not an index of `p12`'s pairs.
+///
+/// # Errors
+///
+/// As [`encode`].
+pub fn keep_pair(
+    mut p12: Pkcs12,
+    chosen: usize,
+    password: &str,
+    name: &str,
+) -> Result<Vec<u8>, Error> {
+    let pair = &p12.pairs()[chosen];
+    let certificate = p12.certificates[pair.certificate].clone();
+    let key = p12.keys[pair.key].clone();
+    let chain: Vec<_> = p12
+        .certificates
+        .iter()
+        .filter(|c| c.local_key_id.is_none())
+        .cloned()
+        .collect();
+    p12.certificates = std::iter::once(certificate).chain(chain).collect();
+    p12.keys = vec![key];
+    encode(&p12, password, name)
+}
+
 fn protection(bytes: &[u8], p12: &Pkcs12) -> Protection {
     let mut encryption: Vec<String> = Vec::new();
     for e in &p12.encryption {

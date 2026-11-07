@@ -34,8 +34,14 @@ command-line tool and the desktop app: the I/O the product clients leave to thei
   `pkcs12`, `identity` (the SMC-B or HBA identity and its JWS, its key in a file or on a
   card at the Konnektor), `idp_trust` (the IDP-Dienst's certificates against the TSL),
   `input` (certificates from PEM, DER or PKCS#12) and `peer` (the chain a TLS server
-  presents). What only a front end can give comes in as a parameter or a closure: a
-  password, the session's warnings, the opening of a session or a cache when it is needed.
+  presents). The connector commands' operations return ti-connector-client's model: `connector::store`
+  (the `.kon` files as the Go `ti` keeps them), `connector::Session` with `card_user` (one
+  user ID per HBA, kept in a private file of the profile's state), `connector::cards`,
+  `connector::documents` (documents in and out as bytes) and `connector::setup` (a `.kon`
+  file shown, judged and tested). What only a front end can give comes in as a parameter
+  or a closure: a password, the session's warnings, the opening of a session or a cache
+  when it is needed, what to show while a call waits at the card terminal. No PIN passes
+  through: the user enters it at the terminal.
 - `Error`: what the operations report, for a front end to map onto its own messages and
   exit codes.
 
