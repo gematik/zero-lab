@@ -30,18 +30,19 @@ SPECTRAL := "@stoplight/spectral-cli@6.11.1"
 default:
     @just --list
 
-# (internal) Run a command in every module; every failure counts, and all modules run.
+# (internal) Run a command in every module, or in those GO_MODULES names; every failure
+# counts, and all modules run.
 _each cmd:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
-    for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
+    for dir in ${GO_MODULES:-$(find . -name go.mod -exec dirname {} \; | sort)}; do
         echo "==> $dir"
         ( cd "$dir" && {{cmd}} ) || fail=1
     done
     exit $fail
 
-# (internal) Run a read-only check in every module, EACH_JOBS at a time, 1 for one after
+# (internal) Run a read-only check in every module (or GO_MODULES), EACH_JOBS at a time, 1 for one after
 # another. Output is held back per module and printed in module order, so a log reads the
 # same at any setting. Every go command already uses all cores itself, so more jobs than
 # this default gain little and starve timing-sensitive tests.
@@ -51,7 +52,7 @@ _each_check cmd:
     out=$(mktemp -d)
     trap 'rm -rf "$out"' EXIT
     dirs=() pids=()
-    for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
+    for dir in ${GO_MODULES:-$(find . -name go.mod -exec dirname {} \; | sort)}; do
         # bash 3.2 on macOS has no wait -n
         while [ "$(jobs -rp | wc -l)" -ge "${EACH_JOBS:-4}" ]; do sleep 0.1; done
         ( cd "$dir" && {{cmd}} ) > "$out/${#dirs[@]}" 2>&1 &
@@ -68,6 +69,36 @@ _each_check cmd:
 
 # --- Checks ---
 
+# While working on a branch: vet, staticcheck, golangci, modernize and the tests of the modules
+# it changed against BASE and of the modules that require them. Race tests, vuln, module
+# hygiene and the API lint stay in `just check`, which runs once, before the branch merges.
+check-changed base="main":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    merge_base=$(git merge-base {{base}} HEAD)
+    changed=$( { git diff --name-only --relative "$merge_base"; git ls-files --others --exclude-standard; } | sort -u)
+    all=$(find . -name go.mod -exec dirname {} \; | sed 's|^\./||' | sort)
+    hit=""
+    for mod in $all; do
+        if grep -q "^$mod/" <<<"$changed"; then hit="$hit $mod"; fi
+    done
+    # Modules that require a changed one, until none is added.
+    while :; do
+        more=""
+        for mod in $all; do
+            case " $hit " in *" $mod "*) continue ;; esac
+            for dep in $hit; do
+                if grep -q "zero-lab/go/$dep " "$mod/go.mod"; then more="$more $mod"; break; fi
+            done
+        done
+        [ -z "$more" ] && break
+        hit="$hit$more"
+    done
+    if [ -z "$hit" ]; then echo "==> no module changed"; exit 0; fi
+    echo "==> modules:$hit"
+    export GO_MODULES=$(for mod in $hit; do echo "./$mod"; done | sort)
+    just lint golangci modernize test
+
 # Every check of a change
 check: lint golangci modernize vuln mod-check test test-race api-lint
 
@@ -79,7 +110,7 @@ lint: (_each_check "go vet ./... && go run " + STATICCHECK + " ./...")
 golangci: (_each "go run " + GOLANGCI + " run ./... && go run " + GOLANGCI + " fmt --diff ./...")
 
 # Report outdated idioms; the generated fiat code keeps its generator's output
-modernize: (_each_check "found=$(go run " + MODERNIZE + " ./... 2>&1 | grep -vE '/bp256/fiat/|^exit status'); echo \"$found\"; [ -z \"$found\" ]")
+modernize: (_each_check "found=$(go run " + MODERNIZE + " ./... 2>&1 | grep -vE '/bp256/fiat/|^exit status|^go: downloading'); echo \"$found\"; [ -z \"$found\" ]")
 
 # Apply modernize's fixes, tests included
 modernize-fix: (_each "go run " + MODERNIZE + " -fix -test ./...; gofmt -w .")

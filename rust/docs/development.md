@@ -61,7 +61,8 @@ cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "ti-pki
 Checks come in two tiers:
 
 ```console
-just check        # tier 1, every change: fmt, clippy, doc, test, wasm32, core-deps, nonprod-absent, machete, deny, vet
+just check-changed  # while working: fmt, clippy, doc and tests of the crates a branch changed and their dependents; wasm32, nonprod-absent, the manifest checks and the scripts' tests only when their inputs changed
+just check        # tier 1, once per branch before it merges: fmt, clippy, doc, test, wasm32, core-deps, nonprod-absent, machete, deny, vet
 just check-full   # tier 1, before a release: check, the tests with default features, every feature combination, clippy on the CLI's cross targets (Docker)
 just audit        # tier 2, before tagging: advisories, vet, msrv, semver
 ```
@@ -487,7 +488,8 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `install-fast` | Install `ti` from the `local` profile (thin LTO, incremental): a change in ti-cli rebuilds in about 20 s instead of about 45 s |
 | `check-full` | Tier 1 before a release (`just release` runs it): `check`, `test-defaults`, `features`, `cli-check` |
 | `cli-check` | `cli-targets check`: clippy with `-D warnings` for the Linux (musl) and Windows targets of `ti` in their cross containers; needs Docker |
-| `check` | Tier 1: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `vet`, `brainpool-absent` for jwz and ti-jwz |
+| `check-changed [base]` | While working on a branch: the fast checks of the crates it changed against `base` (default `main`) and of their dependents; `wasm32`, `nonprod-absent`, the manifest checks (`unsafe-free`, `core-deps`, `jwz-backends`, `machete`, `deny`, `vet`) and `scripts-test` only when their inputs changed |
+| `check` | Tier 1, once per branch before it merges: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `vet`, `brainpool-absent` for jwz and ti-jwz |
 | `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer, ti-report, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
@@ -517,8 +519,8 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `nonprod-absent` | Prove ti-pki without `dangerous-nonprod` contains no non-prod trust material |
 | `audit` | Tier 2: `advisories`, `vet`, `msrv`, `semver` |
 | `vet-suggest` | Dependencies still awaiting a cargo vet audit |
-| `miri`, `mutants <crate>` | On demand: Miri (nightly), mutation testing |
-| `mutants-record <crate> [jobs]` | Measure a crate's mutation score on the committed tree into `mutation-scores.toml`; `jobs` > 1 tests that many mutants at once, each in a copy of the tree |
+| `miri`, `mutants <crate> [jobs]` | On demand: Miri (nightly), mutation testing (`jobs` as for `mutants-record`) |
+| `mutants-record <crate> [jobs]` | Measure a crate's mutation score on the committed tree into `mutation-scores.toml`; `jobs` mutants at once (default 4), each in a copy of `rust/` beside a link to `spec/`; `1` mutates the tree in place |
 | `mutants-gate <crate>…` | The recorded scores of crates about to be released: present, current, at least the threshold |
 | `coverage [<crate>…]` | Line coverage per crate (HTML in `target/coverage/html`) and the cited requirements whose code no test runs |
 | `versions` | Show the latest tag for every crate |

@@ -21,5 +21,5 @@ rust/scripts/__pycache__/coverage_gaps.cpython-314.pyc and mutation.cpython-314.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the .pyc files are removed from git and __pycache__ is ignored
+- [x] #1 the .pyc files are removed from git and __pycache__ is ignored
 <!-- AC:END -->

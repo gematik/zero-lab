@@ -42,12 +42,14 @@ pub(crate) fn verify(
     budget: &mut crate::Budget,
 ) -> Result<(), Error> {
     let oid = mac_data.mac.algorithm.oid;
+    // P12-012: the HMAC OIDs stand for their digests; some producers, go/pkcs12 up to
+    // v0.99.3 among them, wrote them in place of the digest OIDs.
     let check = match oid {
-        oids::SHA1 => check::<Sha1>,
-        oids::SHA224 => check::<Sha224>,
-        oids::SHA256 => check::<Sha256>,
-        oids::SHA384 => check::<Sha384>,
-        oids::SHA512 => check::<Sha512>,
+        oids::SHA1 | oids::HMAC_WITH_SHA1 => check::<Sha1>,
+        oids::SHA224 | oids::HMAC_WITH_SHA224 => check::<Sha224>,
+        oids::SHA256 | oids::HMAC_WITH_SHA256 => check::<Sha256>,
+        oids::SHA384 | oids::HMAC_WITH_SHA384 => check::<Sha384>,
+        oids::SHA512 | oids::HMAC_WITH_SHA512 => check::<Sha512>,
         // P12-012: any other MAC algorithm, PBMAC1 included, is unsupported.
         _ => return Err(Error::UnsupportedAlgorithm(oid)),
     };
@@ -68,11 +70,11 @@ pub(crate) fn verify(
 /// The digest name of a MAC algorithm, for display.
 pub(crate) fn name(oid: ObjectIdentifier) -> Option<&'static str> {
     Some(match oid {
-        oids::SHA1 => "SHA-1",
-        oids::SHA224 => "SHA-224",
-        oids::SHA256 => "SHA-256",
-        oids::SHA384 => "SHA-384",
-        oids::SHA512 => "SHA-512",
+        oids::SHA1 | oids::HMAC_WITH_SHA1 => "SHA-1",
+        oids::SHA224 | oids::HMAC_WITH_SHA224 => "SHA-224",
+        oids::SHA256 | oids::HMAC_WITH_SHA256 => "SHA-256",
+        oids::SHA384 | oids::HMAC_WITH_SHA384 => "SHA-384",
+        oids::SHA512 | oids::HMAC_WITH_SHA512 => "SHA-512",
         _ => return None,
     })
 }
@@ -171,7 +173,8 @@ mod tests {
         }
     }
 
-    /// P12-012: every listed MAC digest verifies, each with its own hash.
+    /// P12-012: every listed MAC digest verifies, each with its own hash, and so does
+    /// each HMAC OID in place of its digest.
     #[test]
     fn p12_012_every_listed_mac_digest_verifies() {
         let password = b"\0t\0e\0s\0t\0\0";
@@ -194,6 +197,26 @@ mod tests {
                 "SHA-512",
                 mac_data::<Sha512>(oids::SHA512, password, content),
             ),
+            (
+                "hmacWithSHA1",
+                mac_data::<Sha1>(oids::HMAC_WITH_SHA1, password, content),
+            ),
+            (
+                "hmacWithSHA224",
+                mac_data::<Sha224>(oids::HMAC_WITH_SHA224, password, content),
+            ),
+            (
+                "hmacWithSHA256",
+                mac_data::<Sha256>(oids::HMAC_WITH_SHA256, password, content),
+            ),
+            (
+                "hmacWithSHA384",
+                mac_data::<Sha384>(oids::HMAC_WITH_SHA384, password, content),
+            ),
+            (
+                "hmacWithSHA512",
+                mac_data::<Sha512>(oids::HMAC_WITH_SHA512, password, content),
+            ),
         ] {
             assert!(verify(&mac_data, password, content).is_ok(), "{name}");
             assert!(
@@ -215,9 +238,14 @@ mod tests {
             (oids::SHA256, "SHA-256"),
             (oids::SHA384, "SHA-384"),
             (oids::SHA512, "SHA-512"),
+            (oids::HMAC_WITH_SHA1, "SHA-1"),
+            (oids::HMAC_WITH_SHA224, "SHA-224"),
+            (oids::HMAC_WITH_SHA256, "SHA-256"),
+            (oids::HMAC_WITH_SHA384, "SHA-384"),
+            (oids::HMAC_WITH_SHA512, "SHA-512"),
         ] {
             assert_eq!(name(oid), Some(expected));
         }
-        assert_eq!(name(oids::HMAC_WITH_SHA256), None);
+        assert_eq!(name(oids::PBKDF2), None);
     }
 }

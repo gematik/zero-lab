@@ -255,7 +255,7 @@ criteria = "safe-to-deploy"
 [[exemptions.quick-xml]]
 version = "0.42.0"
 criteria = "safe-to-deploy"
-notes = "Parses hostile XML in two cores: the TSL (ti-pki) and SOAP responses (ti-connector-client). No imported audit covers this version and no own audit yet; both parsers are fuzzed. The largest open audit for the cores."
+notes = "Parses hostile XML in two cores: the TSL (ti-pki) and SOAP responses (ti-connector-client). No imported audit covers this version. Reviewed for TASK-256 (forbid(unsafe_code), no build script, no I/O beyond an uncalled Reader::from_file, memchr and serde only); the maintainer keeps it exempted rather than certifying it. Both parsers are fuzzed."
 
 [[exemptions.r-efi]]
 version = "6.0.0"

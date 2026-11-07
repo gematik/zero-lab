@@ -25,3 +25,13 @@ missed = 34
 timeout = 45
 unviable = 519
 score = 0.9472
+
+[scores."ti-pkcs12"]
+version = "0.1.0"
+commit = "f870478608caaa21bbdcfce8858897e0930502a4"
+date = "2026-11-07"
+caught = 161
+missed = 0
+timeout = 6
+unviable = 60
+score = 1.0

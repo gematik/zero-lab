@@ -11,3 +11,6 @@ secrets
 
 # Cargo build output of every Rust workspace: rust/, its fuzz crates, spikes
 target/
+
+# Bytecode of whichever Python last ran a script.
+__pycache__/

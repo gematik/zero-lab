@@ -52,8 +52,9 @@ backend that might be useful) does not get a task; it is written down when it be
 
 ## Working a task
 
-1. Find or create the task (`backlog task list --plain`, `backlog search <words>`); one
-   branch per task.
+1. Find or create the task (`backlog task list --plain`, `backlog search <words>`). A
+   branch carries several tasks (see [git and releases](git-and-releases.md#branches-and-pull-requests));
+   each is still started, noted and closed on its own, and its commits name it.
 2. Set it to `In Progress` when work starts; write the plan into the task for anything
    larger than a small fix.
 3. Record what you learned and decided as implementation notes while working, not at the
@@ -61,7 +62,7 @@ backend that might be useful) does not get a task; it is written down when it be
 4. Tick each acceptance criterion when it is met; adjust criteria only openly, with the
    reason in the notes.
 5. Set it to `Done` with a final summary (what changed, how it was verified, what was
-   left out and where it went) in the pull request that completes it.
+   left out and where it went) when the branch that completes it merges.
 
 Use the CLI for every change it supports, so files stay in the format it reads; edit a
 file by hand only for what the CLI cannot do (such as removing a dependency), keeping

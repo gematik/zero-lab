@@ -4,7 +4,7 @@ title: 'ti-pkcs12: HMAC OIDs as MAC digest aliases (P12-012)'
 status: In Progress
 assignee: []
 created_date: '2026-11-07T17:19:00Z'
-updated_date: '2026-11-07T17:54:00Z'
+updated_date: '2026-11-07T17:58:00Z'
 labels:
   - ti-pkcs12
   - spec
@@ -23,5 +23,11 @@ spec/pkcs12 P12-012 accepts the HMAC OIDs 1.2.840.113549.2.7-11 as aliases for t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 a MacData naming an hmacWith* OID verifies like its digest, with a test named after P12-012; go/pkcs12 checked for the same
+- [x] #1 a MacData naming an hmacWith* OID verifies like its digest, with a test named after P12-012; go/pkcs12 checked for the same
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+go/pkcs12 already accepted the aliases (internal/syntax/decrypt.go macHash); ti-pkcs12 mac::verify and mac::name now do too, p12_012 test covers all ten OIDs.
+<!-- SECTION:NOTES:END -->

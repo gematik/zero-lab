@@ -84,7 +84,10 @@ take `web`.
 - **TLSV-022** The end entity's extended key usage contains `id-kp-serverAuth`, and its key usage, where
   present, `digitalSignature` (`key_usage_mismatch`).
 - **TLSV-023** No certificate of the path below the anchor is signed with SHA-1, MD5 or SHA-224
-  (`signature_algorithm_not_allowed`), and each signature verifies (`signature_invalid`).
+  (`signature_algorithm_not_allowed`), and each signature verifies (`signature_invalid`). Under `web`, a
+  weakly signed certificate whose issuer the server did not send may also be `chain_incomplete`: a host
+  store that refuses the weak signature itself need not say whether that issuer is one of its anchors.
+  Either way the server is refused.
 - **TLSV-024** The reference identity is the host name the client connected to, never one the server
   supplied, in its ASCII form (an internationalized name as its A-labels). It is compared
   case-insensitively, without a trailing dot (RFC 9525 §6.3). A presented name may be a wildcard: `*` as
