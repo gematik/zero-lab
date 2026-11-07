@@ -224,6 +224,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Identity::from_card` (TASK-250): the identity of a card at the Konnektor, found, its
   card session's user and its ECC C.AUT read through the connector operations, in place of
   `Identity::on_card`, which left these calls to the front end.
+- `probe` (TASK-250): `ti probe`'s checks, moved from ti-cli: the endpoints of each
+  environment (`endpoints`, the built-in list or the front end's), the agents per TLS
+  profile (`Agents`, the `ti` one over the environment's verified TSL with OCSP), the probes
+  run in parallel with progress through a closure (`run`), what an answer means per kind
+  and path (`Status`, `available`), and the `Report` in the shape of the JSON. The live
+  table stays the front end's. `Error` gains `ProbeEndpoints`.
 
 ### ti-tls
 

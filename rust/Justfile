@@ -728,7 +728,7 @@ jwz-browser:
         CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
         cargo test --locked --target wasm32-unknown-unknown -p jwz -p ti-jwz --features ti-jwz/legacy --test browser
 
-# rustls brings ring into ti-cli and ti-connector-client for TLS, so this is a tree check
+# rustls brings ring into ti-client (and ti-cli through it) for TLS, so this is a tree check
 # for the jwz crates rather than a deny ban (ADR 0001, principle 8).
 # No openssl, ring, aws-lc or cryptoki under jwz or ti-jwz
 jwz-backends:

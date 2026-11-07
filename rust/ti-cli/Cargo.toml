@@ -22,7 +22,7 @@ ti-client.workspace = true
 # still fences production from TEST-ONLY material.
 ti-pkcs12 = { workspace = true, features = ["encode"] }
 ti-connector-client.workspace = true
-# base64url of the IDP's signed discovery document in `probe`.
+# The protected header `identity sign` shows, decoded from its JWS.
 base64ct.workspace = true
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod", "serde"] }
 # `identity sign`'s header parameters and algorithm names; the identity signs in ti-client.
@@ -34,11 +34,6 @@ ti-idpd-client.workspace = true
 # `directory login`: the FHIR-Directory's token paths over the same transport; the owner
 # login by card joins its steps with ti-idpd-client's flow here.
 ti-directory-client.workspace = true
-# rustls without a built-in provider (ring is passed in); the trust is ti-tls's.
-ureq = { workspace = true, features = ["rustls-no-provider"] }
-# Every https server verified under spec/pki-validation's web profile.
-ti-tls.workspace = true
-rustls.workspace = true
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "suggestions", "color", "env"] }
 clap_complete.workspace = true
 anstream.workspace = true
@@ -53,6 +48,8 @@ thiserror.workspace = true
 
 [dev-dependencies]
 traceability.workspace = true
+# The fakes' TLS servers: a Konnektor, and a host the probe refuses.
+rustls.workspace = true
 # The fakes' certificates and keys, read from PEM.
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
 sec1.workspace = true

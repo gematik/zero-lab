@@ -1638,10 +1638,8 @@ dependencies = [
  "ti-jwz",
  "ti-pkcs12",
  "ti-pki",
- "ti-tls",
  "ti-types",
  "traceability",
- "ureq",
 ]
 
 [[package]]

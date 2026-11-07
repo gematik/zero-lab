@@ -62,7 +62,10 @@ TLS peer verification of TI endpoints is the core's
 ti-tls supplies rustls `ServerCertVerifier`s: the `ti` profile validates the chain against
 the verified TSL with ti-pki's profile, algorithm and OCSP rules, the `web` profile an
 internet server's, and the `konnektor` profile a Konnektor by its `.kon` pins and CAs.
-ti-client's ureq agents only wire them in (TASK-97, TASK-249).
+ti-client's ureq agents only wire them in (TASK-97, TASK-249). ti-client also makes
+every transport from the `Client`'s settings and tells the front end about each request
+through the `Client`'s observer (downloads, OCSP) and watcher (the Konnektor, the
+IDP-Dienst, the FHIR-Directory), so no front end builds or wraps a transport (TASK-250).
 
 The `Transport` traits differ today (artefact-shaped get/post in ti-pki, request/response
 in ti-idpd-client and ti-directory-client, SOAP-shaped in ti-connector-client); whether a

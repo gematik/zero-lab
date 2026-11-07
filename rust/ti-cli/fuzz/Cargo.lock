@@ -1567,7 +1567,6 @@ dependencies = [
  "jiff",
  "jwz",
  "rpassword",
- "rustls",
  "serde",
  "serde_json",
  "sha2",
@@ -1579,9 +1578,7 @@ dependencies = [
  "ti-jwz",
  "ti-pkcs12",
  "ti-pki",
- "ti-tls",
  "ti-types",
- "ureq",
 ]
 
 [[package]]

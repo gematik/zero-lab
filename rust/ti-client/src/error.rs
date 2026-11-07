@@ -109,6 +109,9 @@ pub enum Error {
     /// The FHIR-Directory refused, did not answer, or answered outside the protocol; a
     /// failure of the IDP-Dienst flow inside it is [`Error::Idpd`].
     Directory(Box<ti_directory_client::Error>),
+    /// The endpoints a probe was given are not a JSON object of endpoint lists by
+    /// environment.
+    ProbeEndpoints(String),
 }
 
 impl fmt::Display for Error {
@@ -148,6 +151,7 @@ impl fmt::Display for Error {
             Error::Randomness => f.write_str("no system randomness"),
             Error::Idpd(error) => error.fmt(f),
             Error::Directory(error) => error.fmt(f),
+            Error::ProbeEndpoints(message) => write!(f, "probe endpoints: {message}"),
         }
     }
 }

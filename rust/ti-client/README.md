@@ -48,6 +48,9 @@ command-line tool and the desktop app: the I/O the product clients leave to thei
   or a closure: a password, the session's warnings, the opening of a session or a cache
   when it is needed, what to show while a call waits at the card terminal. No PIN passes
   through: the user enters it at the terminal.
+- `probe`: whether an environment's TI services answer from this host, each https endpoint
+  verified under the profile its data names, the probes run in parallel and reported to
+  the front end through a closure as they finish; the live table is the front end's.
 - `Error`: what the operations report, for a front end to map onto its own messages and
   exit codes.
 

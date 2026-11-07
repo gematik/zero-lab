@@ -438,6 +438,9 @@ impl From<ti_client::Error> for CliError {
             ti_client::Error::SignatureMalformed(message) => CliError::SignatureMalformed(message),
             ti_client::Error::Idpd(error) => CliError::Idpd(error),
             ti_client::Error::Directory(error) => CliError::Directory(error),
+            error @ ti_client::Error::ProbeEndpoints(_) => {
+                CliError::ConnectorConfig(error.to_string())
+            }
             ti_client::Error::Randomness => {
                 CliError::Output(io::Error::other("no system randomness"))
             }
