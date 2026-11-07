@@ -42,6 +42,7 @@ use jwz::jwa::SignatureAlgorithm;
 use jwz::jwk::{EcKey, Jwk, KeyMaterial, Secret};
 use jwz::keys::{AsyncSigner, JwsKey, Signature, Signer, SoftwareKey};
 use sha2::{Digest, Sha256};
+use ti_connector_client::types::{CertRef, Crypt};
 use ti_connector_client::{ComfortUserId, Connector, SignatureType, Transport};
 use ti_jwz::brainpool::BrainpoolEs256Key;
 use ti_pki::Certificate;
@@ -49,6 +50,8 @@ use ti_pki::cert_type::is_authentication;
 use zeroize::Zeroizing;
 
 use crate::block_on;
+use crate::connector;
+use crate::connector::session::call;
 use crate::error::Error;
 
 const ID_EC_PUBLIC_KEY: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
@@ -207,14 +210,49 @@ impl Identity {
         select(SourceKind::Pem, name, vec![(first, key)], certificates)
     }
 
-    /// The identity of a card's C.AUT `certificate`, which the card `handle` at the
-    /// Konnektor `connector` signs for, as `user`; `name` names it.
+    /// The identity of the card `identifier` names (a handle, an ICCSN or a Telematik-ID)
+    /// at the Konnektor of `session`: its ECC C.AUT, which the card signs for as the user
+    /// of its card session ([`connector::card_user`]). The identity keeps the Konnektor.
     ///
     /// # Errors
     ///
-    /// [`Error::IdentityNotFound`] for a certificate without the authentication key usage,
+    /// [`Error::Connector`] when the card or its certificate cannot be read,
+    /// [`Error::NoCertificate`] for a card without an ECC C.AUT, the errors of
+    /// [`connector::card_user`], and those of a certificate that does not serve as an
+    /// identity: [`Error::IdentityNotFound`] without the authentication key usage,
     /// [`Error::KeyUnsupported`] for a key that is not on brainpoolP256r1 or P-256.
-    pub fn on_card<T: Transport + 'static>(
+    pub fn from_card<T: Transport + 'static>(
+        session: connector::Session<T>,
+        identifier: &str,
+    ) -> Result<Identity, Error> {
+        let found = connector::find(&session, identifier)?;
+        let user = connector::card_user(&session, &found)?;
+        let certificates = session.connector.certificates().as_user(user.as_ref());
+        let read = call(certificates.read(&found.card_handle, Crypt::Ecc, &[CertRef::CAut]))?;
+        let name = format!(
+            "{} card {}",
+            session.name,
+            found.iccsn.as_deref().unwrap_or(&found.card_handle)
+        );
+        let certificate = read
+            .into_iter()
+            .next()
+            .map(|c| c.certificate)
+            .ok_or_else(|| Error::NoCertificate {
+                source_name: format!("C.AUT ECC of {name}"),
+            })?;
+        Identity::on_card(
+            name,
+            certificate,
+            session.connector,
+            found.card_handle,
+            user,
+        )
+    }
+
+    /// The identity of a card's C.AUT `certificate`, which the card `handle` at the
+    /// Konnektor `connector` signs for, as `user`; `name` names it.
+    fn on_card<T: Transport + 'static>(
         name: String,
         certificate: Certificate,
         connector: Connector<T>,

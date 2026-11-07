@@ -26,7 +26,6 @@
 //! ti-client, which holds it as one [`Identity`] whichever it was.
 
 use jwz::jwa::SignatureAlgorithm;
-use ti_connector_client::types::{CertRef, Crypt};
 
 pub use ti_client::identity::{Identity, SourceKind};
 
@@ -88,32 +87,7 @@ fn from_connector(
 ) -> Result<Identity, CliError> {
     let args = ConnectorArgs::for_identity(name);
     let session = connector::open(&args, global, out)?;
-    let found =
-        ti_client::block_on(session.connector.cards().find(card)).map_err(CliError::Connector)?;
-    let user = ti_client::connector::card_user(&session, &found)?;
-    let certificates = session.connector.certificates().as_user(user.as_ref());
-    let read =
-        ti_client::block_on(certificates.read(&found.card_handle, Crypt::Ecc, &[CertRef::CAut]))
-            .map_err(CliError::Connector)?;
-    let label = format!(
-        "{} card {}",
-        session.name,
-        found.iccsn.as_deref().unwrap_or(&found.card_handle)
-    );
-    let certificate = read
-        .into_iter()
-        .next()
-        .map(|c| c.certificate)
-        .ok_or_else(|| CliError::NoCertificate {
-            source_name: format!("C.AUT ECC of {label}"),
-        })?;
-    Ok(Identity::on_card(
-        label,
-        certificate,
-        session.connector,
-        found.card_handle,
-        user,
-    )?)
+    Ok(Identity::from_card(session, card)?)
 }
 
 #[cfg(test)]

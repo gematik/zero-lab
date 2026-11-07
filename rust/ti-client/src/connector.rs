@@ -59,7 +59,7 @@ use crate::net::{self, Net};
 pub mod cards;
 pub mod documents;
 mod probe;
-mod session;
+pub(crate) mod session;
 pub mod setup;
 pub mod store;
 
