@@ -27,6 +27,7 @@
 //! signed challenge, code. The card identity is a generated BP256R1 key.
 
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use jwz::crypto::Backend as _;
@@ -687,6 +688,54 @@ fn idpv_001_a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
         "the IDP's puk_disc_sig certificate is not trusted: revoked"
     );
     assert!(idp.posted.borrow().is_empty());
+}
+
+/// State behind an `Rc`, neither `Send` nor `Sync`, as a browser host over JS fetch holds it.
+struct Local<T>(Rc<T>);
+
+impl Transport for Local<FakeIdp> {
+    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
+        self.0.send(request).await
+    }
+}
+
+impl CertificateTrust for Local<Recording> {
+    async fn check(
+        &self,
+        which: IdpCertificate,
+        der: &[u8],
+        chain: &[Vec<u8>],
+    ) -> Result<Checked, String> {
+        self.0.check(which, der, chain).await
+    }
+}
+
+/// The traits carry no `Send` bound so that a browser host can implement them; nothing in
+/// the flow may ask for one.
+#[test]
+fn a_transport_and_trust_check_that_are_not_send_drive_the_flow() {
+    let idp = Local(Rc::new(FakeIdp::new(Behaviour::default())));
+    let (key, cert) = card();
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    let trust = Local(Rc::new(Recording {
+        answer: Ok(Checked::Verified),
+        seen: RefCell::new(Vec::new()),
+    }));
+    let done = ready(authenticator::authenticate(
+        &idp,
+        &Idp::new("https://idp.test"),
+        &identity,
+        AUTH_URL,
+        now,
+        &trust,
+    ))
+    .unwrap();
+    assert!(done.warnings.is_empty(), "{:?}", done.warnings);
+    assert_eq!(trust.0.seen.borrow().len(), 2);
+    assert_eq!(idp.0.posted.borrow().len(), 1);
 }
 
 /// A trust check that answers after being polled once without an answer, as one that

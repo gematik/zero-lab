@@ -574,4 +574,32 @@ mod tests {
             Err(CacheLookupError::UnexpectedNotModified)
         );
     }
+
+    /// Entries behind an `Rc`, neither `Send` nor `Sync`, as a browser host holds them.
+    #[derive(Default)]
+    struct Local(std::rc::Rc<core::cell::RefCell<HashMap<String, CacheEntry>>>);
+
+    impl CacheStore for Local {
+        async fn get(&self, key: &str) -> Result<Option<CacheEntry>, CacheError> {
+            Ok(self.0.borrow().get(key).cloned())
+        }
+
+        async fn put(&self, key: &str, entry: &CacheEntry) -> Result<(), CacheError> {
+            self.0.borrow_mut().insert(key.to_owned(), entry.clone());
+            Ok(())
+        }
+    }
+
+    /// The store carries no `Send` bound so that a browser host can implement it; nothing
+    /// on the way from a lookup to the origin and back may ask for one.
+    #[test]
+    fn a_store_that_is_not_send_drives_the_cache() {
+        let (store, clock, calls) = (Local::default(), TestClock(Cell::new(T0)), Cell::new(0));
+        let entries = std::rc::Rc::clone(&store.0);
+        let cache = Cache::new(store, || clock.now(), policy(false));
+        block_on(cache.get("k", origin(&calls, Ok(body(T0)), &clock))).unwrap();
+        let hit = block_on(cache.get("k", origin(&calls, Err("unused"), &clock))).unwrap();
+        assert_eq!((hit.meta.source, calls.get()), (Source::Cache, 1));
+        assert_eq!(entries.borrow()["k"].body, b"sds");
+    }
 }

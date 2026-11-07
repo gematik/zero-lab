@@ -1109,5 +1109,81 @@ mod tests {
                 ]
             );
         }
+
+        /// State behind an `Rc`, neither `Send` nor `Sync`, as a browser host over JS
+        /// fetch holds it.
+        #[cfg(feature = "load")]
+        struct Local<T>(std::rc::Rc<T>);
+
+        #[cfg(feature = "load")]
+        impl crate::load::Transport for Local<crate::load::MockTransport> {
+            async fn get(
+                &self,
+                req: &crate::load::ArtifactRequest<'_>,
+            ) -> Result<crate::load::ArtifactResponse, crate::load::TransportError> {
+                self.0.get(req).await
+            }
+
+            async fn post(
+                &self,
+                req: &crate::load::PostRequest<'_>,
+            ) -> Result<Vec<u8>, crate::load::TransportError> {
+                self.0.post(req).await
+            }
+        }
+
+        #[cfg(feature = "load")]
+        impl crate::load::CacheStore for Local<crate::load::MemoryCacheStore> {
+            async fn get(
+                &self,
+                key: &str,
+            ) -> Result<Option<crate::load::CacheEntry>, crate::load::CacheError> {
+                self.0.get(key).await
+            }
+
+            async fn put(
+                &self,
+                key: &str,
+                entry: &crate::load::CacheEntry,
+            ) -> Result<(), crate::load::CacheError> {
+                self.0.put(key, entry).await
+            }
+        }
+
+        /// The transport, the store and the revocation checker carry no `Send` bound so
+        /// that a browser host can implement them; neither validation nor the OCSP checker
+        /// may ask for one.
+        #[cfg(feature = "load")]
+        #[test]
+        fn a_transport_store_and_checker_that_are_not_send_drive_validation() {
+            use std::rc::Rc;
+
+            use crate::load::{MemoryCacheStore, MockTransport};
+            use crate::ocsp::OcspChecker;
+
+            let pki = TestPki::new();
+            let config = TrustConfig::for_anchor(pki.rca1.der().to_vec());
+            let transport = Rc::new(MockTransport::posting([
+                Ok(include_bytes!("../tests/pki/ocsp/good.der").to_vec()),
+                Ok(include_bytes!("../tests/pki/ocsp/issuer-signed.der").to_vec()),
+            ]));
+            let store = Rc::new(MemoryCacheStore::new());
+            let checker = |transport: &Rc<MockTransport>| {
+                OcspChecker::new(&config, Local(Rc::clone(transport)), || TestPki::NOW)
+                    .with_responder_url("http://ocsp.test/")
+                    .with_store(Local(Rc::clone(&store)))
+            };
+            let certs = [pki.ee_arzt.clone(), pki.sub_ca_hba.clone()];
+            let v = validator(&pki, RevocationMode::HardFail);
+            let result = block_on(v.validate(&certs, TestPki::NOW, &checker(&transport))).unwrap();
+            assert!(result.valid, "{:?}", result.errors);
+            assert_eq!(transport.posts().len(), 2);
+
+            // Another checker over the same store: the responses come from the store.
+            let silent = Rc::new(MockTransport::posting([]));
+            let result = block_on(v.validate(&certs, TestPki::NOW, &checker(&silent))).unwrap();
+            assert!(result.valid, "{:?}", result.errors);
+            assert_eq!(silent.posts().len(), 0);
+        }
     }
 }

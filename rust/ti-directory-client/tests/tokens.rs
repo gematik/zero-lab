@@ -27,6 +27,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 use ti_directory_client::Error;
 use ti_directory_client::http::{Method, Request, Response, Transport, TransportError};
@@ -127,6 +128,25 @@ impl Transport for Scripted {
     }
 }
 
+/// State behind an `Rc`, neither `Send` nor `Sync`, as a browser host over JS fetch holds it.
+struct Local<T>(Rc<T>);
+
+impl Transport for Local<Scripted> {
+    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
+        self.0.send(request).await
+    }
+}
+
+impl Tokens for Local<Counted> {
+    async fn access_token(&self) -> Result<String, Error> {
+        self.0.access_token().await
+    }
+
+    async fn refused(&self, token: &str) {
+        self.0.refused(token).await;
+    }
+}
+
 fn search() -> Request {
     Request {
         method: Method::Get,
@@ -195,4 +215,16 @@ fn without_a_token_nothing_is_sent() {
         matches!(error, Error::Transport { what: "search", .. }),
         "{error}"
     );
+}
+
+/// The traits carry no `Send` bound so that a browser host can implement them; nothing on
+/// the way from the request to the retry may ask for one.
+#[test]
+fn a_transport_and_tokens_that_are_not_send_drive_a_directory_request() {
+    let tokens = Local(Rc::new(Counted::default()));
+    let transport = Local(Rc::new(Scripted::new(&[401, 200])));
+    let response = ready(tokens::send(&transport, &tokens, "search", &search())).unwrap();
+    assert_eq!(response.status, 200);
+    assert_eq!(transport.0.bearers(), ["Bearer token-1", "Bearer token-2"]);
+    assert_eq!(*tokens.0.refused.borrow(), ["token-1"]);
 }

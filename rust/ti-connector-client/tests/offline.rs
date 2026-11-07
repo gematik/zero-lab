@@ -27,14 +27,15 @@
 mod support;
 
 use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use futures_lite::future::block_on;
-use ti_cache::{Cache, CachePolicy, MemoryCacheStore, Source};
+use ti_cache::{Cache, CacheEntry, CacheError, CachePolicy, CacheStore, MemoryCacheStore, Source};
 use ti_connector_client::types::CardType;
 use ti_connector_client::{
-    Connector, DiscoveryError, Dotkon, Error, Method, Response, ServiceDirectory, Timeouts,
-    TransportError,
+    Connector, DiscoveryError, Dotkon, Error, Method, Request, Response, ServiceDirectory,
+    Timeouts, Transport, TransportError,
 };
 use ti_types::Timestamp;
 
@@ -273,4 +274,50 @@ fn the_directory_is_cached_and_revalidated() {
             .resolve("EventService", &["7.2"])
             .is_ok()
     );
+}
+
+/// State behind an `Rc`, neither `Send` nor `Sync`, as a browser host over JS fetch holds it.
+struct Local<T>(Rc<T>);
+
+impl Transport for Local<Scripted> {
+    async fn send(&self, request: &Request<'_>) -> Result<Response, TransportError> {
+        self.0.send(request).await
+    }
+}
+
+impl CacheStore for Local<MemoryCacheStore> {
+    async fn get(&self, key: &str) -> Result<Option<CacheEntry>, CacheError> {
+        self.0.get(key).await
+    }
+
+    async fn put(&self, key: &str, entry: &CacheEntry) -> Result<(), CacheError> {
+        self.0.put(key, entry).await
+    }
+}
+
+/// The transport and the store carry no `Send` bound so that a browser host can implement
+/// them; neither the service directory nor a call may ask for one.
+#[test]
+fn a_transport_and_store_that_are_not_send_drive_the_service_directory_and_a_call() {
+    let scripted = Rc::new(Scripted::new([ok(200, &go_sds()), ok(200, GO_CARDS)]));
+    let cache = Cache::new(
+        Local(Rc::new(MemoryCacheStore::new())),
+        || Timestamp(1_000_000),
+        CachePolicy::default(),
+    );
+    let connect = || {
+        block_on(Connector::connect_cached(
+            &dotkon(),
+            Local(Rc::clone(&scripted)),
+            TIMEOUTS,
+            &cache,
+        ))
+        .unwrap()
+    };
+    assert_eq!(connect().1.source, Source::Http);
+    let (connector, meta) = connect();
+    assert_eq!(meta.source, Source::Cache);
+    let cards = block_on(connector.cards().list(&[])).unwrap();
+    assert_eq!(cards.len(), 2);
+    assert_eq!(scripted.seen.borrow().len(), 2);
 }

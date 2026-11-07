@@ -24,7 +24,9 @@
 //! The verifiers as rustls sees them, and what no corpus file can hold: the handshake
 //! parameters of `testdata/handshake.json`, the reuse of verdicts and the refusals.
 
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -99,6 +101,25 @@ fn web(ocsp: Option<&str>) -> WebVerifier<Counting> {
             asked: AtomicUsize::new(0),
         },
     )
+}
+
+/// A network behind an `Rc`, neither `Send` nor `Sync`, as a browser host over JS fetch
+/// holds it.
+struct Local {
+    ocsp: Vec<u8>,
+    asked: Rc<Cell<usize>>,
+}
+
+impl Fetch for Local {
+    async fn ocsp(&self, _: &str, _: &[u8]) -> Option<Vec<u8>> {
+        self.asked.set(self.asked.get() + 1);
+        Some(self.ocsp.clone())
+    }
+
+    async fn crl(&self, _: &str) -> Option<Vec<u8>> {
+        self.asked.set(self.asked.get() + 1);
+        None
+    }
 }
 
 type TiResponder = OcspChecker<MockTransport, Box<dyn Fn() -> Timestamp + Send + Sync>>;
@@ -245,6 +266,25 @@ fn tlsv_050_a_web_verdict_is_reused_until_its_status_is_too_old() {
 
 fn verifier_asked(verifier: &WebVerifier<Counting>) -> usize {
     verifier.fetch().asked.load(Ordering::Relaxed)
+}
+
+/// `Fetch` carries no `Send` bound so that a browser host can implement it; the web check
+/// may not ask for one on its way to the responder. Only rustls's verifier needs `Send`.
+#[test]
+fn a_fetch_that_is_not_send_drives_the_web_check() {
+    let fetch = Local {
+        ocsp: bytes("ocsp/web-p256-good.der"),
+        asked: Rc::default(),
+    };
+    let verdict = futures_lite::future::block_on(WebCheck::new([der("web-root.pem")]).verify(
+        &[der("web-p256.pem"), der("web-ca.pem")],
+        "www.web.test",
+        None,
+        Timestamp(AT),
+        &fetch,
+    ));
+    assert!(verdict.is_valid(), "{}", verdict.detail);
+    assert_eq!(fetch.asked.get(), 1);
 }
 
 /// TLSV-050: a refusal is never reused; every handshake asks again.
