@@ -447,6 +447,26 @@ func TestOCSPResultsAreCachedWithinTheirBounds(t *testing.T) {
 	}
 }
 
+func TestOCSPCachesAreBoundedAndDropExpiredEntriesOnInsert(t *testing.T) {
+	at := func(seconds int64) time.Time { return time.Unix(seconds, 0) }
+	end := func(until time.Time) time.Time { return until }
+	m := map[string]time.Time{}
+	putBounded(m, "a", at(300), at(0), 2, end)
+	putBounded(m, "b", at(100), at(0), 2, end)
+	putBounded(m, "c", at(200), at(0), 2, end)
+	if _, ok := m["b"]; ok || len(m) != 2 {
+		t.Errorf("at the bound, the entry ending first makes room: %v", m)
+	}
+	putBounded(m, "a", at(350), at(0), 2, end)
+	if len(m) != 2 || !m["a"].Equal(at(350)) || !m["c"].Equal(at(200)) {
+		t.Errorf("replacing a kept key evicts nothing: %v", m)
+	}
+	putBounded(m, "d", at(400), at(250), 2, end)
+	if _, ok := m["c"]; ok || len(m) != 2 {
+		t.Errorf("the expired entry went on insert: %v", m)
+	}
+}
+
 func TestOCSPACertificateWithoutAResponderIsUnknown(t *testing.T) {
 	now := time.Unix(ocspNow, 0)
 	leaf := *pkiCert(t, "ee-arzt.pem")

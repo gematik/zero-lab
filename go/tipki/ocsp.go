@@ -51,6 +51,11 @@ const (
 	OCSPStatusPause = 300 * time.Second
 	// OCSPCacheTTL is how long a good or revoked result is reused, at most until nextUpdate.
 	OCSPCacheTTL = time.Hour
+	// OCSPCacheLimit bounds the results an [OCSPChecker] keeps: more certificates than a host checks within
+	// an hour, few enough that one meeting endless certificates does not grow without limit.
+	OCSPCacheLimit = 4096
+	// OCSPRestingLimit bounds the responders an [OCSPChecker] remembers as resting.
+	OCSPRestingLimit = 1024
 	// MaxSuppliedSignerStatusAge is how long a signer status in a bundle counts (TSLDET-021).
 	MaxSuppliedSignerStatusAge = 2 * time.Hour
 
@@ -805,7 +810,8 @@ type OCSPTransport interface {
 // OCSPChecker queries a certificate's responder through a transport and verifies the answer. A status error,
 // which is a failed transport or an answer other than successful, is repeated [OCSPStatusRetries] times;
 // after that the responder rests for [OCSPStatusPause]. Good and revoked results are reused for CacheTTL, at
-// most until the response's nextUpdate; unknown and errors never are. Results live in memory only.
+// most until the response's nextUpdate; unknown and errors never are. Results live in memory only, at most
+// [OCSPCacheLimit] of them, and at most [OCSPRestingLimit] responders rest at once.
 type OCSPChecker struct {
 	Transport OCSPTransport
 	// Now is the clock.
@@ -881,7 +887,8 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate,
 		if c.cache == nil {
 			c.cache = make(map[string]cachedResult)
 		}
-		c.cache[string(body)] = cachedResult{*result, until}
+		putBounded(c.cache, string(body), cachedResult{*result, until}, check.Now, OCSPCacheLimit,
+			func(entry cachedResult) time.Time { return entry.until })
 		c.mu.Unlock()
 	}
 	return result, nil
@@ -957,11 +964,33 @@ func (c *OCSPChecker) query(ctx context.Context, url string, body []byte, cert *
 	if c.resting == nil {
 		c.resting = make(map[string]time.Time)
 	}
-	c.resting[url] = until
+	putBounded(c.resting, url, until, c.Now(), OCSPRestingLimit, func(until time.Time) time.Time { return until })
 	c.mu.Unlock()
 	failure.Message = fmt.Sprintf("%s (%d attempts; resting until %s)", failure.Message, OCSPStatusRetries+1, until.UTC().Format(time.RFC3339))
 	failure.Subject = cert.Subject.CommonName
 	return nil, failure
+}
+
+// putBounded stores value under key after dropping the entries over at now. At limit, the entry that ends
+// first makes room: it has the least use left, and a responder evicted from resting is only asked early.
+func putBounded[V any](m map[string]V, key string, value V, now time.Time, limit int, end func(V) time.Time) {
+	for k, v := range m {
+		if !end(v).After(now) {
+			delete(m, k)
+		}
+	}
+	if _, ok := m[key]; !ok && len(m) >= limit {
+		var first string
+		var firstEnd time.Time
+		found := false
+		for k, v := range m {
+			if e := end(v); !found || e.Before(firstEnd) {
+				first, firstEnd, found = k, e, true
+			}
+		}
+		delete(m, first)
+	}
+	m[key] = value
 }
 
 // RevocationFinding is what [ApplyRevocation] makes of an outcome.
