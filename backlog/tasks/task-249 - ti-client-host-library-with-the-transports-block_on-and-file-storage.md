@@ -1,9 +1,10 @@
 ---
 id: TASK-249
 title: 'ti-client: host library with the transports, block_on and file storage'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
+updated_date: '2026-11-07T19:01:00Z'
 labels:
   - ti-client
   - architecture

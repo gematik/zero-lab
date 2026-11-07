@@ -1,9 +1,10 @@
 ---
 id: TASK-244
 title: 'Rust: time as a function, ti-types only plain types'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T15:52:00Z'
+updated_date: '2026-11-07T19:01:00Z'
 labels:
   - ti-types
   - architecture

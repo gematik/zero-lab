@@ -1,9 +1,10 @@
 ---
 id: TASK-245
 title: 'ti-idpd: async transport'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T15:52:00Z'
+updated_date: '2026-11-07T19:01:00Z'
 labels:
   - ti-idpd
   - architecture

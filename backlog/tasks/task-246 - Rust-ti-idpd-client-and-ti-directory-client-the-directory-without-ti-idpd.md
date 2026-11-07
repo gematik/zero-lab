@@ -1,9 +1,10 @@
 ---
 id: TASK-246
 title: 'Rust: ti-idpd-client and ti-directory-client, the directory without ti-idpd'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
+updated_date: '2026-11-07T19:01:00Z'
 labels:
   - ti-idpd
   - ti-directory

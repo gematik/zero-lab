@@ -1,10 +1,10 @@
 ---
 id: TASK-247
 title: 'ti-pki: offline certificate check and certificate formatting from ti-report'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
-updated_date: '2026-11-07T16:03:00Z'
+updated_date: '2026-11-07T19:01:00Z'
 labels:
   - ti-pki
   - ti-report
