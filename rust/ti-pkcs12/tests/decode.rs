@@ -282,6 +282,26 @@ fn p12_010_wrong_passwords_are_told_apart_from_broken_files() {
         decode(&read("no-mac.p12"), "wrong"),
         Err(Error::DecryptFailed)
     ));
+    for (name, password) in [("modern.p12", "wrong"), ("no-mac.p12", "wrong")] {
+        let err = decode(&read(name), password).unwrap_err();
+        assert!(err.is_wrong_password(), "{name}: {err}");
+    }
+    for name in ["truncated.p12", "not-pkcs12.p12"] {
+        let err = decode(&read(name), "test1234").unwrap_err();
+        assert!(!err.is_wrong_password(), "{name}: {err}");
+    }
+}
+
+/// `is_pkcs12` tells a PFX from other input by its first bytes, under a length of
+/// any form: short, long, or BER's indefinite one.
+#[test]
+fn is_pkcs12_reads_every_length_form() {
+    let version_3 = [0x02, 0x01, 0x03];
+    let pfx = |length: &[u8]| [&[0x30][..], length, &version_3].concat();
+    assert!(is_pkcs12(&pfx(&[0x05])), "short");
+    assert!(is_pkcs12(&pfx(&[0x81, 0x90])), "long");
+    assert!(is_pkcs12(&pfx(&[0x80])), "indefinite");
+    assert!(!is_pkcs12(&[0x30, 0x05, 0x02, 0x01, 0x02]), "version 2");
 }
 
 /// What a file is protected with is reported: an API property, no rule.

@@ -106,7 +106,7 @@ func (c *WebCheck) Verify(ctx context.Context, chain [][]byte, host string, stap
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	})
 	if err != nil {
-		return pathRefusal(err, leaf, sent, now)
+		return pathRefusal(err, leaf, sent, c.roots, now)
 	}
 	firstWeak := weakIn(paths[0])
 	paths = slices.DeleteFunc(paths, func(path []*x509.Certificate) bool { return weakIn(path) != "" })
@@ -162,7 +162,9 @@ func inadmissibleCA(path []*x509.Certificate) *x509.Certificate {
 
 // pathRefusal names what kept crypto/x509 from building a path. An unknown authority hides why each
 // candidate failed, so the presented certificates are walked by name from the end entity to find it.
-func pathRefusal(err error, leaf *x509.Certificate, sent []*x509.Certificate, now time.Time) Verdict {
+// A weak signature on the way decides only once the walk reaches an anchor (TLSV-020 before TLSV-023);
+// crypto/x509 refuses the weak link itself, so the anchor is asked of the first certificate above it.
+func pathRefusal(err error, leaf *x509.Certificate, sent []*x509.Certificate, roots *x509.CertPool, now time.Time) Verdict {
 	if invalid, ok := errors.AsType[x509.CertificateInvalidError](err); ok {
 		switch invalid.Reason {
 		case x509.Expired:
@@ -179,17 +181,27 @@ func pathRefusal(err error, leaf *x509.Certificate, sent []*x509.Certificate, no
 		return refuse(Invalid, err.Error())
 	}
 	visited := []*x509.Certificate{leaf}
+	weakLink := ""
 	for cert := leaf; ; {
-		if name, weak := tipki.WeakSignature(cert); weak {
-			return refuse(SignatureAlgorithmNotAllowed, fmt.Sprintf("%q is signed with %s", cert.Subject.CommonName, name))
+		name, weak := tipki.WeakSignature(cert)
+		if weak && weakLink == "" {
+			weakLink = fmt.Sprintf("%q is signed with %s", cert.Subject.CommonName, name)
 		}
 		index := slices.IndexFunc(sent, func(candidate *x509.Certificate) bool {
 			return string(candidate.RawSubject) == string(cert.RawIssuer) && !slices.Contains(visited, candidate)
 		})
 		if index < 0 {
+			if weakLink != "" && !weak && reachesAnchor(cert, roots, now) {
+				return refuse(SignatureAlgorithmNotAllowed, weakLink)
+			}
 			return refuse(ChainIncomplete, err.Error())
 		}
 		parent := sent[index]
+		if weak {
+			visited = append(visited, parent)
+			cert = parent
+			continue
+		}
 		if signatureErr := cert.CheckSignatureFrom(parent); signatureErr != nil {
 			switch {
 			case errors.Is(signatureErr, x509.ErrUnsupportedAlgorithm):
@@ -211,6 +223,16 @@ func pathRefusal(err error, leaf *x509.Certificate, sent []*x509.Certificate, no
 		visited = append(visited, parent)
 		cert = parent
 	}
+}
+
+// reachesAnchor reports whether crypto/x509 builds a path from cert to one of roots.
+func reachesAnchor(cert *x509.Certificate, roots *x509.CertPool, now time.Time) bool {
+	_, err := cert.Verify(x509.VerifyOptions{
+		Roots:       roots,
+		CurrentTime: now,
+		KeyUsages:   []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	})
+	return err == nil
 }
 
 func validityRefusal(cert *x509.Certificate, now time.Time, err error) Verdict {

@@ -226,3 +226,56 @@ fn implicit_octets(value: &Any) -> der::Result<Vec<u8>> {
     }
     Ok(octets)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bytes(hex: &str) -> Vec<u8> {
+        (0..hex.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    /// MacData without iterations: a SHA-256 DigestInfo of zeros and an 8-byte salt.
+    const MAC_DATA_WITHOUT_ITERATIONS: &str = concat!(
+        "303d",
+        "3031300d0609608648016503040201050004200000000000000000000000000000000000000000000000000000000000000000",
+        "04080707070707070707",
+    );
+
+    /// EncryptedData of `version`, PBES2 without parameters, three bytes of ciphertext.
+    fn encrypted_data(version: u8) -> Vec<u8> {
+        let mut der = bytes("30220201");
+        der.push(version);
+        der.extend(bytes(
+            "301d06092a864886f70d010701300b06092a864886f70d01050d8003010203",
+        ));
+        der
+    }
+
+    /// P12-013: absent iterations mean 1.
+    #[test]
+    fn p12_013_absent_mac_iterations_mean_one() {
+        let mac_data = MacData::from_der(&bytes(MAC_DATA_WITHOUT_ITERATIONS)).unwrap();
+        assert_eq!(mac_data.iterations, 1);
+    }
+
+    /// RFC 5652 §8: EncryptedData is version 0, or 2 when it carries unprotected
+    /// attributes; any other version is malformed.
+    #[test]
+    fn rfc5652_8_encrypted_data_is_version_0_or_2() {
+        for version in [0, 2] {
+            let parsed = EncryptedData::from_der(&encrypted_data(version)).unwrap();
+            assert_eq!(parsed.algorithm.oid, oids::PBES2, "version {version}");
+            assert_eq!(parsed.ciphertext, [1, 2, 3], "version {version}");
+        }
+        for version in [1, 3] {
+            assert!(
+                EncryptedData::from_der(&encrypted_data(version)).is_err(),
+                "version {version}"
+            );
+        }
+    }
+}

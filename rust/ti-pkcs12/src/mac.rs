@@ -140,4 +140,84 @@ mod tests {
             "{err}"
         );
     }
+
+    /// The MAC of `content` under digest `D`, as RFC 7292 appendix B and §4 define it,
+    /// in a [`MacData`] naming `oid`.
+    fn mac_data<D: Digest + BlockSizeUser + Clone>(
+        oid: ObjectIdentifier,
+        password: &[u8],
+        content: &[u8],
+    ) -> MacData {
+        let salt = [7; 8];
+        let key = kdf::derive::<D>(
+            password,
+            &salt,
+            1,
+            Purpose::Mac,
+            <D as Digest>::output_size(),
+        );
+        let mut mac = <SimpleHmac<D> as KeyInit>::new_from_slice(&key).unwrap();
+        mac.update(content);
+        MacData {
+            mac: DigestInfo {
+                algorithm: AlgorithmIdentifierOwned {
+                    oid,
+                    parameters: None,
+                },
+                digest: OctetString::new(mac.finalize().into_bytes().to_vec()).unwrap(),
+            },
+            mac_salt: OctetString::new(salt.to_vec()).unwrap(),
+            iterations: 1,
+        }
+    }
+
+    /// P12-012: every listed MAC digest verifies, each with its own hash.
+    #[test]
+    fn p12_012_every_listed_mac_digest_verifies() {
+        let password = b"\0t\0e\0s\0t\0\0";
+        let content = b"auth safe";
+        for (name, mac_data) in [
+            ("SHA-1", mac_data::<Sha1>(oids::SHA1, password, content)),
+            (
+                "SHA-224",
+                mac_data::<Sha224>(oids::SHA224, password, content),
+            ),
+            (
+                "SHA-256",
+                mac_data::<Sha256>(oids::SHA256, password, content),
+            ),
+            (
+                "SHA-384",
+                mac_data::<Sha384>(oids::SHA384, password, content),
+            ),
+            (
+                "SHA-512",
+                mac_data::<Sha512>(oids::SHA512, password, content),
+            ),
+        ] {
+            assert!(verify(&mac_data, password, content).is_ok(), "{name}");
+            assert!(
+                matches!(
+                    verify(&mac_data, password, b"altered"),
+                    Err(Error::MacMismatch)
+                ),
+                "{name}"
+            );
+        }
+    }
+
+    /// What a file's MAC uses is reported by name: an API property, no rule.
+    #[test]
+    fn mac_digests_are_reported_by_name() {
+        for (oid, expected) in [
+            (oids::SHA1, "SHA-1"),
+            (oids::SHA224, "SHA-224"),
+            (oids::SHA256, "SHA-256"),
+            (oids::SHA384, "SHA-384"),
+            (oids::SHA512, "SHA-512"),
+        ] {
+            assert_eq!(name(oid), Some(expected));
+        }
+        assert_eq!(name(oids::HMAC_WITH_SHA256), None);
+    }
 }

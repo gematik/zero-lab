@@ -336,7 +336,7 @@ wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
 # ---- Tier 1: every change, and before a release ------------------------------------
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
+check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
 
@@ -924,6 +924,10 @@ mutants-record crate jobs="1":
     # In place one at a time; more jobs need a copy of the tree each, as they mutate at once.
     cargo mutants -p {{crate}} {{ if jobs == "1" { "--in-place" } else { "--jobs " + jobs } }} --output "$out" {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }} || true
     python3 -I scripts/mutation.py record {{crate}} "$out/mutants.out/outcomes.json"
+
+# Unit tests of the Python scripts the release recipes run (score formula, coverage gaps)
+scripts-test:
+    python3 -I -B -m unittest discover -s scripts
 
 # Each score must exist, belong to the crate as it is now, and reach the crate's threshold.
 # Check the recorded mutation scores of crates about to be released
