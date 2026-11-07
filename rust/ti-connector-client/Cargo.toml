@@ -13,6 +13,10 @@ publish.workspace = true
 # Captured Konnektor responses are test data only.
 exclude = ["tests/"]
 
+[features]
+# `Serialize` for the types of `model`, the JSON the front ends publish.
+serde = []
+
 [dependencies]
 ti-types.workspace = true
 ti-cache.workspace = true

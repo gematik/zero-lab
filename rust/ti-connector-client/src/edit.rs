@@ -35,7 +35,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use ti_pki::Certificate;
 
-use crate::dotkon::{Credentials, Dotkon};
+use crate::dotkon::{Credentials, Dotkon, DotkonError};
 
 /// Why an address cannot be a Konnektor's url.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -110,6 +110,27 @@ pub fn normalize_address(input: &str) -> Result<String, AddressError> {
             Ok(port) => Ok(format!("https://{host}:{port}")),
         },
     }
+}
+
+/// `json` parsed with every `${NAME}` set, so a file is judged without the environment
+/// it will run in.
+///
+/// # Errors
+///
+/// [`DotkonError`] for a file that is not a valid configuration.
+pub fn validate(json: &[u8]) -> Result<Dotkon, DotkonError> {
+    Dotkon::parse_with(json, |_| Some("MA==".to_owned()))
+}
+
+/// The server certificates pinned in `dotkon`'s trust store: its entries other than CA
+/// certificates, which pin an issuer rather than the Konnektor.
+pub fn pins(dotkon: &Dotkon) -> Vec<Vec<u8>> {
+    dotkon
+        .trust_store
+        .iter()
+        .filter(|der| !Certificate::from_der(der).is_ok_and(|c| c.is_ca()))
+        .cloned()
+        .collect()
 }
 
 /// What a change brings into a file that is not allowed: an http url anywhere, and for

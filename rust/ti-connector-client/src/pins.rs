@@ -69,7 +69,52 @@ impl PinType {
             _ => &[],
         }
     }
+
+    /// The PIN to verify or change on a card of `card_type`: `named` if the card has it,
+    /// the card's only PIN if none is named. A card type without known PINs takes the
+    /// one named, for the Konnektor to judge.
+    ///
+    /// # Errors
+    ///
+    /// [`UnfitPin`] for a PIN the card does not have, or none named for a card with
+    /// several or none.
+    pub fn choose(card_type: CardType, named: Option<PinType>) -> Result<PinType, UnfitPin> {
+        let allowed = PinType::for_card(card_type);
+        match (named, allowed) {
+            (Some(p), _) if allowed.is_empty() || allowed.contains(&p) => Ok(p),
+            (None, [only]) => Ok(*only),
+            (named, _) => Err(UnfitPin { card_type, named }),
+        }
+    }
 }
+
+/// A PIN that does not fit the card: see [`PinType::choose`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnfitPin {
+    /// The card's type.
+    pub card_type: CardType,
+    /// The PIN named, if any.
+    pub named: Option<PinType>,
+}
+
+impl fmt::Display for UnfitPin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let known: Vec<String> = PinType::for_card(self.card_type)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let has = match known.as_slice() {
+            [] => "no known PIN".to_owned(),
+            known => known.join(", "),
+        };
+        let problem = self
+            .named
+            .map_or_else(|| "name one".to_owned(), |p| format!("not {p}"));
+        write!(f, "{} has {has}; {problem}", self.card_type)
+    }
+}
+
+impl std::error::Error for UnfitPin {}
 
 impl fmt::Display for PinType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -157,5 +202,36 @@ impl<'a, T: Transport> Pins<'a, T> {
                 pin_typ: pin.as_str().to_owned(),
             })
             .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_card_with_one_pin_needs_none_named() {
+        assert_eq!(PinType::choose(CardType::SmcB, None), Ok(PinType::Smc));
+        assert_eq!(
+            PinType::choose(CardType::Hba, Some(PinType::Qes)),
+            Ok(PinType::Qes)
+        );
+        assert_eq!(
+            PinType::choose(CardType::SmcKt, Some(PinType::Ch)),
+            Ok(PinType::Ch)
+        );
+        let unfit = |card_type, named| PinType::choose(card_type, named).unwrap_err().to_string();
+        assert_eq!(
+            unfit(CardType::Hba, None),
+            "HBA has PIN.CH, PIN.QES; name one"
+        );
+        assert_eq!(
+            unfit(CardType::SmcB, Some(PinType::Ch)),
+            "SMC-B has PIN.SMC; not PIN.CH"
+        );
+        assert_eq!(
+            unfit(CardType::SmcKt, None),
+            "SMC-KT has no known PIN; name one"
+        );
     }
 }

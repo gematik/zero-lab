@@ -151,6 +151,20 @@ impl<'a, T: Transport> Certificates<'a, T> {
             .collect()
     }
 
+    /// The Telematik-ID of the card with `handle`: the registration number in its ECC
+    /// C.AUT's admission. `None` for a card without one.
+    ///
+    /// # Errors
+    ///
+    /// As [`read`](Self::read).
+    pub async fn telematik_id(&self, handle: &str) -> Result<Option<String>, Error> {
+        Ok(self
+            .read(handle, Crypt::Ecc, &[CertRef::CAut])
+            .await?
+            .iter()
+            .find_map(|c| c.telematik_id().map(str::to_owned)))
+    }
+
     /// Every certificate of `card`'s type: ECC, then RSA where the card still has RSA
     /// keys.
     ///

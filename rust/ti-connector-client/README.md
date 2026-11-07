@@ -47,9 +47,15 @@ for card in connector.cards().list(&[]).await? {
 - **Caching:** the service directory can be loaded through a `ti_cache::Cache`
   (`Connector::connect_cached`). Card data, PIN state and signatures are never cached.
 
+## Model
+
+`model` holds the read-only projections the front ends show: a card, its certificates and
+PIN states, the Konnektor's status, services and product, its verdicts on a certificate or
+a signature. The feature `serde` derives `Serialize` for them, the JSON of the `ti` CLI.
+
 ## Transport
 
-The crate has no features. ti-client implements `Transport` over blocking ureq with rustls
+ti-client implements `Transport` over blocking ureq with rustls
 and ring (`ti_client::connector::UreqTransport`): the `.kon` trust store as ti-tls's
 `konnektor` profile verifies it (pins by equality, CA chains checked for `expectedHost`), mutual
 TLS from `pkcs12` credentials (`Credentials::client_identity`), basic auth. `check::run` runs

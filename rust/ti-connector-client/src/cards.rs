@@ -31,6 +31,17 @@ use crate::error::Error;
 use crate::soap::Transport;
 use crate::types::{Card, CardType, CertRef, Crypt, ResourceInformation};
 
+/// The card types that carry an identity: an HBA's holder, an SMC-B's institution. Their
+/// Telematik-ID is in the C.AUT.
+pub const IDENTITY_CARDS: [CardType; 2] = [CardType::Hba, CardType::SmcB];
+
+/// Whether the Konnektor restricts `card_type` on its SOAP API: it refuses calls about
+/// an SMC-KT, a KVK or an eGK that it answers for an HBA or SMC-B, so a fault about one
+/// is the restriction rather than the call's own.
+pub fn is_restricted(card_type: CardType) -> bool {
+    matches!(card_type, CardType::SmcKt | CardType::Kvk | CardType::Egk)
+}
+
 /// The cards facade; see [`Connector::cards`].
 #[derive(Debug)]
 pub struct Cards<'a, T> {
@@ -101,7 +112,7 @@ impl<T: Transport> Cards<'_, T> {
         if telematik_id {
             let holders = cards
                 .into_iter()
-                .filter(|c| matches!(c.card_type, CardType::Hba | CardType::SmcB));
+                .filter(|c| IDENTITY_CARDS.contains(&c.card_type));
             for card in holders {
                 let certificates = self
                     .connector

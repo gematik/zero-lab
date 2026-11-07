@@ -361,6 +361,17 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `check::Options` here, with ti-client's probe passed in.
 
 #### added
+- `model` (TASK-250): the Konnektor's cards, certificates, PIN states and outcomes, status,
+  identities, expiry dates, services, product, and its verdicts on certificates and
+  signatures, as the front ends show them; `Serialize` with the new feature `serde`.
+  `Severity` reads an error condition's severity by TAB_KON_503, one not known an error.
+- The Konnektor's rules the `ti` CLI applied itself: `PinType::choose` and `UnfitPin` (the
+  PIN a card has), `has_user_sessions` (an HBA's card session belongs to one user ID,
+  TAB_KON_510), `is_restricted` (SMC-KT, KVK and eGK on the SOAP API), `IDENTITY_CARDS`,
+  `Certificates::telematik_id` (from the ECC C.AUT), `SignatureFormat::for_document` and
+  `to_verify`, `media_type` (PDF/A for PAdES), `short_text` and `SHORT_TEXT_MAX` (the
+  schema's 30 characters), `edit::validate` (a file judged without its environment) and
+  `edit::pins` (the trust store's server certificates).
 - `check::run`: the configuration checks from the file to the cards, with the host's TCP
   and TLS probe (or none, behind a proxy) and its transport; `check::host_port`.
 - `Credentials::client_identity`: the client certificate and key `pkcs12` credentials
