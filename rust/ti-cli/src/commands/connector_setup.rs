@@ -591,7 +591,7 @@ fn only_one_pair(
         .collect();
     p12.certificates = std::iter::once(certificate).chain(chain).collect();
     p12.keys = vec![key];
-    super::pkcs12::encode(p12, password, name).map(Some)
+    Ok(ti_client::pkcs12::encode(p12, password, name).map(Some)?)
 }
 
 /// The first line of a password file; empty is a password too (PKCS#12 allows it).
@@ -1154,7 +1154,7 @@ mod tests {
         let p12 = dir.join("both.p12");
         std::fs::write(
             &p12,
-            super::super::pkcs12::encode(&both, "00", "both").unwrap(),
+            ti_client::pkcs12::encode(&both, "00", "both").unwrap(),
         )
         .unwrap();
         let file = dir.join("w.kon");

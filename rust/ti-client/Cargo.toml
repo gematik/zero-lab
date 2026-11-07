@@ -22,8 +22,8 @@ ti-directory-client.workspace = true
 # a server's handshake signature on brainpool and RSA keys too (`peer`); the model the
 # operations return (`serde`).
 ti-pki = { workspace = true, features = ["load", "os", "dangerous-nonprod", "brainpool", "rsa", "serde"] }
-# Certificates and keys from PKCS#12 files.
-ti-pkcs12.workspace = true
+# Certificates and keys from PKCS#12 files; truststores and re-encoded files written.
+ti-pkcs12 = { workspace = true, features = ["encode"] }
 # The OIDs of a PKCS#12 file's keys and curves.
 der.workspace = true
 # The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.

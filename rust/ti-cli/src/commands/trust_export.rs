@@ -30,33 +30,18 @@ use std::io::Write as _;
 use std::path::Path;
 
 use serde::Serialize;
-use ti_client::block_on;
-use ti_pki::load::{Bundle, ReloadOutcome, ReloadPolicy, Reloader, StaticLoader};
-use ti_pki::revocation::RevocationStatus;
-use ti_pki::{Timestamp, TrustConfig};
+use ti_client::pki::export::{BundleInfo, trust_bundle};
 
 use crate::cli::{GlobalArgs, TrustExportArgs};
 use crate::error::{CliError, Exit};
 use crate::output::document::when;
 use crate::output::{Line, Output};
 
-/// What fits a ConfigMap: its limit of 1 MiB, less room for the object's own fields.
-const CONFIG_MAP_ROOM: usize = 1_000_000;
-
 /// The JSON document; `schema` is added on output.
 #[derive(Serialize)]
 struct Report {
-    environment: &'static str,
-    label: String,
-    sequence_number: Option<u64>,
-    next_update: Option<String>,
-    /// What the set says of the TSL signer; absent if it holds no current status.
-    signer_status: Option<&'static str>,
-    /// When the set was fetched; what its age is measured from.
-    fetched_at: String,
-    bytes: usize,
-    /// False: use a volume, a ConfigMap cannot hold it.
-    fits_config_map: bool,
+    #[serde(flatten)]
+    info: BundleInfo,
     output: String,
 }
 
@@ -66,55 +51,24 @@ pub fn export(args: &TrustExportArgs, global: &GlobalArgs, out: &Output) -> Resu
         return Err(CliError::OutputExists(args.output.display().to_string()));
     }
     let env = super::concrete(args.trust.env, global)?;
-    let config = TrustConfig::preset(env);
-    config.validate(env.tier()).map_err(CliError::Trust)?;
     let session = crate::trust::session(global, args.trust.offline, out)?;
-    let loaded = session.load(&config, env.tier(), args.trust.at)?;
-    let material = session.verified_set(&config, &loaded, args.trust.at)?.set;
-    let label = format!("{env} {}", material.fetched_at);
-    let bytes = Bundle::new(&config, label.clone(), material).to_vec();
-
-    // The time the set is checked at: now, or `--at`.
-    let at = args.trust.at;
-    let consumer = Bundle::from_slice(&bytes)
-        .and_then(|bundle| StaticLoader::from_bundle(bundle, &config))
-        .map_err(|e| CliError::TrustLoad(e.to_string()))?;
-    let reloader = Reloader::new(
-        config,
-        env.tier(),
-        consumer,
-        move || at.unwrap_or_else(Timestamp::now),
-        ReloadPolicy::default(),
-    )
-    .map_err(CliError::Trust)?;
-    match block_on(reloader.tick()) {
-        ReloadOutcome::Swapped { .. } => {}
-        other => return Err(CliError::TrustLoad(format!("the set: {other:?}"))),
-    }
-    let status = reloader.handle().status();
-
-    replace_file(&args.output, &bytes)?;
+    let bundle = trust_bundle(&session, env, args.trust.at)?;
+    replace_file(&args.output, &bundle.bytes)?;
     let report = Report {
-        environment: env.as_str(),
-        label,
-        sequence_number: status.tsl_state.as_ref().map(|s| s.sequence_number),
-        next_update: status.tsl_next_update.map(|t| t.to_string()),
-        signer_status: status.tsl_signer_status.map(RevocationStatus::as_str),
-        fetched_at: status.fetched_at.map(|t| t.to_string()).unwrap_or_default(),
-        bytes: bytes.len(),
-        fits_config_map: bytes.len() <= CONFIG_MAP_ROOM,
+        info: bundle.info,
         output: args.output.display().to_string(),
     };
+    let info = &report.info;
     super::connector::emit(out, Exit::Ok, &report, |doc| {
-        doc.paragraph(Line::strong("trust bundle").and_text(format!(" · {}", report.environment)));
-        if let Some(fetched) = status.fetched_at {
+        doc.paragraph(Line::strong("trust bundle").and_text(format!(" · {}", info.environment)));
+        if let Some(fetched) = info.fetched_at_ts {
             doc.field("fetched", when(fetched));
         }
-        if let Some(next) = status.tsl_next_update {
+        if let Some(next) = info.next_update_ts {
             doc.field("next update", when(next));
         }
-        doc.field("bytes", report.bytes.to_string());
-        if !report.fits_config_map {
+        doc.field("bytes", info.bytes.to_string());
+        if !info.fits_config_map {
             doc.field("note", "too large for a ConfigMap, use a volume");
         }
         doc.field("to", Line::code(&report.output));

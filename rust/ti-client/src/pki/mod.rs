@@ -24,6 +24,10 @@
 //! The operations on certificates and trust material: each takes typed inputs and returns
 //! what a front end shows, in ti-pki's model or a type of its own here.
 
+pub mod bundle;
+pub mod export;
 pub mod inspect;
+pub mod roots;
 pub mod signature;
+pub mod tsl;
 pub mod verify;
