@@ -352,12 +352,9 @@ fn trust(
         })?;
         return Ok(Trust::Pin(first.certificate.der().to_vec()));
     }
-    let chain = ti_connector_client::ureq::server_certificate(
-        url,
-        expected_host,
-        global.net.connect_timeout,
-    )
-    .map_err(CliError::ServerUnreachable)?;
+    let chain =
+        ti_client::connector::server_certificate(url, expected_host, global.net.connect_timeout)
+            .map_err(CliError::ServerUnreachable)?;
     let leaf = chain[0].clone();
     let sha256 = config::sha256(&leaf);
     if let Some(expected) = &choice.pin_sha256 {

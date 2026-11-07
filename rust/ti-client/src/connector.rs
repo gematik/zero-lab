@@ -21,16 +21,10 @@
  * find details in the "Readme" file.
  */
 
-//! [`UreqTransport`]: the [`Transport`] over blocking ureq with rustls and ring, set up
-//! from a `.kon` file the way the Go client does:
-//! - the client certificate of `pkcs12` credentials (BER and legacy encryption read by
-//!   ti-pkcs12, no OpenSSL);
-//! - server verification against the `.kon` trust store: an end-entity certificate there
-//!   is a pin, accepted by equality; otherwise the chain must lead to one of its CA
-//!   certificates and name `expectedHost` (or the URL's host), which is also sent as
-//!   SNI; an empty trust store means the operating system's;
-//! - `insecureSkipVerify` accepts any server certificate (handshake signatures are still
-//!   checked).
+//! [`UreqTransport`]: ti-connector-client's [`Transport`] over blocking ureq with rustls
+//! and ring, set up from a `.kon` file the way the Go client does: the TLS trust of
+//! [`ti_tls::konnektor`], the client certificate of `pkcs12` credentials (BER and legacy
+//! encryption read by ti-pkcs12, no OpenSSL), basic auth in the request.
 //!
 //! ureq's `TlsConfig` cannot take a certificate verifier, so the TLS layer is a small
 //! connector of our own in ureq's connector chain (its `unversioned` API).
@@ -43,26 +37,22 @@ use std::io::{Read as _, Write as _};
 use std::sync::Arc;
 use std::time::Duration;
 
-use ::ureq::Agent;
-use ::ureq::config::ConfigBuilder;
-use ::ureq::http::header::{
+use rustls::client::danger::ServerCertVerifier;
+use rustls::{ClientConfig, ClientConnection, StreamOwned};
+use rustls_pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+use ti_connector_client::{Dotkon, Error, Method, Request, Response, Transport, TransportError};
+use ti_tls::konnektor::{self, Trust};
+use ureq::Agent;
+use ureq::config::ConfigBuilder;
+use ureq::http::header::{
     CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
 };
-use ::ureq::typestate::AgentScope;
-use ::ureq::unversioned::resolver::DefaultResolver;
-use ::ureq::unversioned::transport::{
+use ureq::typestate::AgentScope;
+use ureq::unversioned::resolver::DefaultResolver;
+use ureq::unversioned::transport::{
     Buffers, ConnectProxyConnector, ConnectionDetails, Connector, Either, LazyBuffers, NextTimeout,
     TcpConnector, Transport as UreqTransportLayer, TransportAdapter,
 };
-use rustls::client::WebPkiServerVerifier;
-use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::crypto::{CryptoProvider, verify_tls12_signature, verify_tls13_signature};
-use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, RootCertStore, StreamOwned};
-use rustls_pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
-
-use crate::dotkon::{Credentials, Dotkon};
-use crate::error::Error;
-use crate::soap::{Method, Request, Response, Transport, TransportError};
 
 mod probe;
 
@@ -87,12 +77,13 @@ impl UreqTransport {
     /// [`Error::Config`] if the credentials or the trust store cannot be used.
     pub fn new(dotkon: &Dotkon, config: ConfigBuilder<AgentScope>) -> Result<Self, Error> {
         let tls = KonnektorTls {
-            config: Arc::new(client_config(dotkon)?),
-            server_name: dotkon
+            config: Arc::new(client_config(dotkon, |verifier| verifier, true)?),
+            expected_host: dotkon
                 .expected_host
                 .as_deref()
                 .map(|host| {
                     ServerName::try_from(host.to_owned())
+                        .map(|_| host.to_owned())
                         .map_err(|e| Error::Config(format!("expectedHost {host:?}: {e}")))
                 })
                 .transpose()?,
@@ -110,7 +101,7 @@ impl UreqTransport {
 
 impl Transport for UreqTransport {
     async fn send(&self, request: &Request<'_>) -> Result<Response, TransportError> {
-        let mut builder = ::ureq::http::Request::builder()
+        let mut builder = ureq::http::Request::builder()
             .method(match request.method {
                 Method::Get => "GET",
                 Method::Post => "POST",
@@ -137,7 +128,7 @@ impl Transport for UreqTransport {
             .timeout_global(Some(request.timeout))
             .build();
         let mut response = self.agent.run(http).map_err(|e| {
-            let timed_out = matches!(e, ::ureq::Error::Timeout(_));
+            let timed_out = matches!(e, ureq::Error::Timeout(_));
             failed(&e, timed_out)
         })?;
         let header = |name| {
@@ -155,7 +146,7 @@ impl Transport for UreqTransport {
             .with_config()
             .limit(MAX_BODY)
             .read_to_vec()
-            .map_err(|e| failed(&e, matches!(e, ::ureq::Error::Timeout(_))))?;
+            .map_err(|e| failed(&e, matches!(e, ureq::Error::Timeout(_))))?;
         Ok(Response {
             status,
             body,
@@ -188,52 +179,39 @@ fn max_age(cache_control: &str) -> Option<Duration> {
         .map(Duration::from_secs)
 }
 
-fn client_config(dotkon: &Dotkon) -> Result<ClientConfig, Error> {
-    client_config_with(dotkon, |verifier| verifier, true)
-}
-
-/// The TLS client config of `dotkon`, its server verifier passed through `wrap`, with
-/// the client certificate of `pkcs12` credentials only if `client_auth`.
-fn client_config_with(
+/// The TLS client config of `dotkon`: [`ti_tls::konnektor`]'s trust, its verifier passed
+/// through `wrap`, with the client certificate of `pkcs12` credentials only if
+/// `client_auth`.
+fn client_config(
     dotkon: &Dotkon,
     wrap: impl FnOnce(Arc<dyn ServerCertVerifier>) -> Arc<dyn ServerCertVerifier>,
     client_auth: bool,
 ) -> Result<ClientConfig, Error> {
-    let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let verifier: Arc<dyn ServerCertVerifier> = if dotkon.insecure_skip_verify {
-        Arc::new(KonnektorVerifier {
-            pins: Vec::new(),
-            chain: None,
-            accept_any: true,
-            provider: provider.clone(),
-        })
+    let trust = Trust::new(
+        &dotkon.trust_store,
+        dotkon.insecure_skip_verify,
+        |provider| {
+            Ok(Arc::new(rustls_platform_verifier::Verifier::new(provider)?)
+                as Arc<dyn ServerCertVerifier>)
+        },
+    )
+    .map_err(|e| Error::Config(e.0))?;
+    let client = if client_auth {
+        dotkon
+            .credentials
+            .client_identity()?
+            .map(|(certificate, key)| {
+                (
+                    CertificateDer::from(certificate),
+                    PrivateKeyDer::Pkcs8(with_public_key(&key.pkcs8).into()),
+                )
+            })
     } else {
-        Arc::new(KonnektorVerifier::new(
-            &dotkon.trust_store,
-            provider.clone(),
-        )?)
+        None
     };
-    let builder = ClientConfig::builder_with_provider(provider)
-        .with_safe_default_protocol_versions()
-        .map_err(|e| Error::Config(format!("TLS: {e}")))?
-        .dangerous()
-        .with_custom_certificate_verifier(wrap(verifier));
-    match &dotkon.credentials {
-        _ if !client_auth => Ok(builder.with_no_client_auth()),
-        Credentials::Basic { .. } | Credentials::None => Ok(builder.with_no_client_auth()),
-        Credentials::Pkcs12 { data, password } => {
-            let p12 = ti_pkcs12::decode(data, password)
-                .map_err(|e| Error::Config(format!("credentials: {e}")))?;
-            let pair = p12.pairs().into_iter().next().ok_or_else(|| {
-                Error::Config("credentials: no certificate with its private key".into())
-            })?;
-            let certificate = CertificateDer::from(p12.certificates[pair.certificate].der.clone());
-            let key = PrivateKeyDer::Pkcs8(with_public_key(&p12.keys[pair.key].pkcs8).into());
-            builder
-                .with_client_auth_cert(vec![certificate], key)
-                .map_err(|e| Error::Config(format!("credentials: {e}")))
-        }
-    }
+    trust
+        .client_config_with(wrap, client)
+        .map_err(|e| Error::Config(e.0))
 }
 
 /// The PKCS#8 key with its public key. ring accepts EC keys only with it, and Java
@@ -251,125 +229,11 @@ fn with_public_key(pkcs8: &[u8]) -> Vec<u8> {
     encoded.map_or_else(|| pkcs8.to_vec(), |document| document.as_bytes().to_vec())
 }
 
-/// Go's `VerifyConnection`: pins by equality, else the chain to the `.kon` CAs (or the
-/// operating system's roots when the trust store is empty).
-struct KonnektorVerifier {
-    pins: Vec<CertificateDer<'static>>,
-    chain: Option<Arc<dyn ServerCertVerifier>>,
-    accept_any: bool,
-    provider: Arc<CryptoProvider>,
-}
-
-impl KonnektorVerifier {
-    fn new(trust_store: &[Vec<u8>], provider: Arc<CryptoProvider>) -> Result<Self, Error> {
-        let mut pins = Vec::new();
-        let mut roots = RootCertStore::empty();
-        for (i, der) in trust_store.iter().enumerate() {
-            let certificate = ti_pki::Certificate::from_der(der)
-                .map_err(|e| Error::Config(format!("trustStore[{i}]: {e}")))?;
-            if certificate.is_ca() {
-                roots
-                    .add(CertificateDer::from(der.clone()))
-                    .map_err(|e| Error::Config(format!("trustStore[{i}]: {e}")))?;
-            } else {
-                pins.push(CertificateDer::from(der.clone()));
-            }
-        }
-        let chain: Option<Arc<dyn ServerCertVerifier>> = if !roots.is_empty() {
-            Some(
-                WebPkiServerVerifier::builder_with_provider(Arc::new(roots), provider.clone())
-                    .build()
-                    .map_err(|e| Error::Config(format!("trustStore: {e}")))?,
-            )
-        } else if pins.is_empty() {
-            Some(Arc::new(
-                rustls_platform_verifier::Verifier::new(provider.clone())
-                    .map_err(|e| Error::Config(format!("system trust store: {e}")))?,
-            ))
-        } else {
-            None
-        };
-        Ok(KonnektorVerifier {
-            pins,
-            chain,
-            accept_any: false,
-            provider,
-        })
-    }
-}
-
-impl fmt::Debug for KonnektorVerifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("KonnektorVerifier")
-            .field("pins", &self.pins.len())
-            .field("chain", &self.chain.is_some())
-            .field("accept_any", &self.accept_any)
-            .finish_non_exhaustive()
-    }
-}
-
-impl ServerCertVerifier for KonnektorVerifier {
-    fn verify_server_cert(
-        &self,
-        end_entity: &CertificateDer<'_>,
-        intermediates: &[CertificateDer<'_>],
-        server_name: &ServerName<'_>,
-        ocsp_response: &[u8],
-        now: UnixTime,
-    ) -> Result<ServerCertVerified, rustls::Error> {
-        if self.accept_any || self.pins.iter().any(|pin| pin == end_entity) {
-            return Ok(ServerCertVerified::assertion());
-        }
-        match &self.chain {
-            Some(chain) => {
-                chain.verify_server_cert(end_entity, intermediates, server_name, ocsp_response, now)
-            }
-            None => Err(rustls::Error::InvalidCertificate(
-                rustls::CertificateError::UnknownIssuer,
-            )),
-        }
-    }
-
-    fn verify_tls12_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
-        verify_tls12_signature(
-            message,
-            cert,
-            dss,
-            &self.provider.signature_verification_algorithms,
-        )
-    }
-
-    fn verify_tls13_signature(
-        &self,
-        message: &[u8],
-        cert: &CertificateDer<'_>,
-        dss: &DigitallySignedStruct,
-    ) -> Result<HandshakeSignatureValid, rustls::Error> {
-        verify_tls13_signature(
-            message,
-            cert,
-            dss,
-            &self.provider.signature_verification_algorithms,
-        )
-    }
-
-    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        self.provider
-            .signature_verification_algorithms
-            .supported_schemes()
-    }
-}
-
 /// TLS over the chained connection, with our client config and server name.
 #[derive(Debug)]
 struct KonnektorTls {
     config: Arc<ClientConfig>,
-    server_name: Option<ServerName<'static>>,
+    expected_host: Option<String>,
 }
 
 impl<In: UreqTransportLayer> Connector<In> for KonnektorTls {
@@ -379,21 +243,18 @@ impl<In: UreqTransportLayer> Connector<In> for KonnektorTls {
         &self,
         details: &ConnectionDetails,
         chained: Option<In>,
-    ) -> Result<Option<Self::Out>, ::ureq::Error> {
+    ) -> Result<Option<Self::Out>, ureq::Error> {
         let Some(transport) = chained else {
             return Ok(None);
         };
         if !details.needs_tls() || transport.is_tls() {
             return Ok(Some(Either::A(transport)));
         }
-        let name = if let Some(name) = &self.server_name {
-            name.clone()
-        } else {
-            let host = details.uri.host().unwrap_or_default();
-            let host = host.trim_start_matches('[').trim_end_matches(']');
-            ServerName::try_from(host.to_owned())
-                .map_err(|_| ::ureq::Error::Tls("invalid server name"))?
-        };
+        let name = konnektor::server_name(
+            self.expected_host.as_deref(),
+            details.uri.host().unwrap_or_default(),
+        )
+        .map_err(|_| ureq::Error::Tls("invalid server name"))?;
         let mut conn = ClientConnection::new(self.config.clone(), name)?;
         let mut sock = TransportAdapter::new(transport.boxed());
         sock.set_timeout(details.timeout);
@@ -424,18 +285,14 @@ impl UreqTransportLayer for TlsTransport {
         &mut self.buffers
     }
 
-    fn transmit_output(
-        &mut self,
-        amount: usize,
-        timeout: NextTimeout,
-    ) -> Result<(), ::ureq::Error> {
+    fn transmit_output(&mut self, amount: usize, timeout: NextTimeout) -> Result<(), ureq::Error> {
         self.stream.get_mut().set_timeout(timeout);
         let output = &self.buffers.output()[..amount];
         self.stream.write_all(output)?;
         Ok(())
     }
 
-    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ::ureq::Error> {
+    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
         self.stream.get_mut().set_timeout(timeout);
         let input = self.buffers.input_append_buf();
         let amount = self.stream.read(input)?;

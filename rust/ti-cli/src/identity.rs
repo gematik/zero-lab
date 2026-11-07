@@ -43,6 +43,7 @@ use jwz::jwa::SignatureAlgorithm;
 use jwz::jwk::{EcKey, Jwk, KeyMaterial, Secret};
 use jwz::keys::{AsyncSigner, JwsKey, Signature, Signer, SoftwareKey};
 use sha2::{Digest, Sha256};
+use ti_client::block_on;
 use ti_connector_client::SignatureType;
 use ti_connector_client::types::{CertRef, Crypt};
 use ti_jwz::brainpool::BrainpoolEs256Key;
@@ -55,7 +56,6 @@ use crate::connector::{self, Session};
 use crate::error::CliError;
 use crate::input;
 use crate::output::Output;
-use ti_client::block_on;
 
 const ID_EC_PUBLIC_KEY: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
 const BRAINPOOL_P256R1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.36.3.3.2.8.1.1.7");

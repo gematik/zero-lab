@@ -27,6 +27,7 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use ti_client::block_on;
 use ti_connector_client::types::{
     Card, CardType, CertRef, Crypt, PinResult, PinState, VerificationResult,
 };
@@ -44,7 +45,6 @@ use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting};
-use ti_client::block_on;
 
 /// Runs `ti connector …`.
 pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {

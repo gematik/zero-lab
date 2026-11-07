@@ -21,10 +21,10 @@
  * find details in the "Readme" file.
  */
 
-//! The host side of [`crate::check`]: connects to the Konnektor step by step and hands
-//! each observation to its check. TCP and TLS are probed directly, so that a refused
-//! connection, an untrusted certificate and a refused client tell apart; the service
-//! directory and GetCards go through the caller's transport.
+//! The host side of [`ti_connector_client::check`]: connects to the Konnektor step by step
+//! and hands each observation to its check. TCP and TLS are probed directly, so that a
+//! refused connection, an untrusted certificate and a refused client tell apart; the
+//! service directory and GetCards go through the caller's transport.
 
 use std::net::{TcpStream, ToSocketAddrs as _};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -33,17 +33,15 @@ use std::time::Duration;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::{ClientConnection, DigitallySignedStruct};
 use rustls_pki_types::{CertificateDer, ServerName, UnixTime};
+use ti_connector_client::check::{
+    self, Report, TcpFailure, TcpObservation, TlsObservation, host_port,
+};
+use ti_connector_client::{Credentials, Dotkon, Error, Timeouts, Transport};
+use ti_tls::konnektor;
 use ti_types::Timestamp;
 
-use super::client_config_with;
-use crate::check::{
-    self, Finding, Report, Status, Step, StepId, TcpFailure, TcpObservation, TlsObservation,
-};
-use crate::config;
-use crate::connector::Connector;
-use crate::dotkon::{Credentials, Dotkon};
-use crate::error::Error;
-use crate::soap::{Timeouts, Transport};
+use super::client_config;
+use crate::block_on;
 
 /// How [`check_config`] runs.
 #[derive(Clone, Copy, Debug)]
@@ -59,85 +57,30 @@ pub struct TestOptions {
     pub through_proxy: bool,
 }
 
-/// Checks the `.kon` file `json` step by step, as [`crate::check`] describes. `mode` is
-/// the file's Unix permission bits (`None` where there are none), `lookup` expands
-/// `${NAME}`, `transport` makes the caller's transport for a valid file.
-pub async fn check_config<T: Transport>(
+/// Checks the `.kon` file `json` step by step with [`check::run`], probing TCP and TLS
+/// with [`probe`]. `mode` is the file's Unix permission bits (`None` where there are
+/// none), `lookup` expands `${NAME}`, `transport` makes the caller's transport for a
+/// valid file.
+pub fn check_config<T: Transport>(
     json: &[u8],
     mode: Option<u32>,
     lookup: impl Fn(&str) -> Option<String>,
     transport: impl FnOnce(&Dotkon) -> Result<T, Error>,
     options: TestOptions,
 ) -> Report {
-    let mut report = Report::default();
-    let parsed = Dotkon::parse_with(json, lookup);
-    if !report.push(check::file(&parsed, json, mode)) {
-        return report.finish();
-    }
-    let Ok(dotkon) = parsed else {
-        return report.finish();
-    };
-    let client = match &dotkon.credentials {
-        Credentials::Pkcs12 { data, password } => Some(config::client_certificate(data, password)),
-        Credentials::Basic { .. } | Credentials::None => None,
-    };
-    let mut tls = None;
-    if options.through_proxy {
-        let why = "not probed directly: the connection goes through a proxy";
-        report.push(Step::skipped(StepId::Tcp, why));
-        report.push(Step::skipped(StepId::Tls, why));
-    } else {
-        let (tcp, observed) = probe(&dotkon, options.connect_timeout);
-        if !report.push(check::tcp(&tcp)) {
-            return report.finish();
-        }
-        let Some(observed) = observed else {
-            return report.finish();
-        };
-        if !report.push(check::tls(&dotkon, &observed, options.now)) {
-            return report.finish();
-        }
-        tls = Some(observed);
-    }
-    let transport = match transport(&dotkon) {
-        Ok(transport) => transport,
-        Err(e) => {
-            let mut step = check::auth(&dotkon, client.as_ref(), tls.as_ref(), None, options.now);
-            if step.status != Status::Fail {
-                step.findings.push(Finding::new(
-                    Status::Fail,
-                    e.to_string(),
-                    Some("the credentials or the trust store cannot be used"),
-                ));
-                step = Step::new(StepId::Auth, step.findings);
-            }
-            report.push(step);
-            return report.finish();
-        }
-    };
-    let connected = Connector::connect(&dotkon, transport, options.timeouts).await;
-    let directory = connected
-        .as_ref()
-        .map(|c| c.directory().clone())
-        .map_err(Clone::clone);
-    let auth = check::auth(
-        &dotkon,
-        client.as_ref(),
-        tls.as_ref(),
-        Some(&directory),
-        options.now,
-    );
-    if !report.push(auth) || !report.push(check::sds(&dotkon, &directory)) {
-        return report.finish();
-    }
-    let Ok(connector) = connected else {
-        return report.finish();
-    };
-    let cards = connector.cards().list(&[]).await;
-    if report.push(check::context(&dotkon, &cards)) {
-        report.push(check::cards(cards.as_deref().unwrap_or_default()));
-    }
-    report.finish()
+    let probe = (!options.through_proxy)
+        .then_some(|dotkon: &Dotkon| probe(dotkon, options.connect_timeout));
+    block_on(check::run(
+        json,
+        mode,
+        lookup,
+        probe,
+        transport,
+        check::Options {
+            timeouts: options.timeouts,
+            now: options.now,
+        },
+    ))
 }
 
 /// The certificates the Konnektor at `url` presents, its own first, trusting none of
@@ -182,9 +125,9 @@ pub fn server_certificate(
 }
 
 /// Connects to the Konnektor of `dotkon` and shakes hands with its trust: the TCP
-/// observation, and the TLS observation if TCP connected and the url is https. The handshake offers the
-/// client certificate when the credentials can be read, and records the server's
-/// certificates also when the handshake fails.
+/// observation, and the TLS observation if TCP connected and the url is https. The
+/// handshake offers the client certificate when the credentials can be read, and records
+/// the server's certificates also when the handshake fails.
 pub fn probe(dotkon: &Dotkon, timeout: Duration) -> (TcpObservation, Option<TlsObservation>) {
     let Some((host, port)) = host_port(&dotkon.url) else {
         let observation = TcpObservation {
@@ -251,8 +194,8 @@ fn handshake(
     };
     // Without usable credentials, still look at the server; the auth step says why
     // the credentials cannot be used.
-    let config = client_config_with(dotkon, record, true)
-        .or_else(|_| client_config_with(dotkon, record, false));
+    let config =
+        client_config(dotkon, record, true).or_else(|_| client_config(dotkon, record, false));
     let failed = |message: String| TlsObservation {
         chain: Vec::new(),
         verified: None,
@@ -262,8 +205,7 @@ fn handshake(
         Ok(config) => Arc::new(config),
         Err(e) => return failed(e.to_string()),
     };
-    let name = dotkon.expected_host.as_deref().unwrap_or(host).to_owned();
-    let name = match ServerName::try_from(name) {
+    let name = match konnektor::server_name(dotkon.expected_host.as_deref(), host) {
         Ok(name) => name,
         Err(e) => return failed(format!("server name: {e}")),
     };
@@ -281,33 +223,6 @@ fn handshake(
         verified: seen.verified,
         handshake: result,
     }
-}
-
-/// `(host, port)` of an http(s) URL, the host without IPv6 brackets; port 443 or 80 if
-/// none.
-fn host_port(url: &str) -> Option<(&str, u16)> {
-    let (origin, _) = crate::sds::split_origin(url)?;
-    let authority = origin.split_once("://")?.1;
-    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
-    let default = if origin.starts_with("https://") {
-        443
-    } else {
-        80
-    };
-    if let Some(rest) = authority.strip_prefix('[') {
-        let (host, after) = rest.split_once(']')?;
-        let port = match after.strip_prefix(':') {
-            Some(port) => port.parse().ok()?,
-            None if after.is_empty() => default,
-            None => return None,
-        };
-        return Some((host, port));
-    }
-    match authority.rsplit_once(':') {
-        Some((host, port)) => Some((host, port.parse().ok()?)),
-        None => Some((authority, default)),
-    }
-    .filter(|(host, _)| !host.is_empty())
 }
 
 #[derive(Debug, Default)]
@@ -368,25 +283,5 @@ impl ServerCertVerifier for Recording {
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
         self.inner.supported_verify_schemes()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn host_and_port_come_from_the_url_with_443_by_default() {
-        assert_eq!(
-            host_port("https://kon.example:8443/x"),
-            Some(("kon.example", 8443))
-        );
-        assert_eq!(host_port("https://kon.example"), Some(("kon.example", 443)));
-        assert_eq!(host_port("https://10.0.0.1:4433"), Some(("10.0.0.1", 4433)));
-        assert_eq!(host_port("https://[fe80::1]:8443"), Some(("fe80::1", 8443)));
-        assert_eq!(host_port("https://[fe80::1]/"), Some(("fe80::1", 443)));
-        assert_eq!(host_port("http://kon.example"), Some(("kon.example", 80)));
-        assert_eq!(host_port("https://kon.example:x"), None);
-        assert_eq!(host_port("ftp://kon.example"), None);
     }
 }

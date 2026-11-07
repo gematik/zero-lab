@@ -165,6 +165,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   app share, not published. `block_on` for the product clients' futures, `FileCache` (the
   `CacheStore` of the profile's cache directory, as ti-cli kept it) and `files` (private,
   atomically written files), all moved from ti-cli. It holds no protocol logic.
+- `connector`: ti-connector-client's `Transport` over ureq (`UreqTransport`), the TCP and TLS
+  probe of `config test` (`probe`, `check_config`, `TestOptions`) and `server_certificate`,
+  moved from ti-connector-client's `ureq` feature. TLS is ti-tls's `konnektor` profile, with the
+  operating system's verifier (rustls-platform-verifier) for an empty trust store.
 
 ### ti-tls
 
@@ -313,6 +317,19 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `ti pki tsl verify`) and `wasm-vendor`.
 
 ### ti-connector-client
+
+#### removed
+- The `ureq` feature and the module `ureq` (decision-15, TASK-249): the crate has no HTTP
+  client and no TLS library. `UreqTransport`, `server_certificate` and `probe` are
+  ti-client's (`ti_client::connector`), the verification of the `.kon` trust ti-tls's
+  (`ti_tls::konnektor`); `check_config` and `TestOptions` became `check::run` and
+  `check::Options` here, with ti-client's probe passed in.
+
+#### added
+- `check::run`: the configuration checks from the file to the cards, with the host's TCP
+  and TLS probe (or none, behind a proxy) and its transport; `check::host_port`.
+- `Credentials::client_identity`: the client certificate and key `pkcs12` credentials
+  present in the handshake.
 
 #### changed
 - Base64 through `base64ct` in constant time, in the generated bindings (wsdl2openapi

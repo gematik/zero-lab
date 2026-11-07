@@ -27,6 +27,7 @@
 //! Keycloak. `search` is the owner token of a card, named for the Search API it opens.
 
 use serde::Serialize;
+use ti_client::block_on;
 use ti_directory_client::{AccessToken, Directory, Endpoint, TokenClaims, exchange};
 use ti_idpd_client::Warning;
 use ti_idpd_client::authenticator::{self, Authenticated};
@@ -43,7 +44,6 @@ use crate::error::{CliError, Exit};
 use crate::http;
 use crate::identity::Identity;
 use crate::output::document::when;
-use ti_client::block_on;
 
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
 

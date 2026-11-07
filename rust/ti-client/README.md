@@ -3,6 +3,11 @@
 The native host of the gematik Telematikinfrastruktur (TI) crates, shared by the `ti`
 command-line tool and the desktop app: the I/O the product clients leave to their host.
 
+- `connector`: ti-connector-client's transport over blocking ureq (`UreqTransport`), its TLS
+  ti-tls's `konnektor` profile with the operating system's verifier for an empty trust store,
+  the client certificate of `pkcs12` credentials, basic auth; the TCP and TLS probe of
+  `config test` (`check_config`) and the certificates a Konnektor presents
+  (`server_certificate`).
 - `block_on`: runs a product client's future on the calling thread. Everything this crate
   plugs into a client blocks, so each future is complete at its first poll; an executor
   would only add dependencies.

@@ -29,6 +29,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use ti_client::block_on;
 use ti_pki::ocsp::{DEFAULT_MAX_RESPONSE_AGE, OcspChecker};
 use ti_pki::profile::{self, SelectReason};
 use ti_pki::revocation::{
@@ -46,7 +47,6 @@ use crate::input;
 use crate::output::document::{TreeRow, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
 use crate::trust::{Session, TrustInfo};
-use ti_client::block_on;
 
 /// Whether `at` is now or `--at`: OCSP still answers for the time of the query.
 #[derive(Clone, Copy, PartialEq, Eq)]

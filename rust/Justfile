@@ -768,12 +768,12 @@ real-world:
 # TI_TEST_KON_RECORD_DIR, if set, records the exchanges. Not part of `check`.
 # Read-only tests against the Konnektor of TI_TEST_KON_PATH (a .kon file)
 konnektor-e2e:
-    cargo test -p ti-connector-client --features ureq --test e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
+    cargo test -p ti-client --test konnektor_e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
 
 # Optional TI_TEST_PDFA_PATH adds PAdES. A person enters the PIN; not part of `check`.
 # PIN entry, ExternalAuthenticate, sign and encrypt at the Konnektor of TI_TEST_KON_PATH
 konnektor-e2e-interactive:
-    TI_TEST_KON_INTERACTIVE=1 cargo test -p ti-connector-client --features ureq --test e2e -- --ignored --exact pin_and_external_authenticate --nocapture --test-threads 1
+    TI_TEST_KON_INTERACTIVE=1 cargo test -p ti-client --test konnektor_e2e -- --ignored --exact pin_and_external_authenticate --nocapture --test-threads 1
 
 # Regenerate the Konnektor bindings in ti-connector-client/src/api from the
 # wsdl2openapi checkout next to this repository (or WSDL2OPENAPI_DIR)

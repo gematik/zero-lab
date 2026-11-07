@@ -21,7 +21,7 @@
  * find details in the "Readme" file.
  */
 
-//! `config test`'s driver (`ureq::check_config`) against a Konnektor on loopback TLS: the
+//! `config test`'s driver (`connector::check_config`) against a Konnektor on loopback TLS: the
 //! steps from the file to the cards, with the server certificate pinned, changed or
 //! accepted insecurely, and with a client certificate required.
 
@@ -32,24 +32,24 @@ use std::thread;
 use std::time::Duration;
 
 use base64ct::Encoding as _;
-use futures_lite::future::block_on;
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig, ServerConnection, StreamOwned};
 use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
+use ti_client::connector::{TestOptions, UreqTransport, check_config, server_certificate};
 use ti_connector_client::Timeouts;
 use ti_connector_client::check::{Report, Status, StepId};
-use ti_connector_client::ureq::{TestOptions, UreqTransport, check_config, server_certificate};
 use ti_types::Timestamp;
 
-const CA: &[u8] = include_bytes!("tls/ca.pem");
-const SERVER: &[u8] = include_bytes!("tls/server.pem");
-const SERVER_KEY: &[u8] = include_bytes!("tls/server-key.pem");
-const OTHER: &[u8] = include_bytes!("tls/other.pem");
-const CLIENT_P12: &[u8] = include_bytes!("tls/client.p12");
-const SDS: &[u8] = include_bytes!("fixtures/ehex-connector.sds");
-const GET_CARDS: &[u8] =
-    include_bytes!("fixtures/recorded/ehex-6.0.2/02-GetCards.response-200.xml");
+const CA: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/ca.pem");
+const SERVER: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/server.pem");
+const SERVER_KEY: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/server-key.pem");
+const OTHER: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/other.pem");
+const CLIENT_P12: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/client.p12");
+const SDS: &[u8] = include_bytes!("../../ti-connector-client/tests/fixtures/ehex-connector.sds");
+const GET_CARDS: &[u8] = include_bytes!(
+    "../../ti-connector-client/tests/fixtures/recorded/ehex-6.0.2/02-GetCards.response-200.xml"
+);
 
 const NOW: Timestamp = Timestamp(1_798_761_600);
 
@@ -194,13 +194,13 @@ fn run(json: &str) -> Report {
         now: NOW,
         through_proxy: false,
     };
-    block_on(check_config(
+    check_config(
         json.as_bytes(),
         Some(0o600),
         |name| (name == "KON_PASSWORD").then(|| "p".to_owned()),
         |dotkon| UreqTransport::new(dotkon, ureq::Agent::config_builder()),
         options,
-    ))
+    )
 }
 
 fn status(report: &Report, id: StepId) -> Status {

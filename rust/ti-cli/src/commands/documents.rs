@@ -28,6 +28,7 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use ti_client::files::{create_private_dir, path_component, write_atomic};
 use ti_connector_client::types::{
     Card, CardType, CertRef, Crypt, SignatureMode, VerificationResult,
 };
@@ -42,7 +43,6 @@ use crate::connector::Session;
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::{Line, Output, Tone, Waiting, warning};
-use ti_client::files::{create_private_dir, path_component, write_atomic};
 
 /// The media type of a file by its extension; a PDF to sign with PAdES is PDF/A.
 fn mime_type(path: &Path, pdfa: bool) -> &'static str {

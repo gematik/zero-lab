@@ -47,11 +47,13 @@ for card in connector.cards().list(&[]).await? {
 - **Caching:** the service directory can be loaded through a `ti_cache::Cache`
   (`Connector::connect_cached`). Card data, PIN state and signatures are never cached.
 
-## Features
+## Transport
 
-| Feature | Effect |
-| --- | --- |
-| `ureq` | `ureq::UreqTransport`: blocking ureq with rustls and ring, mutual TLS from `pkcs12` credentials, the `.kon` trust store (pins by equality, CA chains checked for `expectedHost`), basic auth. Not for wasm32 |
+The crate has no features. ti-client implements `Transport` over blocking ureq with rustls
+and ring (`ti_client::connector::UreqTransport`): the `.kon` trust store as ti-tls's
+`konnektor` profile verifies it (pins by equality, CA chains checked for `expectedHost`), mutual
+TLS from `pkcs12` credentials (`Credentials::client_identity`), basic auth. `check::run` runs
+the configuration checks with the host's probe and transport.
 
 Brainpool keys are not supported for TLS yet (ring has no brainpool): client
 certificates and Konnektor server certificates must be P-256, P-384 or RSA.

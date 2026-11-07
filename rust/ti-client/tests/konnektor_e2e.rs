@@ -39,20 +39,16 @@
 //!
 //! `TI_TEST_KON_PATH=praxis.kon just konnektor-e2e-interactive`
 
-mod support;
-
 use std::time::Duration;
 
-use futures_lite::future::block_on;
 use sha2::{Digest, Sha256};
+use ti_client::block_on;
+use ti_client::connector::UreqTransport;
 use ti_connector_client::types::{Card, CardType, CertRef, Crypt, PinState};
-use ti_connector_client::ureq::UreqTransport;
 use ti_connector_client::{
-    ComfortUserId, Connector, Dotkon, Error, PinType, SignatureFormat, SignatureType, Timeouts,
-    ToSign,
+    ComfortUserId, Connector, Dotkon, Error, PinType, Request, Response, SignatureFormat,
+    SignatureType, Timeouts, ToSign, Transport, TransportError,
 };
-
-use support::Recorder;
 
 type Konnektor = Connector<Recorder<UreqTransport>>;
 
@@ -352,4 +348,49 @@ fn der_signature(raw: &[u8]) -> Vec<u8> {
     let mut out = vec![0x30, u8::try_from(body.len()).unwrap()];
     out.extend(body);
     out
+}
+
+/// Writes every exchange of the inner transport to `dir`, when given, as
+/// `NN-Operation.request.xml` and `NN-Operation.response-STATUS.xml` (`connector.sds` for
+/// the service directory): bodies only, so credentials, which travel in headers, never
+/// reach the files.
+#[derive(Debug)]
+struct Recorder<T> {
+    inner: T,
+    dir: Option<std::path::PathBuf>,
+    count: std::cell::Cell<u32>,
+}
+
+impl<T> Recorder<T> {
+    fn new(inner: T, dir: Option<std::path::PathBuf>) -> Self {
+        if let Some(dir) = &dir {
+            std::fs::create_dir_all(dir).expect("recording directory");
+        }
+        Recorder {
+            inner,
+            dir,
+            count: std::cell::Cell::new(0),
+        }
+    }
+}
+
+impl<T: Transport> Transport for Recorder<T> {
+    async fn send(&self, request: &Request<'_>) -> Result<Response, TransportError> {
+        let result = self.inner.send(request).await;
+        if let Some(dir) = &self.dir {
+            let n = self.count.get() + 1;
+            self.count.set(n);
+            let name = request.operation.map_or("connector-sds", |op| op.name);
+            let file = |suffix: &str| dir.join(format!("{n:02}-{name}.{suffix}"));
+            if !request.body.is_empty() {
+                std::fs::write(file("request.xml"), request.body).expect("recording");
+            }
+            match &result {
+                Ok(r) => std::fs::write(file(&format!("response-{}.xml", r.status)), &r.body),
+                Err(e) => std::fs::write(file("error.txt"), e.to_string()),
+            }
+            .expect("recording");
+        }
+        result
+    }
 }

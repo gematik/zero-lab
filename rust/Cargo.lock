@@ -1652,11 +1652,21 @@ dependencies = [
 name = "ti-client"
 version = "0.1.0"
 dependencies = [
+ "base64ct",
+ "p256",
+ "p384",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sha2",
  "ti-cache",
+ "ti-connector-client",
+ "ti-pki",
+ "ti-tls",
  "ti-types",
+ "ureq",
 ]
 
 [[package]]
@@ -1665,12 +1675,8 @@ version = "0.1.0"
 dependencies = [
  "base64ct",
  "futures-lite",
- "p256",
- "p384",
  "quick-xml",
- "rustls",
  "rustls-pki-types",
- "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sha2",
@@ -1680,7 +1686,6 @@ dependencies = [
  "ti-pki",
  "ti-types",
  "traceability",
- "ureq",
 ]
 
 [[package]]

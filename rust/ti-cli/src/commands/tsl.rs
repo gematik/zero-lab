@@ -35,6 +35,7 @@ use std::time::Duration;
 use der::asn1::ObjectIdentifier;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use ti_client::block_on;
 use ti_pki::load::{Detached, Meta, Source};
 use ti_pki::model::{CertSummary, Finding, rejection_code};
 use ti_pki::ocsp::OcspChecker;
@@ -50,7 +51,6 @@ use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone, hex};
 use crate::trust::{Session, VerifiedSet};
-use ti_client::block_on;
 
 /// The JSON document.
 #[derive(Serialize)]

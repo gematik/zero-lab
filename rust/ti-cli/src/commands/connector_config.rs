@@ -28,18 +28,17 @@
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
+use ti_client::connector::{TestOptions, UreqTransport, check_config};
 use ti_connector_client::Dotkon;
 use ti_connector_client::Timeouts;
 use ti_connector_client::check::{Finding, Report, Status};
 use ti_connector_client::config::{CertificateView, ConfigView, Secret};
-use ti_connector_client::ureq::{TestOptions, UreqTransport};
 
 use super::connector::emit;
 use crate::cli::{ConnectorArgs, GlobalArgs};
 use crate::connector::{self, Logged};
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, Tone};
-use ti_client::block_on;
 
 /// A `.kon` file as read from disk.
 pub(super) struct KonFile {
@@ -311,13 +310,13 @@ pub(super) fn run_checks(
         now: ti_pki::Timestamp::now(),
         through_proxy: connector::explicit_proxy(global).is_some(),
     };
-    block_on(ti_connector_client::ureq::check_config(
+    check_config(
         json,
         mode,
         |name| std::env::var(name).ok(),
         |dotkon| UreqTransport::new(dotkon, agent).map(|t| Logged::new(t, out)),
         options,
-    ))
+    )
 }
 
 pub(super) fn finding_line(finding: &Finding) -> Line {

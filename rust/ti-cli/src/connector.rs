@@ -29,7 +29,8 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use ti_connector_client::ureq::UreqTransport;
+use ti_client::block_on;
+use ti_client::connector::UreqTransport;
 use ti_connector_client::{
     Connector, Dotkon, Request, Response, Timeouts, Transport, TransportError,
 };
@@ -39,7 +40,6 @@ use ti_pki::load::{Cache, CachePolicy};
 use crate::cli::{ConnectorArgs, GlobalArgs};
 use crate::error::CliError;
 use crate::output::{Output, diagnostic};
-use ti_client::block_on;
 
 /// A Konnektor ready for calls.
 pub struct Session {

@@ -21,7 +21,7 @@ ti-client.workspace = true
 # A tool for every environment: the non-prod presets are in; TrustConfig::validate
 # still fences production from TEST-ONLY material.
 ti-pkcs12 = { workspace = true, features = ["encode"] }
-ti-connector-client = { workspace = true, features = ["ureq"] }
+ti-connector-client.workspace = true
 # base64url of the IDP's signed discovery document in `probe`.
 base64ct.workspace = true
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod", "serde"] }

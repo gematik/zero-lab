@@ -21,7 +21,7 @@
  * find details in the "Readme" file.
  */
 
-//! The ureq transport against a loopback TLS server, with OpenSSL-generated
+//! The Konnektor's ureq transport against a loopback TLS server, with OpenSSL-generated
 //! certificates (`tests/tls/generate.sh`): trust store as CA or pin, `expectedHost`
 //! as name and SNI, insecure mode, mutual TLS from PKCS#12 credentials, timeouts.
 
@@ -32,20 +32,21 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use base64ct::Encoding as _;
-use futures_lite::future::block_on;
 use rustls::server::WebPkiClientVerifier;
 use rustls::{RootCertStore, ServerConfig, ServerConnection, StreamOwned};
 use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
-use ti_connector_client::ureq::UreqTransport;
+use ti_client::block_on;
+use ti_client::connector::UreqTransport;
 use ti_connector_client::{Dotkon, Method, Request, Transport, TransportError};
 
-const CA: &[u8] = include_bytes!("tls/ca.pem");
-const SERVER: &[u8] = include_bytes!("tls/server.pem");
-const SERVER_KEY: &[u8] = include_bytes!("tls/server-key.pem");
-const OTHER: &[u8] = include_bytes!("tls/other.pem");
-const CLIENT_P12: &[u8] = include_bytes!("tls/client.p12");
-const CLIENT_NOPUB_P12: &[u8] = include_bytes!("tls/client-nopub.p12");
+const CA: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/ca.pem");
+const SERVER: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/server.pem");
+const SERVER_KEY: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/server-key.pem");
+const OTHER: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/other.pem");
+const CLIENT_P12: &[u8] = include_bytes!("../../ti-connector-client/tests/tls/client.p12");
+const CLIENT_NOPUB_P12: &[u8] =
+    include_bytes!("../../ti-connector-client/tests/tls/client-nopub.p12");
 
 fn der(pem: &[u8]) -> Vec<u8> {
     CertificateDer::from_pem_slice(pem).unwrap().to_vec()

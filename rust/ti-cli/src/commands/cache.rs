@@ -26,12 +26,12 @@
 //! TSL state and comfort IDs, stays.
 
 use serde::Serialize;
+use ti_client::file_cache;
 
 use crate::cli::GlobalArgs;
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, SCHEMA};
 use crate::profile::Profile;
-use ti_client::file_cache;
 
 /// The JSON document.
 #[derive(Serialize)]

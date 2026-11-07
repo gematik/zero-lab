@@ -14,10 +14,28 @@ publish = false
 [dependencies]
 ti-cache.workspace = true
 ti-types.workspace = true
+ti-connector-client.workspace = true
+# The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
+ti-tls.workspace = true
+# Blocking HTTP without an async runtime; the TLS layer is ti-tls's rustls configuration
+# in a connector of our own (`unversioned` API, hence ureq pinned `~3.4`).
+ureq = { workspace = true, features = ["rustls-no-provider"] }
+rustls.workspace = true
+rustls-pki-types = { workspace = true, features = ["std"] }
+# The operating system's trust store for a Konnektor without a `.kon` trust store.
+rustls-platform-verifier.workspace = true
+# Completes EC client keys that lack their public key, which ring requires.
+p256 = { workspace = true, features = ["pkcs8", "alloc"] }
+p384 = { workspace = true, features = ["pkcs8", "alloc"] }
 serde = { workspace = true, features = ["std"] }
 serde_json.workspace = true
 # The cache file names and path components: a hash of the key.
 sha2.workspace = true
+
+[dev-dependencies]
+base64ct.workspace = true
+# The Konnektor e2e test checks an ExternalAuthenticate signature against the card's C.AUT.
+ti-pki = { workspace = true, features = ["brainpool"] }
 
 [lints]
 workspace = true

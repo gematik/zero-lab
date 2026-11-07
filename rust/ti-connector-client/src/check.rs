@@ -27,7 +27,8 @@
 //!
 //! The steps, in order: [`StepId::File`], [`StepId::Tcp`], [`StepId::Tls`],
 //! [`StepId::Auth`], [`StepId::Sds`], [`StepId::Context`], [`StepId::Cards`]. A step
-//! that fails ends the run; the steps after it are skipped.
+//! that fails ends the run; the steps after it are skipped. [`run`] runs them all with
+//! the host's probe and transport.
 //!
 //! The service directory is read over https only: an `http` url fails. In the
 //! production environment (`env: pu`), `insecureSkipVerify` and credentials of type
@@ -37,10 +38,12 @@ use serde::Serialize;
 use ti_pki::Certificate;
 use ti_types::{Env, Timestamp};
 
-use crate::config::{CertificateView, ClientCertificate, ConfigView};
+use crate::config::{self, CertificateView, ClientCertificate, ConfigView};
+use crate::connector::Connector;
 use crate::dotkon::{Credentials, Dotkon, DotkonError};
 use crate::error::Error;
 use crate::sds::{ServiceDirectory, same_origin};
+use crate::soap::{Timeouts, Transport};
 use crate::types::Card;
 
 /// How a step or a finding came out; ordered from best to worst.
@@ -595,7 +598,7 @@ fn client_certificate(client: &ClientCertificate, now: Timestamp, findings: &mut
 /// What to do about an endpoint outside the `.kon` URL's origin.
 pub const FOREIGN_ENDPOINT: &str = "if it is the Konnektor's own address, behind NAT or a port forward, set rewriteServiceEndpoints to true; otherwise do not use this Konnektor until the directory is explained";
 
-/// The service directory, with endpoints as [`Connector`](crate::Connector) will use them:
+/// The service directory, with endpoints as [`Connector`] will use them:
 /// the product, and each service this client speaks.
 pub fn sds(dotkon: &Dotkon, result: &Result<ServiceDirectory, Error>) -> Step {
     let directory = match result {
@@ -706,4 +709,154 @@ pub fn cards(cards: &[Card]) -> Step {
             list.join(", ")
         ))],
     )
+}
+
+// ---- run ----------------------------------------------------------------------------
+
+/// How [`run`] judges and calls.
+#[derive(Clone, Copy, Debug)]
+pub struct Options {
+    /// For the service directory and GetCards.
+    pub timeouts: Timeouts,
+    /// The time certificates are judged at.
+    pub now: Timestamp,
+}
+
+/// Checks the `.kon` file `json` step by step. `mode` is the file's Unix permission bits
+/// (`None` where there are none) and `lookup` expands `${NAME}`. `probe` connects to the
+/// Konnektor of a valid file and shakes hands with its trust, offering the client
+/// certificate when the credentials can be read; `None` when the host's transport goes
+/// through a proxy, so the Konnektor may be reachable only through it and TCP and TLS are
+/// not probed. `transport` makes the host's transport, with which the service directory
+/// and GetCards are called.
+pub async fn run<T: Transport>(
+    json: &[u8],
+    mode: Option<u32>,
+    lookup: impl Fn(&str) -> Option<String>,
+    probe: Option<impl FnOnce(&Dotkon) -> (TcpObservation, Option<TlsObservation>)>,
+    transport: impl FnOnce(&Dotkon) -> Result<T, Error>,
+    options: Options,
+) -> Report {
+    let mut report = Report::default();
+    let parsed = Dotkon::parse_with(json, lookup);
+    if !report.push(file(&parsed, json, mode)) {
+        return report.finish();
+    }
+    let Ok(dotkon) = parsed else {
+        return report.finish();
+    };
+    let client = match &dotkon.credentials {
+        Credentials::Pkcs12 { data, password } => Some(config::client_certificate(data, password)),
+        Credentials::Basic { .. } | Credentials::None => None,
+    };
+    let mut observed_tls = None;
+    if let Some(probe) = probe {
+        let (observed_tcp, observed) = probe(&dotkon);
+        if !report.push(tcp(&observed_tcp)) {
+            return report.finish();
+        }
+        let Some(observed) = observed else {
+            return report.finish();
+        };
+        if !report.push(tls(&dotkon, &observed, options.now)) {
+            return report.finish();
+        }
+        observed_tls = Some(observed);
+    } else {
+        let why = "not probed directly: the connection goes through a proxy";
+        report.push(Step::skipped(StepId::Tcp, why));
+        report.push(Step::skipped(StepId::Tls, why));
+    }
+    let transport = match transport(&dotkon) {
+        Ok(transport) => transport,
+        Err(e) => {
+            let mut step = auth(
+                &dotkon,
+                client.as_ref(),
+                observed_tls.as_ref(),
+                None,
+                options.now,
+            );
+            if step.status != Status::Fail {
+                step.findings.push(Finding::new(
+                    Status::Fail,
+                    e.to_string(),
+                    Some("the credentials or the trust store cannot be used"),
+                ));
+                step = Step::new(StepId::Auth, step.findings);
+            }
+            report.push(step);
+            return report.finish();
+        }
+    };
+    let connected = Connector::connect(&dotkon, transport, options.timeouts).await;
+    let directory = connected
+        .as_ref()
+        .map(|c| c.directory().clone())
+        .map_err(Clone::clone);
+    let auth = auth(
+        &dotkon,
+        client.as_ref(),
+        observed_tls.as_ref(),
+        Some(&directory),
+        options.now,
+    );
+    if !report.push(auth) || !report.push(sds(&dotkon, &directory)) {
+        return report.finish();
+    }
+    let Ok(connector) = connected else {
+        return report.finish();
+    };
+    let listed = connector.cards().list(&[]).await;
+    if report.push(context(&dotkon, &listed)) {
+        report.push(cards(listed.as_deref().unwrap_or_default()));
+    }
+    report.finish()
+}
+
+/// `(host, port)` the Konnektor at `url`, an http(s) URL, listens on: the host without
+/// IPv6 brackets, the port 443 or 80 if none.
+pub fn host_port(url: &str) -> Option<(&str, u16)> {
+    let (origin, _) = crate::sds::split_origin(url)?;
+    let authority = origin.split_once("://")?.1;
+    let authority = authority.rsplit_once('@').map_or(authority, |(_, a)| a);
+    let default = if origin.starts_with("https://") {
+        443
+    } else {
+        80
+    };
+    if let Some(rest) = authority.strip_prefix('[') {
+        let (host, after) = rest.split_once(']')?;
+        let port = match after.strip_prefix(':') {
+            Some(port) => port.parse().ok()?,
+            None if after.is_empty() => default,
+            None => return None,
+        };
+        return Some((host, port));
+    }
+    match authority.rsplit_once(':') {
+        Some((host, port)) => Some((host, port.parse().ok()?)),
+        None => Some((authority, default)),
+    }
+    .filter(|(host, _)| !host.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn host_and_port_come_from_the_url_with_443_by_default() {
+        assert_eq!(
+            host_port("https://kon.example:8443/x"),
+            Some(("kon.example", 8443))
+        );
+        assert_eq!(host_port("https://kon.example"), Some(("kon.example", 443)));
+        assert_eq!(host_port("https://10.0.0.1:4433"), Some(("10.0.0.1", 4433)));
+        assert_eq!(host_port("https://[fe80::1]:8443"), Some(("fe80::1", 8443)));
+        assert_eq!(host_port("https://[fe80::1]/"), Some(("fe80::1", 443)));
+        assert_eq!(host_port("http://kon.example"), Some(("kon.example", 80)));
+        assert_eq!(host_port("https://kon.example:x"), None);
+        assert_eq!(host_port("ftp://kon.example"), None);
+    }
 }

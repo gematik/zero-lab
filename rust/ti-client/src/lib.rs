@@ -25,6 +25,7 @@
 #![forbid(unsafe_code)]
 
 mod block;
+pub mod connector;
 pub mod file_cache;
 pub mod files;
 
