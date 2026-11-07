@@ -168,6 +168,9 @@ pub struct Verdict {
     /// When the OCSP status it rests on was produced: an accepted verdict lives at most
     /// OCSP-005's hour past it (TLSV-051).
     pub status_produced: Option<Timestamp>,
+    /// The `nextUpdate` of the OCSP status it rests on: no accepted verdict outlives it
+    /// (TLSV-050).
+    pub status_next_update: Option<Timestamp>,
 }
 
 impl Verdict {
@@ -183,6 +186,7 @@ impl Verdict {
             warnings,
             not_after: None,
             status_produced: None,
+            status_next_update: None,
         }
     }
 }
@@ -350,6 +354,7 @@ fn status_verdict(
         warnings,
         not_after: Some(leaf.not_after()),
         status_produced: status.produced_at,
+        status_next_update: status.next_update,
     }
 }
 

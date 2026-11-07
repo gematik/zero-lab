@@ -24,15 +24,16 @@
 //! The two profiles as rustls verifiers, and the client configuration that offers only what
 //! `spec/pki-validation` allows (TLSV-010 to 013).
 //!
-//! A verifier is immutable over one snapshot of trust material: when the material is
-//! refreshed, the host builds a new verifier and configuration and swaps its `Arc`, so a
-//! handshake reads no shared state but the verdict cache, and a cached verdict never outlives
-//! its material (TLSV-050).
+//! The `ti` verifier judges against one snapshot of the TI's trust material and keeps its
+//! verdicts with that snapshot. A refreshed TSL replaces both at once
+//! ([`TiVerifier::replace`]): a handshake in flight finishes on the snapshot it started
+//! with, the next one sees the new material, and no cached verdict outlives the material it
+//! was reached with (TLSV-050). The `web` verifier's roots live as long as the verifier.
 
 use core::fmt;
 use core::time::Duration;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{CryptoProvider, WebPkiSupportedAlgorithms};
@@ -51,6 +52,10 @@ use crate::web::WebCheck;
 
 /// OCSP-005: how long a TI responder's answer is reused (TLSV-051).
 const TI_STATUS_REUSE: Duration = Duration::from_hours(1);
+
+/// How many accepted verdicts a verifier keeps: more servers than a client talks to, few
+/// enough that a host meeting endless chains or names does not grow without limit.
+const MAX_VERDICTS: usize = 4096;
 
 /// TLSV-010: TLS 1.3 and 1.2, nothing older.
 pub static VERSIONS: &[&rustls::SupportedProtocolVersion] =
@@ -93,12 +98,30 @@ pub fn provider() -> CryptoProvider {
     provider
 }
 
+type VerdictKey = (Vec<u8>, String);
+
 /// Accepted verdicts by chain, host and profile, until they may no longer be reused
 /// (TLSV-050). Refusals are never stored.
-#[derive(Debug, Default)]
-struct Verdicts(Mutex<HashMap<(Vec<u8>, String), u64>>);
+#[derive(Debug)]
+struct Verdicts {
+    until: Mutex<HashMap<VerdictKey, u64>>,
+    capacity: usize,
+}
+
+impl Default for Verdicts {
+    fn default() -> Verdicts {
+        Verdicts::with_capacity(MAX_VERDICTS)
+    }
+}
 
 impl Verdicts {
+    fn with_capacity(capacity: usize) -> Verdicts {
+        Verdicts {
+            until: Mutex::new(HashMap::new()),
+            capacity,
+        }
+    }
+
     fn key(
         end_entity: &[u8],
         intermediates: &[CertificateDer<'_>],
@@ -113,8 +136,8 @@ impl Verdicts {
         (hash.finalize().to_vec(), host.to_ascii_lowercase())
     }
 
-    fn reusable(&self, key: &(Vec<u8>, String), now: u64) -> bool {
-        let mut map = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+    fn reusable(&self, key: &VerdictKey, now: u64) -> bool {
+        let mut map = self.until.lock().unwrap_or_else(PoisonError::into_inner);
         match map.get(key) {
             Some(&until) if now < until => true,
             Some(_) => {
@@ -125,13 +148,35 @@ impl Verdicts {
         }
     }
 
-    fn keep(&self, key: (Vec<u8>, String), verdict: &Verdict) {
-        if let (true, Some(until)) = (verdict.is_valid(), verdict.reusable_until) {
-            self.0
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .insert(key, until);
+    /// Keeps an accepted verdict. Expired entries go first; at the bound, the entry that
+    /// would expire first makes room, as it is the one with the least reuse left.
+    fn keep(&self, key: VerdictKey, verdict: &Verdict, now: u64) {
+        let (true, Some(until)) = (verdict.is_valid(), verdict.reusable_until) else {
+            return;
+        };
+        if until <= now || self.capacity == 0 {
+            return;
         }
+        let mut map = self.until.lock().unwrap_or_else(PoisonError::into_inner);
+        map.retain(|_, kept| now < *kept);
+        if map.len() >= self.capacity && !map.contains_key(&key) {
+            let first = map
+                .iter()
+                .min_by_key(|(_, kept)| **kept)
+                .map(|(first, _)| first.clone());
+            if let Some(first) = first {
+                map.remove(&first);
+            }
+        }
+        map.insert(key, until);
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.until
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
     }
 }
 
@@ -183,11 +228,48 @@ fn verify_tls12(
     rustls::crypto::verify_tls12_signature(message, cert, dss, schemes)
 }
 
-/// The `ti` profile as a rustls verifier, over one snapshot of the TI's trust material.
+/// The `ti` profile as a rustls verifier, over a snapshot of the TI's trust material that
+/// [`TiVerifier::replace`] swaps while connections use it.
 pub struct TiVerifier<R> {
-    check: ServerCheck,
+    snapshot: RwLock<Arc<TiSnapshot>>,
     responder: R,
+}
+
+/// One snapshot of trust material and the verdicts reached with it, replaced together.
+struct TiSnapshot {
+    check: ServerCheck,
     verdicts: Verdicts,
+}
+
+impl TiSnapshot {
+    fn new(check: ServerCheck) -> Arc<TiSnapshot> {
+        Arc::new(TiSnapshot {
+            check,
+            verdicts: Verdicts::default(),
+        })
+    }
+}
+
+/// TLSV-050, TLSV-051: an accepted `ti` verdict is reused until the earliest of the end
+/// entity's `notAfter`, its status's `nextUpdate` and OCSP-005's hour past the status was
+/// produced.
+fn ti_reusable_until(ti: &ti_pki::tls::Verdict, now: Timestamp) -> Option<u64> {
+    if !ti.is_valid() {
+        return None;
+    }
+    let status_end = ti
+        .status_produced
+        .unwrap_or(now)
+        .0
+        .saturating_add(TI_STATUS_REUSE.as_secs());
+    [
+        ti.not_after.map(|t| t.0),
+        ti.status_next_update.map(|t| t.0),
+        Some(status_end),
+    ]
+    .into_iter()
+    .flatten()
+    .min()
 }
 
 impl<R> fmt::Debug for TiVerifier<R> {
@@ -201,15 +283,47 @@ impl<R: RevocationChecker> TiVerifier<R> {
     /// host's transport) when no stapled response holds.
     pub fn new(check: ServerCheck, responder: R) -> TiVerifier<R> {
         TiVerifier {
-            check,
+            snapshot: RwLock::new(TiSnapshot::new(check)),
             responder,
-            verdicts: Verdicts::default(),
         }
+    }
+
+    /// Replaces the trust material, for a refreshed TSL or, with a check over no store, for
+    /// material too old to use (TLSV-033). The verdicts reached with the old material go
+    /// with it (TLSV-050); handshakes already verifying finish on it.
+    pub fn replace(&self, check: ServerCheck) {
+        *self
+            .snapshot
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = TiSnapshot::new(check);
+    }
+
+    fn snapshot(&self) -> Arc<TiSnapshot> {
+        Arc::clone(&self.snapshot.read().unwrap_or_else(PoisonError::into_inner))
     }
 
     /// Judges a server as the handshake does, without one.
     pub fn verify(
         &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        host: &str,
+        stapled: &[u8],
+        now: Timestamp,
+    ) -> Verdict {
+        self.verify_with(
+            &self.snapshot().check,
+            end_entity,
+            intermediates,
+            host,
+            stapled,
+            now,
+        )
+    }
+
+    fn verify_with(
+        &self,
+        check: &ServerCheck,
         end_entity: &CertificateDer<'_>,
         intermediates: &[CertificateDer<'_>],
         host: &str,
@@ -224,19 +338,8 @@ impl<R: RevocationChecker> TiVerifier<R> {
             return Verdict::refuse(Code::Invalid, "a certificate does not parse");
         };
         let stapled = (!stapled.is_empty()).then_some(stapled);
-        let ti =
-            crate::block::block_on(
-                self.check
-                    .verify(&chain, host, stapled, now, &self.responder),
-            );
-        let reusable_until = ti.is_valid().then(|| {
-            let status_end = ti
-                .status_produced
-                .unwrap_or(now)
-                .0
-                .saturating_add(TI_STATUS_REUSE.as_secs());
-            ti.not_after.map_or(status_end, |end| end.0.min(status_end))
-        });
+        let ti = crate::block::block_on(check.verify(&chain, host, stapled, now, &self.responder));
+        let reusable_until = ti_reusable_until(&ti, now);
         Verdict {
             code: ti.code.into(),
             detail: ti.detail,
@@ -258,11 +361,19 @@ impl<R: RevocationChecker + Send + Sync> ServerCertVerifier for TiVerifier<R> {
         let host = host(server_name);
         let key = Verdicts::key(end_entity, intermediates, &host);
         let now = seconds(now);
-        if self.verdicts.reusable(&key, now.0) {
+        let snapshot = self.snapshot();
+        if snapshot.verdicts.reusable(&key, now.0) {
             return Ok(ServerCertVerified::assertion());
         }
-        let verdict = self.verify(end_entity, intermediates, &host, ocsp_response, now);
-        self.verdicts.keep(key, &verdict);
+        let verdict = self.verify_with(
+            &snapshot.check,
+            end_entity,
+            intermediates,
+            &host,
+            ocsp_response,
+            now,
+        );
+        snapshot.verdicts.keep(key, &verdict, now.0);
         if verdict.is_valid() {
             Ok(ServerCertVerified::assertion())
         } else {
@@ -374,7 +485,7 @@ impl<F: Fetch + Send + Sync> ServerCertVerifier for WebVerifier<F> {
             return Ok(ServerCertVerified::assertion());
         }
         let verdict = self.verify(end_entity, intermediates, &host, ocsp_response, now);
-        self.verdicts.keep(key, &verdict);
+        self.verdicts.keep(key, &verdict, now.0);
         if verdict.is_valid() {
             Ok(ServerCertVerified::assertion())
         } else {
@@ -406,5 +517,75 @@ impl<F: Fetch + Send + Sync> ServerCertVerifier for WebVerifier<F> {
             .iter()
             .map(|(scheme, _)| *scheme)
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn accepted(until: u64) -> Verdict {
+        Verdict {
+            reusable_until: Some(until),
+            ..Verdict::refuse(Code::Valid, "valid")
+        }
+    }
+
+    fn key(n: u8) -> VerdictKey {
+        (vec![n], "host.test".into())
+    }
+
+    /// TLSV-050: the cache holds at most its bound; the verdict that would expire first
+    /// makes room, and every insert drops what has expired.
+    #[test]
+    fn tlsv_050_the_verdict_cache_is_bounded_and_drops_expired_verdicts() {
+        let verdicts = Verdicts::with_capacity(2);
+        verdicts.keep(key(1), &accepted(300), 0);
+        verdicts.keep(key(2), &accepted(100), 0);
+        verdicts.keep(key(3), &accepted(200), 0);
+        assert_eq!(verdicts.len(), 2);
+        assert!(!verdicts.reusable(&key(2), 0), "expires first: evicted");
+        assert!(verdicts.reusable(&key(1), 0));
+        assert!(verdicts.reusable(&key(3), 0));
+
+        verdicts.keep(key(4), &accepted(400), 250);
+        assert_eq!(verdicts.len(), 2, "the expired verdict went on insert");
+        assert!(verdicts.reusable(&key(1), 250));
+        assert!(verdicts.reusable(&key(4), 250));
+    }
+
+    /// TLSV-050: a verdict already past its reuse, or a refusal, is not kept.
+    #[test]
+    fn tlsv_050_nothing_without_reuse_left_is_kept() {
+        let verdicts = Verdicts::default();
+        verdicts.keep(key(1), &accepted(100), 100);
+        verdicts.keep(key(2), &Verdict::refuse(Code::Expired, "expired"), 0);
+        assert_eq!(verdicts.len(), 0);
+    }
+
+    fn ti(next_update: Option<u64>) -> ti_pki::tls::Verdict {
+        ti_pki::tls::Verdict {
+            code: ti_pki::tls::Code::Valid,
+            detail: String::new(),
+            warnings: Vec::new(),
+            not_after: Some(Timestamp(10_000)),
+            status_produced: Some(Timestamp(1_000)),
+            status_next_update: next_update.map(Timestamp),
+        }
+    }
+
+    /// TLSV-050, TLSV-051: a `ti` verdict ends at the earliest of `notAfter`, the status's
+    /// `nextUpdate` and OCSP-005's hour past it was produced.
+    #[test]
+    fn tlsv_050_a_ti_verdict_ends_at_its_status_next_update() {
+        let now = Timestamp(1_000);
+        assert_eq!(ti_reusable_until(&ti(None), now), Some(4_600));
+        assert_eq!(ti_reusable_until(&ti(Some(2_000)), now), Some(2_000));
+        assert_eq!(ti_reusable_until(&ti(Some(9_000)), now), Some(4_600));
+        let refused = ti_pki::tls::Verdict {
+            code: ti_pki::tls::Code::Expired,
+            ..ti(None)
+        };
+        assert_eq!(ti_reusable_until(&refused, now), None);
     }
 }

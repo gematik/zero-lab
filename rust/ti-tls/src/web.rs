@@ -236,7 +236,7 @@ impl WebCheck {
                 Some(options),
                 None,
             ) {
-                Ok(_) => return accepted(info, now, None),
+                Ok(_) => return accepted(info, now, crl_next_update(&der)),
                 Err(webpki::Error::CertRevoked) => {
                     return Verdict::refuse(Code::Revoked, "revoked (CRL)");
                 }
@@ -248,6 +248,15 @@ impl WebCheck {
             "no revocation source gave a status",
         )
     }
+}
+
+/// The `nextUpdate` of a CRL webpki has accepted (TLSV-050). webpki checks it but does not
+/// expose it, so the list is read once more; a list without one bounds nothing.
+fn crl_next_update(der: &[u8]) -> Option<Timestamp> {
+    let crl =
+        x509_cert::crl::CertificateList::<x509_cert::certificate::Rfc5280>::from_der(der).ok()?;
+    let next = crl.tbs_cert_list.next_update?;
+    Some(Timestamp(next.to_unix_duration().as_secs()))
 }
 
 /// An accepted verdict, reusable until the earliest of `notAfter`, the status's
@@ -421,5 +430,23 @@ impl Info {
         self.key_usage
             .as_ref()
             .is_none_or(|ku| ku.0.contains(KeyUsages::DigitalSignature))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// TLSV-050: a verdict that rests on a CRL is not reused past the list's `nextUpdate`.
+    #[test]
+    fn tlsv_050_a_crl_verdict_ends_at_the_lists_next_update() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../spec/pki-validation/testdata/crl/web-ca-empty.der"
+        );
+        let der = std::fs::read(path).unwrap();
+        // 2026-01-08T00:00:00Z.
+        assert_eq!(crl_next_update(&der), Some(Timestamp(1_767_830_400)));
+        assert_eq!(crl_next_update(b"not a list"), None);
     }
 }
