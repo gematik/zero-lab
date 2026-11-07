@@ -4,7 +4,7 @@ title: 'cargo-vet: own audits of the remaining secret-handling and parser crates
 status: In Progress
 assignee: []
 created_date: '2026-11-05T22:12:00Z'
-updated_date: '2026-11-07T16:07:00Z'
+updated_date: '2026-11-07T16:39:00Z'
 labels:
   - deps
   - supply-chain
@@ -20,12 +20,14 @@ Left from TASK-59. Still exempted and security-relevant: quick-xml (hostile inpu
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 zeroize at 1.9.1 or its exemption kept with the reason
-- [ ] #2 each crate listed is covered by an import, a trusted publisher or an own audit, or its exemption carries the reason
+- [x] #1 zeroize at 1.9.1 or its exemption kept with the reason
+- [x] #2 each crate listed is covered by an import, a trusted publisher or an own audit, or its exemption carries the reason
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 pbkdf2 0.13.0 mcf finding reported to RustCrypto privately on 2026-11-06, per their security policy; a one-byte final field accepts about 1 in 256 wrong passwords, an empty one is refused by the parser. Not used here.
+
+zeroize 1.9.1: unsafe diff reviewed (barrier reads MaybeUninit<u8>; redundant optimization_barrier calls removed; Vec spare capacity zeroed before clear; Debug hides contents); covered by Mozilla 1.8.1 + bytecode-alliance 1.8.1->1.8.2 + Mozilla 1.8.2->1.9.1, exemption pruned (futures-io too). base64ct, block-padding, aes-kw, aes-gcm are no longer exempted (covered by imports). Remaining exemptions carry notes: quick-xml (core, hostile XML, no audit), ureq/ureq-proto/http/httparse/base64 (host only), security-framework(-sys)/schannel (host only, OS root stores), jiff (ti-cli), tls_codec (x509-cert), num-bigint (cfg(hax), note already there). Own audits were not recorded: cargo vet certify records a person, which an agent cannot be. Rule corrected: rust/docs/design.md §8 and unsafe-exceptions.md, the maintainer approves crates, a new version needs an unsafe review only.
 <!-- SECTION:NOTES:END -->
