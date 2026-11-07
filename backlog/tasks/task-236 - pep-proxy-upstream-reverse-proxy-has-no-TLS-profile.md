@@ -1,9 +1,10 @@
 ---
 id: TASK-236
 title: 'pep/proxy: upstream reverse proxy has no TLS profile'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T17:16:00Z'
+updated_date: '2026-11-07T10:27:00Z'
 labels:
   - go
   - security

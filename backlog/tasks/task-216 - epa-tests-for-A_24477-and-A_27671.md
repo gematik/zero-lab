@@ -1,9 +1,10 @@
 ---
 id: TASK-216
 title: 'epa: tests for A_24477 and A_27671'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-05T21:24:00Z'
+updated_date: '2026-11-07T10:27:00Z'
 labels:
   - go
 dependencies: []

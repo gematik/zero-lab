@@ -1,9 +1,10 @@
 ---
 id: TASK-234
 title: 'go/tipki: OCSPChecker''s caches are unbounded'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T14:30:00Z'
+updated_date: '2026-11-07T10:27:00Z'
 labels:
   - go
   - security
