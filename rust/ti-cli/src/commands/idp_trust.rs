@@ -30,7 +30,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use serde::Serialize;
-use ti_idpd::trust::{CertificateTrust, Checked, IdpCertificate};
+use ti_idpd_client::trust::{CertificateTrust, Checked, IdpCertificate};
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::profile::IDPD_SIG;
 use ti_pki::revocation::{RevocationMode, Unchecked};
@@ -232,7 +232,7 @@ pub struct CertificateInfo {
 
 /// The report entries for `done`'s certificates.
 pub fn certificate_infos(
-    certificates: &[ti_idpd::authenticator::CheckedCertificate],
+    certificates: &[ti_idpd_client::authenticator::CheckedCertificate],
 ) -> Vec<CertificateInfo> {
     use sha2::{Digest, Sha256};
     certificates

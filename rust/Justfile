@@ -128,7 +128,7 @@ release-notes version="Unreleased" crate="ti-cli":
     [[ -n "$notes" ]] || { echo "release-notes: no notes for {{crate}} {{version}}" >&2; exit 1; }
     printf '%s\n' "$notes"
 
-# Prepare a release from main, locally, of one or more crates (just release ti-cli=0.4.0 ti-idpd=0.2.0): gate, version bumps, release notes, ti binaries in target/dist when ti-cli is in it, one commit, a tag per crate
+# Prepare a release from main, locally, of one or more crates (just release ti-cli=0.4.0 ti-idpd-client=0.2.0): gate, version bumps, release notes, ti binaries in target/dist when ti-cli is in it, one commit, a tag per crate
 release +releases:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -364,7 +364,7 @@ check-changed base="main":
         just jwz-rsa-guard brainpool-absent jwz
     fi
     # wasm32 holds the cores; a crate outside them leaves it as it was.
-    if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-report|ti-wasm|jwz|ti-jwz|ti-idpd' <<<"$CRATES"; then
+    if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-report|ti-wasm|jwz|ti-jwz|ti-idpd-client|ti-directory-client' <<<"$CRATES"; then
         just wasm32 wasm-unsafe-free
     fi
     if grep -qw ti-pki <<<"$CRATES"; then just nonprod-absent; fi
@@ -432,9 +432,9 @@ wasm32:
     cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
     cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
     cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
-    cargo check -p ti-idpd --target wasm32-unknown-unknown
+    cargo check -p ti-idpd-client --target wasm32-unknown-unknown
     cargo check -p ti-jwks --target wasm32-unknown-unknown
-    cargo check -p ti-directory --target wasm32-unknown-unknown
+    cargo check -p ti-directory-client --target wasm32-unknown-unknown
 
 # ti-wasm allows the unsafe glue `#[wasm_bindgen]` expands to; everything else forbids it
 # through the workspace lints.
@@ -470,14 +470,14 @@ core-deps:
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper|bp256|bp384|rsa) ' || true)
     if [ -n "$found" ]; then echo "ti-connector-client core depends on: $found" >&2; exit 1; fi
     echo "ti-connector-client core is free of HTTP clients, TLS, executors and brainpool"
-    found=$(cargo tree -p ti-idpd -e normal --prefix none \
+    found=$(cargo tree -p ti-idpd-client -e normal --prefix none \
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
-    if [ -n "$found" ]; then echo "ti-idpd core depends on: $found" >&2; exit 1; fi
-    echo "ti-idpd core is free of HTTP clients, TLS and executors"
-    found=$(cargo tree -p ti-directory -e normal --prefix none \
+    if [ -n "$found" ]; then echo "ti-idpd-client core depends on: $found" >&2; exit 1; fi
+    echo "ti-idpd-client core is free of HTTP clients, TLS and executors"
+    found=$(cargo tree -p ti-directory-client -e normal --prefix none \
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
-    if [ -n "$found" ]; then echo "ti-directory depends on: $found" >&2; exit 1; fi
-    echo "ti-directory is free of HTTP clients, TLS and executors"
+    if [ -n "$found" ]; then echo "ti-directory-client depends on: $found" >&2; exit 1; fi
+    echo "ti-directory-client is free of HTTP clients, TLS and executors"
     found=$(cargo tree -p ti-jwks -e normal --prefix none \
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
     if [ -n "$found" ]; then echo "ti-jwks core depends on: $found" >&2; exit 1; fi
@@ -592,11 +592,11 @@ fuzz-ti-pki seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz ti-idpd's parsers of the IDP-Dienst's answers: discovery, keys, challenge, code redirect, each target for `seconds`
-fuzz-ti-idpd seconds="30":
+# Fuzz ti-idpd-client's parsers of the IDP-Dienst's answers: discovery, keys, challenge, code redirect, each target for `seconds`
+fuzz-ti-idpd-client seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd ti-idpd/fuzz
+    cd ti-idpd-client/fuzz
     for target in discovery key challenge code_redirect; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
@@ -605,11 +605,11 @@ fuzz-ti-idpd seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz ti-directory's parsers of the FHIR-Directory's answers: owner redirect, tokens, sign-in, each target for `seconds`
-fuzz-ti-directory seconds="30":
+# Fuzz ti-directory-client's parsers of the FHIR-Directory's answers: owner redirect, tokens, sign-in, each target for `seconds`
+fuzz-ti-directory-client seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd ti-directory/fuzz
+    cd ti-directory-client/fuzz
     for target in owner_redirect token keycloak_token sign_in; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \

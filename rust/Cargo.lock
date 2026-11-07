@@ -1635,8 +1635,8 @@ dependencies = [
  "thiserror",
  "ti-cache",
  "ti-connector-client",
- "ti-directory",
- "ti-idpd",
+ "ti-directory-client",
+ "ti-idpd-client",
  "ti-jwz",
  "ti-pkcs12",
  "ti-pki",
@@ -1674,7 +1674,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-directory"
+name = "ti-directory-client"
 version = "0.1.0"
 dependencies = [
  "base64ct",
@@ -1682,13 +1682,13 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "ti-idpd",
+ "ti-idpd-client",
  "ti-jwz",
  "traceability",
 ]
 
 [[package]]
-name = "ti-idpd"
+name = "ti-idpd-client"
 version = "0.1.0"
 dependencies = [
  "base64ct",

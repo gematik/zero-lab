@@ -15,7 +15,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │                            │                        │
  adapters   `ureq` / `os` features, ti-tls (rustls): the only code that does I/O or holds a TLS library
               │
- engines    ti-idpd  ti-directory  ti-connector-client  ti-report  ti-jwks   (sans I/O)
+ engines    ti-idpd-client  ti-directory-client  ti-connector-client  ti-report  ti-jwks   (sans I/O)
               │
  core       ti-pki (+ load)  jwz (+ ti-jwz)         ti-pkcs12
               │
@@ -30,8 +30,8 @@ crypto cores are `no_std` + `alloc` where the crates they build on allow it.
 ## 2. Sans I/O and transports
 
 Engines model a protocol as data: they build requests and consume responses, and the
-host performs them. `ti_idpd::http::Request`/`Response` carry the IDP flow, which the
-CLI drives with ureq and a browser could drive with `fetch`; a redirect is an answer
+host performs them. `ti_idpd_client::http::Request`/`Response` carry the IDP flow, which
+the CLI drives with ureq and a browser could drive with `fetch`; a redirect is an answer
 there, so the transport must not follow it. `ti_connector_client::Transport` leaves TLS
 (client certificates from PKCS#12, the `.kon` trust store), proxies, connection reuse
 and timeouts to the host. `ti_pki::load::Transport` fetches roots.json and the TSL with
@@ -61,7 +61,7 @@ adapters use it for TI endpoints (TASK-97). Today ti-connector-client verifies t
 Konnektor by its `.kon` pins and CAs, and other TLS goes through the platform verifier.
 
 The three `Transport` traits differ today (artefact-shaped async get/post in ti-pki,
-request/response sync in ti-idpd, SOAP-shaped async in ti-connector-client); whether a
+request/response sync in ti-idpd-client, SOAP-shaped async in ti-connector-client); whether a
 small `ti-http` crate unifies them before 1.0 is TASK-64.
 
 ## 3. Keys and cryptography
@@ -100,11 +100,11 @@ the interop adapter in `spec/<topic>/interop/rust` prints the code.
 - Requirement-named tests: `fn p12_036_mac_iterations_above_the_limit_are_refused()`,
   `fn rfc_7516_5_2_…()`; the implementing code cites the requirement in a comment, and
   jwz's `tests/traceability.rs` generates and checks `docs/traceability.md`
-  (`JWZ_BLESS=1` rewrites it). The ti crates (ti-pki, ti-pkcs12, ti-idpd, ti-directory,
-  ti-connector-client, ti-cli, ti-wasm) do the same through the dev-only `traceability`
-  crate, which also reads spec rules (`TSLDET-013`), gematik afos, use cases and tables
-  (`A_28419`, `TUC_PKI_006`, `Tab_PKI_405`) and spec rule IDs in string literals, refuses a
-  spec rule `spec/` does not define, and lists requirement-named tests no citation takes;
+  (`JWZ_BLESS=1` rewrites it). The ti crates (ti-pki, ti-pkcs12, ti-idpd-client,
+  ti-directory-client, ti-connector-client, ti-cli, ti-wasm) do the same through the
+  dev-only `traceability` crate, which also reads spec rules (`TSLDET-013`), gematik afos,
+  use cases and tables (`A_28419`, `TUC_PKI_006`, `Tab_PKI_405`) and spec rule IDs in string
+  literals, refuses a spec rule `spec/` does not define, and lists requirement-named tests no citation takes;
   `TRACE_BLESS=1 cargo test -p <crate> --test traceability` rewrites a table.
 - Gated tests are `#[ignore = "needs TI_TEST_KON_PATH: just <recipe>"]`, run by their
   recipe with `--ignored`, and fail when run without their variable; the suites are in
@@ -151,7 +151,7 @@ with `cargo fuzz tmin`; structure-aware targets with `arbitrary`.
 | ti-pki | certificate and chain parsing, roots.json, the detached TSL signature, TSL (`quick-xml`), OCSP responses, `TrustStore` validation of a parsed chain, offline bundle |
 | ti-pkcs12 | `decode` with password, MAC and KDF parameters, legacy PBEs |
 | ti-connector-client | `.kon` files, SOAP responses and faults, service directory |
-| ti-idpd, ti-directory | discovery document, IDP keys and challenge, redirects, token responses |
+| ti-idpd-client, ti-directory-client | discovery document, IDP keys and challenge, redirects, token responses |
 | ti-jwks | a `jwks_uri`'s answers: status, `Cache-Control`, the set within its limits |
 | ti-tls | the chain a TLS server presents, under the `web` profile (`fuzz-ti-tls`) |
 | ti-report | TSL view and certificate description (what ti-wasm hands to JavaScript) |
@@ -168,8 +168,8 @@ are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
 ti-cache, ti-pki, ti-pkcs12, ti-connector-client, ti-report, jwz,
-ti-jwz, ti-jwks, ti-idpd and ti-directory, with every feature but their adapters
-(the `ureq` transports) and `test-util`.
+ti-jwz, ti-jwks, ti-idpd-client and ti-directory-client, with every feature but their
+adapters (the `ureq` transports) and `test-util`.
 The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
 or foreign code through `unsafe` (rpassword) belongs there. What counts is what
 ends up in the program on the release targets and wasm32: normal dependencies, not proc
@@ -218,5 +218,5 @@ Gaps against the rules are backlog tasks: the crate labels (`ti-pki`,
 `ti-pkcs12`, `jwz`, …) together with `fuzz`, `tests`, `deps`, `keys`. Most relevant now:
 fuzz targets beyond jwz (TASK-44 to TASK-49), requirement-named tests outside jwz
 (TASK-50, TASK-51), the silently passing Konnektor end-to-end tests (TASK-52), keys as
-functions in ti-idpd and ti-connector-client (TASK-60, TASK-61), key capabilities and
+functions in ti-idpd-client and ti-connector-client (TASK-60, TASK-61), key capabilities and
 attestation (TASK-62).

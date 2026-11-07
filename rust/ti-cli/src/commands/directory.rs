@@ -28,10 +28,10 @@
 
 use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
-use ti_directory::owner;
-use ti_directory::{AccessToken, Directory, Endpoint, Idp, TokenClaims, exchange};
-use ti_idpd::Warning;
-use ti_idpd::authenticator::{self, Authenticated};
+use ti_directory_client::owner;
+use ti_directory_client::{AccessToken, Directory, Endpoint, Idp, TokenClaims, exchange};
+use ti_idpd_client::Warning;
+use ti_idpd_client::authenticator::{self, Authenticated};
 use ti_pki::Timestamp;
 
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
@@ -173,10 +173,10 @@ fn directory(target: &DirectoryTargetArgs, needs: Needs) -> Result<Directory, Cl
     }
 }
 
-/// A `ti_directory::Error` as the CLI reports it; IDP failures keep their own kinds.
-fn directory_error(error: ti_directory::Error, trust: Option<&IdpTrust<'_>>) -> CliError {
+/// A `ti_directory_client::Error` as the CLI reports it; IDP failures keep their own kinds.
+fn directory_error(error: ti_directory_client::Error, trust: Option<&IdpTrust<'_>>) -> CliError {
     match error {
-        ti_directory::Error::Idpd(inner) => trust
+        ti_directory_client::Error::Idpd(inner) => trust
             .and_then(IdpTrust::take_error)
             .unwrap_or(CliError::Idpd(inner)),
         other => CliError::Directory(Box::new(other)),

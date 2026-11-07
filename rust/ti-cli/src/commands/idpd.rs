@@ -27,8 +27,8 @@
 
 use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
-use ti_idpd::authenticator;
-use ti_idpd::{Idp, Warning};
+use ti_idpd_client::authenticator;
+use ti_idpd_client::{Idp, Warning};
 
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
 use crate::block::block_on;

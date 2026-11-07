@@ -238,7 +238,7 @@ func TestAuthenticateReturnsTheCodeOfTheRedirect(t *testing.T) {
 	}
 }
 
-// As ti-idpd's challenge::code: a redirect that carries the IDP's error, or no code, is no success.
+// As ti-idpd-client's challenge::code: a redirect that carries the IDP's error, or no code, is no success.
 func TestAuthenticateRefusesAnAnswerThatCarriesNoCode(t *testing.T) {
 	for name, tc := range map[string]struct {
 		answer http.HandlerFunc

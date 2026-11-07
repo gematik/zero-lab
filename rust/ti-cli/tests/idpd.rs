@@ -22,7 +22,7 @@
  */
 
 //! `ti idpd authenticate` end to end against an IDP-Dienst on the loopback that signs
-//! with ti-idpd's TEST-ONLY signer: the binary, its ureq transport, the identity from
+//! with ti-idpd-client's TEST-ONLY signer: the binary, its ureq transport, the identity from
 //! the fixtures, and the IDP's answers as gemSpec_IDP_Dienst describes them.
 
 #[path = "support/loopback.rs"]

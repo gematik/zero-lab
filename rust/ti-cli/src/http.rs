@@ -128,9 +128,9 @@ pub fn idp_agent(net: &NetArgs) -> Result<Agent, CliError> {
     ))
 }
 
-/// The IDP agent as a [`ti_idpd::http::Transport`] with one `-v` line per request.
+/// The IDP agent as a [`ti_idpd_client::http::Transport`] with one `-v` line per request.
 pub struct Logged<'a> {
-    inner: ti_idpd::ureq::UreqTransport,
+    inner: ti_idpd_client::ureq::UreqTransport,
     out: &'a Output,
 }
 
@@ -138,17 +138,17 @@ impl<'a> Logged<'a> {
     /// The transport over [`idp_agent`].
     pub fn new(net: &NetArgs, out: &'a Output) -> Result<Logged<'a>, CliError> {
         Ok(Logged {
-            inner: ti_idpd::ureq::UreqTransport::new(idp_agent(net)?),
+            inner: ti_idpd_client::ureq::UreqTransport::new(idp_agent(net)?),
             out,
         })
     }
 }
 
-impl ti_idpd::http::Transport for Logged<'_> {
+impl ti_idpd_client::http::Transport for Logged<'_> {
     async fn send(
         &self,
-        request: &ti_idpd::http::Request,
-    ) -> Result<ti_idpd::http::Response, ti_idpd::http::TransportError> {
+        request: &ti_idpd_client::http::Request,
+    ) -> Result<ti_idpd_client::http::Response, ti_idpd_client::http::TransportError> {
         let response = self.inner.send(request).await;
         match &response {
             Ok(r) => {

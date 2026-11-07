@@ -443,8 +443,8 @@ one crate with binaries. A release takes two commands from `main`:
    release against the real systems and record the results in the release PR; `just
    release` cannot do this for you.
 1. **`just release CRATE=X.Y.Z …`**, local only, e.g.
-   `just release ti-cli=0.4.0 ti-idpd=0.2.0 ti-directory=0.1.0`. It stops unless `main`
-   is clean and equal to `origin/main`, each tag is new and above the crate's last
+   `just release ti-cli=0.4.0 ti-idpd-client=0.2.0 ti-directory-client=0.1.0`. It stops unless
+   `main` is clean and equal to `origin/main`, each tag is new and above the crate's last
    `rust/<crate>/v*`, and `ReleaseNotes.md` has exactly one `### <crate>` block under
    `## Unreleased` for each. Then `just check-full` and `just advisories vet msrv`; per crate the version in
    its `Cargo.toml`, the workspace requirement on it in `Cargo.toml` (`"0.2"` for 0.x,

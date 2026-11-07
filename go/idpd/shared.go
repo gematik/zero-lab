@@ -256,7 +256,7 @@ func fetchSigningKey(ctx context.Context, uri string, httpClient *http.Client, t
 
 // fetchEncryptionKey returns the key the signed challenge is encrypted to. The IDP-Dienst publishes it
 // without a certificate, so there is nothing to verify: its address comes from the verified discovery
-// document and TLS carries it, as in ti-idpd (IDPV-004). What it can be is checked.
+// document and TLS carries it, as in ti-idpd-client (IDPV-004). What it can be is checked.
 func fetchEncryptionKey(ctx context.Context, uri string, httpClient *http.Client) (*ecdsa.PublicKey, error) {
 	key, err := fetchKey(ctx, uri, httpClient)
 	if err != nil {

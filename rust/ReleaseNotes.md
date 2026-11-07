@@ -177,7 +177,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   set at most once a minute. `https` only, redirects refused, 64 KiB and 100 keys at most.
   `http::Transport` for any client, a blocking one with the `ureq` feature.
 
-### ti-idpd
+### ti-idpd-client
 
 #### security
 - The discovery document's signer is checked before its key verifies the document
@@ -191,6 +191,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - A code redirect whose `code` is empty is malformed, as one without `code` is.
 
 #### changed
+- Renamed from `ti-idpd`: product clients are named `ti-<product>-client` (decision-15). The
+  package and crate are `ti-idpd-client` and `ti_idpd_client`, the fuzz recipe
+  `just fuzz-ti-idpd-client`.
 - `discovery::parse` takes the `Idp` asked and refuses a signed document that names another
   issuer.
 - `authenticator::authenticate` takes a `trust::CertificateTrust` and hands it the
@@ -208,17 +211,20 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   transports, so a browser's fetch can carry the flow (decision-15). `ureq::UreqTransport`
   stays blocking: its future is ready at its first poll (TASK-245).
 
-### ti-directory
+### ti-directory-client
 
 #### changed
+- Renamed from `ti-directory`, as `ti-idpd-client` (decision-15): the package and crate are
+  `ti-directory-client` and `ti_directory_client`, the fuzz recipe
+  `just fuzz-ti-directory-client`.
 - `owner::login` is `async`: it awaits the IDP-Dienst flow's asynchronous signer
-  (ti-idpd, TASK-60).
+  (ti-idpd-client, TASK-60).
 - `exchange::login_bearer` and `exchange::login_client_credentials` are `async`, as
-  ti-idpd's transport is (TASK-245).
+  ti-idpd-client's transport is (TASK-245).
 
 #### added
 - New crate: the gematik FHIR-Directory's Auth-Service (gemSpec_VZD_FHIR_Directory
-  V1.7.0, I_VZD_Owner) as its clients see it, sans I/O over ti-idpd's HTTP types:
+  V1.7.0, I_VZD_Owner) as its clients see it, sans I/O over ti-idpd-client's HTTP types:
   `Directory::for_env` (PU, RU, TU with the environment's IDP-Dienst and Keycloak),
   `Endpoint` (owner, holder, service, ti-provider with path and realm), `owner` (the card
   flow with its redirect guards), `keycloak`

@@ -29,9 +29,9 @@ ti-report.workspace = true
 jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }
 ti-jwz = { workspace = true, features = ["legacy"] }
 # `idpd authenticate`: the IDP-Dienst flow over this tool's ureq.
-ti-idpd = { workspace = true, features = ["ureq"] }
+ti-idpd-client = { workspace = true, features = ["ureq"] }
 # `directory login`: the FHIR-Directory's owner authentication over the same transport.
-ti-directory.workspace = true
+ti-directory-client.workspace = true
 pkcs8.workspace = true
 sec1.workspace = true
 der.workspace = true

@@ -187,11 +187,11 @@ pub enum CliError {
     /// The IDP-Dienst flow failed: the IDP refused, did not answer, or answered
     /// outside the protocol.
     #[error("IDP-Dienst: {0}")]
-    Idpd(#[source] ti_idpd::Error),
+    Idpd(#[source] ti_idpd_client::Error),
     /// The FHIR-Directory refused, did not answer, or answered outside the protocol;
     /// a failure of the IDP-Dienst flow inside it is reported as [`CliError::Idpd`].
     #[error("{0}")]
-    Directory(#[source] Box<ti_directory::Error>),
+    Directory(#[source] Box<ti_directory_client::Error>),
     /// Writing to stdout failed.
     #[error("cannot write output: {0}")]
     Output(#[from] io::Error),
@@ -238,14 +238,14 @@ impl CliError {
             CliError::Header(_) => "header_invalid",
             CliError::Signing(_) => "signing_failed",
             CliError::SignatureMalformed(_) => "signature_malformed",
-            CliError::Idpd(ti_idpd::Error::Idp(_)) => "idpd_error",
-            CliError::Idpd(ti_idpd::Error::Transport { .. }) => "idpd_unreachable",
-            CliError::Idpd(ti_idpd::Error::Untrusted { .. }) => "idpd_untrusted",
+            CliError::Idpd(ti_idpd_client::Error::Idp(_)) => "idpd_error",
+            CliError::Idpd(ti_idpd_client::Error::Transport { .. }) => "idpd_unreachable",
+            CliError::Idpd(ti_idpd_client::Error::Untrusted { .. }) => "idpd_untrusted",
             CliError::Idpd(_) => "idpd_protocol",
             CliError::Directory(error) => match **error {
-                ti_directory::Error::Directory(_) => "directory_error",
-                ti_directory::Error::AuthServer(_) => "directory_auth_server_error",
-                ti_directory::Error::Transport { .. } => "directory_unreachable",
+                ti_directory_client::Error::Directory(_) => "directory_error",
+                ti_directory_client::Error::AuthServer(_) => "directory_auth_server_error",
+                ti_directory_client::Error::Transport { .. } => "directory_unreachable",
                 _ => "directory_protocol",
             },
             CliError::Output(_) => "output_failed",
@@ -318,26 +318,26 @@ impl CliError {
             CliError::SignatureMalformed(_) => {
                 Some("expected a DER ECDSA-Sig-Value or r‖s of the curve's size (64 bytes)")
             }
-            CliError::Idpd(ti_idpd::Error::Idp(_)) => Some(
+            CliError::Idpd(ti_idpd_client::Error::Idp(_)) => Some(
                 "the IDP refused; gematik_error_text says why (client_id, redirect_uri, an expired challenge, an unknown card)",
             ),
-            CliError::Idpd(ti_idpd::Error::Transport { .. }) => {
+            CliError::Idpd(ti_idpd_client::Error::Transport { .. }) => {
                 Some("check the network, --proxy and the IDP URL; -v shows each request")
             }
-            CliError::Idpd(ti_idpd::Error::Untrusted { .. }) => Some(
+            CliError::Idpd(ti_idpd_client::Error::Untrusted { .. }) => Some(
                 "the IDP's certificate is not valid in the environment's TSL (wrong --env, revoked, expired); `pki verify` explains, --idp-unverified skips the check",
             ),
             CliError::Idpd(_) => {
                 Some("the IDP's answer departs from gemSpec_IDP_Dienst; -v shows the exchange")
             }
             CliError::Directory(error) => Some(match **error {
-                ti_directory::Error::Directory(_) => {
+                ti_directory_client::Error::Directory(_) => {
                     "the FHIR-Directory refused; its message says why (an identity without an entry in the directory, a code it did not issue, a token it does not accept)"
                 }
-                ti_directory::Error::AuthServer(_) => {
+                ti_directory_client::Error::AuthServer(_) => {
                     "the directory's Keycloak refused the client credentials: check --client-id, the secret file and the endpoint (holder, service, ti-provider have their own realms)"
                 }
-                ti_directory::Error::Transport { .. } => {
+                ti_directory_client::Error::Transport { .. } => {
                     "check the network, --proxy and the directory URL; -v shows each request"
                 }
                 _ => {
@@ -584,30 +584,32 @@ mod tests {
             CliError::Header("a".into()),
             CliError::Signing("a".into()),
             CliError::SignatureMalformed("a".into()),
-            CliError::Idpd(ti_idpd::Error::Idp(ti_idpd::IdpError::default())),
-            CliError::Idpd(ti_idpd::Error::Transport {
+            CliError::Idpd(ti_idpd_client::Error::Idp(
+                ti_idpd_client::IdpError::default(),
+            )),
+            CliError::Idpd(ti_idpd_client::Error::Transport {
                 what: "a",
-                source: ti_idpd::http::TransportError("a".into()),
+                source: ti_idpd_client::http::TransportError("a".into()),
             }),
-            CliError::Idpd(ti_idpd::Error::Untrusted {
-                which: ti_idpd::trust::IdpCertificate::TokenSigner,
+            CliError::Idpd(ti_idpd_client::Error::Untrusted {
+                which: ti_idpd_client::trust::IdpCertificate::TokenSigner,
                 detail: "a".into(),
             }),
-            CliError::Idpd(ti_idpd::Error::Malformed {
+            CliError::Idpd(ti_idpd_client::Error::Malformed {
                 what: "a",
                 detail: "a".into(),
             }),
-            CliError::Directory(Box::new(ti_directory::Error::Directory(
-                ti_directory::DirectoryError::default(),
+            CliError::Directory(Box::new(ti_directory_client::Error::Directory(
+                ti_directory_client::DirectoryError::default(),
             ))),
-            CliError::Directory(Box::new(ti_directory::Error::AuthServer(
-                ti_directory::OAuthError::default(),
+            CliError::Directory(Box::new(ti_directory_client::Error::AuthServer(
+                ti_directory_client::OAuthError::default(),
             ))),
-            CliError::Directory(Box::new(ti_directory::Error::Transport {
+            CliError::Directory(Box::new(ti_directory_client::Error::Transport {
                 what: "a",
-                source: ti_idpd::http::TransportError("a".into()),
+                source: ti_idpd_client::http::TransportError("a".into()),
             })),
-            CliError::Directory(Box::new(ti_directory::Error::Malformed {
+            CliError::Directory(Box::new(ti_directory_client::Error::Malformed {
                 what: "a",
                 detail: "a".into(),
             })),
