@@ -3,9 +3,11 @@
 The crates with `unsafe` code that the cores may depend on, and why
 ([design.md, section 8](./design.md#8-dependencies)). `just unsafe-free` reads the three
 tables below: the cores with the features their builds may enable, the targets, and the
-exceptions. A crate missing here, or present in another version than the one approved,
-fails the check; review its `unsafe` (`cargo run -p unsafe-audit -- inventory`) and ask
-the maintainer before adding or changing a row.
+exceptions. A crate missing here, or present in another version than the one listed,
+fails the check. A new crate needs the maintainer's approval before its row is added. A new
+version of a listed crate does not: review what its `unsafe` changed against the listed
+version (`cargo run -p unsafe-audit -- inventory`, and the diff of the two releases), then
+change the row's version; the date stays the crate's approval.
 
 Most rows are cryptography (CPU intrinsics and constant-time barriers that safe Rust cannot
 express), the operating system's random source, and the reference casts and unchecked UTF-8
@@ -72,5 +74,5 @@ task.
 | subtle | 2.6.1 | the optimisation barrier of constant-time choices (volatile read) | 2026-10-29 |
 | unicode-ident | 1.0.26 | wasm32 only: unchecked table lookup in wasm-bindgen's support crate | 2026-10-29 |
 | wasm-bindgen | 0.2.128 | wasm32 only: JavaScript interop for Crypto.getRandomValues (getrandom) | 2026-10-29 |
-| zeroize | 1.9.0 | volatile writes that wipe secrets without the compiler removing them | 2026-10-29 |
+| zeroize | 1.9.1 | volatile writes that wipe secrets without the compiler removing them | 2026-10-29 |
 | zmij | 1.0.23 | float formatting in serde_json into an uninitialised buffer | 2026-10-29 |

@@ -174,7 +174,9 @@ or foreign code through `unsafe` (rpassword) belongs there. What counts is what
 ends up in the program on the release targets and wasm32: normal dependencies, not proc
 macros or build scripts. A crate with `unsafe` enters a core only through an entry in
 [unsafe-exceptions.md](./unsafe-exceptions.md) with its exact version, the reason and the
-maintainer's approval date; a new version is reviewed again before its row changes.
+date the maintainer approved the crate. The maintainer approves crates, not versions: a new
+version of a listed crate needs no new approval, but its `unsafe` is reviewed against the
+listed version before the row's version changes.
 `just unsafe-free` (in `just check`) runs `unsafe-audit`, which parses every crate of each
 core's tree with `syn` and fails on a crate with `unsafe` that is not listed, a listed
 crate in another version, and a row no core needs any more; `cargo run -p unsafe-audit --
