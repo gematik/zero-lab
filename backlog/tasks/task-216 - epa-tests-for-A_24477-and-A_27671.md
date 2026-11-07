@@ -1,10 +1,10 @@
 ---
 id: TASK-216
 title: 'epa: tests for A_24477 and A_27671'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-05T21:24:00Z'
-updated_date: '2026-11-07T10:40:00Z'
+updated_date: '2026-11-07T10:44:00Z'
 labels:
   - go
 dependencies: []
@@ -28,3 +28,9 @@ epa has no test for A_24477 (VAU-nonPU-Tracing header) and none for A_27671 (sin
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-07, go-batch 8a7d150a: A_24477 (gemSpec_Krypt 2.50.0) was not implemented: a nonPU channel now sends VAU-nonPU-Tracing (base64 K2_c2s_app_data, space, K2_s2c_app_data) on every outer request after the key exchange, a PU channel never. The A_27671 test found the PoPP token (and every request in plain) in the debug log: Channel.EncryptRequest logged the dumped request; it now logs its size. The test VAU server logs the decrypted request's size instead of its content. Tests: TestA_24477_ANonPUChannelDisclosesItsKeysOnEveryRequest, TestA_24477_AProductionChannelNeverDisclosesItsKeys, TestA_27671_APoPPTokenIsSentOnceAndNeverLogged.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+epa implements and tests A_24477 (VAU-nonPU-Tracing outside production, never in PU) and tests A_27671 (PoPP token sent once, never logged); the VAU client no longer logs request plaintext at debug. Merged from go-batch.
+<!-- SECTION:FINAL_SUMMARY:END -->

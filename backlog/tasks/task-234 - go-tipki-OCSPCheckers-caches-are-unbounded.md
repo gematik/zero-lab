@@ -1,10 +1,10 @@
 ---
 id: TASK-234
 title: 'go/tipki: OCSPChecker''s caches are unbounded'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T14:30:00Z'
-updated_date: '2026-11-07T10:40:00Z'
+updated_date: '2026-11-07T10:44:00Z'
 labels:
   - go
   - security
@@ -29,3 +29,9 @@ Found in TASK-98.2 review: tipki.OCSPChecker's result cache and its map of pause
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-07, go-batch b52f7c6d: putBounded drops expired entries on every insert and, at the bound, the entry ending first; OCSPCacheLimit 4096 results, OCSPRestingLimit 1024 responders. Test TestOCSPCachesAreBoundedAndDropExpiredEntriesOnInsert.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+tipki.OCSPChecker's result cache (4096) and resting responders (1024) are bounded and drop expired entries on insert. Merged from go-batch.
+<!-- SECTION:FINAL_SUMMARY:END -->
