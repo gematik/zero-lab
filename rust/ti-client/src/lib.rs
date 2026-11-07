@@ -31,6 +31,8 @@ mod error;
 pub mod file_cache;
 pub mod files;
 pub mod http;
+pub mod identity;
+pub mod idp_trust;
 pub mod input;
 pub mod net;
 pub mod peer;

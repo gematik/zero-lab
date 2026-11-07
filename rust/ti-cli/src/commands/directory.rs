@@ -33,7 +33,7 @@ use ti_idpd_client::Warning;
 use ti_idpd_client::authenticator::{self, Authenticated};
 use ti_pki::Timestamp;
 
-use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
+use super::idp_trust::{CertificateInfo, certificate_infos, idp_trust};
 use super::idpd::certificate_lines;
 use super::owner_login::{self, OwnerError, OwnerTokens};
 use crate::cli::{
@@ -271,7 +271,7 @@ fn login_card(
     out: &Output,
 ) -> Result<Report, CliError> {
     let directory = directory(target, Needs::Idp)?;
-    let identity = Identity::load(identity_args, global, out)?;
+    let identity = crate::identity::load(identity_args, global, out)?;
     let signer = identity.signer(ti_jwz::brainpool::BP256R1)?;
     let transport = http::Logged::new(&global.net, out)?;
     out.verbose(
@@ -282,7 +282,7 @@ fn login_card(
             directory.idp_url()
         ),
     );
-    let trust = IdpTrust::new(idp_unverified, target.env, global, out);
+    let trust = idp_trust(idp_unverified, target.env, global, out);
     let card = authenticator::Identity {
         signer: &*signer,
         certificate_der: identity.certificate.der(),

@@ -88,7 +88,7 @@ fn source_info(identity: &Identity) -> SourceInfo {
 
 /// Runs `ti identity inspect`.
 pub fn inspect(args: &IdentityArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let identity = Identity::load(args, global, out)?;
+    let identity = crate::identity::load(args, global, out)?;
     let now = Timestamp::now();
     let report = InspectReport {
         schema: SCHEMA,
@@ -167,7 +167,7 @@ pub fn inspect(args: &IdentityArgs, global: &GlobalArgs, out: &Output) -> Result
 pub fn sign(args: &IdentitySignArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let claims = read_claims(&args.claims)?;
     let params = header_params(args)?;
-    let identity = Identity::load(&args.identity, global, out)?;
+    let identity = crate::identity::load(&args.identity, global, out)?;
     let payload = serde_json::to_vec(&claims)?;
     let alg = SignatureAlgorithm::from(args.alg);
     let jws = identity.sign(&payload, params, alg)?;

@@ -24,8 +24,18 @@ ti-directory-client.workspace = true
 ti-pki = { workspace = true, features = ["load", "os", "dangerous-nonprod", "brainpool", "rsa", "serde"] }
 # Certificates and keys from PKCS#12 files; truststores and re-encoded files written.
 ti-pkcs12 = { workspace = true, features = ["encode"] }
-# The OIDs of a PKCS#12 file's keys and curves.
+# The OIDs of a PKCS#12 file's keys and curves; the identity's keys from PKCS#8 and SEC1.
 der.workspace = true
+# The identity's JWS: ES256 on brainpoolP256r1 (ti-jwz's brainpool) or P-256 (jwz's own
+# backend); its keys come from PKCS#8 and SEC1, not from JWKs.
+jwz = { workspace = true, features = ["std", "jws", "crypto-rustcrypto"] }
+ti-jwz = { workspace = true, features = ["legacy"] }
+pkcs8.workspace = true
+sec1.workspace = true
+pem-rfc7468 = { workspace = true, features = ["alloc"] }
+# An AUT certificate's key usage.
+x509-cert.workspace = true
+zeroize.workspace = true
 # The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
 ti-tls.workspace = true
 # Blocking HTTP without an async runtime; the TLS layer is ti-tls's rustls configuration

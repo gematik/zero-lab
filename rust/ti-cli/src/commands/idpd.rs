@@ -31,11 +31,10 @@ use ti_idpd_client::authenticator;
 use ti_idpd_client::{Idp, Warning};
 use ti_pki::Timestamp;
 
-use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
+use super::idp_trust::{CertificateInfo, certificate_infos, idp_trust};
 use crate::cli::{GlobalArgs, IdpdAuthenticateArgs};
 use crate::error::{CliError, Exit};
 use crate::http;
-use crate::identity::Identity;
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
 
 /// The JSON document.
@@ -94,11 +93,11 @@ pub fn authenticate(
         // clap: one of the two is required.
         (None, None) => return Err(CliError::Environment("--env or --idp-url".into())),
     };
-    let identity = Identity::load(&args.identity, global, out)?;
+    let identity = crate::identity::load(&args.identity, global, out)?;
     let signer = identity.signer(ti_jwz::brainpool::BP256R1)?;
     let transport = http::Logged::new(&global.net, out)?;
     out.verbose(1, format_args!("IDP-Dienst {}", idp.base_url()));
-    let trust = IdpTrust::new(args.idp_unverified, args.env, global, out);
+    let trust = idp_trust(args.idp_unverified, args.env, global, out);
     let done = block_on(authenticator::authenticate(
         &transport,
         &idp,

@@ -21,217 +21,34 @@
  * find details in the "Readme" file.
  */
 
-//! The IDP-Dienst's certificates checked against the TSL, as gemSpec_IDP_Dienst asks of
-//! every client: the idpd-sig profile (C.FD.SIG with the role `oid_idpd`), the chain to
-//! the environment's TSL CAs, and OCSP. One trust material load serves both
-//! certificates of a run.
+//! The IDP-Dienst's certificates checked against the TSL ([`ti_client::idp_trust`]),
+//! as the command line asks for it.
 
-use std::cell::{OnceCell, RefCell};
-use std::sync::Arc;
-
-use serde::Serialize;
-use ti_idpd_client::trust::{CertificateTrust, Checked, IdpCertificate};
-use ti_pki::ocsp::OcspChecker;
-use ti_pki::profile::IDPD_SIG;
-use ti_pki::revocation::{RevocationMode, Unchecked};
-use ti_pki::{Certificate, CertificateType, Env, Timestamp, TrustConfig, TrustStore};
+pub use ti_client::idp_trust::{CertificateInfo, certificate_infos};
 
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::CliError;
-use crate::output::{Output, hex};
-use crate::trust::Session;
+use crate::output::Output;
 
 /// How the IDP's certificates are judged.
-pub enum IdpTrust<'a> {
-    /// Against the TSL of `env`, or of the environment the certificate shows when `None`.
-    Tsl(Box<TslTrust<'a>>),
-    /// Not at all (`--idp-unverified`); the report warns.
-    Unverified,
-}
+pub type IdpTrust<'a> = ti_client::idp_trust::IdpTrust<'a, CliError>;
 
-impl<'a> IdpTrust<'a> {
-    /// The check the command line asks for: `unverified`, or the TSL of `env` (`auto`
-    /// detects it from the certificate).
-    pub fn new(
-        unverified: bool,
-        env: Option<Environment>,
-        global: &'a GlobalArgs,
-        out: &'a Output,
-    ) -> IdpTrust<'a> {
-        if unverified {
-            out.verbose(
-                1,
-                "--idp-unverified: the IDP's certificates are used without a check against the TSL",
-            );
-            return IdpTrust::Unverified;
-        }
-        IdpTrust::Tsl(Box::new(TslTrust {
-            env: env.and_then(Environment::concrete),
-            global,
-            out,
-            loaded: OnceCell::new(),
-            error: RefCell::new(None),
-        }))
-    }
-
-    /// A failure to load trust material, which a refusal of the flow stands for.
-    pub fn take_error(&self) -> Option<CliError> {
-        match self {
-            IdpTrust::Tsl(tsl) => tsl.error.borrow_mut().take(),
-            IdpTrust::Unverified => None,
-        }
-    }
-}
-
-impl CertificateTrust for IdpTrust<'_> {
-    async fn check(
-        &self,
-        which: IdpCertificate,
-        certificate_der: &[u8],
-        chain_der: &[Vec<u8>],
-    ) -> Result<Checked, String> {
-        match self {
-            IdpTrust::Tsl(tsl) => tsl.check(which, certificate_der, chain_der).await,
-            IdpTrust::Unverified => Ok(Checked::Unchecked),
-        }
-    }
-}
-
-/// The TSL check.
-pub struct TslTrust<'a> {
-    env: Option<Env>,
+/// The check the command line asks for: `unverified`, or the TSL of `env` (`auto` detects
+/// it from the certificate), its trust material loaded once it is needed.
+pub fn idp_trust<'a>(
+    unverified: bool,
+    env: Option<Environment>,
     global: &'a GlobalArgs,
     out: &'a Output,
-    /// The material of the environment checked first; both certificates share it.
-    loaded: OnceCell<Loaded>,
-    /// Why trust material could not be had, for the command's error.
-    error: RefCell<Option<CliError>>,
-}
-
-struct Loaded {
-    env: Env,
-    config: TrustConfig,
-    store: Arc<TrustStore>,
-    session: Session,
-}
-
-impl TslTrust<'_> {
-    async fn check(
-        &self,
-        which: IdpCertificate,
-        certificate_der: &[u8],
-        chain_der: &[Vec<u8>],
-    ) -> Result<Checked, String> {
-        let certs = std::iter::once(certificate_der)
-            .chain(chain_der.iter().map(Vec::as_slice))
-            .map(Certificate::from_der)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        let at = Timestamp::now();
-        let loaded = if let Some(loaded) = self.loaded.get() {
-            loaded
-        } else {
-            let loaded = self.load(&certs, at).map_err(|error| {
-                let message = error.to_string();
-                *self.error.borrow_mut() = Some(error);
-                message
-            })?;
-            self.loaded.get_or_init(|| loaded)
-        };
-        let mut validator = IDPD_SIG.validator(
-            &loaded.config,
-            Arc::clone(&loaded.store),
-            CertificateType::FdSig,
-        );
-        let result = if let Some(transport) = loaded.session.transport() {
-            let checker = OcspChecker::new(&loaded.config, transport, Timestamp::now)
-                .with_store(loaded.session.store());
-            validator.validate(&certs, at, &checker).await
-        } else {
-            validator.revocation = RevocationMode::Disabled;
-            validator.validate(&certs, at, &Unchecked).await
-        }
-        .map_err(|e| e.to_string())?;
-        let subject = certs[0].subject_cn().to_owned();
-        if result.valid {
-            self.out.verbose(
-                1,
-                format_args!(
-                    "{which}: {subject} valid for an IDP-Dienst in {} (idpd-sig, OCSP{})",
-                    loaded.env,
-                    if result
-                        .cert_results
-                        .first()
-                        .and_then(|r| r.revocation.as_ref())
-                        .is_some_and(|r| r.from_cache)
-                    {
-                        " from the cache"
-                    } else {
-                        ""
-                    }
-                ),
-            );
-            Ok(Checked::Verified)
-        } else {
-            let reasons: Vec<String> = result
-                .errors
-                .iter()
-                .map(|e| format!("{}: {}", e.code, e.message))
-                .collect();
-            Err(format!(
-                "{subject} is not valid for an IDP-Dienst in {}: {}",
-                loaded.env,
-                reasons.join("; ")
-            ))
-        }
-    }
-
-    fn load(&self, certs: &[Certificate], at: ti_pki::Timestamp) -> Result<Loaded, CliError> {
-        let (env, _) = ti_client::pki::verify::environment(self.env, certs, at)?;
-        let session = crate::trust::session(self.global, false, self.out)?;
-        let (config, material) = session.load_env(env, false, None)?;
-        self.out.verbose(
+) -> IdpTrust<'a> {
+    if unverified {
+        out.verbose(
             1,
-            format_args!(
-                "IDP certificates against {env}: {} roots, {} TSL CAs from {}",
-                material.info.roots, material.info.intermediates, material.info.source
-            ),
+            "--idp-unverified: the IDP's certificates are used without a check against the TSL",
         );
-        Ok(Loaded {
-            env,
-            config,
-            store: material.store,
-            session,
-        })
+        return IdpTrust::Unverified;
     }
-}
-
-/// One of the IDP's certificates as the report shows it.
-#[derive(Serialize)]
-pub struct CertificateInfo {
-    /// `puk_disc_sig` or `puk_idp_sig`.
-    pub key: &'static str,
-    pub subject: String,
-    /// SHA-256 of the DER, hex.
-    pub sha256: String,
-    /// Checked against the TSL and valid; false when `--idp-unverified`.
-    pub verified: bool,
-}
-
-/// The report entries for `done`'s certificates.
-pub fn certificate_infos(
-    certificates: &[ti_idpd_client::authenticator::CheckedCertificate],
-) -> Vec<CertificateInfo> {
-    use sha2::{Digest, Sha256};
-    certificates
-        .iter()
-        .map(|c| CertificateInfo {
-            key: c.which.as_str(),
-            subject: Certificate::from_der(&c.der)
-                .map(|cert| cert.subject().to_string())
-                .unwrap_or_default(),
-            sha256: hex(&Sha256::digest(&c.der)),
-            verified: c.checked == Checked::Verified,
-        })
-        .collect()
+    IdpTrust::tsl(env.and_then(Environment::concrete), move || {
+        crate::trust::session(global, false, out)
+    })
 }
