@@ -2,9 +2,14 @@
 
 ## Branches and pull requests
 
-- One branch per piece of work, which starts from a [backlog task](backlog.md), named
+- A branch carries a group of [backlog tasks](backlog.md) that belong together, named
   with its kind: `feat/…`, `bugfix/…`, `chore/…`, `refactor/…` (`feat/ocsp-cache`,
-  `bugfix/pkcs12-kdf-limits`).
+  `bugfix/pkcs12-kdf-limits`). Each commit names the task it serves.
+- Checks follow the branch, not the task. While working, `just check-changed` in each
+  workspace the branch touches runs the fast checks of the changed crates or modules and
+  of those that depend on them, and a slow check only when its inputs changed. The full
+  `just check` of each touched workspace runs once, on the branch as it is about to merge,
+  and its result goes into the pull request.
 - Changes reach `main` only through a pull request, except the maintainer's task changes
   ([backlog](backlog.md#where-task-changes-land)). The maintainer reviews and merges;
   nobody merges their own pull request.

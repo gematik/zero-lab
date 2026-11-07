@@ -77,7 +77,8 @@ deleted, never faked away, and never skipped silently.
 
 The language's memory-safety guarantees are the starting point; the tools go after the
 rest: logic errors, panics on hostile input, timing, resource exhaustion and the supply
-chain. Each runs in `just check` (every change), `just check-full` (`check` plus the
+chain. Each runs in `just check` (once per branch, before it merges; `just check-changed`
+runs the part a change can affect while working), `just check-full` (`check` plus the
 slow matrix, before a release), `just audit` (before a tag) or at design
 time with a stamped result that `just check` holds to. Never weaken a lint, a check or a
 proof to get a change through; a stale stamp is rerun, not edited.

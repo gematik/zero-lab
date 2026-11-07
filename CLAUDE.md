@@ -40,8 +40,10 @@ guides next to them.
 - **Dependencies:** ask the maintainer before adding a dependency, enabling a feature that
   pulls new ones, or swapping a library, with the reason, the transitive cost, the
   alternatives, whether it contains `unsafe` and which unit (core or host) it lands in.
-- **Checks:** run `just check` in each workspace you changed (`rust/`, `go/`). Never weaken
-  a lint, a check or a proof to get a change through. Regenerate stale generated files
+- **Checks:** a branch carries several tasks. While working, run `just check-changed` in each
+  workspace you changed (`rust/`, `go/`); run the full `just check` there once, before the
+  branch merges, not per task ([git and releases](docs/conventions/git-and-releases.md)).
+  Never weaken a lint, a check or a proof to get a change through. Regenerate stale generated files
   instead of editing them: `just jwz-recheck` for verification stamps,
   `JWZ_BLESS=1 cargo test -p jwz --test traceability` for jwz's traceability table,
   `TRACE_BLESS=1 cargo test -p <crate> --test traceability` for a ti crate's.

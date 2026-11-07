@@ -335,6 +335,42 @@ wasm-vendor dest="../../gemiverse": wasm-smoke wasm-size
 
 # ---- Tier 1: every change, and before a release ------------------------------------
 
+# While working on a branch: the fast checks of the crates it changed against BASE and of
+# their dependents, and the slow checks only when their inputs changed. `just check` runs
+# once, before the branch merges.
+check-changed base="main":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    eval "$(python3 -I -B scripts/changed.py {{base}})"
+    others=() jwz=false
+    for crate in $CRATES; do
+        if [ "$crate" = jwz ]; then jwz=true; else others+=(-p "$crate"); fi
+    done
+    echo "==> crates: ${CRATES:-none}${MANIFESTS:+, manifests}${SCRIPTS:+, scripts}"
+    if [ ${#others[@]} -gt 0 ]; then
+        cargo fmt "${others[@]}" -- --check
+        cargo clippy "${others[@]}" --all-targets --all-features -- -D warnings
+        cargo clippy "${others[@]}" --all-targets -- -D warnings
+        RUSTDOCFLAGS="-D warnings" cargo doc "${others[@]}" --no-deps --all-features
+        cargo nextest run "${others[@]}" --all-features --no-tests=pass
+        cargo test "${others[@]}" --all-features --doc
+    fi
+    if $jwz; then
+        cargo fmt -p jwz -- --check
+        cargo clippy -p jwz --all-targets --features {{JWZ_FEATURES}} -- -D warnings
+        RUSTDOCFLAGS="-D warnings" cargo doc -p jwz --no-deps --features {{JWZ_FEATURES}}
+        cargo nextest run -p jwz --features {{JWZ_FEATURES}}
+        cargo test -p jwz --features {{JWZ_FEATURES}} --doc
+        just jwz-rsa-guard brainpool-absent jwz
+    fi
+    # wasm32 holds the cores; a crate outside them leaves it as it was.
+    if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-report|ti-wasm|jwz|ti-jwz|ti-idpd' <<<"$CRATES"; then
+        just wasm32 wasm-unsafe-free
+    fi
+    if grep -qw ti-pki <<<"$CRATES"; then just nonprod-absent; fi
+    if [ -n "$MANIFESTS" ]; then just unsafe-free core-deps jwz-backends machete deny vet; fi
+    if [ -n "$SCRIPTS" ]; then just scripts-test; fi
+
 # Everything a PR must pass, in the order that fails fastest
 check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
     just brainpool-absent jwz
