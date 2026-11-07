@@ -518,7 +518,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `audit` | Tier 2: `advisories`, `vet`, `msrv`, `semver` |
 | `vet-suggest` | Dependencies still awaiting a cargo vet audit |
 | `miri`, `mutants <crate>` | On demand: Miri (nightly), mutation testing |
-| `mutants-record <crate> [jobs]` | Measure a crate's mutation score on the committed tree into `mutation-scores.toml`; `jobs` > 1 tests that many mutants at once, each in a copy of the tree |
+| `mutants-record <crate> [jobs]` | Measure a crate's mutation score on the committed tree into `mutation-scores.toml`; `jobs` mutants at once (default 4), each in a copy of `rust/` beside a link to `spec/`; `1` mutates the tree in place |
 | `mutants-gate <crate>…` | The recorded scores of crates about to be released: present, current, at least the threshold |
 | `coverage [<crate>…]` | Line coverage per crate (HTML in `target/coverage/html`) and the cited requirements whose code no test runs |
 | `versions` | Show the latest tag for every crate |

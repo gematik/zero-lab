@@ -907,23 +907,34 @@ jwz-recheck *flags:
 miri:
     cargo +nightly miri test --workspace
 
-# Mutation testing for a crate; slow, run before a release of that crate
-mutants crate:
-    cargo mutants -p {{crate}} --in-place {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }}
+# Mutants tested at once by default: each in its own copy of rust/, on the performance cores
+MUTANT_JOBS := "4"
+
+# Mutation testing for a crate, JOBS mutants at once; slow, run before a release of that crate
+mutants crate jobs=MUTANT_JOBS:
+    just _mutants {{crate}} {{jobs}} target/mutants/{{crate}}
 
 # `just release` checks the score; commit mutation-scores.toml afterwards.
-# Measure a crate's mutation score on the committed tree and record it in mutation-scores.toml;
-# JOBS > 1 tests that many mutants at once, each in its own copy of the tree
-mutants-record crate jobs="1":
+# Measure a crate's mutation score on the committed tree and record it in mutation-scores.toml
+mutants-record crate jobs=MUTANT_JOBS:
     #!/usr/bin/env bash
     set -euo pipefail
     [[ -z "$(git status --porcelain -- {{crate}})" ]] || { echo "mutants-record: {{crate}} has uncommitted changes" >&2; exit 1; }
-    out=target/mutants/{{crate}}
-    mkdir -p "$out"
     # A missed mutant makes cargo-mutants exit non-zero; the score is the verdict here.
-    # In place one at a time; more jobs need a copy of the tree each, as they mutate at once.
-    cargo mutants -p {{crate}} {{ if jobs == "1" { "--in-place" } else { "--jobs " + jobs } }} --output "$out" {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }} || true
-    python3 -I scripts/mutation.py record {{crate}} "$out/mutants.out/outcomes.json"
+    just _mutants {{crate}} {{jobs}} target/mutants/{{crate}} || true
+    python3 -I scripts/mutation.py record {{crate}} target/mutants/{{crate}}/mutants.out/outcomes.json
+
+# One job mutates the tree in place; more jobs each mutate a copy of rust/ that cargo-mutants
+# makes in TMPDIR. Tests reach spec/ as ../../spec from their crate, so the copies are made
+# beside a link to it.
+_mutants crate jobs out:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{out}}" target/mutants/copies
+    ln -sfn "$(cd .. && pwd)/spec" target/mutants/copies/spec
+    TMPDIR="$PWD/target/mutants/copies" cargo mutants -p {{crate}} \
+        {{ if jobs == "1" { "--in-place" } else { "--jobs " + jobs } }} --output "{{out}}" \
+        {{ if crate == "jwz" { "--features " + JWZ_FEATURES } else { "--all-features" } }}
 
 # Unit tests of the Python scripts the release recipes run (score formula, coverage gaps)
 scripts-test:
