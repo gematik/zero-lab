@@ -40,7 +40,7 @@ use serde_json::{Value, json};
 use ti_idpd_client::authenticator::{self, Identity};
 use ti_idpd_client::http::{Method, Request, Response, Transport, TransportError};
 use ti_idpd_client::trust::{CertificateTrust, Checked, IdpCertificate, Unverified};
-use ti_idpd_client::{Error, Idp, Warning, challenge, discovery};
+use ti_idpd_client::{Error, Idp, Warning, challenge, discovery, model};
 use ti_pki::Certificate;
 use ti_types::Timestamp;
 
@@ -415,6 +415,45 @@ fn a_20526_the_flow_yields_the_code_and_posts_a_well_formed_signed_challenge() {
     assert_eq!(header["exp"], NOW + 180);
     assert_eq!(header["epk"]["crv"], "BP-256");
     assert_eq!(header["kid"], "puk_idp_enc");
+}
+
+/// What a front end shows of a completed flow: the IDP as its discovery document names
+/// it, both certificates by subject and fingerprint, the claims the relying party asked
+/// for.
+#[test]
+fn the_model_shows_the_idp_its_certificates_and_the_challenge() {
+    let idp = FakeIdp::new(Behaviour::default());
+    let (key, cert) = card();
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    let done = ready(authenticator::authenticate(
+        &idp,
+        &Idp::new("https://idp.test/"),
+        &identity,
+        AUTH_URL,
+        now,
+        &Unverified,
+    ))
+    .unwrap();
+    let info = model::IdpInfo::new(&Idp::new("https://idp.test/"), &done);
+    assert_eq!(info.base_url, "https://idp.test");
+    assert_eq!(info.issuer, "https://idp.test");
+    assert_eq!(
+        info.authorization_endpoint,
+        done.discovery.metadata.authorization_endpoint
+    );
+    let signer = Certificate::from_der(&done.certificates[0].der).unwrap();
+    let keys: Vec<_> = info.certificates.iter().map(|c| c.key).collect();
+    assert_eq!(keys, ["puk_disc_sig", "puk_idp_sig"]);
+    for c in &info.certificates {
+        assert_eq!(c.subject, signer.subject().to_string());
+        assert_eq!(c.sha256, signer.fingerprint_sha256());
+        assert!(!c.verified, "unverified");
+    }
+    let challenge = model::ChallengeInfo::from(&done);
+    assert_eq!(challenge.client_id.as_deref(), Some("gematikTestPs"));
 }
 
 fn base64_url_decode(text: &str) -> Vec<u8> {

@@ -42,6 +42,9 @@
 //! implemented: `/tim-authenticate` (a Matrix OpenID token) and the decoupled variant for
 //! the gematik Authenticator app (this tool is the Authenticator-Modul itself:
 //! `ti idpd`).
+//!
+//! [`model`] holds the read-only projection of a login the front ends show; the feature
+//! `serde` derives `Serialize` for it.
 
 #![forbid(unsafe_code)]
 
@@ -49,6 +52,7 @@ mod error;
 pub mod exchange;
 pub mod http;
 pub mod keycloak;
+pub mod model;
 pub mod owner;
 pub(crate) mod request;
 pub mod token;
@@ -126,6 +130,11 @@ impl Directory {
         &self.idp
     }
 
+    /// The URL of the directory's Search API, which the owner token opens too.
+    pub fn search_url(&self) -> String {
+        format!("{}/search", self.base)
+    }
+
     /// The URL of `endpoint`'s token exchange at this directory.
     pub fn endpoint_url(&self, endpoint: Endpoint) -> String {
         format!("{}{}", self.base, endpoint.path())
@@ -176,6 +185,24 @@ impl Endpoint {
             Endpoint::Holder => Some("RSDirectoryAdministration"),
             Endpoint::Service => Some("Service-Authenticate"),
             Endpoint::TiProvider => Some("TI-Provider"),
+        }
+    }
+}
+
+/// What a result is right about but could not prove.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum Warning {
+    /// A token had for the Search API does not name it in its `aud`: the directory may
+    /// refuse it there.
+    SearchNotInAudience,
+}
+
+impl Warning {
+    /// The stable snake_case name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Warning::SearchNotInAudience => "search_not_in_audience",
         }
     }
 }

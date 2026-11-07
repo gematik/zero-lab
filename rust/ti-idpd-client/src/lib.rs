@@ -51,6 +51,10 @@
 //! [`trust::Unverified`] skips the check and the result says so
 //! ([`Warning::IdpCertificatesUnverified`]).
 //!
+//! [`model`] holds the read-only projections of a completed flow the front ends show: the
+//! IDP, its certificates, the challenge's claims; the feature `serde` derives `Serialize`
+//! for them.
+//!
 //! What this crate does not do: the relying-party side (`key_verifier`, token
 //! decryption), SSO tokens, pairing.
 
@@ -62,6 +66,7 @@ mod clock;
 pub mod discovery;
 mod error;
 pub mod http;
+pub mod model;
 mod query;
 pub mod trust;
 

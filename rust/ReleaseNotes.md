@@ -239,6 +239,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-idpd-client
 
+#### added
+- `model` (TASK-250): the read-only projections of a completed flow the front ends show,
+  `IdpInfo`, `CertificateInfo` (a certificate by subject and SHA-256 fingerprint) and
+  `ChallengeInfo`; the feature `serde` derives `Serialize` for them.
+
 #### removed
 - The `ureq` feature and `ureq::UreqTransport` (decision-15, TASK-249): the crate has no HTTP
   client. ti-client's `http::UreqTransport` is the blocking transport, without
@@ -303,6 +308,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   ti-idpd-client's transport is (TASK-245).
 
 #### added
+- `model` (TASK-250): the read-only projection of a login the front ends show, `Token` with
+  `DirectoryInfo`, and `Credential`; the feature `serde` derives `Serialize` for them.
+  `Token::for_search` names the Search API (`Directory::search_url`) and warns with
+  `Warning::SearchNotInAudience` when the token's `aud` does not.
 - `tokens::Tokens`, implemented by the host: the access token for the directory's API
   and the report that the directory refused one (401). `tokens::send` sends a request with
   it and, after a 401, once more with the next token (RFC 6750 §3.1).
