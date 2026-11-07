@@ -1633,7 +1633,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
- "ti-cache",
+ "ti-client",
  "ti-connector-client",
  "ti-directory-client",
  "ti-idpd-client",
@@ -1646,6 +1646,17 @@ dependencies = [
  "ureq",
  "x509-cert",
  "zeroize",
+]
+
+[[package]]
+name = "ti-client"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "ti-cache",
+ "ti-types",
 ]
 
 [[package]]

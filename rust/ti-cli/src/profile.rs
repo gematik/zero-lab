@@ -26,10 +26,25 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use ti_client::FileCache;
+use ti_client::files::is_plain_name;
+
 use crate::cli::GlobalArgs;
 use crate::error::CliError;
-use crate::files::is_plain_name;
 use crate::paths;
+
+/// The cache of the profile in effect.
+///
+/// # Errors
+///
+/// A profile that does not resolve, or a cache directory that cannot be created.
+pub fn open_cache(global: &GlobalArgs) -> Result<FileCache, CliError> {
+    let profile = Profile::resolve(global)?;
+    FileCache::open(profile.cache_dir.clone()).map_err(|e| CliError::Cache {
+        path: profile.cache_dir.display().to_string(),
+        reason: e.to_string(),
+    })
+}
 
 const GROUP: &str = "telematik";
 const TOOL: &str = "ti";

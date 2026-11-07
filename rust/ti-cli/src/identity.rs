@@ -50,12 +50,12 @@ use ti_pki::Certificate;
 use x509_cert::ext::pkix::KeyUsages;
 use zeroize::Zeroizing;
 
-use crate::block::block_on;
 use crate::cli::{ConnectorArgs, GlobalArgs, IdentityArgs, SignAlg};
 use crate::connector::{self, Session};
 use crate::error::CliError;
 use crate::input;
 use crate::output::Output;
+use ti_client::block_on;
 
 const ID_EC_PUBLIC_KEY: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.2.1");
 const BRAINPOOL_P256R1: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.36.3.3.2.8.1.1.7");

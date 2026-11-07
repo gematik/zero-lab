@@ -34,12 +34,12 @@ use ti_pki::load::{Bundle, ReloadOutcome, ReloadPolicy, Reloader, StaticLoader};
 use ti_pki::revocation::RevocationStatus;
 use ti_pki::{Timestamp, TrustConfig};
 
-use crate::block::block_on;
 use crate::cli::{GlobalArgs, TrustExportArgs};
 use crate::error::{CliError, Exit};
 use crate::output::document::when;
 use crate::output::{Line, Output};
 use crate::trust::Session;
+use ti_client::block_on;
 
 /// What fits a ConfigMap: its limit of 1 MiB, less room for the object's own fields.
 const CONFIG_MAP_ROOM: usize = 1_000_000;

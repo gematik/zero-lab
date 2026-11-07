@@ -31,12 +31,12 @@ use ti_idpd_client::{Idp, Warning};
 use ti_pki::Timestamp;
 
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
-use crate::block::block_on;
 use crate::cli::{GlobalArgs, IdpdAuthenticateArgs};
 use crate::error::{CliError, Exit};
 use crate::http;
 use crate::identity::Identity;
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
+use ti_client::block_on;
 
 /// The JSON document.
 #[derive(Serialize)]

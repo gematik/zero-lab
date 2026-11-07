@@ -36,10 +36,10 @@ use ti_connector_client::{
 use ti_pki::Timestamp;
 use ti_pki::load::{Cache, CachePolicy};
 
-use crate::block::block_on;
 use crate::cli::{ConnectorArgs, GlobalArgs};
 use crate::error::CliError;
 use crate::output::{Output, diagnostic};
+use ti_client::block_on;
 
 /// A Konnektor ready for calls.
 pub struct Session {
@@ -181,7 +181,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
     let connector = if args.no_cache {
         block_on(Connector::connect(&dotkon, transport, timeouts)).map_err(CliError::Connector)?
     } else {
-        let store = crate::file_cache::open_cache(global)?;
+        let store = crate::profile::open_cache(global)?;
         let cache = Cache::new(store, Timestamp::now, CachePolicy::default());
         let (connector, meta) = block_on(Connector::connect_cached(
             &dotkon, transport, timeouts, &cache,

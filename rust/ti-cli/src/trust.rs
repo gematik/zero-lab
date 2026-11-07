@@ -46,14 +46,14 @@ use ti_pki::tsl::Tsl;
 use ti_pki::tsl_signature::{DetachedTsl, Sequence, TslCode, TslState, VerifiedTsl};
 use ti_pki::{Tier, Timestamp, TrustConfig, TrustStore, roots};
 
-use crate::block::block_on;
 use crate::cli::GlobalArgs;
 use crate::error::CliError;
-use crate::file_cache::FileCache;
-use crate::files::{create_private_dir, path_component, write_atomic};
 use crate::http::{self, Http};
 use crate::output::{Output, warning};
 use crate::profile::Profile;
+use ti_client::FileCache;
+use ti_client::block_on;
+use ti_client::files::{create_private_dir, path_component, write_atomic};
 
 /// How long downloaded material may be used without the network. Production keeps
 /// ti-pki's maximum; elsewhere a week, so `--offline` stays useful on a laptop.
@@ -307,7 +307,7 @@ impl Session {
     /// ever made. Warns on stderr when `-k` is in effect.
     pub fn new(global: &GlobalArgs, offline: bool, out: &Output) -> Result<Self, CliError> {
         let profile = Profile::resolve(global)?;
-        let cache = match FileCache::open(&profile) {
+        let cache = match FileCache::open(profile.cache_dir.clone()) {
             Ok(cache) => Some(Arc::new(cache)),
             Err(error) => {
                 warning(format_args!(

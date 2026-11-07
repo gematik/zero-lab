@@ -40,13 +40,13 @@ use ti_pki::{
     ValidationResult, Validator, detect_certificate_type,
 };
 
-use crate::block::block_on;
 use crate::cli::{Environment, GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{TreeRow, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
 use crate::trust::{Session, TrustInfo};
+use ti_client::block_on;
 
 /// Whether `at` is now or `--at`: OCSP still answers for the time of the query.
 #[derive(Clone, Copy, PartialEq, Eq)]

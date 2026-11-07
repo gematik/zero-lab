@@ -158,6 +158,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
   longer turns the help of `ti` without arguments into an error.
 
+### ti-client
+
+#### added
+- New crate (decision-15, TASK-249): the native host the `ti` command-line tool and the desktop
+  app share, not published. `block_on` for the product clients' futures, `FileCache` (the
+  `CacheStore` of the profile's cache directory, as ti-cli kept it) and `files` (private,
+  atomically written files), all moved from ti-cli. It holds no protocol logic.
+
 ### ti-tls
 
 #### added

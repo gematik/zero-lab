@@ -31,18 +31,15 @@
 //! `pin`), each of them fully usable through its options; without a terminal a missing
 //! option is an error, never a wait.
 
-mod block;
 mod cli;
 mod commands;
 mod connector;
 mod error;
-mod file_cache;
-mod files;
 // Public for the fuzz targets only; not an API of this crate.
 #[doc(hidden)]
 pub mod fuzz {
-    pub use crate::file_cache::{decode, encode};
     pub use crate::trust::{parse_tsl_state, tsl_state_bytes};
+    pub use ti_client::file_cache::{decode, encode};
 }
 mod http;
 mod identity;

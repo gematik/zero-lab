@@ -35,7 +35,6 @@ use ti_pki::{Certificate, Timestamp};
 
 use super::documents::card_user;
 use super::inspect;
-use crate::block::block_on;
 use crate::cli::{
     ConnectorArgs, ConnectorChange, ConnectorCli, ConnectorCommand, ConnectorConfig,
     ConnectorDescribe, ConnectorGet, ConnectorVerify, CryptArg, GlobalArgs, PinArgs,
@@ -45,6 +44,7 @@ use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting};
+use ti_client::block_on;
 
 /// Runs `ti connector …`.
 pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {

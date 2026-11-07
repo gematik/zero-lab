@@ -207,7 +207,7 @@ mod tests {
     use ti_idpd_client::trust::Unverified;
 
     use super::*;
-    use crate::block::block_on;
+    use ti_client::block_on;
 
     const DIRECTORY: &str = "https://directory.test";
     const IDP: &str = "https://idp.test";

@@ -29,7 +29,7 @@
 //!
 //! Blocking is deliberate: a command makes a handful of sequential requests, so an async
 //! runtime would add a large dependency tree for nothing. ti-pki's transport futures
-//! therefore complete on their first poll (see [`crate::block`]).
+//! therefore complete on their first poll (see [`ti_client::block_on`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

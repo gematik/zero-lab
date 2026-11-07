@@ -42,7 +42,6 @@ use ti_pki::tsl::{self, Intermediate, Tsl};
 use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
 use ti_pki::{Certificate, Tier, Timestamp, TrustConfig, TrustStore};
 
-use crate::block::block_on;
 use crate::cli::{
     CaFilterArgs, Environment, GlobalArgs, TrustArgs, TslBundleArgs, TslExportArgs, TslShowArgs,
     TslVerifyArgs,
@@ -51,6 +50,7 @@ use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
 use crate::output::{Document, Line, Oid, Output, SCHEMA, Tone, hex};
 use crate::trust::{Session, VerifiedSet};
+use ti_client::block_on;
 
 /// The JSON document.
 #[derive(Serialize)]
@@ -340,7 +340,7 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
         // The status now says nothing about another time (TSLDET-023).
         if supplied_status.is_none() && !args.offline && args.at.is_none() {
             let transport = crate::http::transport(&global.net, out.verbosity())?;
-            let store = crate::file_cache::open_cache(global)?;
+            let store = crate::profile::open_cache(global)?;
             let checker = OcspChecker::new(&config, &transport, Timestamp::now).with_store(store);
             block_on(verified.check_signer_status(&checker))?;
         }

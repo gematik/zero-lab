@@ -21,8 +21,8 @@
  * find details in the "Readme" file.
  */
 
-//! Runs the ti crates' async API without a runtime. Everything this tool plugs into it
-//! is blocking (ureq, files, the Konnektor's SOAP calls), so each future is complete when
+//! Runs the ti crates' async API without a runtime. Everything this crate plugs into
+//! them is blocking (ureq, files, the Konnektor's SOAP calls), so each future is complete when
 //! first polled; an executor would only add dependencies.
 
 use core::pin::pin;

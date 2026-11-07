@@ -1,0 +1,23 @@
+[package]
+name = "ti-client"
+version = "0.1.0"
+description = "The native host of the gematik Telematikinfrastruktur (TI) crates: their transports over ureq, the file storage and block_on, shared by the command-line tool and the desktop app"
+keywords = ["gematik", "telematik"]
+categories = ["network-programming"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ti-cache.workspace = true
+ti-types.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+# The cache file names and path components: a hash of the key.
+sha2.workspace = true
+
+[lints]
+workspace = true

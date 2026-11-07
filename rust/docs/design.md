@@ -173,8 +173,10 @@ are in [development.md](./development.md#known-compromises).
 ti-cache, ti-pki, ti-pkcs12, ti-connector-client, jwz,
 ti-jwz, ti-jwks, ti-idpd-client and ti-directory-client, with every feature but their
 adapters (the `ureq` transports) and `test-util`.
-The hosts are ti-cli and ti-wasm: a crate that reaches the terminal, the operating system
-or foreign code through `unsafe` (rpassword) belongs there. What counts is what
+The hosts are ti-client, ti-cli and ti-wasm: a crate that reaches the terminal, the
+operating system or foreign code through `unsafe` (rpassword, rustls-platform-verifier)
+belongs there. ti-client is the native host library ti-cli and the desktop app share; it
+holds I/O adapters and no protocol logic. What counts is what
 ends up in the program on the release targets and wasm32: normal dependencies, not proc
 macros or build scripts. A crate with `unsafe` enters a core only through an entry in
 [unsafe-exceptions.md](./unsafe-exceptions.md) with its exact version, the reason and the

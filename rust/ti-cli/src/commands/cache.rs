@@ -29,9 +29,9 @@ use serde::Serialize;
 
 use crate::cli::GlobalArgs;
 use crate::error::{CliError, Exit};
-use crate::file_cache;
 use crate::output::{Document, Line, Output, SCHEMA};
 use crate::profile::Profile;
+use ti_client::file_cache;
 
 /// The JSON document.
 #[derive(Serialize)]

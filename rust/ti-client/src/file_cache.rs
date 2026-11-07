@@ -21,8 +21,8 @@
  * find details in the "Readme" file.
  */
 
-//! The download cache of ti-pki and ti-connector-client as plain files below the
-//! profile's cache directory: one file per key, named by the hash of the key, so a key
+//! The download cache of ti-pki and ti-connector-client as plain files below a cache
+//! directory: one file per key, named by the hash of the key, so a key
 //! made of a URL or a certificate id never shapes a path.
 
 use std::fmt::Write as _;
@@ -36,10 +36,7 @@ use sha2::{Digest, Sha256};
 use ti_cache::{CacheEntry, CacheError, CacheStore, Meta, Source};
 use ti_types::Timestamp;
 
-use crate::cli::GlobalArgs;
-use crate::error::CliError;
 use crate::files::{create_private_dir, write_atomic};
-use crate::profile::Profile;
 
 const FORMAT_V1: u8 = 1;
 /// Named after the format so that a new format gets its own directory and never reads
@@ -50,9 +47,10 @@ const DIR: &str = "v1";
 /// cache policy's question, answered from its metadata; this only bounds the disk.
 const MAX_AGE: Duration = Duration::from_hours(30 * 24);
 
-/// The profile's cache directory.
+/// A cache directory.
 #[derive(Debug)]
 pub struct FileCache {
+    /// The directory; the entries are below it, in `v1`.
     pub dir: PathBuf,
 }
 
@@ -70,29 +68,15 @@ fn error(message: String) -> CacheError {
 }
 
 impl FileCache {
-    /// The cache of `profile`, its directory created if missing.
+    /// The cache in `dir`, created if missing.
     ///
     /// # Errors
     ///
     /// Any I/O error creating the directory.
-    pub fn open(profile: &Profile) -> io::Result<Self> {
-        let dir = profile.cache_dir.clone();
+    pub fn open(dir: PathBuf) -> io::Result<Self> {
         create_private_dir(&dir.join(DIR))?;
         Ok(FileCache { dir })
     }
-}
-
-/// The cache of the profile in effect.
-///
-/// # Errors
-///
-/// A profile that does not resolve, or a cache directory that cannot be created.
-pub fn open_cache(global: &GlobalArgs) -> Result<FileCache, CliError> {
-    let profile = Profile::resolve(global)?;
-    FileCache::open(&profile).map_err(|e| CliError::Cache {
-        path: profile.cache_dir.display().to_string(),
-        reason: e.to_string(),
-    })
 }
 
 /// Where the entry of `key` lives: `<dir>/v1/<hex SHA-256 of key>`.
@@ -245,12 +229,7 @@ mod tests {
         }
 
         fn cache(&self) -> FileCache {
-            FileCache::open(&Profile {
-                name: None,
-                state_dir: self.0.join("state"),
-                cache_dir: self.0.join("cache"),
-            })
-            .unwrap()
+            FileCache::open(self.0.join("cache")).unwrap()
         }
     }
 

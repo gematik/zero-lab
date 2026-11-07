@@ -132,7 +132,7 @@ pub fn path_component(text: &str) -> String {
 
 /// The one rule that keeps untrusted text inside its directory: 1 to 64 characters of
 /// `A-Z a-z 0-9 . _ -`, not starting with a dot.
-pub(crate) fn is_plain_name(text: &str) -> bool {
+pub fn is_plain_name(text: &str) -> bool {
     (1..=64).contains(&text.len())
         && !text.starts_with('.')
         && text

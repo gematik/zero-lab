@@ -35,11 +35,11 @@ use ti_connector_client::config::{CertificateView, ConfigView, Secret};
 use ti_connector_client::ureq::{TestOptions, UreqTransport};
 
 use super::connector::emit;
-use crate::block::block_on;
 use crate::cli::{ConnectorArgs, GlobalArgs};
 use crate::connector::{self, Logged};
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, Tone};
+use ti_client::block_on;
 
 /// A `.kon` file as read from disk.
 pub(super) struct KonFile {

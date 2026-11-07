@@ -35,7 +35,6 @@ use ti_pki::Timestamp;
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
 use super::idpd::certificate_lines;
 use super::owner_login::{self, OwnerError, OwnerTokens};
-use crate::block::block_on;
 use crate::cli::{
     DirectoryClientArgs, DirectoryLoginCommand, DirectoryOwnerArgs, DirectorySearchArgs,
     DirectoryTargetArgs, GlobalArgs, IdentityArgs,
@@ -44,6 +43,7 @@ use crate::error::{CliError, Exit};
 use crate::http;
 use crate::identity::Identity;
 use crate::output::document::when;
+use ti_client::block_on;
 
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
 
