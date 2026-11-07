@@ -29,6 +29,8 @@ rp, err := oidf.NewRelyingParty(cfg, filepath.Dir(path))
 
 - `yaml:"..."` struct tags: strings that document the keys, with no import.
 - `UnmarshalYAML(func(any) error)` on types that need it (`oidf.Jwk`): standard types only, supported by v4. Scalars use the standard `encoding.TextUnmarshaler` instead.
+- In Rust, the counterpart of the tags is a serde derive behind an optional feature (`#[cfg_attr(feature = "serde", derive(Serialize))]`): the library declares the shape, and only a host that enables the feature pays for the dependency. The derive cannot move into the host, because Rust's orphan rule keeps a host from implementing a foreign trait for a foreign type (decision-15).
+- Formats a specification prescribes are the library's job, not a host's: roots.json, the TSL's XML, JOSE, FHIR. This decision is about formats we choose: configuration files, command lines, output.
 
 ## Consequences
 

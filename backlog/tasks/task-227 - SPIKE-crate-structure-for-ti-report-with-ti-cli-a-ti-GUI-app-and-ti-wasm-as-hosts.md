@@ -3,10 +3,10 @@ id: TASK-227
 title: >-
   SPIKE: crate structure for ti-report with ti-cli, a ti GUI app and ti-wasm as
   hosts
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-06T06:54:00Z'
-updated_date: '2026-11-07T10:57:00Z'
+updated_date: '2026-11-07T16:03:00Z'
 labels:
   - ti-report
   - architecture
@@ -27,6 +27,12 @@ ti-report builds the JSON reports (certificate description, TSL findings) that t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the hosts' needs are listed (ti-cli, ti GUI app, ti-wasm): which reports, schemas, I/O and platform each brings
-- [ ] #2 two or three structures sketched with their crate graph and cost; one recommended, with the refactoring as its own tasks
+- [x] #1 the hosts' needs are listed (ti-cli, ti GUI app, ti-wasm): which reports, schemas, I/O and platform each brings
+- [x] #2 two or three structures sketched with their crate graph and cost; one recommended, with the refactoring as its own tasks
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Hosts: ti-cli (terminal, files, ureq), ti-wasm (browser, JS fetch, no blocking, no SystemTime), Tauri app (async commands, main thread must not block, IPC boundary, own dependency tree). Structures weighed: one report crate for all TI functions; reports beside each engine with ti-cli as lib+bin; a shared native host library. Chosen (decision-15): read-only projections beside each engine as a model module (ti_pki::model) with Serialize behind an optional serde feature, logic into the engine, ti-client as host library under ti-cli and ti-app, ti-app in its own workspace. Refactoring: TASK-243 to TASK-253.
+<!-- SECTION:FINAL_SUMMARY:END -->
