@@ -3,10 +3,10 @@ id: TASK-232
 title: >-
   ti-tls: bound the verdict cache and swap a verifier's trust snapshot (TASK-97
   AC 2)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T12:16:00Z'
-updated_date: '2026-11-06T14:30:00Z'
+updated_date: '2026-11-07T08:48:00Z'
 labels:
   - ti-tls
   - security
@@ -26,6 +26,12 @@ TASK-97 AC 2 asks for a bounded verdict cache over an atomically swapped trust s
 - [ ] #1 the verdict cache has a size bound and drops expired entries on insert, with a test
 - [ ] #2 the ti verifier's trust snapshot can be replaced atomically while in use, with a test
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+1. Verdicts: a bound (4096 entries); every insert drops expired entries, and at the bound the entry that expires first. 2. TiVerifier: the ServerCheck and its verdict cache are one snapshot behind RwLock<Arc<_>>; replace() swaps both, so a handshake in flight keeps the old snapshot and no verdict outlives the material it was reached with (TLSV-050). The read lock is held only to clone the Arc; no new dependency (no arc-swap). 3. TLSV-050 nextUpdate: ti-pki's tls::Verdict gains status_next_update; ti and web (CRL via x509-cert, already a dependency) stop reuse at it, as the Go verifiers do. Branch task-232 in a worktree.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
