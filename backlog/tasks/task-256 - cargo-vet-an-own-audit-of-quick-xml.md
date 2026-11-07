@@ -1,9 +1,10 @@
 ---
 id: TASK-256
 title: 'cargo-vet: an own audit of quick-xml'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T17:19:00Z'
+updated_date: '2026-11-07T17:54:00Z'
 labels:
   - deps
   - supply-chain

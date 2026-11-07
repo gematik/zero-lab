@@ -1,9 +1,10 @@
 ---
 id: TASK-255
 title: 'ti-pkcs12: HMAC OIDs as MAC digest aliases (P12-012)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T17:19:00Z'
+updated_date: '2026-11-07T17:54:00Z'
 labels:
   - ti-pkcs12
   - spec
