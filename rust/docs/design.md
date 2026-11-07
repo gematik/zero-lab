@@ -60,9 +60,12 @@ verified TSL with the profile, algorithm and OCSP rules, and the ureq
 adapters use it for TI endpoints (TASK-97). Today ti-connector-client verifies the
 Konnektor by its `.kon` pins and CAs, and other TLS goes through the platform verifier.
 
-The three `Transport` traits differ today (artefact-shaped async get/post in ti-pki,
-request/response sync in ti-idpd-client, SOAP-shaped async in ti-connector-client); whether a
-small `ti-http` crate unifies them before 1.0 is TASK-64.
+The `Transport` traits differ today (artefact-shaped get/post in ti-pki, request/response
+in ti-idpd-client and ti-directory-client, SOAP-shaped in ti-connector-client); whether a
+small `ti-http` crate unifies them before 1.0 is TASK-64. No product client depends on
+another: what one needs of another product comes through a trait it defines and the host
+implements, as ti-directory-client's `tokens::Tokens` for the owner token a card gets
+through the IDP-Dienst (decision-15).
 
 ## 3. Keys and cryptography
 

@@ -25,9 +25,9 @@
 
 use core::fmt;
 
-use ti_idpd_client::http::TransportError;
+use crate::http::TransportError;
 
-/// A failure of the owner authentication.
+/// A failure of a step at the FHIR-Directory or its Keycloak.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
@@ -70,9 +70,10 @@ pub enum Error {
     /// A client-credentials path without a Keycloak URL.
     #[error("FHIR-Directory: no Keycloak URL for the {0} endpoint")]
     NoAuthUrl(&'static str),
-    /// The IDP-Dienst flow failed.
-    #[error(transparent)]
-    Idpd(#[from] ti_idpd_client::Error),
+    /// The host could not provide an access token for the directory's API
+    /// ([`crate::tokens::Tokens`]): for an owner, its login through the IDP-Dienst failed.
+    #[error("FHIR-Directory access token: {0}")]
+    Token(#[source] Box<dyn core::error::Error + Send + Sync>),
 }
 
 /// An OAuth error document (RFC 6749 §5.2): Keycloak's answer to bad client

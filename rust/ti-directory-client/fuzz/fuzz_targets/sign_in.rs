@@ -26,19 +26,10 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use ti_directory_client::http::Response;
 use ti_directory_client::{Directory, Env, owner};
-use ti_idpd_client::challenge;
 
 fuzz_target!(|data: &[u8]| {
-    let response = Response {
-        status: 302,
-        headers: vec![("Location".to_owned(), String::from_utf8_lossy(data).into_owned())],
-        body: Vec::new(),
-    };
-    let Ok(redirect) = challenge::code(&response) else {
-        return;
-    };
+    let redirect = String::from_utf8_lossy(data);
     let directory = Directory::for_env(Env::Ref);
     if let Ok(request) = owner::sign_in(&directory, &redirect) {
         // A host name is the same in any case (RFC 3986 section 3.2.2).

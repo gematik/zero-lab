@@ -26,16 +26,15 @@
 //! TI-Messenger RegService-OpenID-Token, or with client credentials at the directory's
 //! Keycloak. `search` is the owner token of a card, named for the Search API it opens.
 
-use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
-use ti_directory_client::owner;
-use ti_directory_client::{AccessToken, Directory, Endpoint, Idp, TokenClaims, exchange};
+use ti_directory_client::{AccessToken, Directory, Endpoint, TokenClaims, exchange};
 use ti_idpd_client::Warning;
 use ti_idpd_client::authenticator::{self, Authenticated};
 use ti_pki::Timestamp;
 
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
 use super::idpd::certificate_lines;
+use super::owner_login::{self, OwnerError, OwnerTokens};
 use crate::block::block_on;
 use crate::cli::{
     DirectoryClientArgs, DirectoryLoginCommand, DirectoryOwnerArgs, DirectorySearchArgs,
@@ -144,14 +143,14 @@ enum Needs {
 fn directory(target: &DirectoryTargetArgs, needs: Needs) -> Result<Directory, CliError> {
     if let Some(url) = &target.url {
         let idp = match (&target.idp_url, needs) {
-            (Some(idp), _) => Idp::new(idp),
+            (Some(idp), _) => idp,
             (None, Needs::Idp) => {
                 return Err(CliError::Arguments(
                     "a card login at --url needs the directory's IDP-Dienst: --idp-url".into(),
                 ));
             }
             // Never contacted: only a card login goes to the IDP.
-            (None, _) => Idp::new(url),
+            (None, _) => url,
         };
         let mut directory = Directory::new(url, idp);
         match (&target.auth_url, needs) {
@@ -173,14 +172,9 @@ fn directory(target: &DirectoryTargetArgs, needs: Needs) -> Result<Directory, Cl
     }
 }
 
-/// A `ti_directory_client::Error` as the CLI reports it; IDP failures keep their own kinds.
-fn directory_error(error: ti_directory_client::Error, trust: Option<&IdpTrust<'_>>) -> CliError {
-    match error {
-        ti_directory_client::Error::Idpd(inner) => trust
-            .and_then(IdpTrust::take_error)
-            .unwrap_or(CliError::Idpd(inner)),
-        other => CliError::Directory(Box::new(other)),
-    }
+/// A `ti_directory_client::Error` as the CLI reports it.
+fn directory_error(error: ti_directory_client::Error) -> CliError {
+    CliError::Directory(Box::new(error))
 }
 
 fn login_client(
@@ -208,7 +202,7 @@ fn login_client(
         &args.client_id,
         &secret,
     ))
-    .map_err(|error| directory_error(error, None))?;
+    .map_err(directory_error)?;
     let mut report = report(&directory, endpoint, "client_credentials", token);
     report.client_id = Some(args.client_id.clone());
     emit(&report, &args.target, out)
@@ -229,7 +223,7 @@ fn login_owner(
             Endpoint::Owner,
             &bearer,
         ))
-        .map_err(|error| directory_error(error, None))?;
+        .map_err(directory_error)?;
         let report = report(&directory, Endpoint::Owner, "regservice", token);
         return emit(&report, &args.target, out);
     }
@@ -285,24 +279,32 @@ fn login_card(
         format_args!(
             "FHIR-Directory {} via IDP-Dienst {}",
             directory.base_url(),
-            directory.idp().base_url()
+            directory.idp_url()
         ),
     );
     let trust = IdpTrust::new(idp_unverified, target.env, global, out);
-    let done = block_on(owner::login(
-        &transport,
+    let card = authenticator::Identity {
+        signer: &*signer,
+        certificate_der: identity.certificate.der(),
+    };
+    let tokens = OwnerTokens::new(
+        async || owner_login::login(&transport, &directory, &card, Timestamp::now, &trust).await,
+        Timestamp::now,
+    );
+    let issued = block_on(tokens.issued()).map_err(|error| match error {
+        OwnerError::Directory(error) => directory_error(error),
+        // A refusal of the IDP's certificates may stand for trust material that could not
+        // be loaded; that failure is the one to report.
+        OwnerError::Idpd(error) => trust.take_error().unwrap_or(CliError::Idpd(error)),
+    })?;
+    let mut report = report(&directory, Endpoint::Owner, "card", issued.token);
+    report.directory.authorization_url = Some(issued.how.authorization_url);
+    with_card(
+        &mut report,
         &directory,
-        &authenticator::Identity {
-            signer: &*signer,
-            certificate_der: identity.certificate.der(),
-        },
-        SystemClock.now(),
-        &trust,
-    ))
-    .map_err(|error| directory_error(error, Some(&trust)))?;
-    let mut report = report(&directory, Endpoint::Owner, "card", done.token);
-    report.directory.authorization_url = Some(done.authorization_url);
-    with_card(&mut report, &directory, &done.authenticated, &identity);
+        &issued.how.authenticated,
+        &identity,
+    );
     Ok(report)
 }
 
@@ -312,7 +314,7 @@ fn report(
     method: &'static str,
     token: AccessToken,
 ) -> Report {
-    let now = SystemClock.now();
+    let now = Timestamp::now().0;
     Report {
         schema: SCHEMA,
         endpoint: endpoint.as_str(),
@@ -351,7 +353,7 @@ fn with_card(
             .map(str::to_owned)
     };
     report.idp = Some(IdpInfo {
-        base_url: directory.idp().base_url().to_owned(),
+        base_url: directory.idp_url().to_owned(),
         issuer: authenticated.discovery.metadata.issuer.clone(),
         certificates: certificate_infos(&authenticated.certificates),
     });

@@ -24,8 +24,8 @@
 //! The client-credentials step: a token from the directory's Keycloak, realm by
 //! endpoint, which the endpoint then exchanges for a directory token.
 
+use crate::http::{Request, Response};
 use serde::Deserialize;
-use ti_idpd_client::http::{Request, Response};
 
 use crate::error::{Error, OAuthError};
 use crate::request::{basic, post_form};

@@ -23,8 +23,8 @@
 
 //! The requests every path shares, and how a refusal reads.
 
+use crate::http::{Method, Request, Response};
 use base64ct::{Base64, Encoding};
-use ti_idpd_client::http::{Method, Request, Response};
 
 use crate::error::{DirectoryError, Error};
 

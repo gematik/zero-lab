@@ -24,7 +24,7 @@
 //! The bearer exchange: `GET {directory}/{endpoint}-authenticate` with a token the
 //! endpoint accepts, answered by the directory's own token.
 
-use ti_idpd_client::http::{Request, Transport};
+use crate::http::{Request, Transport};
 
 use crate::error::Error;
 use crate::token::{self, AccessToken};

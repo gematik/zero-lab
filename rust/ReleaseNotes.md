@@ -217,14 +217,24 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - Renamed from `ti-directory`, as `ti-idpd-client` (decision-15): the package and crate are
   `ti-directory-client` and `ti_directory_client`, the fuzz recipe
   `just fuzz-ti-directory-client`.
-- `owner::login` is `async`: it awaits the IDP-Dienst flow's asynchronous signer
-  (ti-idpd-client, TASK-60).
+- No dependency on ti-idpd-client: no product client depends on another (decision-15).
+  The crate has its own `http` module (`Request`, `Response`, `Method`, `TransportError`,
+  and `Transport`, async without a `Send` bound); `Env` is ti-types', `Idp` is no longer
+  re-exported. `Directory::new` takes the IDP-Dienst's base URL, `Directory::idp_url`
+  replaces `Directory::idp`.
+- `owner::login` and `owner::Login` are gone: the host runs the IDP-Dienst flow between
+  `owner::authorization_url` and `owner::sign_in`, which takes the IDP's redirect URL in
+  place of ti-idpd-client's `CodeRedirect`. `Error::Idpd` is gone; `Error::Token` is a token the
+  host could not provide.
 - `exchange::login_bearer` and `exchange::login_client_credentials` are `async`, as
   ti-idpd-client's transport is (TASK-245).
 
 #### added
+- `tokens::Tokens`, implemented by the host: the access token for the directory's API
+  and the report that the directory refused one (401). `tokens::send` sends a request with
+  it and, after a 401, once more with the next token (RFC 6750 §3.1).
 - New crate: the gematik FHIR-Directory's Auth-Service (gemSpec_VZD_FHIR_Directory
-  V1.7.0, I_VZD_Owner) as its clients see it, sans I/O over ti-idpd-client's HTTP types:
+  V1.7.0, I_VZD_Owner) as its clients see it, sans I/O:
   `Directory::for_env` (PU, RU, TU with the environment's IDP-Dienst and Keycloak),
   `Endpoint` (owner, holder, service, ti-provider with path and realm), `owner` (the card
   flow with its redirect guards), `keycloak`

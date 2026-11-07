@@ -607,7 +607,7 @@ mod tests {
             ))),
             CliError::Directory(Box::new(ti_directory_client::Error::Transport {
                 what: "a",
-                source: ti_idpd_client::http::TransportError("a".into()),
+                source: ti_directory_client::http::TransportError("a".into()),
             })),
             CliError::Directory(Box::new(ti_directory_client::Error::Malformed {
                 what: "a",

@@ -33,7 +33,7 @@ use std::collections::VecDeque;
 use base64ct::{Base64, Base64UrlUnpadded, Encoding};
 use serde_json::json;
 use ti_directory_client::http::{Method, Request, Response, Transport, TransportError};
-use ti_directory_client::{Directory, Endpoint, Env, Error, Idp, exchange, keycloak};
+use ti_directory_client::{Directory, Endpoint, Env, Error, exchange, keycloak};
 
 /// The exchange awaits only the transport, which answers at once here: one poll
 /// completes it.
@@ -53,7 +53,7 @@ const AUTH: &str = "https://auth.test:9443";
 const IDP: &str = "https://idp.test";
 
 fn directory() -> Directory {
-    Directory::new(DIRECTORY, Idp::new(IDP)).with_auth_url(AUTH)
+    Directory::new(DIRECTORY, IDP).with_auth_url(AUTH)
 }
 
 fn response(status: u16, body: &str) -> Response {
@@ -155,7 +155,7 @@ fn endpoints_name_their_paths_and_realms() {
         Directory::for_env(Env::Prod).auth_url(),
         Some("https://auth.vzd.ti-dienste.de:9443")
     );
-    assert_eq!(Directory::new(DIRECTORY, Idp::new(IDP)).auth_url(), None);
+    assert_eq!(Directory::new(DIRECTORY, IDP).auth_url(), None);
 }
 
 /// The client authenticates with `Basic` (RFC 6749 §2.3.1).
@@ -175,7 +175,7 @@ fn rfc_6749_4_4_2_the_keycloak_request_is_client_credentials_with_basic_auth() {
         .unwrap();
     assert_eq!(Base64::decode_vec(basic).unwrap(), b"rs-1:s3cret");
 
-    let no_auth = Directory::new(DIRECTORY, Idp::new(IDP));
+    let no_auth = Directory::new(DIRECTORY, IDP);
     let error = keycloak::token_request(&no_auth, Endpoint::Service, "a", "b").unwrap_err();
     assert!(matches!(error, Error::NoAuthUrl("service")), "{error}");
     let error = keycloak::token_request(&directory(), Endpoint::Owner, "a", "b").unwrap_err();

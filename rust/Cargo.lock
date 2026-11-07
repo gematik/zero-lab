@@ -1678,12 +1678,10 @@ name = "ti-directory-client"
 version = "0.1.0"
 dependencies = [
  "base64ct",
- "jwz",
  "serde",
  "serde_json",
  "thiserror",
- "ti-idpd-client",
- "ti-jwz",
+ "ti-types",
  "traceability",
 ]
 

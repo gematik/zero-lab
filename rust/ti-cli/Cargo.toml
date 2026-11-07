@@ -30,7 +30,8 @@ jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] 
 ti-jwz = { workspace = true, features = ["legacy"] }
 # `idpd authenticate`: the IDP-Dienst flow over this tool's ureq.
 ti-idpd-client = { workspace = true, features = ["ureq"] }
-# `directory login`: the FHIR-Directory's owner authentication over the same transport.
+# `directory login`: the FHIR-Directory's token paths over the same transport; the owner
+# login by card joins its steps with ti-idpd-client's flow here.
 ti-directory-client.workspace = true
 pkcs8.workspace = true
 sec1.workspace = true

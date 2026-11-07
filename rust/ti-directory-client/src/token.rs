@@ -23,9 +23,9 @@
 
 //! The directory's access token, the same document on every path.
 
+use crate::http::Response;
 use base64ct::{Base64UrlUnpadded, Encoding};
 use serde::{Deserialize, Deserializer, Serialize};
-use ti_idpd_client::http::Response;
 
 use crate::error::Error;
 use crate::request::refusal;

@@ -28,49 +28,54 @@
 //!
 //! | [`Endpoint`] | Credential | Steps |
 //! |---|---|---|
-//! | `owner` | smartcard via the IDP-Dienst ([`owner::login`]) | `GET /owner-authenticate` redirects to the IDP-Dienst; the Authenticator-Modul flow of [`ti_idpd_client`] yields a code for `/signin-gematik-idp-dienst`, which answers with the token |
+//! | `owner` | smartcard via the IDP-Dienst ([`owner`]) | `GET /owner-authenticate` redirects to the IDP-Dienst; the host runs the IDP-Dienst's Authenticator-Modul flow, whose code goes to `/signin-gematik-idp-dienst`, which answers with the token |
 //! | `owner` | a TI-Messenger RegService-OpenID-Token ([`exchange::login_bearer`]) | `GET /owner-authenticate` with it as bearer |
 //! | `holder`, `service`, `ti-provider` | client credentials at the directory's Keycloak ([`exchange::login_client_credentials`]) | a Keycloak token from the endpoint's realm, exchanged at `/holder-authenticate`, `/service-authenticate` or `/ti-provider-authenticate` |
 //!
 //! The directory is the relying party of the IDP-Dienst and keeps the OpenID state;
 //! for a card the client is only the Authenticator-Modul, as it is for ePA. The core is
 //! sans I/O: the steps build [`http::Request`]s and consume [`http::Response`]s, the
-//! `login` functions run them over a [`http::Transport`]. Not implemented:
-//! `/tim-authenticate` (a Matrix OpenID token) and the decoupled variant for the gematik
-//! Authenticator app (this tool is the Authenticator-Modul itself: `ti idpd`).
+//! `login` functions run them over a [`http::Transport`]. The IDP-Dienst is another
+//! product, and no product client depends on another: the host runs its flow between the
+//! owner steps and hands the directory's API its token through [`tokens::Tokens`], which
+//! [`tokens::send`] asks for a fresh one when the directory refuses a token. Not
+//! implemented: `/tim-authenticate` (a Matrix OpenID token) and the decoupled variant for
+//! the gematik Authenticator app (this tool is the Authenticator-Modul itself:
+//! `ti idpd`).
 
 #![forbid(unsafe_code)]
 
 mod error;
 pub mod exchange;
+pub mod http;
 pub mod keycloak;
 pub mod owner;
 pub(crate) mod request;
 pub mod token;
+pub mod tokens;
 
 pub use error::{AttributeError, DirectoryError, Error, OAuthError};
-pub use ti_idpd_client::http;
-pub use ti_idpd_client::{Env, Idp};
+pub use ti_types::Env;
 pub use token::{AccessToken, TokenClaims};
 
 /// A FHIR-Directory, the IDP-Dienst it authenticates owners with, and the Keycloak
 /// that issues the tokens of its client-credentials paths.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Directory {
-    base_url: String,
-    idp: Idp,
-    auth_url: Option<String>,
+    base: String,
+    idp: String,
+    auth: Option<String>,
 }
 
 impl Directory {
     /// The directory at `base_url` (scheme and host, no trailing slash needed), which
-    /// must redirect to `idp` and no other; without a Keycloak until
+    /// must redirect to the IDP-Dienst at `idp_url` and no other; without a Keycloak until
     /// [`with_auth_url`](Self::with_auth_url).
-    pub fn new(base_url: &str, idp: Idp) -> Directory {
+    pub fn new(base_url: &str, idp_url: &str) -> Directory {
         Directory {
-            base_url: base_url.trim_end_matches('/').to_owned(),
-            idp,
-            auth_url: None,
+            base: base_url.trim_end_matches('/').to_owned(),
+            idp: idp_url.trim_end_matches('/').to_owned(),
+            auth: None,
         }
     }
 
@@ -78,48 +83,52 @@ impl Directory {
     /// Keycloak: production, test (TU) or reference (also for development). TU's
     /// Keycloak is `auth-test`, its directory `fhir-directory-tu`.
     pub fn for_env(env: Env) -> Directory {
-        let (directory, auth) = match env {
+        let (directory, idp, auth) = match env {
             Env::Prod => (
                 "https://fhir-directory.vzd.ti-dienste.de",
+                "https://idp.app.ti-dienste.de",
                 "https://auth.vzd.ti-dienste.de:9443",
             ),
             Env::Test => (
                 "https://fhir-directory-tu.vzd.ti-dienste.de",
+                "https://idp-test.app.ti-dienste.de",
                 "https://auth-test.vzd.ti-dienste.de:9443",
             ),
+            // Dev shares the reference environment, as it does for the IDP-Dienst.
             _ => (
                 "https://fhir-directory-ref.vzd.ti-dienste.de",
+                "https://idp-ref.app.ti-dienste.de",
                 "https://auth-ref.vzd.ti-dienste.de:9443",
             ),
         };
-        Directory::new(directory, Idp::for_env(env)).with_auth_url(auth)
+        Directory::new(directory, idp).with_auth_url(auth)
     }
 
     /// The directory with its Keycloak at `auth_url` (scheme, host and port).
     #[must_use]
     pub fn with_auth_url(mut self, auth_url: &str) -> Directory {
-        self.auth_url = Some(auth_url.trim_end_matches('/').to_owned());
+        self.auth = Some(auth_url.trim_end_matches('/').to_owned());
         self
     }
 
     /// The Keycloak base URL, if known.
     pub fn auth_url(&self) -> Option<&str> {
-        self.auth_url.as_deref()
+        self.auth.as_deref()
     }
 
     /// The base URL.
     pub fn base_url(&self) -> &str {
-        &self.base_url
+        &self.base
     }
 
-    /// The IDP-Dienst the directory may send the client to.
-    pub fn idp(&self) -> &Idp {
+    /// The base URL of the IDP-Dienst the directory may send the client to.
+    pub fn idp_url(&self) -> &str {
         &self.idp
     }
 
     /// The URL of `endpoint`'s token exchange at this directory.
     pub fn endpoint_url(&self, endpoint: Endpoint) -> String {
-        format!("{}{}", self.base_url, endpoint.path())
+        format!("{}{}", self.base, endpoint.path())
     }
 }
 

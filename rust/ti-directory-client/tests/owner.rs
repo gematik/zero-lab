@@ -23,43 +23,24 @@
 
 //! The owner authentication's steps against responses as gemSpec_VZD_FHIR_Directory and
 //! I_VZD_Owner describe them, and the guards that keep the identity from signing for a
-//! foreign IDP or sending the code elsewhere. The IDP-Dienst flow itself is ti-idpd-client's
-//! to test; `login` is tried end to end by ti-cli against loopback fakes. None of these
+//! foreign IDP or sending the code elsewhere. The IDP-Dienst flow between them is
+//! ti-idpd-client's to test; the host's login joining both is ti-cli's. None of these
 //! tests has a numbered requirement: the steps are the directory's interface, the guards
 //! this crate's design.
 
-use std::cell::RefCell;
-
 use base64ct::{Base64UrlUnpadded, Encoding};
-use jwz::keys::SoftwareKey;
 use serde_json::json;
 use ti_directory_client::TokenClaims;
-use ti_directory_client::http::{Method, Request, Response, Transport, TransportError};
+use ti_directory_client::http::{Method, Response};
 use ti_directory_client::owner::{self, SIGN_IN_PATH};
-use ti_directory_client::{Directory, Env, Error, Idp};
-use ti_idpd_client::authenticator::Identity;
-use ti_idpd_client::challenge::CodeRedirect;
-use ti_idpd_client::trust::Unverified;
-
-/// The flow awaits only the transport and the signer, which answer at once here: one
-/// poll completes it.
-fn ready<F: std::future::Future>(future: F) -> F::Output {
-    let mut future = std::pin::pin!(future);
-    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    match future.as_mut().poll(&mut context) {
-        std::task::Poll::Ready(output) => output,
-        std::task::Poll::Pending => {
-            panic!("a synchronous transport and signer never leave the flow pending")
-        }
-    }
-}
+use ti_directory_client::{Directory, Env, Error};
 
 const DIRECTORY: &str = "https://directory.test";
 const IDP: &str = "https://idp.test";
 const AUTH_URL: &str = "https://idp.test/auth?response_type=code&client_id=opaque&scope=fhir-vzd+openid&redirect_uri=https%3A%2F%2Fdirectory.test%2Fsignin-gematik-idp-dienst&state=s1&code_challenge=c&code_challenge_method=S256";
 
 fn directory() -> Directory {
-    Directory::new(DIRECTORY, Idp::new(IDP))
+    Directory::new(DIRECTORY, IDP)
 }
 
 fn response(status: u16, headers: &[(&str, &str)], body: &str) -> Response {
@@ -87,20 +68,20 @@ fn jwt(payload: &serde_json::Value) -> String {
 fn the_environments_name_gematiks_directories_and_idps() {
     let prod = Directory::for_env(Env::Prod);
     assert_eq!(prod.base_url(), "https://fhir-directory.vzd.ti-dienste.de");
-    assert_eq!(prod.idp().base_url(), "https://idp.app.ti-dienste.de");
+    assert_eq!(prod.idp_url(), "https://idp.app.ti-dienste.de");
     let test = Directory::for_env(Env::Test);
     assert_eq!(
         test.base_url(),
         "https://fhir-directory-tu.vzd.ti-dienste.de"
     );
-    assert_eq!(test.idp().base_url(), "https://idp-test.app.ti-dienste.de");
+    assert_eq!(test.idp_url(), "https://idp-test.app.ti-dienste.de");
     for env in [Env::Ref, Env::Dev] {
         let d = Directory::for_env(env);
         assert_eq!(d.base_url(), "https://fhir-directory-ref.vzd.ti-dienste.de");
-        assert_eq!(d.idp().base_url(), "https://idp-ref.app.ti-dienste.de");
+        assert_eq!(d.idp_url(), "https://idp-ref.app.ti-dienste.de");
     }
     assert_eq!(
-        Directory::new("https://d.test/", Idp::new(IDP)).base_url(),
+        Directory::new("https://d.test/", "https://idp.test/").base_url(),
         "https://d.test"
     );
 }
@@ -128,7 +109,7 @@ fn a_redirect_to_another_idp_is_refused_before_anything_is_signed() {
         "{error}"
     );
     // The port and the scheme are part of the origin.
-    let d = Directory::new("http://127.0.0.1:8085", Idp::new("http://127.0.0.1:9000"));
+    let d = Directory::new("http://127.0.0.1:8085", "http://127.0.0.1:9000");
     assert!(
         owner::authorization_url(
             &d,
@@ -221,13 +202,8 @@ fn the_directorys_refusals_carry_its_message_and_attributes() {
 
 #[test]
 fn the_sign_in_follows_the_idps_redirect_only_to_the_directory() {
-    let redirect = |url: &str| CodeRedirect {
-        url: url.to_owned(),
-        code: "CODE".to_owned(),
-        state: Some("s1".to_owned()),
-    };
     let ok = format!("{DIRECTORY}{SIGN_IN_PATH}?code=CODE&state=s1");
-    let request = owner::sign_in(&directory(), &redirect(&ok)).unwrap();
+    let request = owner::sign_in(&directory(), &ok).unwrap();
     assert_eq!(request.method, Method::Get);
     assert_eq!(request.url, ok);
 
@@ -236,7 +212,7 @@ fn the_sign_in_follows_the_idps_redirect_only_to_the_directory() {
         "https://directory.test/signin-gematik-idp-dienst-decoupled?code=CODE",
         "https://directory.test/owner?code=CODE",
     ] {
-        let error = owner::sign_in(&directory(), &redirect(wrong)).unwrap_err();
+        let error = owner::sign_in(&directory(), wrong).unwrap_err();
         assert!(
             matches!(
                 error,
@@ -303,82 +279,4 @@ fn the_token_document_yields_the_token_and_its_claims() {
         let error = owner::token(&response(200, &[], body)).unwrap_err();
         assert!(matches!(error, Error::Malformed { .. }), "{why}: {error}");
     }
-}
-
-/// A transport that answers the first request and records everything.
-struct Scripted {
-    first: Response,
-    seen: RefCell<Vec<Request>>,
-}
-
-impl Transport for Scripted {
-    async fn send(&self, request: &Request) -> Result<Response, TransportError> {
-        self.seen.borrow_mut().push(request.clone());
-        if self.seen.borrow().len() == 1 {
-            Ok(self.first.clone())
-        } else {
-            Err(TransportError(
-                "the test expected no further request".into(),
-            ))
-        }
-    }
-}
-
-#[test]
-fn login_stops_at_the_directorys_redirect_when_it_is_not_the_idps() {
-    let key = SoftwareKey::generate(
-        ti_jwz::brainpool::BP256R1,
-        &ti_jwz::brainpool::registry(),
-        std::sync::Arc::new(ti_jwz::brainpool::backend(
-            jwz::crypto::rustcrypto::RustCrypto::new(),
-        )),
-    )
-    .unwrap();
-    let identity = Identity {
-        signer: &key,
-        certificate_der: &[0x30, 0x00],
-    };
-    let transport = Scripted {
-        first: response(
-            302,
-            &[("Location", "https://idp.evil.test/auth?client_id=opaque")],
-            "",
-        ),
-        seen: RefCell::new(Vec::new()),
-    };
-    let error = ready(owner::login(
-        &transport,
-        &directory(),
-        &identity,
-        1_760_000_000,
-        &Unverified,
-    ))
-    .unwrap_err();
-    assert!(
-        matches!(
-            error,
-            Error::Malformed {
-                what: "owner-authenticate",
-                ..
-            }
-        ),
-        "{error}"
-    );
-    let seen = transport.seen.borrow();
-    assert_eq!(seen.len(), 1, "nothing goes to the foreign IDP");
-    assert_eq!(seen[0].url, "https://directory.test/owner-authenticate");
-
-    let transport = Scripted {
-        first: response(401, &[], r#"{"message":"nope"}"#),
-        seen: RefCell::new(Vec::new()),
-    };
-    let error = ready(owner::login(
-        &transport,
-        &directory(),
-        &identity,
-        1_760_000_000,
-        &Unverified,
-    ))
-    .unwrap_err();
-    assert!(matches!(error, Error::Directory(_)), "{error}");
 }

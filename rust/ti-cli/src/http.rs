@@ -128,7 +128,8 @@ pub fn idp_agent(net: &NetArgs) -> Result<Agent, CliError> {
     ))
 }
 
-/// The IDP agent as a [`ti_idpd_client::http::Transport`] with one `-v` line per request.
+/// The IDP agent as a [`ti_idpd_client::http::Transport`] and a
+/// [`ti_directory_client::http::Transport`], with one `-v` line per request.
 pub struct Logged<'a> {
     inner: ti_idpd_client::ureq::UreqTransport,
     out: &'a Output,
@@ -172,6 +173,33 @@ impl ti_idpd_client::http::Transport for Logged<'_> {
                 .verbose(1, format_args!("{} {} → {e}", request.method, request.url)),
         }
         response
+    }
+}
+
+/// The directory's requests go the IDP-Dienst's way: the same agent, the same log lines.
+impl ti_directory_client::http::Transport for Logged<'_> {
+    async fn send(
+        &self,
+        request: &ti_directory_client::http::Request,
+    ) -> Result<ti_directory_client::http::Response, ti_directory_client::http::TransportError>
+    {
+        let request = ti_idpd_client::http::Request {
+            method: match request.method {
+                ti_directory_client::http::Method::Get => ti_idpd_client::http::Method::Get,
+                ti_directory_client::http::Method::Post => ti_idpd_client::http::Method::Post,
+            },
+            url: request.url.clone(),
+            headers: request.headers.clone(),
+            body: request.body.clone(),
+        };
+        let response = ti_idpd_client::http::Transport::send(self, &request)
+            .await
+            .map_err(|e| ti_directory_client::http::TransportError(e.0))?;
+        Ok(ti_directory_client::http::Response {
+            status: response.status,
+            headers: response.headers,
+            body: response.body,
+        })
     }
 }
 
