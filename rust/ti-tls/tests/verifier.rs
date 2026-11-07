@@ -283,6 +283,30 @@ fn tlsv_051_a_ti_verdict_is_reused_for_the_hour_of_its_ocsp_answer() {
     );
 }
 
+/// TLSV-050, TLSV-033: the ti verifier's trust material is replaced while a configuration
+/// uses it; the verdicts reached with the old material go with it.
+#[test]
+fn tlsv_050_a_ti_verifiers_trust_material_is_replaced_in_use() {
+    let clock = Arc::new(FixedClock::new(Timestamp(AT)));
+    let verifier = Arc::new(ti("ocsp/ti-good-good.der", Arc::clone(&clock)));
+    let _config = client_config(Arc::clone(&verifier) as Arc<dyn ServerCertVerifier>);
+    let chain = [der("ti-good.pem"), der("ti-ca.pem")];
+    let host = name("svc.ti.test");
+    let verify = || verifier.verify_server_cert(&chain[0], &chain[1..], &host, &[], at(AT));
+    assert!(verify().is_ok());
+    assert!(verify().is_ok(), "reused");
+
+    let config = TrustConfig::for_lab_ca(cert("ti-root.pem").der());
+    verifier.replace(ServerCheck::new(config, None));
+    let Err(Error::InvalidCertificate(CertificateError::Other(other))) = verify() else {
+        panic!("the cached verdict outlived its material");
+    };
+    assert!(
+        other.to_string().starts_with("trust_material_unavailable"),
+        "{other}"
+    );
+}
+
 /// TLSV-002: a refusal reaches rustls as an error, which ends the handshake with a fatal
 /// alert; rustls names what it knows, the rest carries the spec's code.
 #[test]

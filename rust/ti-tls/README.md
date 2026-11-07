@@ -17,9 +17,10 @@ The profile is the endpoint's, by configuration; neither falls back to the other
 - `client_config(verifier)`: a rustls `ClientConfig` offering TLS 1.3 and 1.2, AES-GCM with
   ECDHE, and P-256/P-384 only, as `testdata/handshake.json` lists it.
 - `TiVerifier` and `WebVerifier`: the profiles as rustls `ServerCertVerifier`s, over one snapshot
-  of trust material each. An accepted verdict is reused for the same chain and host until its
-  certificate, its revocation status (an hour under `ti`, a day under `web`) or its snapshot
-  ends; a refusal never is.
+  of trust material each; `TiVerifier::replace` swaps the TI's for a refreshed TSL while
+  connections use the verifier. An accepted verdict is reused for the same chain and host until
+  its certificate, its revocation status (its `nextUpdate`, at most an hour under `ti` and a day
+  under `web`) or its snapshot ends; a refusal never is. A verifier keeps at most 4096 verdicts.
 - `Fetch`: the host's way to an OCSP responder or CRL host for `web`; `ti` takes ti-pki's
   `OcspChecker` over the host's transport.
 
