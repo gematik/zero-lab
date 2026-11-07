@@ -68,7 +68,12 @@ pub enum Checked {
     Unchecked,
 }
 
-/// Decides about the IDP's certificates.
+/// Decides about the IDP's certificates. Async, as the transports are: a check may need
+/// I/O (the TSL, OCSP), and a browser host cannot block for it.
+#[allow(
+    async_fn_in_trait,
+    reason = "no Send bound on purpose: implementable on wasm32"
+)]
 pub trait CertificateTrust {
     /// Checks `certificate_der`, the IDP's `which` certificate; `chain_der` is the rest
     /// of the `x5c` it came with, issuer first (usually empty).
@@ -77,7 +82,7 @@ pub trait CertificateTrust {
     ///
     /// Why the certificate is not to be trusted; the flow stops with
     /// [`crate::Error::Untrusted`].
-    fn check(
+    async fn check(
         &self,
         which: IdpCertificate,
         certificate_der: &[u8],
@@ -86,13 +91,13 @@ pub trait CertificateTrust {
 }
 
 impl<T: CertificateTrust + ?Sized> CertificateTrust for &T {
-    fn check(
+    async fn check(
         &self,
         which: IdpCertificate,
         certificate_der: &[u8],
         chain_der: &[Vec<u8>],
     ) -> Result<Checked, String> {
-        (**self).check(which, certificate_der, chain_der)
+        (**self).check(which, certificate_der, chain_der).await
     }
 }
 
@@ -102,7 +107,7 @@ impl<T: CertificateTrust + ?Sized> CertificateTrust for &T {
 pub struct Unverified;
 
 impl CertificateTrust for Unverified {
-    fn check(&self, _: IdpCertificate, _: &[u8], _: &[Vec<u8>]) -> Result<Checked, String> {
+    async fn check(&self, _: IdpCertificate, _: &[u8], _: &[Vec<u8>]) -> Result<Checked, String> {
         Ok(Checked::Unchecked)
     }
 }

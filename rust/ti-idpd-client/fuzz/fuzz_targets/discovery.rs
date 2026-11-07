@@ -30,9 +30,19 @@ use libfuzzer_sys::fuzz_target;
 use ti_idpd_client::http::Response;
 use ti_idpd_client::trust::Unverified;
 use ti_idpd_client::{Env, Idp, discovery};
+use ti_types::Timestamp;
 
 /// The capture time of the seeds: the reference IDP's discovery document is valid then.
-const NOW: u64 = 1_793_910_924;
+const NOW: Timestamp = Timestamp(1_793_910_924);
+
+/// `parse` waits only on the trust check, which `Unverified` answers at once.
+fn ready<F: Future>(future: F) -> F::Output {
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    match std::pin::pin!(future).poll(&mut context) {
+        std::task::Poll::Ready(output) => output,
+        std::task::Poll::Pending => unreachable!("Unverified never waits"),
+    }
+}
 
 fn ok(body: &[u8]) -> Response {
     Response {
@@ -44,7 +54,7 @@ fn ok(body: &[u8]) -> Response {
 
 fuzz_target!(|data: &[u8]| {
     let idp = Idp::for_env(Env::Ref);
-    if let Ok(found) = discovery::parse(&idp, &ok(data), NOW, &Unverified) {
+    if let Ok(found) = ready(discovery::parse(&idp, &ok(data), || NOW, &Unverified)) {
         assert_eq!(found.metadata.issuer.trim_end_matches('/'), idp.base_url());
     }
 });

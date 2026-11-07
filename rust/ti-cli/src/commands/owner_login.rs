@@ -77,21 +77,22 @@ impl From<ti_idpd_client::Error> for OwnerError {
 }
 
 /// The owner token of `identity` over `transport`: the directory's redirect, the
-/// IDP-Dienst flow at the directory's own IDP-Dienst, the sign-in with its code. `trust`
-/// decides about the IDP's certificates.
+/// IDP-Dienst flow at the directory's own IDP-Dienst, the sign-in with its code. `now` is
+/// read for each token's validity, `trust` decides about the IDP's certificates.
 ///
 /// # Errors
 ///
 /// The first failing step's error.
-pub async fn login<T>(
+pub async fn login<T, C>(
     transport: &T,
     directory: &Directory,
     identity: &Identity<'_>,
     now: impl Fn() -> Timestamp,
-    trust: &dyn CertificateTrust,
+    trust: &C,
 ) -> Result<Issued<ByCard>, OwnerError>
 where
     T: ti_directory_client::http::Transport + ti_idpd_client::http::Transport,
+    C: CertificateTrust,
 {
     let authorization_url = owner::authorization_url(
         directory,
@@ -102,7 +103,7 @@ where
         &Idp::new(directory.idp_url()),
         identity,
         &authorization_url,
-        now().0,
+        &now,
         trust,
     )
     .await?;

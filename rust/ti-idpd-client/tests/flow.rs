@@ -41,6 +41,7 @@ use ti_idpd_client::http::{Method, Request, Response, Transport, TransportError}
 use ti_idpd_client::trust::{CertificateTrust, Checked, IdpCertificate, Unverified};
 use ti_idpd_client::{Error, Idp, Warning, challenge, discovery};
 use ti_pki::Certificate;
+use ti_types::Timestamp;
 
 /// The flow awaits only the transport and the signer, which answer at once here: one
 /// poll completes it.
@@ -56,6 +57,10 @@ fn ready<F: std::future::Future>(future: F) -> F::Output {
 }
 
 const NOW: u64 = 1_760_000_000;
+
+fn now() -> Timestamp {
+    Timestamp(NOW)
+}
 const AUTH_URL: &str = "https://idp.test/sign_response?client_id=gematikTestPs&response_type=code&redirect_uri=https%3A%2F%2Frp.test%2Fcb&state=s1&nonce=n1&scope=openid+e-rezept&code_challenge=abc&code_challenge_method=S256";
 
 type Backend = jwz::crypto::Extended<RustCrypto>;
@@ -360,7 +365,7 @@ fn an_asynchronous_signer_answers_the_challenge() {
         &Idp::new("https://idp.test/"),
         &identity,
         AUTH_URL,
-        NOW,
+        now,
         &Unverified,
     ))
     .unwrap();
@@ -384,7 +389,7 @@ fn a_20526_the_flow_yields_the_code_and_posts_a_well_formed_signed_challenge() {
         &Idp::new("https://idp.test/"),
         &identity,
         AUTH_URL,
-        NOW,
+        now,
         &Unverified,
     ))
     .unwrap();
@@ -425,7 +430,7 @@ fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate()
     let challenge = challenge::parse(
         &ready(idp.send(&challenge::request(AUTH_URL))).unwrap(),
         &idp.idp_sig.public_jwk(),
-        NOW,
+        now,
     )
     .unwrap();
     assert_eq!(challenge.exp, NOW + 180);
@@ -448,12 +453,12 @@ fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate()
 
     // An ES256 signer (ePA's) is not what the IDP accepts for the challenge.
     let es256 = ti_jwz::brainpool::BrainpoolEs256Key::generate(backend().as_ref().rng()).unwrap();
-    let metadata = discovery::parse(
+    let metadata = ready(discovery::parse(
         &Idp::new("https://idp.test"),
         &ready(idp.send(&discovery::request(&Idp::new("https://idp.test")))).unwrap(),
-        NOW,
+        now,
         &Unverified,
-    )
+    ))
     .unwrap()
     .metadata;
     let error = ready(challenge::respond(
@@ -491,7 +496,7 @@ fn rfc_6749_4_1_2_1_the_idps_refusals_are_reported_with_their_gematik_fields() {
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
-        NOW,
+        now,
         &Unverified,
     ))
     .unwrap_err();
@@ -517,7 +522,7 @@ fn rfc_6749_4_1_2_1_the_idps_refusals_are_reported_with_their_gematik_fields() {
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
-        NOW,
+        now,
         &Unverified,
     ))
     .unwrap_err();
@@ -547,7 +552,7 @@ fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
             &Idp::new("https://idp.test"),
             &identity,
             AUTH_URL,
-            NOW,
+            now,
             &Unverified,
         ))
         .unwrap_err();
@@ -563,12 +568,12 @@ fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
 
     // A signed document of another IDP is not the one asked for.
     let idp = FakeIdp::new(Behaviour::Normal);
-    let error = discovery::parse(
+    let error = ready(discovery::parse(
         &Idp::new("https://idp.other"),
         &ready(idp.send(&discovery::request(&Idp::new("https://idp.test")))).unwrap(),
-        NOW,
+        now,
         &Unverified,
-    )
+    ))
     .unwrap_err();
     assert!(
         error.to_string().contains("names the issuer"),
@@ -576,12 +581,12 @@ fn a_19908_a_challenge_that_does_not_verify_or_has_expired_is_refused() {
     );
 
     let idp = FakeIdp::new(Behaviour::DiscoveryWithoutX5c);
-    let error = discovery::parse(
+    let error = ready(discovery::parse(
         &Idp::new("https://idp.test"),
         &ready(idp.send(&discovery::request(&Idp::new("https://idp.test")))).unwrap(),
-        NOW,
+        now,
         &Unverified,
-    )
+    ))
     .unwrap_err();
     assert!(
         matches!(
@@ -602,7 +607,12 @@ struct Recording {
 }
 
 impl CertificateTrust for Recording {
-    fn check(&self, which: IdpCertificate, der: &[u8], _: &[Vec<u8>]) -> Result<Checked, String> {
+    async fn check(
+        &self,
+        which: IdpCertificate,
+        der: &[u8],
+        _: &[Vec<u8>],
+    ) -> Result<Checked, String> {
         self.seen.borrow_mut().push((which, der.to_vec()));
         self.answer.clone()
     }
@@ -626,7 +636,7 @@ fn idpv_001_both_idp_certificates_go_to_the_trust_check_and_verified_ones_leave_
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
-        NOW,
+        now,
         &trust,
     ))
     .unwrap();
@@ -664,7 +674,7 @@ fn idpv_001_a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
         &Idp::new("https://idp.test"),
         &identity,
         AUTH_URL,
-        NOW,
+        now,
         &trust,
     ))
     .unwrap_err();
@@ -679,6 +689,85 @@ fn idpv_001_a_refused_idp_certificate_stops_the_flow_before_the_card_signs() {
     assert!(idp.posted.borrow().is_empty());
 }
 
+/// A trust check that answers after being polled once without an answer, as one that
+/// fetches the TSL or asks an OCSP responder in a browser would.
+struct AwaitedTrust;
+
+impl CertificateTrust for AwaitedTrust {
+    async fn check(&self, _: IdpCertificate, _: &[u8], _: &[Vec<u8>]) -> Result<Checked, String> {
+        let mut waited = false;
+        std::future::poll_fn(move |_| {
+            if waited {
+                std::task::Poll::Ready(Ok(Checked::Verified))
+            } else {
+                waited = true;
+                std::task::Poll::Pending
+            }
+        })
+        .await
+    }
+}
+
+/// The flow waits for an asynchronous trust check, as it waits for the transport.
+#[test]
+fn an_asynchronous_trust_check_is_awaited() {
+    let idp = FakeIdp::new(Behaviour::default());
+    let (key, cert) = card();
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    let done = spin(authenticator::authenticate(
+        &idp,
+        &Idp::new("https://idp.test"),
+        &identity,
+        AUTH_URL,
+        now,
+        &AwaitedTrust,
+    ))
+    .unwrap();
+    assert!(done.warnings.is_empty(), "{:?}", done.warnings);
+    assert_eq!(idp.posted.borrow().len(), 1);
+}
+
+/// The time is read when each token arrives, not once for the flow: a challenge that
+/// expired while the discovery document was being fetched is refused.
+#[test]
+fn each_token_is_judged_at_the_time_it_arrives() {
+    let idp = FakeIdp::new(Behaviour::default());
+    let (key, cert) = card();
+    let identity = Identity {
+        signer: &key,
+        certificate_der: &cert,
+    };
+    let reads = std::cell::Cell::new(0u64);
+    let later = || {
+        reads.set(reads.get() + 1);
+        Timestamp(NOW + (reads.get() - 1) * 600)
+    };
+    let error = ready(authenticator::authenticate(
+        &idp,
+        &Idp::new("https://idp.test"),
+        &identity,
+        AUTH_URL,
+        later,
+        &Unverified,
+    ))
+    .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            Error::Jose {
+                what: "challenge validity",
+                ..
+            }
+        ),
+        "{error}"
+    );
+    assert_eq!(reads.get(), 2, "read once per token");
+    assert!(idp.posted.borrow().is_empty());
+}
+
 /// The discovery signer's certificate is judged before its key verifies the document: a
 /// refused one stops the flow even where the signature would have failed, and a trusted
 /// one does not excuse a bad signature.
@@ -690,8 +779,13 @@ fn idpv_001_the_discovery_signer_is_checked_before_its_key_verifies_anything() {
         answer: Err("revoked".into()),
         seen: RefCell::new(Vec::new()),
     };
-    let error =
-        discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &refusing).unwrap_err();
+    let error = ready(discovery::parse(
+        &Idp::new("https://idp.test"),
+        &response,
+        now,
+        &refusing,
+    ))
+    .unwrap_err();
     assert!(
         matches!(&error, Error::Untrusted { which: IdpCertificate::DiscoverySigner, detail } if detail == "revoked"),
         "the signature was checked before the certificate: {error}"
@@ -705,8 +799,13 @@ fn idpv_001_the_discovery_signer_is_checked_before_its_key_verifies_anything() {
         answer: Ok(Checked::Verified),
         seen: RefCell::new(Vec::new()),
     };
-    let error =
-        discovery::parse(&Idp::new("https://idp.test"), &response, NOW, &trusting).unwrap_err();
+    let error = ready(discovery::parse(
+        &Idp::new("https://idp.test"),
+        &response,
+        now,
+        &trusting,
+    ))
+    .unwrap_err();
     assert!(
         matches!(
             error,
@@ -738,7 +837,7 @@ fn idpv_002_puk_idp_sig_must_come_with_its_own_certificate() {
             &Idp::new("https://idp.test"),
             &identity,
             AUTH_URL,
-            NOW,
+            now,
             &Unverified,
         ))
         .unwrap_err();

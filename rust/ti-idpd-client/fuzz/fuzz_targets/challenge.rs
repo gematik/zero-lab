@@ -29,9 +29,10 @@ use libfuzzer_sys::fuzz_target;
 use ti_idpd_client::challenge;
 use ti_idpd_client::discovery;
 use ti_idpd_client::http::Response;
+use ti_types::Timestamp;
 
 /// The capture time of the seeds: the reference IDP's discovery document is valid then.
-const NOW: u64 = 1_793_910_924;
+const NOW: Timestamp = Timestamp(1_793_910_924);
 
 fn ok(body: &[u8]) -> Response {
     Response {
@@ -43,10 +44,11 @@ fn ok(body: &[u8]) -> Response {
 
 fuzz_target!(|data: &[u8]| {
     // ti-idpd-client does not export the key's type for a static; parsing the small JWK is cheap.
-    let puk_idp_sig = discovery::parse_key("PuK_IDP_SIG", &ok(include_bytes!("../seeds/key/sig.json")))
-        .expect("the reference IDP's published key parses");
+    let puk_idp_sig =
+        discovery::parse_key("PuK_IDP_SIG", &ok(include_bytes!("../seeds/key/sig.json")))
+            .expect("the reference IDP's published key parses");
     assert!(
-        challenge::parse(&ok(data), &puk_idp_sig, NOW).is_err(),
+        challenge::parse(&ok(data), &puk_idp_sig, || NOW).is_err(),
         "a challenge verified without the IDP's signature"
     );
 });

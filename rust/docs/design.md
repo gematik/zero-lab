@@ -39,8 +39,9 @@ conditional requests (`ETag`, `If-Modified-Since`) and posts OCSP.
 
 - Traits carry no `Send`/`Sync` bounds, so they can sit on single-threaded browser APIs;
   generic structs bound their parameters with `MaybeSend`/`MaybeSync` instead.
-- Async where a host may need it (browser, servers), sync where the only host is blocking
-  (the IDP flow in the CLI). Every sync implementation can serve an async trait.
+- Every trait a product client defines is async, transports and checks alike (decision-15):
+  a browser cannot block, and a blocking implementation finishes its future at the first
+  poll, so one variant serves every host.
 - Time is a parameter (a function `impl Fn() -> Timestamp`, or a `now` argument), never
   `SystemTime::now()` in a core; a host passes `Timestamp::now`.
 - Randomness comes from the crypto backend (`getrandom` underneath), never from a

@@ -26,7 +26,7 @@
 //! the environment's TSL CAs, and OCSP. One trust material load serves both
 //! certificates of a run.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -36,7 +36,6 @@ use ti_pki::profile::IDPD_SIG;
 use ti_pki::revocation::{RevocationMode, Unchecked};
 use ti_pki::{Certificate, CertificateType, Env, Timestamp, TrustConfig, TrustStore};
 
-use crate::block::block_on;
 use crate::cli::{Environment, GlobalArgs};
 use crate::error::CliError;
 use crate::output::{Output, hex};
@@ -70,7 +69,7 @@ impl<'a> IdpTrust<'a> {
             env: env.and_then(Environment::concrete),
             global,
             out,
-            loaded: RefCell::new(None),
+            loaded: OnceCell::new(),
             error: RefCell::new(None),
         }))
     }
@@ -85,14 +84,14 @@ impl<'a> IdpTrust<'a> {
 }
 
 impl CertificateTrust for IdpTrust<'_> {
-    fn check(
+    async fn check(
         &self,
         which: IdpCertificate,
         certificate_der: &[u8],
         chain_der: &[Vec<u8>],
     ) -> Result<Checked, String> {
         match self {
-            IdpTrust::Tsl(tsl) => tsl.check(which, certificate_der, chain_der),
+            IdpTrust::Tsl(tsl) => tsl.check(which, certificate_der, chain_der).await,
             IdpTrust::Unverified => Ok(Checked::Unchecked),
         }
     }
@@ -104,7 +103,7 @@ pub struct TslTrust<'a> {
     global: &'a GlobalArgs,
     out: &'a Output,
     /// The material of the environment checked first; both certificates share it.
-    loaded: RefCell<Option<Loaded>>,
+    loaded: OnceCell<Loaded>,
     /// Why trust material could not be had, for the command's error.
     error: RefCell<Option<CliError>>,
 }
@@ -117,7 +116,7 @@ struct Loaded {
 }
 
 impl TslTrust<'_> {
-    fn check(
+    async fn check(
         &self,
         which: IdpCertificate,
         certificate_der: &[u8],
@@ -129,33 +128,29 @@ impl TslTrust<'_> {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?;
         let at = Timestamp::now();
-        if self.loaded.borrow().is_none() {
+        let loaded = if let Some(loaded) = self.loaded.get() {
+            loaded
+        } else {
             let loaded = self.load(&certs, at).map_err(|error| {
                 let message = error.to_string();
                 *self.error.borrow_mut() = Some(error);
                 message
             })?;
-            *self.loaded.borrow_mut() = Some(loaded);
-        }
-        let loaded = self.loaded.borrow();
-        let Some(loaded) = loaded.as_ref() else {
-            unreachable!("loaded above");
+            self.loaded.get_or_init(|| loaded)
         };
         let mut validator = IDPD_SIG.validator(
             &loaded.config,
             Arc::clone(&loaded.store),
             CertificateType::FdSig,
         );
-        let result = block_on(async {
-            if let Some(transport) = loaded.session.transport() {
-                let checker = OcspChecker::new(&loaded.config, transport, Timestamp::now)
-                    .with_store(loaded.session.store());
-                validator.validate(&certs, at, &checker).await
-            } else {
-                validator.revocation = RevocationMode::Disabled;
-                validator.validate(&certs, at, &Unchecked).await
-            }
-        })
+        let result = if let Some(transport) = loaded.session.transport() {
+            let checker = OcspChecker::new(&loaded.config, transport, Timestamp::now)
+                .with_store(loaded.session.store());
+            validator.validate(&certs, at, &checker).await
+        } else {
+            validator.revocation = RevocationMode::Disabled;
+            validator.validate(&certs, at, &Unchecked).await
+        }
         .map_err(|e| e.to_string())?;
         let subject = certs[0].subject_cn().to_owned();
         if result.valid {

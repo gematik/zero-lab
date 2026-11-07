@@ -58,6 +58,7 @@
 
 pub mod authenticator;
 pub mod challenge;
+mod clock;
 pub mod discovery;
 mod error;
 pub mod http;

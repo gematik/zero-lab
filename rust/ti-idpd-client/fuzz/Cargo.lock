@@ -928,6 +928,7 @@ version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
  "ti-idpd-client",
+ "ti-types",
 ]
 
 [[package]]

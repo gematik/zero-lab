@@ -24,6 +24,7 @@
 //! The whole flow over a [`Transport`]: discovery, keys, challenge, answer, code.
 
 use jwz::keys::AsyncSigner;
+use ti_types::Timestamp;
 
 use crate::challenge::{self, CodeRedirect};
 use crate::discovery::{self, Discovery};
@@ -69,31 +70,32 @@ pub struct CheckedCertificate {
 }
 
 /// Runs the Authenticator-Modul flow for `authorization_url` at `idp` with `identity`,
-/// judging token validity at `now` (seconds since the epoch). The IDP's certificates go
-/// to `trust` as soon as they are known, before the card signs anything.
+/// judging each token's validity at the time `now` reads when the token arrives. The IDP's
+/// certificates go to `trust` as soon as they are known, before the card signs anything.
 ///
 /// # Errors
 ///
 /// The first failing step's [`Error`]; [`Error::Untrusted`] when `trust` refuses a
 /// certificate.
 ///
-/// The future waits only on `transport` and the signer: with a blocking transport and
-/// a synchronous signer it is complete when first polled.
-pub async fn authenticate<T: Transport>(
+/// The future waits only on `transport`, `trust` and the signer: with blocking ones it is
+/// complete when first polled.
+pub async fn authenticate<T: Transport, C: CertificateTrust>(
     transport: &T,
     idp: &Idp,
     identity: &Identity<'_>,
     authorization_url: &str,
-    now: u64,
-    trust: &dyn CertificateTrust,
+    now: impl Fn() -> Timestamp,
+    trust: &C,
 ) -> Result<Authenticated, Error> {
     // IDPV-001: the discovery signer is checked inside `parse`, before its key is used.
     let discovery = discovery::parse(
         idp,
         &send(transport, "discovery document", discovery::request(idp)).await?,
-        now,
+        &now,
         trust,
-    )?;
+    )
+    .await?;
     let mut certificates = vec![CheckedCertificate {
         which: IdpCertificate::DiscoverySigner,
         der: discovery.signer_der.clone(),
@@ -115,6 +117,7 @@ pub async fn authenticate<T: Transport>(
     let which = IdpCertificate::TokenSigner;
     let checked = trust
         .check(which, &sig_chain[0], &sig_chain[1..])
+        .await
         .map_err(|detail| Error::Untrusted { which, detail })?;
     certificates.push(CheckedCertificate {
         which,
@@ -138,7 +141,7 @@ pub async fn authenticate<T: Transport>(
         )
         .await?,
         &puk_idp_sig,
-        now,
+        &now,
     )?;
     let answer = challenge::respond(
         &challenge,

@@ -30,13 +30,15 @@ use jwz::crypto::rustcrypto::RustCrypto;
 use jwz::jwa::SignatureAlgorithm;
 use jwz::jwk::{EcKey, Jwk, KeyMaterial};
 use jwz::jws::Jws;
-use jwz::jwt::{Claims, FixedClock};
+use jwz::jwt::Claims;
 use jwz::keys::SoftwareKey;
 use jwz::profile::ClaimsPolicy;
 use serde::Deserialize;
 use ti_pki::Certificate;
+use ti_types::Timestamp;
 
 use crate::Idp;
+use crate::clock::Now;
 use crate::error::{Error, IdpError};
 use crate::http::{Request, Response};
 use crate::trust::{CertificateTrust, Checked, IdpCertificate};
@@ -105,19 +107,19 @@ pub fn request(idp: &Idp) -> Request {
 }
 
 /// The document in `response`: the certificate it carries goes to `trust` first, then
-/// that certificate's key verifies the signature and the validity is checked at `now`
-/// (seconds since the epoch).
+/// that certificate's key verifies the signature and the validity is checked at the time
+/// `now` reads after the trust check.
 ///
 /// # Errors
 ///
 /// [`Error::Idp`] or [`Error::Status`] for a non-200; [`Error::Untrusted`] when `trust`
 /// refuses the signer; [`Error::Jose`] if the JWS does not parse under the TI profile or
 /// does not verify; [`Error::Malformed`] for a payload that is not the metadata.
-pub fn parse(
+pub async fn parse<C: CertificateTrust>(
     idp: &Idp,
     response: &Response,
-    now: u64,
-    trust: &dyn CertificateTrust,
+    now: impl Fn() -> Timestamp,
+    trust: &C,
 ) -> Result<Discovery, Error> {
     expect_ok("discovery document", response)?;
     let token = std::str::from_utf8(&response.body)
@@ -144,6 +146,7 @@ pub fn parse(
     let which = IdpCertificate::DiscoverySigner;
     let signer_checked = trust
         .check(which, leaf, &chain[1..])
+        .await
         .map_err(|detail| Error::Untrusted { which, detail })?;
     let kid = jws.header().kid().map(str::to_owned);
     let key = verifier_from_certificate(&certificate, jws.algorithm(), &registry)?;
@@ -153,7 +156,7 @@ pub fn parse(
     let claims =
         Claims::parse(verified.payload()).map_err(Error::jose("discovery document claims"))?;
     claims
-        .validate(&discovery_claims(&profile.claims), &FixedClock(now))
+        .validate(&discovery_claims(&profile.claims), &Now(&now))
         .map_err(Error::jose("discovery document validity"))?;
     let metadata: Metadata = serde_json::from_slice(verified.payload())
         .map_err(|e| Error::malformed("discovery document", e))?;

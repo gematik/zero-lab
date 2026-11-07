@@ -25,10 +25,10 @@
 //! from an authorization URL to the authorization code. What an ePA client does for
 //! `send_authorization_request_sc` → `send_authcode_sc`.
 
-use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
 use ti_idpd_client::authenticator;
 use ti_idpd_client::{Idp, Warning};
+use ti_pki::Timestamp;
 
 use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
 use crate::block::block_on;
@@ -107,7 +107,7 @@ pub fn authenticate(
             certificate_der: identity.certificate.der(),
         },
         &args.auth_url,
-        SystemClock.now(),
+        Timestamp::now,
         &trust,
     ))
     .map_err(|error| trust.take_error().unwrap_or(CliError::Idpd(error)))?;

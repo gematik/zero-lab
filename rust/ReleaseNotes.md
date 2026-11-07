@@ -210,6 +210,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `http::Transport::send` is `async` without a `Send` bound, as the other TI crates'
   transports, so a browser's fetch can carry the flow (decision-15). `ureq::UreqTransport`
   stays blocking: its future is ready at its first poll (TASK-245).
+- `trust::CertificateTrust::check` is `async` without a `Send` bound: a check may need the
+  TSL or OCSP, and a browser host cannot block for them. `discovery::parse` is `async`, as it
+  asks the trust check; `authenticator::authenticate` takes the check as a generic `&C`
+  rather than `&dyn CertificateTrust` (decision-15).
+- Time is a function `impl Fn() -> Timestamp` (ti-types) in `authenticator::authenticate`,
+  `discovery::parse` and `challenge::parse`, no longer a `now: u64`: each token is judged
+  at the time read when it arrives, not at the start of a login that may wait for a PIN
+  (decision-15).
 
 ### ti-directory-client
 

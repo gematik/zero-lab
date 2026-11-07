@@ -30,10 +30,12 @@ use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm};
 use jwz::jwe::{self, EncryptionKey};
 use jwz::jwk::Jwk;
 use jwz::jws::{self, Jws};
-use jwz::jwt::{Claims, FixedClock};
+use jwz::jwt::Claims;
 use jwz::keys::AsyncSigner;
 use serde_json::{Value, json};
+use ti_types::Timestamp;
 
+use crate::clock::Now;
 use crate::discovery::{self, Metadata};
 use crate::error::{Error, IdpError};
 use crate::http::{Request, Response};
@@ -60,14 +62,19 @@ pub fn request(authorization_url: &str) -> Request {
     Request::get(authorization_url)
 }
 
-/// The challenge in `response`, verified with `puk_idp_sig` and valid at `now`.
+/// The challenge in `response`, verified with `puk_idp_sig` and valid at the time `now`
+/// reads.
 ///
 /// # Errors
 ///
 /// [`Error::Idp`] when the IDP refused (a `302` with `error`, or a JSON error body);
 /// [`Error::Status`] for another status; [`Error::Jose`] if the challenge does not
 /// verify or is not valid at `now`; [`Error::Malformed`] otherwise.
-pub fn parse(response: &Response, puk_idp_sig: &Jwk, now: u64) -> Result<Challenge, Error> {
+pub fn parse(
+    response: &Response,
+    puk_idp_sig: &Jwk,
+    now: impl Fn() -> Timestamp,
+) -> Result<Challenge, Error> {
     if let Some(error) = refusal(response) {
         return Err(Error::Idp(error));
     }
@@ -91,7 +98,7 @@ pub fn parse(response: &Response, puk_idp_sig: &Jwk, now: u64) -> Result<Challen
         .map_err(Error::jose("challenge signature"))?;
     let claims = Claims::parse(verified.payload()).map_err(Error::jose("challenge claims"))?;
     claims
-        .validate(&profile.claims, &FixedClock(now))
+        .validate(&profile.claims, &Now(&now))
         .map_err(Error::jose("challenge validity"))?;
     let exp = claims
         .exp()
