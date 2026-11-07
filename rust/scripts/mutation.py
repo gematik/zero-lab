@@ -49,11 +49,18 @@ def write(doc):
     SCORES.write_text("".join(out))
 
 
+def score(caught, missed, timeout):
+    """(caught + timeout) / (caught + missed + timeout), or None without viable mutants."""
+    counted = caught + missed + timeout
+    if counted == 0:
+        return None
+    return round((caught + timeout) / counted, 4)
+
+
 def record(crate, outcomes_path):
     outcomes = json.loads(Path(outcomes_path).read_text())
-    killed = outcomes["caught"] + outcomes["timeout"]
-    counted = killed + outcomes["missed"] + outcomes["timeout"]
-    if counted == 0:
+    value = score(outcomes["caught"], outcomes["missed"], outcomes["timeout"])
+    if value is None:
         sys.exit(f"mutation: {crate} has no viable mutants")
     if git("status", "--porcelain", "--", crate):
         sys.exit(f"mutation: {crate} has uncommitted changes; a score must belong to a commit")
@@ -66,11 +73,12 @@ def record(crate, outcomes_path):
         "missed": outcomes["missed"],
         "timeout": outcomes["timeout"],
         "unviable": outcomes["unviable"],
-        "score": round(killed / counted, 4),
+        "score": value,
     }
     write(doc)
     s = doc["scores"][crate]
-    print(f"{crate}: {s['score']:.1%} ({killed} of {counted} killed, {s['unviable']} unviable)")
+    killed = s["caught"] + s["timeout"]
+    print(f"{crate}: {value:.1%} ({killed} of {killed + s['missed']} killed, {s['unviable']} unviable)")
 
 
 def gate(crates):
@@ -86,11 +94,14 @@ def gate(crates):
         if changed:
             failed.append(f"{crate}: changed since its score ({s['commit'][:8]}); run `just mutants-record {crate}`")
             continue
+        # The counts decide, not the stored score, so a score written by an older formula
+        # cannot pass or fail the gate.
+        value = score(s["caught"], s["missed"], s["timeout"])
         threshold = thresholds.get(crate)
-        if threshold is not None and s["score"] < threshold:
-            failed.append(f"{crate}: mutation score {s['score']:.1%} is below its threshold {threshold:.0%}")
+        if threshold is not None and (value is None or value < threshold):
+            failed.append(f"{crate}: mutation score {value or 0:.1%} is below its threshold {threshold:.0%}")
             continue
-        print(f"{crate}: mutation score {s['score']:.1%}" + (f" (threshold {threshold:.0%})" if threshold else ""))
+        print(f"{crate}: mutation score {value:.1%}" + (f" (threshold {threshold:.0%})" if threshold else ""))
     if failed:
         sys.exit("mutation gate:\n  " + "\n  ".join(failed))
 
