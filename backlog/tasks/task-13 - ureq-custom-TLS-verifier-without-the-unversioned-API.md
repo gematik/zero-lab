@@ -1,9 +1,10 @@
 ---
 id: TASK-13
 title: 'ureq: custom TLS verifier without the unversioned API'
-status: To Do
+status: In Progress
 assignee: []
-created_date: '2026-10-09 13:55'
+created_date: 2026-10-09 13:55
+updated_date: '2026-11-07T16:07:00Z'
 labels:
   - ti-connector-client
   - deps

@@ -1,10 +1,10 @@
 ---
 id: TASK-224
 title: 'cargo-vet: own audits of the remaining secret-handling and parser crates'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-05T22:12:00Z'
-updated_date: '2026-11-06T06:19:00Z'
+updated_date: '2026-11-07T16:07:00Z'
 labels:
   - deps
   - supply-chain

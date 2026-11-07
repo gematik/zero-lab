@@ -1,9 +1,10 @@
 ---
 id: TASK-218
 title: 'ti-pkcs12: tests for the 37 surviving mutants'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-05T21:53:00Z'
+updated_date: '2026-11-07T16:07:00Z'
 labels:
   - tests
   - ti-pkcs12

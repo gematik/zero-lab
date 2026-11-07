@@ -1,9 +1,10 @@
 ---
 id: TASK-238
 title: 'rust: mutation.py counts timeouts twice in the score''s denominator'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T19:41:00Z'
+updated_date: '2026-11-07T16:07:00Z'
 labels:
   - rust
   - testing

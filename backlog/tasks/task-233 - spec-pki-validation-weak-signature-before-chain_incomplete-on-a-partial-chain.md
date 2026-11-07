@@ -1,9 +1,10 @@
 ---
 id: TASK-233
 title: 'spec/pki-validation: weak signature before chain_incomplete on a partial chain'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-06T14:09:00Z'
+updated_date: '2026-11-07T16:07:00Z'
 labels:
   - spec
   - security
