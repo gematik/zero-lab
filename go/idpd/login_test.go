@@ -161,7 +161,7 @@ func TestExchangeVerifiesTheIDTokenOfTheResponse(t *testing.T) {
 }
 
 // OpenID Connect Core section 3.1.3.3: the token response has an ID token, and without one nothing has been verified.
-func TestExchangeRefusesAResponseWithoutAnIDToken(t *testing.T) {
+func TestOIDCCore_3_1_3_3_ExchangeRefusesAResponseWithoutAnIDToken(t *testing.T) {
 	idp := newFakeIDP(t)
 	serveTokens(t, idp, &issuedTokens{}, false)
 	client, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
@@ -370,7 +370,7 @@ func TestAKeyAnswerThatIsNoSuccessIsRefused(t *testing.T) {
 
 // Server rules 5 and 14: the token key, the verifier and whatever else a login holds, through a client and through an
 // authenticator, whose challenge and answer carry state and nonce.
-func TestALoginLogsNoSecretAtDebug(t *testing.T) {
+func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
@@ -425,7 +425,7 @@ func TestALoginLogsNoSecretAtDebug(t *testing.T) {
 }
 
 // OIDC Core 3.1.3.7, step 11: a token issued for another login must not be accepted for this one.
-func TestExchangeRefusesAnIDTokenOfAnotherLogin(t *testing.T) {
+func TestOIDCCore_3_1_3_7_ExchangeRefusesAnIDTokenOfAnotherLogin(t *testing.T) {
 	idp := newFakeIDP(t)
 	serveTokens(t, idp, &issuedTokens{}, true)
 	client, err := NewClientFromConfig(idp.config(&recording{}), idp.Client())
