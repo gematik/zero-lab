@@ -1630,7 +1630,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "ti-idpd-client",
+ "ti-types",
 ]
 
 [[package]]
