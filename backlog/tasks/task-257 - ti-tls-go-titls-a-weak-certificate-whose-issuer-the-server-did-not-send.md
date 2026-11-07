@@ -4,7 +4,7 @@ title: 'ti-tls / go titls: a weak certificate whose issuer the server did not se
 status: In Progress
 assignee: []
 created_date: '2026-11-07T17:19:00Z'
-updated_date: '2026-11-07T17:54:00Z'
+updated_date: '2026-11-07T18:08:00Z'
 labels:
   - ti-tls
   - go
@@ -24,5 +24,11 @@ Under the web profile, a certificate signed with SHA-1, MD5 or SHA-224 whose iss
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 a corpus case pins the code and ti-tls and go/tipki agree, or the spec says the code may differ here
+- [x] #1 a corpus case pins the code and ti-tls and go/tipki agree, or the spec says the code may differ here
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Maintainer chose: the spec allows either code (TLSV-023). No corpus case: it would need a new SHA-1 certificate under web-root (generate.sh regenerates every certificate) and an either-code field in both adapters.
+<!-- SECTION:NOTES:END -->

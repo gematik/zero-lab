@@ -4,7 +4,7 @@ title: 'cargo-vet: an own audit of quick-xml'
 status: In Progress
 assignee: []
 created_date: '2026-11-07T17:19:00Z'
-updated_date: '2026-11-07T17:54:00Z'
+updated_date: '2026-11-07T18:08:00Z'
 labels:
   - deps
   - supply-chain
@@ -22,5 +22,11 @@ quick-xml 0.42 parses hostile XML in two cores (the TSL in ti-pki, SOAP response
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 quick-xml is covered by an own or imported audit at safe-to-deploy, or the exemption note says why not
+- [x] #1 quick-xml is covered by an own or imported audit at safe-to-deploy, or the exemption note says why not
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Reviewed quick-xml 0.42.0: #![forbid(unsafe_code)], unsafe only in comments; no build.rs; no network or process access, std::fs only in Reader::from_file (unused); dependencies in our build memchr (approved unsafe exception) and serde (serialize), plus overlapped-lists. Maintainer keeps it exempted rather than certifying; the exemption note records the review.
+<!-- SECTION:NOTES:END -->
