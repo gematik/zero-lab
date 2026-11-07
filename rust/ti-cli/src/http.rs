@@ -22,22 +22,28 @@
  */
 
 //! The HTTP client of the commands: ti-client's, made from the curl-like options of
-//! [`NetArgs`], with `-v` lines on stderr.
+//! [`NetArgs`], with `-v` lines on stderr: one per download, OCSP request and call to the
+//! Konnektor, the IDP-Dienst or the FHIR-Directory; `-vv` adds the bodies.
 
+use std::fmt::Write as _;
 use std::sync::Arc;
+use std::time::Duration;
 
 use ti_client::Client;
 use ti_client::http::Http;
+use ti_client::watch::{Exchange, Request, Service};
 
 use crate::error::CliError;
 use crate::net::NetArgs;
-use crate::output::{Output, diagnostic};
+use crate::output::diagnostic;
 
-/// The client of `net`, telling `-v` about each download and OCSP request.
+/// The client of `net`, telling `-v` about each request.
 pub fn client(net: &NetArgs, verbose: u8) -> Client {
     let client = Client::new(net.net());
     if verbose >= 1 {
-        client.observed(Arc::new(|message| diagnostic(message)))
+        client
+            .observed(Arc::new(|message| diagnostic(message)))
+            .watched(Arc::new(move |exchange| show(exchange, verbose)))
     } else {
         client
     }
@@ -49,74 +55,118 @@ pub fn transport(net: &NetArgs, verbose: u8) -> Result<Http, CliError> {
     Ok(client(net, verbose).downloads()?)
 }
 
-/// The IDP-Dienst's agent ([`ti_client::http::idp_agent`]) as a
-/// [`ti_idpd_client::http::Transport`] and a [`ti_directory_client::http::Transport`], with
-/// one `-v` line per request.
-pub struct Logged<'a> {
-    inner: ti_client::http::UreqTransport,
-    out: &'a Output,
-}
-
-impl<'a> Logged<'a> {
-    /// The transport over the IDP-Dienst's agent.
-    pub fn new(net: &NetArgs, out: &'a Output) -> Result<Logged<'a>, CliError> {
-        Ok(Logged {
-            inner: client(net, 0).idp()?,
-            out,
-        })
-    }
-
-    fn log(&self, method: impl std::fmt::Display, url: &str, response: Result<(u16, &[u8]), &str>) {
-        match response {
-            Ok((status, body)) => {
-                self.out.verbose(
-                    1,
-                    format_args!("{method} {url} → {status} ({} bytes)", body.len()),
-                );
-                if !(200..400).contains(&status) && !body.is_empty() {
-                    self.out
-                        .verbose(2, String::from_utf8_lossy(body).trim_end());
+/// The lines of one exchange: for the Konnektor a line per call with its time, and at
+/// `-vv` both bodies, long base64 runs (documents, certificates) shortened; for the
+/// IDP-Dienst and the FHIR-Directory a line per request, and at `-vv` the body of an
+/// answer that is neither a success nor a redirect.
+fn show(exchange: &Exchange<'_>, verbose: u8) {
+    match *exchange {
+        Exchange::Sending(request) => {
+            if request.service == Service::Konnektor && verbose >= 2 && request.has_body() {
+                diagnostic(format_args!(
+                    "request {}\n{}",
+                    konnektor_call(request),
+                    shorten(&request.body())
+                ));
+            }
+        }
+        Exchange::Done {
+            request,
+            answer,
+            took,
+        } if request.service == Service::Konnektor => {
+            let what = konnektor_call(request);
+            match answer {
+                Ok(answer) => {
+                    diagnostic(format_args!(
+                        "{what}: {} in {}",
+                        answer.status,
+                        millis(took)
+                    ));
+                    if verbose >= 2 {
+                        diagnostic(format_args!("response\n{}", shorten(answer.body)));
+                    }
+                }
+                Err(e) => diagnostic(format_args!("{what}: {e} after {}", millis(took))),
+            }
+        }
+        Exchange::Done {
+            request, answer, ..
+        } => match answer {
+            Ok(answer) => {
+                diagnostic(format_args!(
+                    "{} {} → {} ({} bytes)",
+                    request.method,
+                    request.url,
+                    answer.status,
+                    answer.body.len()
+                ));
+                if verbose >= 2 && !(200..400).contains(&answer.status) && !answer.body.is_empty() {
+                    diagnostic(String::from_utf8_lossy(answer.body).trim_end());
                 }
             }
-            Err(e) => self.out.verbose(1, format_args!("{method} {url} → {e}")),
+            Err(e) => diagnostic(format_args!("{} {} → {e}", request.method, request.url)),
+        },
+    }
+}
+
+/// `SignatureService 7.5 SignDocument → URL` for a SOAP call, `GET URL` for the service
+/// directory.
+fn konnektor_call(request: &Request<'_>) -> String {
+    request.operation.map_or_else(
+        || format!("GET {}", request.url),
+        |op| {
+            format!(
+                "{} {} {} → {}",
+                op.service, op.version, op.name, request.url
+            )
+        },
+    )
+}
+
+fn millis(d: Duration) -> String {
+    format!("{} ms", d.as_millis())
+}
+
+/// The body as text, each base64-looking run over 120 characters replaced by its
+/// start and length: SOAP stays readable while documents do not flood the terminal.
+fn shorten(body: &[u8]) -> String {
+    let text = String::from_utf8_lossy(body);
+    let mut out = String::with_capacity(text.len().min(8192));
+    let mut run = String::new();
+    let flush = |run: &mut String, out: &mut String| {
+        if run.len() > 120 {
+            out.push_str(&run[..40]);
+            write!(out, "…[{} characters]", run.len()).expect("writing to a String cannot fail");
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+    };
+    for c in text.chars() {
+        if c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=') {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut out);
+            out.push(c);
         }
     }
+    flush(&mut run, &mut out);
+    out
 }
 
-impl ti_idpd_client::http::Transport for Logged<'_> {
-    async fn send(
-        &self,
-        request: &ti_idpd_client::http::Request,
-    ) -> Result<ti_idpd_client::http::Response, ti_idpd_client::http::TransportError> {
-        let response = ti_idpd_client::http::Transport::send(&self.inner, request).await;
-        self.log(
-            request.method,
-            &request.url,
-            response
-                .as_ref()
-                .map(|r| (r.status, r.body.as_slice()))
-                .map_err(|e| e.0.as_str()),
-        );
-        response
-    }
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// The directory's requests go the IDP-Dienst's way: the same agent, the same log lines.
-impl ti_directory_client::http::Transport for Logged<'_> {
-    async fn send(
-        &self,
-        request: &ti_directory_client::http::Request,
-    ) -> Result<ti_directory_client::http::Response, ti_directory_client::http::TransportError>
-    {
-        let response = ti_directory_client::http::Transport::send(&self.inner, request).await;
-        self.log(
-            request.method,
-            &request.url,
-            response
-                .as_ref()
-                .map(|r| (r.status, r.body.as_slice()))
-                .map_err(|e| e.0.as_str()),
+    #[test]
+    fn long_base64_runs_are_shortened() {
+        let body = format!("<Data>{}</Data><Name>C.AUT</Name>", "QUJD".repeat(100));
+        let short = shorten(body.as_bytes());
+        assert!(short.starts_with("<Data>QUJDQUJD"), "{short}");
+        assert!(
+            short.contains("…[400 characters]</Data><Name>C.AUT</Name>"),
+            "{short}"
         );
-        response
     }
 }

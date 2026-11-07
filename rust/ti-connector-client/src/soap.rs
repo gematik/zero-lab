@@ -82,6 +82,36 @@ impl fmt::Debug for Request<'_> {
     }
 }
 
+impl Request<'_> {
+    /// The body as it may be shown, with the content of every `UserId` element masked: in
+    /// a comfort signature session the ID lets anyone with the same context sign without a
+    /// PIN.
+    pub fn redacted_body(&self) -> Vec<u8> {
+        let text = String::from_utf8_lossy(self.body);
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text.as_ref();
+        while let Some(start) = rest.find("UserId>") {
+            let open = start + "UserId>".len();
+            // `<…UserId>` opens the element and `</…UserId>` closes it; only an opening
+            // tag is followed by the value.
+            let closing = rest[..start]
+                .rfind('<')
+                .is_some_and(|lt| rest[lt + 1..].starts_with('/'));
+            out.push_str(&rest[..open]);
+            rest = &rest[open..];
+            if !closing {
+                let end = rest.find('<').unwrap_or(rest.len());
+                if end > 0 {
+                    out.push_str("***");
+                }
+                rest = &rest[end..];
+            }
+        }
+        out.push_str(rest);
+        out.into_bytes()
+    }
+}
+
 /// The Konnektor's answer, whatever the status.
 #[derive(Clone, Debug, Default)]
 pub struct Response {
@@ -322,6 +352,27 @@ mod tests {
         assert_eq!(
             fault.to_string(),
             "SOAP fault soap:Server: Karte nicht gesteckt (4008 Karte nicht als gesteckt identifiziert: slot 3)"
+        );
+    }
+
+    #[test]
+    fn user_ids_are_masked() {
+        let body =
+            b"<c:Context><c:UserId>2b0a-secret</c:UserId><c:MandantId>M</c:MandantId></c:Context>";
+        let request = Request {
+            method: Method::Post,
+            url: "https://konnektor.test/ws/SignatureService",
+            soap_action: None,
+            authorization: None,
+            if_none_match: None,
+            if_modified_since: None,
+            body,
+            timeout: Duration::from_secs(1),
+            operation: None,
+        };
+        assert_eq!(
+            String::from_utf8(request.redacted_body()).unwrap(),
+            "<c:Context><c:UserId>***</c:UserId><c:MandantId>M</c:MandantId></c:Context>"
         );
     }
 

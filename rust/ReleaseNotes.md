@@ -213,8 +213,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `directory::owner`, the owner login that joins the directory's steps and the IDP-Dienst
   flow, with `OwnerTokens`, the host's `ti_directory_client::tokens::Tokens` (renewed
   before expiry and after a refusal). They return ti-idpd-client's and
-  ti-directory-client's `model`; the transport is the caller's, so a front end can wrap it
-  to show each request. `Error` gains `Idpd` and `Directory`.
+  ti-directory-client's `model`; the transport is the one `Client::idp` makes, or a test
+  double. `Error` gains `Idpd` and `Directory`.
+- `watch` (TASK-250): the client's `Watcher`, set with `Client::watched`, is called before
+  each request to the Konnektor, the IDP-Dienst and the FHIR-Directory and once its answer
+  is in, with the method, URL, SOAP operation, status, bodies and time; a Konnektor body
+  with its comfort user ID masked, never a credential. `Client::idp` and
+  `Client::connector` return their transports in `Watched`, so a front end shows the
+  requests without wrapping a transport, and `connector::setup::test` takes the `Client`.
 
 ### ti-tls
 
@@ -405,6 +411,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   and TLS probe (or none, behind a proxy) and its transport; `check::host_port`.
 - `Credentials::client_identity`: the client certificate and key `pkcs12` credentials
   present in the handshake.
+- `Request::redacted_body`: a request's body as it may be shown, the content of every
+  `UserId` element masked (TASK-250).
 
 #### changed
 - Base64 through `base64ct` in constant time, in the generated bindings (wsdl2openapi

@@ -39,11 +39,14 @@ use ti_types::Timestamp;
 
 use crate::FileCache;
 use crate::block_on;
+use crate::connector::UreqTransport;
 use crate::error::Error;
 use crate::files::{create_private_dir, path_component, write_atomic};
+use crate::watch::Watched;
 
-/// A Konnektor ready for calls.
-pub struct Session<T> {
+/// A Konnektor ready for calls, by default over the transport a
+/// [`Client`](crate::Client) makes ([`Client::connector`](crate::Client::connector)).
+pub struct Session<T = Watched<UreqTransport>> {
     /// The Konnektor.
     pub connector: Connector<T>,
     /// Its configuration.

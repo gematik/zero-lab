@@ -23,21 +23,19 @@
 
 //! Konnektor access for the `connector` commands: which `.kon` file (resolved as the Go
 //! `ti` resolves it, sharing its files), the transport, the service directory through
-//! the cache, and one diagnostic line per call.
+//! the cache; the client's watcher writes a diagnostic line per call
+//! ([`crate::http::client`]).
 
-use std::fmt::Write as _;
-use std::time::{Duration, Instant};
-
+use ti_client::connector::connect;
 use ti_client::connector::store::{self, Source};
-use ti_client::connector::{UreqTransport, connect};
-use ti_connector_client::{Request, Response, Timeouts, Transport, TransportError};
+use ti_connector_client::Timeouts;
 
 use crate::cli::{ConnectorArgs, GlobalArgs};
 use crate::error::CliError;
-use crate::output::{Output, diagnostic};
+use crate::output::Output;
 
 /// A Konnektor ready for calls.
-pub type Session = ti_client::connector::Session<Logged<UreqTransport>>;
+pub type Session = ti_client::connector::Session;
 
 /// Where the configuration's name came from, as `-v` and the errors say it.
 fn source_text(source: Source) -> &'static str {
@@ -95,7 +93,7 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
             timeouts.long.as_secs()
         ),
     );
-    let transport = Logged::new(crate::http::client(&global.net, 0).connector(&dotkon)?, out);
+    let transport = crate::http::client(&global.net, out.verbosity()).connector(&dotkon)?;
     let cache = if args.no_cache {
         None
     } else {
@@ -112,145 +110,4 @@ pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<S
         comfort_user_id: args.comfort_user_id.clone(),
         state_dir: crate::profile::Profile::resolve(global)?.state_dir,
     })
-}
-
-/// The transport with a diagnostic per call: `-v` a line, `-vv` also the bodies, with
-/// long base64 runs (documents, certificates) shortened. Never the `Authorization`
-/// header, which only the inner transport sees.
-pub struct Logged<T> {
-    inner: T,
-    verbosity: u8,
-}
-
-impl<T> Logged<T> {
-    /// `inner` with the diagnostics `out`'s verbosity asks for.
-    pub fn new(inner: T, out: &Output) -> Self {
-        Logged {
-            inner,
-            verbosity: out.verbosity(),
-        }
-    }
-}
-
-impl<T: Transport> Transport for Logged<T> {
-    async fn send(&self, request: &Request<'_>) -> Result<Response, TransportError> {
-        let what = request.operation.map_or_else(
-            || format!("GET {}", request.url),
-            |op| {
-                format!(
-                    "{} {} {} → {}",
-                    op.service, op.version, op.name, request.url
-                )
-            },
-        );
-        if self.verbosity >= 2 && !request.body.is_empty() {
-            diagnostic(format_args!(
-                "request {what}\n{}",
-                shorten(&mask_user_id(request.body))
-            ));
-        }
-        let start = Instant::now();
-        let result = self.inner.send(request).await;
-        let took = start.elapsed();
-        if self.verbosity >= 1 {
-            match &result {
-                Ok(response) => diagnostic(format_args!(
-                    "{what}: {} in {}",
-                    response.status,
-                    millis(took)
-                )),
-                Err(e) => diagnostic(format_args!("{what}: {e} after {}", millis(took))),
-            }
-        }
-        if self.verbosity >= 2
-            && let Ok(response) = &result
-        {
-            diagnostic(format_args!("response\n{}", shorten(&response.body)));
-        }
-        result
-    }
-}
-
-fn millis(d: Duration) -> String {
-    format!("{} ms", d.as_millis())
-}
-
-/// The body with the content of `UserId` elements masked: in a comfort signature
-/// session it lets anyone with the same context sign without a PIN.
-fn mask_user_id(body: &[u8]) -> Vec<u8> {
-    let text = String::from_utf8_lossy(body);
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text.as_ref();
-    while let Some(start) = rest.find("UserId>") {
-        let open = start + "UserId>".len();
-        // `<…UserId>` opens the element and `</…UserId>` closes it; only an opening
-        // tag is followed by the value.
-        let closing = rest[..start]
-            .rfind('<')
-            .is_some_and(|lt| rest[lt + 1..].starts_with('/'));
-        out.push_str(&rest[..open]);
-        rest = &rest[open..];
-        if !closing {
-            let end = rest.find('<').unwrap_or(rest.len());
-            if end > 0 {
-                out.push_str("***");
-            }
-            rest = &rest[end..];
-        }
-    }
-    out.push_str(rest);
-    out.into_bytes()
-}
-
-/// The body as text, each base64-looking run over 120 characters replaced by its
-/// start and length: SOAP stays readable while documents do not flood the terminal.
-fn shorten(body: &[u8]) -> String {
-    let text = String::from_utf8_lossy(body);
-    let mut out = String::with_capacity(text.len().min(8192));
-    let mut run = String::new();
-    let flush = |run: &mut String, out: &mut String| {
-        if run.len() > 120 {
-            out.push_str(&run[..40]);
-            write!(out, "…[{} characters]", run.len()).expect("writing to a String cannot fail");
-        } else {
-            out.push_str(run);
-        }
-        run.clear();
-    };
-    for c in text.chars() {
-        if c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '=') {
-            run.push(c);
-        } else {
-            flush(&mut run, &mut out);
-            out.push(c);
-        }
-    }
-    flush(&mut run, &mut out);
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn user_ids_are_masked() {
-        let body =
-            b"<c:Context><c:UserId>2b0a-secret</c:UserId><c:MandantId>M</c:MandantId></c:Context>";
-        assert_eq!(
-            String::from_utf8(mask_user_id(body)).unwrap(),
-            "<c:Context><c:UserId>***</c:UserId><c:MandantId>M</c:MandantId></c:Context>"
-        );
-    }
-
-    #[test]
-    fn long_base64_runs_are_shortened() {
-        let body = format!("<Data>{}</Data><Name>C.AUT</Name>", "QUJD".repeat(100));
-        let short = shorten(body.as_bytes());
-        assert!(short.starts_with("<Data>QUJDQUJD"), "{short}");
-        assert!(
-            short.contains("…[400 characters]</Data><Name>C.AUT</Name>"),
-            "{short}"
-        );
-    }
 }

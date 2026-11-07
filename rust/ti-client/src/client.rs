@@ -30,14 +30,16 @@ use ti_connector_client::Dotkon;
 use crate::connector;
 use crate::http::{self, Http, Observer};
 use crate::net::{Error, Net};
+use crate::watch::{Watched, Watcher};
 
-/// The host's HTTP settings and the observer of its requests, from which every transport
-/// is made. Send and Sync, so a desktop app can share it between the threads its commands
-/// block on; nothing in it is async.
+/// The host's HTTP settings and the hooks that see its requests, from which every
+/// transport is made. Send and Sync, so a desktop app can share it between the threads its
+/// commands block on; nothing in it is async.
 #[derive(Clone)]
 pub struct Client {
     net: Net,
     observer: Option<Observer>,
+    watcher: Option<Watcher>,
 }
 
 impl fmt::Debug for Client {
@@ -45,6 +47,7 @@ impl fmt::Debug for Client {
         f.debug_struct("Client")
             .field("net", &self.net)
             .field("observed", &self.observer.is_some())
+            .field("watched", &self.watcher.is_some())
             .finish()
     }
 }
@@ -55,6 +58,7 @@ impl Client {
         Client {
             net,
             observer: None,
+            watcher: None,
         }
     }
 
@@ -63,6 +67,14 @@ impl Client {
     #[must_use]
     pub fn observed(mut self, observer: Observer) -> Client {
         self.observer = Some(observer);
+        self
+    }
+
+    /// The client with `watcher` told about each request to the Konnektor, the IDP-Dienst
+    /// and the FHIR-Directory ([`crate::watch`]).
+    #[must_use]
+    pub fn watched(mut self, watcher: Watcher) -> Client {
+        self.watcher = Some(watcher);
         self
     }
 
@@ -90,8 +102,11 @@ impl Client {
     /// # Errors
     ///
     /// [`Error::Setup`] for an unusable proxy or CA file or directory.
-    pub fn idp(&self) -> Result<http::UreqTransport, Error> {
-        Ok(http::UreqTransport::new(http::idp_agent(&self.net)?))
+    pub fn idp(&self) -> Result<Watched<http::UreqTransport>, Error> {
+        Ok(Watched::new(
+            http::UreqTransport::new(http::idp_agent(&self.net)?),
+            self.watcher.clone(),
+        ))
     }
 
     /// The transport of the Konnektor `dotkon` configures ([`connector::agent_config`]).
@@ -100,9 +115,15 @@ impl Client {
     ///
     /// [`Error::Setup`] for an unusable proxy, [`Error::Connector`] for unusable credentials
     /// or trust store.
-    pub fn connector(&self, dotkon: &Dotkon) -> Result<connector::UreqTransport, Error> {
-        connector::UreqTransport::new(dotkon, connector::agent_config(&self.net)?)
-            .map_err(Error::Connector)
+    pub fn connector(&self, dotkon: &Dotkon) -> Result<Watched<connector::UreqTransport>, Error> {
+        let transport = connector::UreqTransport::new(dotkon, connector::agent_config(&self.net)?)
+            .map_err(Error::Connector)?;
+        Ok(Watched::new(transport, self.watcher.clone()))
+    }
+
+    /// The watcher, which the Konnektor transports of a configuration test also tell.
+    pub(crate) fn watcher(&self) -> Option<&Watcher> {
+        self.watcher.as_ref()
     }
 }
 

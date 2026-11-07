@@ -28,13 +28,14 @@
 
 use ti_connector_client::check::Report;
 use ti_connector_client::config::ConfigView;
-use ti_connector_client::{Dotkon, Timeouts, Transport, edit};
+use ti_connector_client::{Dotkon, Timeouts, edit};
 use ti_types::Timestamp;
 
 use super::store::KonFile;
 use super::{TestOptions, UreqTransport, agent_config, check_config};
+use crate::Client;
 use crate::error::Error;
-use crate::net::Net;
+use crate::watch::Watched;
 
 /// `file` as it may be shown, without its secrets ([`ConfigView`]).
 ///
@@ -76,19 +77,20 @@ pub fn refuse(before: Option<&Dotkon>, after: &Dotkon) -> Result<(), Error> {
 
 /// Tests the `.kon` file `json` against the Konnektor it names, step by step
 /// ([`check_config`]), now. `mode` is its permission bits; `${NAME}` comes from the
-/// process environment; the transport is `net`'s, with only an explicit proxy, through
-/// `wrap`. Through a proxy TCP and TLS are not probed directly.
+/// process environment; the transport is `client`'s, with only an explicit proxy, its
+/// requests told to the client's watcher. Through a proxy TCP and TLS are not probed
+/// directly.
 ///
 /// # Errors
 ///
 /// [`Error::Setup`] for an unusable proxy.
-pub fn test<T: Transport>(
-    net: &Net,
+pub fn test(
+    client: &Client,
     json: &[u8],
     mode: Option<u32>,
     timeouts: Timeouts,
-    wrap: impl FnOnce(UreqTransport) -> T,
 ) -> Result<Report, Error> {
+    let net = client.net();
     let agent = agent_config(net)?;
     let options = TestOptions {
         connect_timeout: net.connect_timeout,
@@ -100,7 +102,10 @@ pub fn test<T: Transport>(
         json,
         mode,
         |name| std::env::var(name).ok(),
-        |dotkon| UreqTransport::new(dotkon, agent).map(wrap),
+        |dotkon| {
+            UreqTransport::new(dotkon, agent)
+                .map(|transport| Watched::new(transport, client.watcher().cloned()))
+        },
         options,
     ))
 }

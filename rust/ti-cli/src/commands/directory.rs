@@ -118,7 +118,7 @@ fn login_client(
 ) -> Result<Exit, CliError> {
     let directory = directory(&args.target, Needs::Keycloak)?;
     let secret = crate::input::first_line(&args.client_secret_path)?;
-    let transport = http::Logged::new(&global.net, out)?;
+    let transport = http::client(&global.net, out.verbosity()).idp()?;
     out.verbose(
         1,
         format_args!(
@@ -141,7 +141,7 @@ fn login_owner(
     if let Some(path) = &args.regservice_token_path {
         let directory = directory(&args.target, Needs::Nothing)?;
         let bearer = crate::input::first_line(path)?;
-        let transport = http::Logged::new(&global.net, out)?;
+        let transport = http::client(&global.net, out.verbosity()).idp()?;
         let login = engine::regservice(&transport, &directory, &bearer)?;
         return emit(&login, &args.target, out);
     }
@@ -190,7 +190,7 @@ fn login_card(
     let directory = directory(target, Needs::Idp)?;
     let identity = crate::identity::load(identity_args, global, out)?;
     let card = Card::new(&identity)?;
-    let transport = http::Logged::new(&global.net, out)?;
+    let transport = http::client(&global.net, out.verbosity()).idp()?;
     out.verbose(
         1,
         format_args!(

@@ -62,7 +62,7 @@ pub fn authenticate(
     };
     let identity = crate::identity::load(&args.identity, global, out)?;
     let card = Card::new(&identity)?;
-    let transport = http::Logged::new(&global.net, out)?;
+    let transport = http::client(&global.net, out.verbosity()).idp()?;
     out.verbose(1, format_args!("IDP-Dienst {}", idp.base_url()));
     let trust = idp_trust(args.idp_unverified, args.env, global, out);
     let done = idpd::authenticate(&transport, &idp, &card, &args.auth_url, &trust)?;

@@ -3,9 +3,11 @@
 The native host of the gematik Telematikinfrastruktur (TI) crates, shared by the `ti`
 command-line tool and the desktop app: the I/O the product clients leave to their host.
 
-- `Client`: the transports a front end needs, made from one set of HTTP settings (`Net`) and
-  an `Observer` the front end passes to see each download and OCSP request (`ti -v`). It is
-  Send and Sync, and every method blocks: a desktop app calls it from a blocking thread.
+- `Client`: the transports a front end needs, made from one set of HTTP settings (`Net`), an
+  `Observer` the front end passes to see each download and OCSP request, and a `Watcher`
+  that sees each request to the Konnektor, the IDP-Dienst and the FHIR-Directory (`watch`;
+  `ti -v`), so that no front end wraps a transport. It is Send and Sync, and every method
+  blocks: a desktop app calls it from a blocking thread.
 - `net` and `http`: curl's options as settings (`-k`, `--cacert`, `--capath`, the proxy as
   curl picks it from `-x` and the environment, timeouts, `--retry`, user agent), ti-pki's
   transport for roots.json, the TSL and OCSP with retries (`Http`), and the transport of

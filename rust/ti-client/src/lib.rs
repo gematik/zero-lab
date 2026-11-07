@@ -43,6 +43,7 @@ pub mod pki;
 pub mod text;
 pub mod tls;
 pub mod trust;
+pub mod watch;
 
 pub use block::block_on;
 pub use client::Client;
@@ -51,3 +52,4 @@ pub use file_cache::FileCache;
 pub use files::Dirs;
 pub use http::Observer;
 pub use net::Net;
+pub use watch::{Watched, Watcher};

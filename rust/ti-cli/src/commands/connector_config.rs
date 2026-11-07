@@ -34,7 +34,6 @@ use ti_connector_client::config::{CertificateView, ConfigView, Secret};
 
 use super::connector::emit;
 use crate::cli::{ConnectorArgs, GlobalArgs};
-use crate::connector::Logged;
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, Tone};
 
@@ -272,9 +271,8 @@ pub(super) fn run_checks(
         short: args.connector_timeout,
         long: args.card_timeout,
     };
-    Ok(setup::test(&global.net.net(), json, mode, timeouts, |t| {
-        Logged::new(t, out)
-    })?)
+    let client = crate::http::client(&global.net, out.verbosity());
+    Ok(setup::test(&client, json, mode, timeouts)?)
 }
 
 pub(super) fn finding_line(finding: &Finding) -> Line {
