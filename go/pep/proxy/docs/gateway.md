@@ -91,8 +91,9 @@ routes:
   `{/, identity, gate:snapshot}`. `PEP_ROUTES_PATH` (YAML) is authoritative when set.
 
 Validation (load time): longest-prefix sort; duplicate prefix / bad upstream / bad enum → error;
-`inject: dpop` with `gate != session` → error; `inject: dpop` with a non-PDP backend → error
-(`requireDPoPCapability`).
+an `https` upstream without `Config.UpstreamTransport` → error (zero-pep-proxy passes the `web`
+profile's transport); `inject: dpop` with `gate != session` → error; `inject: dpop` with a non-PDP
+backend → error (`requireDPoPCapability`).
 
 ## Inject (terminal next)
 

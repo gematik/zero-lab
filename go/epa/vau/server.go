@@ -358,7 +358,7 @@ func (s *Server) HandleNestedRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("Decrypted nested request", "decrypted", decrypted)
+	slog.Info("Decrypted nested request", "bytes", len(decrypted))
 
 	nestedResp := http.Response{
 		Header:     make(http.Header),

@@ -30,6 +30,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -211,7 +212,7 @@ func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dumping request: %w", err)
 	}
-	slog.Debug("VAU request", "channel_url", c.ChannelURL.String(), "method", r.Method, "url", r.URL.String(), "data", string(data))
+	slog.Debug("VAU request", "channel_url", c.ChannelURL.String(), "method", r.Method, "url", r.URL.String(), "bytes", len(data))
 	return c.Encrypt(data)
 }
 
@@ -331,6 +332,9 @@ func (c *Channel) PostEncryptedRequest(data []byte) (*http.Response, error) {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
+	if c.Env == EnvNonPU {
+		req.Header.Set(NonPUTracingHeader, c.nonPUTracing())
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -338,6 +342,16 @@ func (c *Channel) PostEncryptedRequest(data []byte) (*http.Response, error) {
 	}
 
 	return resp, nil
+}
+
+// NonPUTracingHeader is the outer request header that discloses a channel's keys outside production (A_24477).
+const NonPUTracingHeader = "VAU-nonPU-Tracing"
+
+// nonPUTracing is A_24477's value: K2_c2s_app_data, then K2_s2c_app_data, base64 and separated by a space, so that
+// a test environment's operator can read its traffic. A production channel never sends it: the record system
+// refuses such a request with 403 (A_24478), and the PU/nonPU byte (A_24628-01) keeps its ciphertexts apart.
+func (c *Channel) nonPUTracing() string {
+	return base64.StdEncoding.EncodeToString(c.k2C2SAppData) + " " + base64.StdEncoding.EncodeToString(c.k2S2CAppData)
 }
 
 // Status is the answer of GET /VAU-Status, with the keys the specification names.
