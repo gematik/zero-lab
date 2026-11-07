@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-06T12:16:00Z'
-updated_date: '2026-11-07T08:48:00Z'
+updated_date: '2026-11-07T08:54:00Z'
 labels:
   - ti-tls
   - security
@@ -23,8 +23,8 @@ TASK-97 AC 2 asks for a bounded verdict cache over an atomically swapped trust s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the verdict cache has a size bound and drops expired entries on insert, with a test
-- [ ] #2 the ti verifier's trust snapshot can be replaced atomically while in use, with a test
+- [x] #1 the verdict cache has a size bound and drops expired entries on insert, with a test
+- [x] #2 the ti verifier's trust snapshot can be replaced atomically while in use, with a test
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -37,4 +37,6 @@ TASK-97 AC 2 asks for a bounded verdict cache over an atomically swapped trust s
 
 <!-- SECTION:NOTES:BEGIN -->
 TASK-98.2 review: the Go verifiers also stop reuse at the status's nextUpdate (TLSV-050) for ti and for CRL-based web verdicts; ti-tls's reusable_until does not. Align with the bound.
+
+2026-11-07: done on branch task-232 (3d30052d). Verdicts keep at most 4096; each insert drops expired entries, at the bound the entry expiring first goes. TiVerifier::replace swaps check and verdicts as one Arc'd snapshot behind an RwLock held only to clone the Arc (no arc-swap); a handshake in flight finishes on its snapshot. ti-pki tls::Verdict gains status_next_update; ti and CRL-based web verdicts end at nextUpdate (TLSV-050), as in Go. Tests: tlsv_050_the_verdict_cache_is_bounded_and_drops_expired_verdicts, tlsv_050_nothing_without_reuse_left_is_kept, tlsv_050_a_ti_verdict_ends_at_its_status_next_update, tlsv_050_a_crl_verdict_ends_at_the_lists_next_update, tlsv_050_a_ti_verifiers_trust_material_is_replaced_in_use. tls-bench: ti cold 815us, cached 584ns.
 <!-- SECTION:NOTES:END -->

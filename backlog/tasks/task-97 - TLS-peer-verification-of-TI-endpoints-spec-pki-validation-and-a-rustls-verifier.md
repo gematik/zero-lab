@@ -4,7 +4,7 @@ title: 'TLS server verification as core hooks: TI-PKI and hardened Web-PKI'
 status: In Progress
 assignee: []
 created_date: 2026-10-15 05:20
-updated_date: '2026-11-06T18:17:00Z'
+updated_date: '2026-11-07T08:54:00Z'
 labels:
   - ti-pki
   - spec
@@ -34,7 +34,7 @@ Which profile an endpoint gets is core configuration, never inferred from its ce
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 spec/pki-validation defines both profiles: rules with requirement IDs (gemSpec_PKI for TI-PKI, RFC 5280, CA/B Forum and the chosen hardening for Web-PKI), result codes, and a corpus with negative cases for each rule
-- [ ] #2 ti-pki supplies both profiles as rustls ServerCertVerifiers over a shared, atomically swapped trust snapshot and a bounded verdict cache; the corpus passes; any new parser has a fuzz target
+- [x] #2 ti-pki supplies both profiles as rustls ServerCertVerifiers over a shared, atomically swapped trust snapshot and a bounded verdict cache; the corpus passes; any new parser has a fuzz target
 - [x] #3 Benchmarks with a budget for a cold and a cached verification of each profile, checked by a just recipe
 - [x] #4 The ureq adapter and ti-cli take the profile per endpoint from configuration, with no fallback to the system store; the Konnektor's .kon pinning stays as it is
 <!-- AC:END -->
@@ -57,4 +57,6 @@ Maintainer, 2026-11-06: web profile uses the system's default roots, as the Go i
 2026-11-06: 97.1-97.4 merged (1f6aa1e6). Open: AC 2, the verdict cache in ti-tls is not bounded (entries leave only when looked up after they expire) and a verifier holds one trust snapshot with no swap: TASK-232. AC 4: no reqwest adapter; no crate uses reqwest, so it waits for the maintainer's decision whether it is still wanted. Profiles live in ti-tls (web) and ti-pki (ti), as decided with the maintainer, not in ti-pki alone as AC 2 words it.
 
 2026-11-06: maintainer's decision: no reqwest adapter; AC 4 reworded without it and met (97.4 ureq adapter, TASK-228 ti probe, both merged). Open: AC 2 only, through TASK-232.
+
+2026-11-07: AC 2 met by TASK-232 (branch task-232): bounded verdict cache, ti snapshot swapped atomically. The profiles live in ti-tls (verifiers, web) over ti-pki (ti check), as decided.
 <!-- SECTION:NOTES:END -->
