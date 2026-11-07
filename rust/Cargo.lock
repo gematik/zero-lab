@@ -1621,11 +1621,9 @@ dependencies = [
  "base64ct",
  "clap",
  "clap_complete",
- "der",
  "jiff",
  "jwz",
  "pem-rfc7468",
- "pkcs8",
  "rpassword",
  "rustls",
  "sec1",
@@ -1644,8 +1642,6 @@ dependencies = [
  "ti-types",
  "traceability",
  "ureq",
- "x509-cert",
- "zeroize",
 ]
 
 [[package]]

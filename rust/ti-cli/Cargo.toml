@@ -25,8 +25,8 @@ ti-connector-client.workspace = true
 # base64url of the IDP's signed discovery document in `probe`.
 base64ct.workspace = true
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod", "serde"] }
-# `identity sign`: JWS with the SMC-B or HBA key, ES256 on brainpoolP256r1 (ti-jwz's brainpool) or
-# P-256 (jwz's own backend); the keys come from PKCS#8 (`pkcs8`, `sec1`), not from JWKs.
+# `identity sign`'s header parameters and algorithm names; the identity signs in ti-client.
+# The owner login's test signs with a brainpoolP256r1 key of its own.
 jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }
 ti-jwz = { workspace = true, features = ["legacy"] }
 # `idpd authenticate`: the IDP-Dienst flow over ti-client's ureq.
@@ -34,10 +34,6 @@ ti-idpd-client.workspace = true
 # `directory login`: the FHIR-Directory's token paths over the same transport; the owner
 # login by card joins its steps with ti-idpd-client's flow here.
 ti-directory-client.workspace = true
-pkcs8.workspace = true
-sec1.workspace = true
-der.workspace = true
-zeroize.workspace = true
 # rustls without a built-in provider (ring is passed in); the trust is ti-tls's.
 ureq = { workspace = true, features = ["rustls-no-provider"] }
 # Every https server verified under spec/pki-validation's web profile.
@@ -48,17 +44,18 @@ clap_complete.workspace = true
 anstream.workspace = true
 anstyle.workspace = true
 jiff.workspace = true
-pem-rfc7468 = { workspace = true, features = ["alloc"] }
 ti-types.workspace = true
 rpassword.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
-x509-cert.workspace = true
 
 [dev-dependencies]
 traceability.workspace = true
+# The fakes' certificates and keys, read from PEM.
+pem-rfc7468 = { workspace = true, features = ["alloc"] }
+sec1.workspace = true
 
 [lints]
 workspace = true

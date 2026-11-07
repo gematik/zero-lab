@@ -1564,14 +1564,10 @@ dependencies = [
  "base64ct",
  "clap",
  "clap_complete",
- "der",
  "jiff",
  "jwz",
- "pem-rfc7468",
- "pkcs8",
  "rpassword",
  "rustls",
- "sec1",
  "serde",
  "serde_json",
  "sha2",
@@ -1586,8 +1582,6 @@ dependencies = [
  "ti-tls",
  "ti-types",
  "ureq",
- "x509-cert",
- "zeroize",
 ]
 
 [[package]]
@@ -1603,11 +1597,17 @@ dependencies = [
 name = "ti-client"
 version = "0.1.0"
 dependencies = [
+ "base64ct",
+ "der",
+ "jwz",
  "p256",
  "p384",
+ "pem-rfc7468",
+ "pkcs8",
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
+ "sec1",
  "serde",
  "serde_json",
  "sha2",
@@ -1615,10 +1615,14 @@ dependencies = [
  "ti-connector-client",
  "ti-directory-client",
  "ti-idpd-client",
+ "ti-jwz",
+ "ti-pkcs12",
  "ti-pki",
  "ti-tls",
  "ti-types",
  "ureq",
+ "x509-cert",
+ "zeroize",
 ]
 
 [[package]]
