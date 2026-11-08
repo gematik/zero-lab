@@ -1,10 +1,10 @@
 ---
 id: TASK-272
 title: Release jwz 0.2.0
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-08T12:06:00Z'
-updated_date: '2026-11-08T15:26:00Z'
+updated_date: '2026-11-08T15:54:00Z'
 labels:
   - jwz
   - release
@@ -24,7 +24,7 @@ jwz 0.2.0 carries TASK-243 (KeyResolver, verify_with), TASK-271 (profiles bind s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 every manifest change is in before the stamps: the ureq bump in ti-client, ti-jwks removed (TASK-251)
+- [x] #1 every manifest change is in before the stamps: the ureq bump in ti-client, ti-jwks removed (TASK-251)
 - [ ] #2 one jwz-recheck, the mutation score recorded, the traceability table blessed, just semver confirms the minor bump
 - [ ] #3 release notes under Unreleased for jwz (and ti-jwz where it changes), then just release jwz=0.2.0; published to crates.io by the maintainer
 <!-- AC:END -->
