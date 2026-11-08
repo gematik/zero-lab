@@ -4,9 +4,11 @@ title: 'jwz: key resolver, verify_with and closures as Clock'
 status: To Do
 assignee: []
 created_date: '2026-11-07T15:52:00Z'
+updated_date: '2026-11-08T12:06:00Z'
 labels:
   - jwz
   - architecture
+milestone: m-1
 dependencies: []
 references:
   - docs/principles.md
@@ -28,5 +30,5 @@ Decision-15: a JWS verifier gets its keys through a trait the host implements, n
 - [ ] #2 JwkSet::signing_keys(kid, alg) selects by kid (all when none), use, key_ops and alg as RFC 7517 §4.2–4.4 say, with tests named after those sections
 - [ ] #3 Jws::verify_with and Jws::verify_with_async try each resolved key and fail with VerificationFailed when none verifies; a fetched key is never trusted for having been fetched
 - [ ] #4 every Fn() -> u64 implements jwt::Clock; SystemClock and FixedClock stay
-- [ ] #5 traceability table blessed, mutation score recorded, released as a 0.1.x minor version
+- [ ] #5 traceability table blessed; released in jwz 0.2.0 (TASK-272), not as 0.1.x: the release carries TASK-271's breaking change
 <!-- AC:END -->

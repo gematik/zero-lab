@@ -4,9 +4,12 @@ title: 'jwz: fully-specified algorithms (RFC 9864)'
 status: To Do
 assignee: []
 created_date: '2026-11-07T10:52:00Z'
+updated_date: '2026-11-08T12:06:00Z'
 labels:
   - jwz
-dependencies: []
+milestone: m-1
+dependencies:
+  - TASK-271
 ordinal: 257000
 ---
 
@@ -19,6 +22,12 @@ RFC 9864 (draft-ietf-jose-fully-specified-algorithms-13, https://datatracker.iet
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 jwa registers Ed25519 (and Ed448 if decided) with RFC 9864's requirement IDs, signing and verifying through the backend traits, with RFC 9864 named in the README's standards table and the traceability table
-- [ ] #2 the strict and rfc7518-interop profiles' handling of the deprecated EdDSA is decided, recorded in ADR 0001, and tested
-- [ ] #3 a JWK's alg Ed25519 binds the key to that algorithm; an EdDSA token is not accepted for a key whose alg is Ed25519 and the reverse, unless the profile allows it, with tests
+- [ ] #2 a JWK's alg Ed25519 binds the key to that algorithm; an EdDSA token is not accepted for a key whose alg is Ed25519 and the reverse, unless the profile allows it, with tests
+- [ ] #3 strict accepts ES256 and Ed25519; the polymorphic EdDSA stays only in rfc7518_interop, so the lists bind signing and verifying alike; Ed448 stays out (rare, a new dependency); recorded in ADR 0001 and tested
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Plan for jwz 0.2.0 (2026-11-08): Ed25519 per RFC 9864 is the name new tokens carry; EdDSA stays relevant worldwide (DPoP, FAPI 2.0, DID/VC, and as a component of ML-DSA composite signatures in the PQC transition) but not in the TI (gemSpec_Krypt V2.50.0 names no EdDSA). strict = ES256 + Ed25519, EdDSA only in rfc7518_interop, no Ed448.
+<!-- SECTION:NOTES:END -->

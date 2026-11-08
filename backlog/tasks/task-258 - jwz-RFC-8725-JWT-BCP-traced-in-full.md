@@ -4,10 +4,12 @@ title: 'jwz: RFC 8725 (JWT BCP) traced in full'
 status: To Do
 assignee: []
 created_date: '2026-11-07T18:04:00Z'
+updated_date: '2026-11-08T12:06:00Z'
 labels:
   - jwz
   - spec
   - security
+milestone: m-1
 dependencies: []
 references:
   - rust/jwz/docs/traceability.md
@@ -29,3 +31,9 @@ jwz's README cites RFC 8725 (JSON Web Token Best Current Practices) only for §3
 - [ ] #2 the state of draft-ietf-oauth-rfc8725bis is checked and its new requirements are traced the same way, or a watch task records why not yet
 - [ ] #3 a gap found becomes its own task
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+In jwz 0.2.0 (TASK-272). §3.1/3.2 (algorithm verification) are met by TASK-271's explicit lists; a gap in explicit typing (§3.11) would also serve TASK-269 (client-authentication+jwt).
+<!-- SECTION:NOTES:END -->

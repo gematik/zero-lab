@@ -4,6 +4,7 @@ title: 'jwz: gematik GitHub team as crates.io owner'
 status: To Do
 assignee: []
 created_date: '2026-11-07T08:47:00Z'
+updated_date: '2026-11-08T12:06:00Z'
 labels:
   - jwz
 dependencies: []
@@ -20,3 +21,9 @@ jwz 0.1.0 is on crates.io with the maintainer's account as its only owner (TASK-
 <!-- AC:BEGIN -->
 - [ ] #1 The gematik GitHub team is an owner of jwz on crates.io
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+After jwz 0.2.0 is published (TASK-272), if the gematik org has approved crates.io's access.
+<!-- SECTION:NOTES:END -->
