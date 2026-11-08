@@ -1,10 +1,10 @@
 ---
 id: TASK-251
 title: 'ti-client: JWK Sets through jwz''s KeyResolver, ti-jwks removed'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
-updated_date: '2026-11-08T12:06:00Z'
+updated_date: '2026-11-08T13:23:00Z'
 labels:
   - ti-client
   - ti-jwks

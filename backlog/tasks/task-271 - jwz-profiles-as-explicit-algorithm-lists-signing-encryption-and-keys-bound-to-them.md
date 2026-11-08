@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-08T12:06:00Z'
-updated_date: '2026-11-08T13:19:00Z'
+updated_date: '2026-11-08T13:23:00Z'
 labels:
   - jwz
   - security
@@ -39,4 +39,6 @@ A profile must state exactly what it accepts: no RSA, ECC only, ECC and brainpoo
 Implemented on feat/jwz-0.2.0. Constants (jwz::profile): ECDSA_NIST (ES256+P-256), EDDSA (EdDSA+Ed25519), HMAC (HS256/384/512), ECDH_ES_P256 (ECDH-ES, +A128KW, +A256KW, P-256), ECDH_ES_DIRECT_P256 (ECDH-ES, P-256; ti), AES_KW, DIRECT, AES_GCM, AES_128_GCM, AES_256_GCM, Algorithms::NONE; Profile::new(name, version). ti-jwz: BP_256 (now ungated name, re-exported by brainpool), EPA_BRAINPOOL_KEYS, BRAINPOOL_SIGNATURES (legacy), BRAINPOOL_KEY_AGREEMENT (legacy). Error code for a key on an unlisted curve (verify and sign) and for unlisted alg/enc/recipient curve when producing: PolicyViolation (the key fits its algorithm; the profile refuses it). Decision taken: ti_legacy() does not list BP-256 for key agreement (would open untested brainpool decryption); ti-idpd-client encrypts under ti_legacy().with(&BRAINPOOL_KEY_AGREEMENT). rfc7518_interop keeps registry-derived lists (needed for ti-jwz brainpool registry). Profile versions bumped to 2 (strict, rfc7518-interop, ti). jwe::encrypt/json::encrypt allow clippy::too_many_arguments (8 params) with a reason. Kani harnesses key_reference_union_is_the_or and claims_policy_union_only_widens removed with the unions; stamps restamped in TASK-272. AC5 RSA: RS256 token, RSA key and RS256 signer are refused (UnsupportedAlgorithm, reserved in every profile).
 
 Review follow-up: the too_many_arguments allows are gone. jwe::Recipient (alg, key, header; re-exported from jwe::json) and jwe::json::Shared (enc, protected, aad) split per-recipient from shared parameters as RFC 7516 §7.2.1 does; jwe::encrypt and jwe::json::encrypt take six parameters.
+
+Maintainer confirmed (2026-11-08): BRAINPOOL_KEY_AGREEMENT as a separate constant only ti-idpd-client uses; profile versions 2; rfc7518_interop's lists from the registry.
 <!-- SECTION:NOTES:END -->
