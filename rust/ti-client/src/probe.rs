@@ -210,6 +210,9 @@ pub struct Outcome {
     pub verified: Option<bool>,
 }
 
+/// Ends the detail of an answer whose certificate nobody checked (-k).
+pub const UNCHECKED: &str = " · TLS unchecked";
+
 /// An endpoint and, once probed, its outcome.
 #[derive(Clone, Debug)]
 pub struct Probe {
@@ -639,7 +642,7 @@ fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
     // the certificate.
     let unchecked = tls && agents.unchecked.is_some();
     if unchecked {
-        detail.push_str(" · TLS not checked (-k)");
+        detail.push_str(UNCHECKED);
     }
     Outcome {
         status: verdict,

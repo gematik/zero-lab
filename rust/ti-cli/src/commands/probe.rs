@@ -30,7 +30,7 @@
 
 use std::time::Duration;
 
-use ti_client::probe::{self, Access, Agents, Outcome, Probe, Report, Status};
+use ti_client::probe::{self, Access, Agents, Outcome, Probe, Report, Status, UNCHECKED};
 use ti_pki::Env;
 
 use super::connector::emit;
@@ -148,7 +148,10 @@ pub fn run(env: Env, def: bool, global: &GlobalArgs, out: &Output) -> Result<Exi
                         mark(p.status),
                         Line::code(&p.host),
                         Line::dim(format!("{} ms", p.duration_ms)),
-                        Line::text(&p.detail),
+                        match unchecked_note(&p.detail) {
+                            (detail, Some(note)) => Line::text(detail).and_status(Tone::Warn, note),
+                            (detail, None) => Line::text(detail),
+                        },
                     ]
                 });
             doc.table(&["SERVICE", "", "HOST", "TIME", "DETAIL"], rows.collect());
@@ -225,12 +228,23 @@ fn line(row: &Probe, (name_width, host_width): &(usize, usize), tick: usize, gra
             };
             let ms = o.duration.as_millis();
             let plain = anstyle::Style::new().fg_color(tone.get_fg_color());
+            let (detail, note) = unchecked_note(&o.detail);
+            let warn = style::WARN;
+            let note = note.map_or_else(String::new, |note| format!("{warn}{note}{warn:#}"));
             format!(
-                "{}  {tone}{symbol}{tone:#}  {host}  {dim}{ms:>4} ms{dim:#}  {plain}{}{plain:#}",
+                "{}  {tone}{symbol}{tone:#}  {host}  {dim}{ms:>4} ms{dim:#}  {plain}{detail}{plain:#}{note}",
                 name(tone),
-                o.detail
             )
         }
+    }
+}
+
+/// The detail without the unchecked note, and the note if it ends the detail; the terminal
+/// shows the note as a warning, whatever the answer's own verdict.
+fn unchecked_note(detail: &str) -> (&str, Option<&str>) {
+    match detail.strip_suffix(UNCHECKED) {
+        Some(head) => (head, Some(UNCHECKED)),
+        None => (detail, None),
     }
 }
 
@@ -377,6 +391,40 @@ mod tests {
     use ti_client::probe::Source;
 
     use super::*;
+
+    /// An answer under -k stays green as judged; only its note that nobody checked the
+    /// certificate is yellow.
+    #[test]
+    fn the_unchecked_note_alone_is_yellow() {
+        let endpoint = probe::endpoints(None, Env::Prod).unwrap().remove(0);
+        let row = Probe {
+            endpoint,
+            source: Source::Builtin,
+            outcome: Some(Outcome {
+                status: Status::Ok,
+                answered: true,
+                detail: format!("HTTP 200{UNCHECKED}"),
+                http_status: Some(200),
+                duration: Duration::ZERO,
+                discovered: Vec::new(),
+                verified: None,
+            }),
+        };
+        let text = line(&row, &(10, 10), 0, false);
+        let (good, warn) = (
+            anstyle::Style::new().fg_color(style::GOOD.get_fg_color()),
+            style::WARN,
+        );
+        assert!(
+            text.contains(&format!("{good}HTTP 200{good:#}")),
+            "{text:?}"
+        );
+        assert!(
+            text.ends_with(&format!("{warn} · TLS unchecked{warn:#}")),
+            "{text:?}"
+        );
+        assert_eq!(unchecked_note("HTTP 200"), ("HTTP 200", None));
+    }
 
     /// Production lists 17 Bestandsnetze: they take one line, running or done, grouped by
     /// result, so the table keeps the paths every practice needs on the screen.

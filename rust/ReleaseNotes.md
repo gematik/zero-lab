@@ -86,7 +86,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   production lists 17, and a row each pushed the TI VPN and Internet off the screen and the
   redrawn table into the scrollback. `--format json` keeps each one's detail.
 - `ti probe -k` checks no TLS certificate, ePA's included, and loads no TSL; answers are
-  judged as usual, the detail says `TLS not checked (-k)`, `tls.verified` is null, and a
+  judged as usual, the detail says `TLS unchecked` (in yellow), `tls.verified` is null, and a
   warning names it.
 - `-k` warns "the TLS certificates of download servers are not checked".
 - `pki tsl show`, `pki tsl export` and `pki trust export` use the list their load verified
