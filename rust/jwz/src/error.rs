@@ -165,3 +165,37 @@ impl From<CryptoError> for Error {
         Error::new(code, "crypto backend")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use alloc::string::ToString;
+
+    use super::*;
+
+    #[derive(Debug)]
+    struct HostCause;
+
+    impl fmt::Display for HostCause {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("host detail")
+        }
+    }
+
+    impl core::error::Error for HostCause {}
+
+    /// An internal invariant (ADR 0001, auditability): an error is its code and its fixed
+    /// context. Both decide equality and what it prints; a host's cause decides neither.
+    #[test]
+    fn invariant_an_error_is_its_code_and_context() {
+        let error = Error::new(ErrorCode::KeyUnavailable, "jwk set origin");
+        assert_eq!(error.code(), ErrorCode::KeyUnavailable);
+        assert_eq!(error.context(), "jwk set origin");
+        assert_eq!(error.to_string(), "KeyUnavailable: jwk set origin");
+        let with_cause = error.clone().with_source(HostCause);
+        assert_eq!(with_cause, error);
+        assert_eq!(with_cause.to_string(), error.to_string());
+        assert_ne!(error, Error::new(ErrorCode::Malformed, "jwk set origin"));
+        assert_ne!(error, Error::new(ErrorCode::KeyUnavailable, "header"));
+        assert_ne!(error, Error::new(ErrorCode::Malformed, "header"));
+    }
+}
