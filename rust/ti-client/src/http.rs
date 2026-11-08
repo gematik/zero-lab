@@ -37,6 +37,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rustls::pki_types::CertificateDer;
+use ti_cache::CacheControl;
 use ti_directory_client::http as directory;
 use ti_idpd_client::http as idpd;
 use ti_pki::load::{
@@ -363,20 +364,9 @@ fn response_meta(headers: &HeaderMap) -> ResponseMeta {
     ResponseMeta {
         etag: text(ETAG).map(str::to_owned),
         last_modified: text(LAST_MODIFIED).map(str::to_owned),
-        max_age: text(CACHE_CONTROL).and_then(max_age),
+        max_age: text(CACHE_CONTROL).and_then(|value| CacheControl::parse(value).freshness()),
         source: Source::Http,
     }
-}
-
-/// The `max-age` directive of a `Cache-Control` value.
-fn max_age(cache_control: &str) -> Option<Duration> {
-    cache_control.split(',').find_map(|directive| {
-        let (name, value) = directive.trim().split_once('=')?;
-        name.eq_ignore_ascii_case("max-age")
-            .then(|| value.trim_matches('"').parse().ok())
-            .flatten()
-            .map(Duration::from_secs)
-    })
 }
 
 /// ti-idpd-client's and ti-directory-client's transport over an agent such as
@@ -488,15 +478,6 @@ mod tests {
         assert!(!is_hash_suffix(""));
     }
 
-    #[test]
-    fn cache_control_max_age() {
-        assert_eq!(
-            max_age("public, max-age=3600"),
-            Some(Duration::from_secs(3600))
-        );
-        assert_eq!(max_age("no-cache"), None);
-    }
-
     /// Serves one scripted HTTP/1.1 response per connection, returning the requests.
     fn serve(responses: Vec<&'static str>) -> (String, std::thread::JoinHandle<Vec<String>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -544,6 +525,24 @@ mod tests {
             retry: 0,
             user_agent: "ti-client-test".into(),
         }
+    }
+
+    /// RFC 9111 §5.2: the transports read freshness as ti-cache does, so `no-cache` and a
+    /// doubtful `max-age` make a response stale instead of leaving its lifetime unstated.
+    #[test]
+    fn rfc9111_cache_control_decides_the_freshness() {
+        let meta = |value: &'static str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(CACHE_CONTROL, value.parse().unwrap());
+            response_meta(&headers).max_age
+        };
+        assert_eq!(
+            meta("public, max-age=3600"),
+            Some(Duration::from_secs(3600))
+        );
+        assert_eq!(meta("no-cache"), Some(Duration::ZERO));
+        assert_eq!(meta("max-age=60, max-age=600"), Some(Duration::ZERO));
+        assert_eq!(meta("public"), None);
     }
 
     #[test]
