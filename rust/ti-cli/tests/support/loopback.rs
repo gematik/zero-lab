@@ -22,7 +22,7 @@
  */
 
 //! Fake TI services on 127.0.0.1 for the end-to-end tests: a one-request-per-connection
-//! HTTP/1.1 server, and an IDP-Dienst on it that signs with ti-idpd's TEST-ONLY signer
+//! HTTP/1.1 server, and an IDP-Dienst on it that signs with ti-idpd-client's TEST-ONLY signer
 //! and answers as gemSpec_IDP_Dienst describes.
 
 #![allow(dead_code, reason = "each test file uses a part")]
@@ -241,9 +241,9 @@ fn read_request(stream: &TcpStream) -> Seen {
     }
 }
 
-/// ti-idpd's TEST-ONLY IDP signer under `kid`, and its certificate.
+/// ti-idpd-client's TEST-ONLY IDP signer under `kid`, and its certificate.
 pub fn idp_signer(kid: &str) -> (SoftwareKey<Backend>, Vec<u8>) {
-    let dir = manifest("../ti-idpd/tests/fixtures");
+    let dir = manifest("../ti-idpd-client/tests/fixtures");
     let cert = ti_pki::parse_pem_certificates(&std::fs::read(dir.join("idpd-sig.pem")).unwrap())
         .unwrap()
         .remove(0);

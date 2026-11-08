@@ -196,8 +196,8 @@ such as `epa` pass the PKCS#12 password by file (`--p12-password-path`,
 ## IDP-Dienst
 
 `ti idpd authenticate` is the Authenticator-Modul of gemSpec_IDP_Frontend, built on
-[`ti-idpd`](../ti-idpd): given the authorization URL a relying party made (for ePA, the
-Aktensystem's `authz_uri`) and an identity, it fetches and verifies the IDP's signed
+[`ti-idpd-client`](../ti-idpd-client): given the authorization URL a relying party made
+(for ePA, the Aktensystem's `authz_uri`) and an identity, it fetches and verifies the IDP's signed
 discovery document and keys, signs the challenge with the card (`BP256R1`, `x5c`),
 encrypts the answer to `PuK_IDP_ENC` and returns the authorization code from the IDP's
 redirect — what `epa` sends on in `send_authcode_sc`. The IDP is the environment's
@@ -209,8 +209,8 @@ TSL with the idpd-sig profile and OCSP, as gemSpec_IDP_Dienst requires;
 ## FHIR-Directory
 
 `ti directory login` obtains an access token of the FHIR-Directory (VZD), built on
-[`ti-directory`](../ti-directory), with one subcommand per Auth-Service endpoint:
-`owner` by card through the IDP-Dienst, `owner` with a TI-Messenger
+[`ti-directory-client`](../ti-directory-client), with one subcommand per Auth-Service
+endpoint: `owner` by card through the IDP-Dienst, `owner` with a TI-Messenger
 RegService-OpenID-Token, `search` for the Search API of an SMC-B or HBA (the owner
 token, the only one the directory issues a card identity), and `holder`, `service` and
 `ti-provider` with

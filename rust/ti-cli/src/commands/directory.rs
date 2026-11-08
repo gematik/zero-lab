@@ -26,93 +26,30 @@
 //! TI-Messenger RegService-OpenID-Token, or with client credentials at the directory's
 //! Keycloak. `search` is the owner token of a card, named for the Search API it opens.
 
-use jwz::jwt::{Clock, SystemClock};
 use serde::Serialize;
-use ti_directory::owner;
-use ti_directory::{AccessToken, Directory, Endpoint, Idp, TokenClaims, exchange};
-use ti_idpd::Warning;
-use ti_idpd::authenticator::{self, Authenticated};
+use ti_client::directory::{self as engine, Login};
+use ti_client::idpd::Card;
+use ti_directory_client::{Directory, Endpoint};
 use ti_pki::Timestamp;
 
-use super::idp_trust::{CertificateInfo, IdpTrust, certificate_infos};
+use super::idp_trust::idp_trust;
 use super::idpd::certificate_lines;
-use crate::block::block_on;
 use crate::cli::{
     DirectoryClientArgs, DirectoryLoginCommand, DirectoryOwnerArgs, DirectorySearchArgs,
     DirectoryTargetArgs, GlobalArgs, IdentityArgs,
 };
 use crate::error::{CliError, Exit};
 use crate::http;
-use crate::identity::Identity;
 use crate::output::document::when;
 
 use crate::output::{Document, Line, Output, SCHEMA, Tone};
 
 /// The JSON document, one for every path.
 #[derive(Serialize)]
-struct Report {
+struct Report<'a> {
     schema: u32,
-    /// `owner`, `holder`, `service` or `ti-provider`.
-    endpoint: &'static str,
-    /// `card`, `regservice` or `client_credentials`.
-    method: &'static str,
-    /// The access token, for `Authorization: Bearer`.
-    access_token: String,
-    token_type: String,
-    /// Seconds of validity, as announced.
-    expires_in: u64,
-    /// When it expires, seconds since the epoch, from the local clock and `expires_in`.
-    expires_at: u64,
-    /// The token's payload as decoded, not verified: the directory issued it over TLS.
-    token: TokenClaims,
-    directory: DirectoryInfo,
-    /// The IDP-Dienst a card answered; null for the other methods.
-    idp: Option<IdpInfo>,
-    /// The card identity; null without one.
-    identity: Option<IdentityInfo>,
-    /// Claims of the IDP's challenge, for the record; `client_id` is the directory's.
-    challenge: Option<ChallengeInfo>,
-    /// The client ID of client credentials; null for the owner methods.
-    client_id: Option<String>,
-    /// What was not proven: `idp_certificates_unverified` with `--idp-unverified`;
-    /// `search_not_in_audience` when a token for search does not name `/search`.
-    warnings: Vec<&'static str>,
-}
-
-#[derive(Serialize)]
-#[allow(
-    clippy::struct_field_names,
-    reason = "the field names are the JSON contract"
-)]
-struct DirectoryInfo {
-    base_url: String,
-    /// The endpoint that issued the token.
-    endpoint_url: String,
-    /// The IDP-Dienst authorization URL the directory sent the card to; null without
-    /// a card.
-    authorization_url: Option<String>,
-    /// The Search API the token is for; null except for `login search`.
-    search_url: Option<String>,
-}
-
-#[derive(Serialize)]
-struct IdpInfo {
-    base_url: String,
-    issuer: String,
-    /// The discovery document's and `PuK_IDP_SIG`'s certificates.
-    certificates: Vec<CertificateInfo>,
-}
-
-#[derive(Serialize)]
-struct IdentityInfo {
-    subject: String,
-    telematik_id: Option<String>,
-}
-
-#[derive(Serialize)]
-struct ChallengeInfo {
-    client_id: Option<String>,
-    scope: Option<String>,
+    #[serde(flatten)]
+    login: &'a Login,
 }
 
 /// Runs `ti directory login …`.
@@ -144,14 +81,14 @@ enum Needs {
 fn directory(target: &DirectoryTargetArgs, needs: Needs) -> Result<Directory, CliError> {
     if let Some(url) = &target.url {
         let idp = match (&target.idp_url, needs) {
-            (Some(idp), _) => Idp::new(idp),
+            (Some(idp), _) => idp,
             (None, Needs::Idp) => {
                 return Err(CliError::Arguments(
                     "a card login at --url needs the directory's IDP-Dienst: --idp-url".into(),
                 ));
             }
             // Never contacted: only a card login goes to the IDP.
-            (None, _) => Idp::new(url),
+            (None, _) => url,
         };
         let mut directory = Directory::new(url, idp);
         match (&target.auth_url, needs) {
@@ -173,16 +110,6 @@ fn directory(target: &DirectoryTargetArgs, needs: Needs) -> Result<Directory, Cl
     }
 }
 
-/// A `ti_directory::Error` as the CLI reports it; IDP failures keep their own kinds.
-fn directory_error(error: ti_directory::Error, trust: Option<&IdpTrust<'_>>) -> CliError {
-    match error {
-        ti_directory::Error::Idpd(inner) => trust
-            .and_then(IdpTrust::take_error)
-            .unwrap_or(CliError::Idpd(inner)),
-        other => CliError::Directory(Box::new(other)),
-    }
-}
-
 fn login_client(
     args: &DirectoryClientArgs,
     endpoint: Endpoint,
@@ -191,7 +118,7 @@ fn login_client(
 ) -> Result<Exit, CliError> {
     let directory = directory(&args.target, Needs::Keycloak)?;
     let secret = crate::input::first_line(&args.client_secret_path)?;
-    let transport = http::Logged::new(&global.net, out)?;
+    let transport = http::client(&global.net, out.verbosity()).idp()?;
     out.verbose(
         1,
         format_args!(
@@ -201,17 +128,9 @@ fn login_client(
             endpoint.realm().unwrap_or("-")
         ),
     );
-    let token = exchange::login_client_credentials(
-        &transport,
-        &directory,
-        endpoint,
-        &args.client_id,
-        &secret,
-    )
-    .map_err(|error| directory_error(error, None))?;
-    let mut report = report(&directory, endpoint, "client_credentials", token);
-    report.client_id = Some(args.client_id.clone());
-    emit(&report, &args.target, out)
+    let login =
+        engine::client_credentials(&transport, &directory, endpoint, &args.client_id, &secret)?;
+    emit(&login, &args.target, out)
 }
 
 fn login_owner(
@@ -222,25 +141,24 @@ fn login_owner(
     if let Some(path) = &args.regservice_token_path {
         let directory = directory(&args.target, Needs::Nothing)?;
         let bearer = crate::input::first_line(path)?;
-        let transport = http::Logged::new(&global.net, out)?;
-        let token = exchange::login_bearer(&transport, &directory, Endpoint::Owner, &bearer)
-            .map_err(|error| directory_error(error, None))?;
-        let report = report(&directory, Endpoint::Owner, "regservice", token);
-        return emit(&report, &args.target, out);
+        let transport = http::client(&global.net, out.verbosity()).idp()?;
+        let login = engine::regservice(&transport, &directory, &bearer)?;
+        return emit(&login, &args.target, out);
     }
     let Some(identity_args) = &args.identity else {
         return Err(CliError::Arguments(
             "an owner login needs a card identity (--p12, --cert/--key, --card) or --regservice-token-path".into(),
         ));
     };
-    let report = login_card(
+    let login = login_card(
         identity_args,
         &args.target,
         args.idp_unverified,
+        false,
         global,
         out,
     )?;
-    emit(&report, &args.target, out)
+    emit(&login, &args.target, out)
 }
 
 fn login_search(
@@ -248,186 +166,114 @@ fn login_search(
     global: &GlobalArgs,
     out: &Output,
 ) -> Result<Exit, CliError> {
-    let mut report = login_card(
+    let login = login_card(
         &args.identity,
         &args.target,
         args.idp_unverified,
+        true,
         global,
         out,
     )?;
-    let search_url = format!("{}/search", report.directory.base_url);
-    if !report.token.aud.contains(&search_url) {
-        report.warnings.push("search_not_in_audience");
-    }
-    report.directory.search_url = Some(search_url);
-    emit(&report, &args.target, out)
+    emit(&login, &args.target, out)
 }
 
-/// The owner token of a card identity, through the directory's IDP-Dienst.
+/// The owner token of a card identity, through the directory's IDP-Dienst; for its
+/// Search API with `search`.
 fn login_card(
     identity_args: &IdentityArgs,
     target: &DirectoryTargetArgs,
     idp_unverified: bool,
+    search: bool,
     global: &GlobalArgs,
     out: &Output,
-) -> Result<Report, CliError> {
+) -> Result<Login, CliError> {
     let directory = directory(target, Needs::Idp)?;
-    let identity = Identity::load(identity_args, global, out)?;
-    let signer = identity.signer(ti_jwz::brainpool::BP256R1)?;
-    let transport = http::Logged::new(&global.net, out)?;
+    let identity = crate::identity::load(identity_args, global, out)?;
+    let card = Card::new(&identity)?;
+    let transport = http::client(&global.net, out.verbosity()).idp()?;
     out.verbose(
         1,
         format_args!(
             "FHIR-Directory {} via IDP-Dienst {}",
             directory.base_url(),
-            directory.idp().base_url()
+            directory.idp_url()
         ),
     );
-    let trust = IdpTrust::new(idp_unverified, target.env, global, out);
-    let done = block_on(owner::login(
-        &transport,
-        &directory,
-        &authenticator::Identity {
-            signer: &*signer,
-            certificate_der: identity.certificate.der(),
-        },
-        SystemClock.now(),
-        &trust,
-    ))
-    .map_err(|error| directory_error(error, Some(&trust)))?;
-    let mut report = report(&directory, Endpoint::Owner, "card", done.token);
-    report.directory.authorization_url = Some(done.authorization_url);
-    with_card(&mut report, &directory, &done.authenticated, &identity);
-    Ok(report)
-}
-
-fn report(
-    directory: &Directory,
-    endpoint: Endpoint,
-    method: &'static str,
-    token: AccessToken,
-) -> Report {
-    let now = SystemClock.now();
-    Report {
-        schema: SCHEMA,
-        endpoint: endpoint.as_str(),
-        method,
-        expires_at: now.saturating_add(token.expires_in),
-        access_token: token.access_token,
-        token_type: token.token_type,
-        expires_in: token.expires_in,
-        token: token.claims,
-        directory: DirectoryInfo {
-            base_url: directory.base_url().to_owned(),
-            endpoint_url: directory.endpoint_url(endpoint),
-            authorization_url: None,
-            search_url: None,
-        },
-        idp: None,
-        identity: None,
-        challenge: None,
-        client_id: None,
-        warnings: Vec::new(),
+    let trust = idp_trust(idp_unverified, target.env, global, out);
+    if search {
+        engine::search(&transport, &directory, &card, &trust)
+    } else {
+        engine::card(&transport, &directory, &card, &trust)
     }
 }
 
-/// The card's part of the report: IDP, identity, challenge, warnings.
-fn with_card(
-    report: &mut Report,
-    directory: &Directory,
-    authenticated: &Authenticated,
-    identity: &Identity,
-) {
-    let claim = |name: &str| {
-        authenticated
-            .challenge_claims
-            .get(name)
-            .and_then(|v| v.as_str())
-            .map(str::to_owned)
-    };
-    report.idp = Some(IdpInfo {
-        base_url: directory.idp().base_url().to_owned(),
-        issuer: authenticated.discovery.metadata.issuer.clone(),
-        certificates: certificate_infos(&authenticated.certificates),
-    });
-    report.identity = Some(IdentityInfo {
-        subject: identity.certificate.subject().to_string(),
-        telematik_id: identity.telematik_id(),
-    });
-    report.challenge = Some(ChallengeInfo {
-        client_id: claim("client_id"),
-        scope: claim("scope"),
-    });
-    report.warnings = authenticated
-        .warnings
-        .iter()
-        .map(|w| Warning::as_str(*w))
-        .collect();
-}
-
-fn emit(report: &Report, target: &DirectoryTargetArgs, out: &Output) -> Result<Exit, CliError> {
+fn emit(login: &Login, target: &DirectoryTargetArgs, out: &Output) -> Result<Exit, CliError> {
     if target.token {
         use std::io::Write as _;
         let mut stdout = std::io::stdout().lock();
-        writeln!(stdout, "{}", report.access_token)?;
+        writeln!(stdout, "{}", login.token.access_token)?;
         return Ok(Exit::Ok);
     }
     if out.is_json() {
-        out.json(report)?;
+        out.json(&Report {
+            schema: SCHEMA,
+            login,
+        })?;
     } else {
-        out.render(&document(report))?;
+        out.render(&document(login))?;
     }
     Ok(Exit::Ok)
 }
 
 /// The text view.
-fn document(report: &Report) -> Document {
+fn document(login: &Login) -> Document {
+    let token = &login.token;
     let mut doc = Document::default();
     doc.field(
         "authenticated",
-        Line::status(Tone::Good, format!("{} token received", report.endpoint))
-            .and_dim(format!(" · {}", report.method.replace('_', " "))),
+        Line::status(Tone::Good, format!("{} token received", token.endpoint))
+            .and_dim(format!(" · {}", token.method.replace('_', " "))),
     );
-    doc.field("endpoint", Line::link(&report.directory.endpoint_url));
-    if let Some(search) = &report.directory.search_url {
+    doc.field("endpoint", Line::link(&token.directory.endpoint_url));
+    if let Some(search) = &token.directory.search_url {
         doc.field("for", Line::link(search));
     }
-    if let Some(idp) = &report.idp {
+    if let Some(idp) = &login.idp {
         doc.field("IDP", Line::text(&idp.issuer));
         certificate_lines(&mut doc, &idp.certificates);
     }
-    if let Some(identity) = &report.identity {
+    if let Some(identity) = &login.identity {
         doc.field("identity", Line::text(&identity.subject));
         if let Some(id) = &identity.telematik_id {
             doc.field("Telematik-ID", Line::code(id));
         }
     }
-    if let Some(client) = &report.client_id {
+    if let Some(client) = &login.client_id {
         doc.field("client", Line::code(client));
     }
-    let shown_id = report
+    let shown_id = login
         .identity
         .as_ref()
         .and_then(|i| i.telematik_id.as_ref())
-        .or(report.client_id.as_ref());
-    if let Some(sub) = &report.token.sub
+        .or(login.client_id.as_ref());
+    if let Some(sub) = &token.token.sub
         && Some(sub) != shown_id
     {
         doc.field("subject", Line::code(sub));
     }
-    if let Some(scope) = &report.token.scope {
+    if let Some(scope) = &token.token.scope {
         doc.field("scope", Line::text(scope));
     }
     doc.field(
         "expires",
         Line::text(format!(
             "{} ({} h)",
-            when(Timestamp(report.expires_at)),
-            report.expires_in / 3600
+            when(Timestamp(token.expires_at)),
+            token.expires_in / 3600
         )),
     );
-    doc.field("token", Line::code(&report.access_token));
-    for warning in &report.warnings {
+    doc.field("token", Line::code(&token.access_token));
+    for warning in &login.warnings {
         doc.field("warning", Line::status(Tone::Warn, *warning));
     }
     doc

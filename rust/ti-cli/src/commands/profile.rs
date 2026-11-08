@@ -22,99 +22,28 @@
  */
 
 //! `ti profile list|delete`: the profiles in use, each a directory below `profiles/` in
-//! the state and the cache base.
-
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+//! the state and the cache base ([`ti_client::profile`]).
 
 use serde::Serialize;
+use ti_client::profile::{self, Listed};
 
 use crate::cli::{GlobalArgs, ProfileCommand};
 use crate::error::{CliError, Exit};
 use crate::output::{Document, Line, Output, SCHEMA};
-use crate::profile::{Bases, Profile, validate_name};
-
-#[derive(Serialize)]
-struct ListedProfile {
-    /// `None` for the unnamed location: the bases themselves.
-    name: Option<String>,
-    state: String,
-    cache: String,
-    /// The size of the files below the state directory; 0 if it does not exist.
-    state_bytes: u64,
-    cache_bytes: u64,
-}
+use crate::profile::{Profile, validate_name};
 
 #[derive(Serialize)]
 struct ListReport {
     schema: u32,
-    profiles: Vec<ListedProfile>,
-}
-
-/// The directories of `name` below `base`; the base itself without a name.
-fn below(base: &Path, name: Option<&str>) -> PathBuf {
-    match name {
-        Some(name) => base.join("profiles").join(name),
-        None => base.to_path_buf(),
-    }
-}
-
-/// The profile names with a directory in `base`; entries that are not directories or
-/// whose name the rules refuse are not profiles.
-fn names_in(base: &Path) -> BTreeSet<String> {
-    std::fs::read_dir(base.join("profiles"))
-        .map(|entries| {
-            entries
-                .flatten()
-                .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
-                .filter_map(|e| e.file_name().into_string().ok())
-                .filter(|name| validate_name(name).is_ok())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// The size of the files below `dir`, symlinks not followed; `skip` is left out at the
-/// top, so that the unnamed location does not count the profiles below it.
-fn size(dir: &Path, skip: Option<&str>) -> u64 {
-    std::fs::read_dir(dir).map_or(0, |entries| {
-        entries
-            .flatten()
-            .filter(|e| skip.is_none_or(|skip| e.file_name() != skip))
-            .map(|e| match e.file_type() {
-                Ok(t) if t.is_dir() => size(&e.path(), None),
-                Ok(t) if t.is_file() => e.metadata().map_or(0, |m| m.len()),
-                _ => 0,
-            })
-            .sum()
-    })
-}
-
-fn listed(bases: &Bases, name: Option<&str>) -> ListedProfile {
-    let (state, cache) = (below(&bases.state, name), below(&bases.cache, name));
-    let skip = name.is_none().then_some("profiles");
-    ListedProfile {
-        name: name.map(str::to_owned),
-        state_bytes: size(&state, skip),
-        cache_bytes: size(&cache, skip),
-        state: state.display().to_string(),
-        cache: cache.display().to_string(),
-    }
+    profiles: Vec<Listed>,
 }
 
 /// `ti profile list`.
 pub fn list(global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let bases = Profile::bases(global)?;
-    let names: BTreeSet<String> = names_in(&bases.state)
-        .union(&names_in(&bases.cache))
-        .cloned()
-        .collect();
     let report = ListReport {
         schema: SCHEMA,
-        profiles: std::iter::once(None)
-            .chain(names.iter().map(|n| Some(n.as_str())))
-            .map(|name| listed(&bases, name))
-            .collect(),
+        profiles: profile::list(&bases),
     };
     if out.is_json() {
         out.json(&report)?;
@@ -146,33 +75,6 @@ struct DeleteReport {
     removed: Vec<String>,
 }
 
-/// Removes `dir`, which a profile name put below `profiles/`. A symlink is removed
-/// itself, never its target. `false` when there was nothing of that name. `failed` makes
-/// the error of the base `dir` is in.
-fn remove_profile_dir(
-    dir: &Path,
-    failed: fn(String, String) -> CliError,
-) -> Result<bool, CliError> {
-    let fail =
-        |e: std::io::Error| failed(dir.display().to_string(), format!("cannot remove it: {e}"));
-    let meta = match std::fs::symlink_metadata(dir) {
-        Ok(meta) => meta,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(e) => return Err(fail(e)),
-    };
-    if meta.is_dir() {
-        std::fs::remove_dir_all(dir).map_err(fail)?;
-    } else if meta.file_type().is_symlink() {
-        // A directory symlink on Windows is removed as a directory.
-        std::fs::remove_file(dir)
-            .or_else(|_| std::fs::remove_dir(dir))
-            .map_err(fail)?;
-    } else {
-        return Ok(false);
-    }
-    Ok(true)
-}
-
 /// `ti profile delete NAME --yes`: `<state base>/profiles/NAME` and
 /// `<cache base>/profiles/NAME`; the name is validated first, so that it cannot leave
 /// `profiles/`.
@@ -185,19 +87,10 @@ pub fn delete(global: &GlobalArgs, name: &str, yes: bool, out: &Output) -> Resul
         )));
     }
     let bases = Profile::bases(global)?;
-    let mut removed = Vec::new();
-    let state_failed: fn(String, String) -> CliError =
-        |path, reason| CliError::State { path, reason };
-    let cache_failed: fn(String, String) -> CliError =
-        |path, reason| CliError::Cache { path, reason };
-    for (dir, failed) in [
-        (below(&bases.state, Some(name)), state_failed),
-        (below(&bases.cache, Some(name)), cache_failed),
-    ] {
-        if remove_profile_dir(&dir, failed)? {
-            removed.push(dir.display().to_string());
-        }
-    }
+    let removed: Vec<String> = profile::delete(&bases, name)?
+        .iter()
+        .map(|dir| dir.display().to_string())
+        .collect();
     if removed.is_empty() {
         return Err(CliError::Arguments(format!(
             "no profile {name}: `{} profile list` shows the profiles",

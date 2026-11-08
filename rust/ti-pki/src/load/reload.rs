@@ -35,7 +35,7 @@ use super::loader::{LoadError, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use super::verify::{VerifyError, VerifyFn, verify_material};
 use crate::revocation::{RevocationChecker, RevocationStatus, Unchecked};
-use crate::time::{Clock, Timestamp};
+use crate::time::Timestamp;
 use crate::tsl_signature::{Sequence, TslError, TslState};
 use crate::{Certificate, Error, Tier, TrustConfig, TrustStore};
 use ti_cache::Source;
@@ -255,25 +255,25 @@ struct Attempts {
 
 /// Shared read access to the current trust store.
 #[derive(Debug)]
-pub struct TrustStoreHandle<C> {
+pub struct TrustStoreHandle<N> {
     current: RwLock<Option<Arc<Current>>>,
     /// The TSL state given at construction, until the first swap replaces it.
     stored_tsl: Option<TslState>,
     attempts: Mutex<Attempts>,
-    clock: C,
+    now: N,
     stale_if_error: Duration,
     hard_expiry: Duration,
     tsl_grace_period: Duration,
 }
 
-impl<C: Clock> TrustStoreHandle<C> {
+impl<N: Fn() -> Timestamp> TrustStoreHandle<N> {
     /// Whether the list in use is past its `NextUpdate` and the grace period. A reload
     /// confirming unchanged material does not verify it again, so a directory rewritten with
     /// the same list would otherwise keep it in use (TSLSIG-054).
     fn overdue(&self, current: &Current) -> bool {
         current
             .tsl_next_update
-            .is_some_and(|next_update| self.clock.now() >= next_update + self.tsl_grace_period)
+            .is_some_and(|next_update| (self.now)() >= next_update + self.tsl_grace_period)
     }
 
     /// The current trust store; cheap, call it per request.
@@ -285,8 +285,7 @@ impl<C: Clock> TrustStoreHandle<C> {
     /// if no reload has run since.
     pub fn snapshot(&self) -> Result<Arc<TrustStore>, Expired> {
         let current = self.current().ok_or(Expired { fetched_at: None })?;
-        if self.clock.now().since(current.fetched_at) >= self.hard_expiry || self.overdue(&current)
-        {
+        if (self.now)().since(current.fetched_at) >= self.hard_expiry || self.overdue(&current) {
             return Err(Expired {
                 fetched_at: Some(current.fetched_at),
             });
@@ -296,7 +295,7 @@ impl<C: Clock> TrustStoreHandle<C> {
 
     /// The current [`ReloadStatus`].
     pub fn status(&self) -> ReloadStatus {
-        let now = self.clock.now();
+        let now = (self.now)();
         let current = self.current();
         let attempts = self.attempts();
         let staleness = current
@@ -370,10 +369,10 @@ impl<C: Clock> TrustStoreHandle<C> {
 /// checker from [`with_signer_status`](Self::with_signer_status), the signer's OCSP
 /// status too; without, the status reports [`no_ocsp_check`](crate::tsl_signature::TslCode::NoOcspCheck).
 /// A list that fails any of it is never swapped in.
-pub struct Reloader<L, C, R = Unchecked> {
+pub struct Reloader<L, N, R = Unchecked> {
     config: TrustConfig,
     loader: L,
-    handle: TrustStoreHandle<C>,
+    handle: TrustStoreHandle<N>,
     policy: ReloadPolicy,
     jitter_seed: RandomState,
     in_flight: AtomicBool,
@@ -381,7 +380,7 @@ pub struct Reloader<L, C, R = Unchecked> {
     signer_status: Option<R>,
 }
 
-impl<L, C, R> core::fmt::Debug for Reloader<L, C, R> {
+impl<L, N, R> core::fmt::Debug for Reloader<L, N, R> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Reloader")
             .field("policy", &self.policy)
@@ -389,10 +388,10 @@ impl<L, C, R> core::fmt::Debug for Reloader<L, C, R> {
     }
 }
 
-impl<L, C> Reloader<L, C>
+impl<L, N> Reloader<L, N>
 where
     L: Loader + MaybeSend + MaybeSync,
-    C: Clock + MaybeSend + MaybeSync,
+    N: Fn() -> Timestamp + MaybeSend + MaybeSync,
 {
     /// A reloader for `config` in `tier`, without a signer status checker. Nothing is
     /// loaded until the first [`tick`](Self::tick).
@@ -405,7 +404,7 @@ where
         config: TrustConfig,
         tier: Tier,
         loader: L,
-        clock: C,
+        now: N,
         policy: ReloadPolicy,
     ) -> Result<Self, Error> {
         config.validate(tier)?;
@@ -418,7 +417,7 @@ where
                 current: RwLock::new(None),
                 stored_tsl: None,
                 attempts: Mutex::default(),
-                clock,
+                now,
                 stale_if_error: policy.stale_if_error,
                 hard_expiry: policy.hard_expiry,
                 tsl_grace_period,
@@ -432,17 +431,17 @@ where
     }
 }
 
-impl<L, C, R> Reloader<L, C, R>
+impl<L, N, R> Reloader<L, N, R>
 where
     L: Loader + MaybeSend + MaybeSync,
-    C: Clock + MaybeSend + MaybeSync,
+    N: Fn() -> Timestamp + MaybeSend + MaybeSync,
     R: RevocationChecker + MaybeSend + MaybeSync,
 {
     /// Checks the TSL signer's OCSP status with `checker` before a list is swapped in
     /// (TSLSIG-040 – 042), normally an [`OcspChecker`](crate::ocsp::OcspChecker) over the
     /// loader's network.
     #[must_use]
-    pub fn with_signer_status<R2>(self, checker: R2) -> Reloader<L, C, R2> {
+    pub fn with_signer_status<R2>(self, checker: R2) -> Reloader<L, N, R2> {
         Reloader {
             config: self.config,
             loader: self.loader,
@@ -465,7 +464,7 @@ where
     }
 
     /// Read access for request handlers.
-    pub fn handle(&self) -> &TrustStoreHandle<C> {
+    pub fn handle(&self) -> &TrustStoreHandle<N> {
         &self.handle
     }
 
@@ -474,7 +473,7 @@ where
     /// if nothing was attempted yet.
     pub fn next_due(&self) -> Timestamp {
         let Some(last) = self.handle.attempts().attempted_at else {
-            return self.handle.clock.now();
+            return (self.handle.now)();
         };
         let periodic = last + self.policy.interval + self.jitter(last);
         let deadline = self
@@ -488,12 +487,12 @@ where
 
     /// Time left until the next tick is due; zero if it is due already.
     pub fn until_due(&self) -> Duration {
-        self.next_due().since(self.handle.clock.now())
+        self.next_due().since((self.handle.now)())
     }
 
     /// Whether a tick is due now.
     pub fn due(&self) -> bool {
-        self.handle.clock.now() >= self.next_due()
+        (self.handle.now)() >= self.next_due()
     }
 
     /// One reload attempt. Single-flight: a tick that starts while another is running
@@ -506,7 +505,7 @@ where
         let _in_flight = InFlight(&self.in_flight);
 
         let loaded = self.loader.load_all().await;
-        let now = self.handle.clock.now();
+        let now = (self.handle.now)();
         self.handle.attempts().attempted_at = Some(now);
 
         let material = match loaded {
@@ -558,7 +557,7 @@ where
             && tsl.signer_status.is_none()
             && let Err(error) = tsl.check_signer_status(checker).await
         {
-            return self.fail(self.handle.clock.now(), VerifyError::from(error).into());
+            return self.fail((self.handle.now)(), VerifyError::from(error).into());
         }
         self.swap(&material, verified)
     }
@@ -775,12 +774,12 @@ mod tests {
     fn reloader(
         clock: &FixedClock,
         script: impl IntoIterator<Item = Result<TrustMaterial, LoadError>>,
-    ) -> Reloader<VecLoader, &FixedClock> {
+    ) -> Reloader<VecLoader, impl Fn() -> Timestamp + '_> {
         Reloader::new(
             crate::config::tests::nist_prod_config(),
             Tier::Prod,
             VecLoader::new(script),
-            clock,
+            move || clock.now(),
             policy(),
         )
         .unwrap()
@@ -830,7 +829,7 @@ mod tests {
             config.clone(),
             Tier::NonProd,
             VecLoader::new([Ok(set("a", other.clone())), Ok(set("b", good))]),
-            &clock,
+            || clock.now(),
             policy(),
         )
         .unwrap();
@@ -843,7 +842,7 @@ mod tests {
             config.clone(),
             Tier::NonProd,
             VecLoader::new([Ok(set("a", other.clone())), Ok(set("b", other))]),
-            &clock,
+            || clock.now(),
             policy(),
         )
         .unwrap();
@@ -860,7 +859,7 @@ mod tests {
                 Ok(set("a", b"<html>captive portal</html>".to_vec())),
                 Ok(set("b", read("ref/ECC-RSA_TSL-ref.sig"))),
             ]),
-            &clock,
+            || clock.now(),
             policy(),
         )
         .unwrap();
@@ -912,12 +911,19 @@ mod tests {
         let clock = FixedClock::new(Timestamp::parse_rfc3339("2026-11-01T16:47:42Z").unwrap());
         let store = MemoryCacheStore::default();
         let loader = CachingLoader::new(
-            HttpLoader::new(&config, &transport, &clock),
+            HttpLoader::new(&config, &transport, || clock.now()),
             &store,
-            &clock,
+            || clock.now(),
             CachePolicy::default(),
         );
-        let r = Reloader::new(config.clone(), Tier::NonProd, loader, &clock, policy()).unwrap();
+        let r = Reloader::new(
+            config.clone(),
+            Tier::NonProd,
+            loader,
+            || clock.now(),
+            policy(),
+        )
+        .unwrap();
         let outcome = block_on(r.tick());
         assert!(
             matches!(outcome, ReloadOutcome::Swapped { .. }),
@@ -969,7 +975,7 @@ mod tests {
             config,
             Tier::NonProd,
             VecLoader::new([Ok(material)]),
-            &clock,
+            || clock.now(),
             policy(),
         )
         .unwrap()
@@ -1127,7 +1133,7 @@ mod tests {
             crate::config::tests::nist_prod_config(),
             Tier::Prod,
             VecLoader::new([Ok(material("a", T0))]),
-            &clock,
+            || clock.now(),
             ReloadPolicy {
                 jitter: Duration::from_mins(5),
                 ..policy()
@@ -1228,12 +1234,12 @@ mod tests {
     fn production(
         clock: &FixedClock,
         script: impl IntoIterator<Item = Result<TrustMaterial, LoadError>>,
-    ) -> Reloader<VecLoader, &FixedClock> {
+    ) -> Reloader<VecLoader, impl Fn() -> Timestamp + '_> {
         Reloader::new(
             TrustConfig::preset_prod(),
             Tier::Prod,
             VecLoader::new(script),
-            clock,
+            move || clock.now(),
             policy(),
         )
         .unwrap()

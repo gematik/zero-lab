@@ -1,0 +1,97 @@
+/*
+ * Copyright (Change Date see Readme), gematik GmbH
+ *
+ * Licensed under the EUPL, Version 1.2 or - as soon they will be approved by the
+ * European Commission – subsequent versions of the EUPL (the "Licence").
+ * You may not use this work except in compliance with the Licence.
+ *
+ * You find a copy of the Licence in the "Licence" file or at
+ * https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Licence is distributed on an "AS IS" basis,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either expressed or implied.
+ * In case of changes by gematik find details in the "Readme" file.
+ *
+ * See the Licence for the specific language governing permissions and limitations under the Licence.
+ *
+ * *******
+ *
+ * For additional notes and disclaimer from gematik and in case of changes by gematik,
+ * find details in the "Readme" file.
+ */
+
+//! The findings of a TSL verification (`spec/tsl-xmldsig`), as `ti pki tsl verify`
+//! reports them.
+
+use super::hex;
+use crate::tsl::Rejection;
+use crate::tsl_signature::TslError;
+
+/// A result code with its Tab_PKI_274 number, the rule and what happened.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct Finding {
+    /// The code, e.g. `detached_signature_error`.
+    pub code: &'static str,
+    /// Its Tab_PKI_274 number, if it has one.
+    pub code_number: Option<u16>,
+    /// The rule of `spec/tsl-xmldsig`, e.g. `TSLSIG-018`.
+    pub rule: &'static str,
+    /// What happened, for humans; not stable.
+    pub detail: String,
+}
+
+impl From<&TslError> for Finding {
+    fn from(e: &TslError) -> Self {
+        Finding {
+            code: e.code.as_str(),
+            code_number: e.code.number(),
+            rule: e.rule,
+            detail: e.detail.clone(),
+        }
+    }
+}
+
+/// A certificate named in a TSL report.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct CertSummary {
+    /// The subject's common name.
+    pub common_name: String,
+    /// The subject DN.
+    pub subject: String,
+    /// Hexadecimal.
+    pub serial: String,
+    /// RFC 3339, UTC.
+    pub not_before: String,
+    /// RFC 3339, UTC.
+    pub not_after: String,
+    /// [`crate::Certificate::fingerprint_sha256`].
+    pub sha256: String,
+}
+
+impl CertSummary {
+    /// The summary of `cert`.
+    pub fn new(cert: &crate::Certificate) -> Self {
+        CertSummary {
+            common_name: cert.subject_cn().to_owned(),
+            subject: cert.subject().to_string(),
+            serial: hex(cert.serial()),
+            not_before: cert.not_before().to_string(),
+            not_after: cert.not_after().to_string(),
+            sha256: cert.fingerprint_sha256(),
+        }
+    }
+}
+
+/// Why no verified root signed a TSL CA: `not_ca`, `self_signed`, `unknown_issuer`,
+/// `bad_signature`.
+pub fn rejection_code(reason: Rejection) -> &'static str {
+    match reason {
+        Rejection::NotCa => "not_ca",
+        Rejection::SelfSigned => "self_signed",
+        Rejection::UnknownIssuer => "unknown_issuer",
+        Rejection::BadSignature => "bad_signature",
+    }
+}

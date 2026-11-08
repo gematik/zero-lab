@@ -11,11 +11,6 @@ repository.workspace = true
 authors.workspace = true
 publish.workspace = true
 
-[features]
-default = []
-# A ureq 3 agent whose TLS is a profile's, and the web profile's revocation sources over ureq.
-ureq = ["dep:ureq"]
-
 [dependencies]
 # The ti profile, the OCSP format and the signature algorithms (brainpool and RSA).
 ti-pki = { workspace = true, features = ["brainpool", "rsa"] }
@@ -24,7 +19,6 @@ rustls-webpki.workspace = true
 rustls-pki-types = { workspace = true, features = ["std"] }
 # The host system's default roots for the web profile.
 rustls-native-certs.workspace = true
-ureq = { workspace = true, optional = true, features = ["rustls-no-provider"] }
 x509-cert.workspace = true
 der.workspace = true
 const-oid.workspace = true
@@ -33,7 +27,6 @@ sha2.workspace = true
 
 [dev-dependencies]
 traceability.workspace = true
-ureq = { workspace = true, features = ["rustls-no-provider"] }
 futures-lite.workspace = true
 # MockTransport and the lab configuration for the ti verifier's tests.
 ti-pki = { workspace = true, features = ["brainpool", "rsa", "load", "test-util"] }

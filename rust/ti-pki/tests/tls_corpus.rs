@@ -34,7 +34,6 @@ use futures_lite::future::block_on;
 use serde_json::Value;
 use ti_pki::load::{MockTransport, TransportError, TransportErrorKind};
 use ti_pki::ocsp::OcspChecker;
-use ti_pki::time::FixedClock;
 use ti_pki::tls::ServerCheck;
 use ti_pki::tsl::Intermediate;
 use ti_pki::{Certificate, CertificateType, Timestamp, TrustConfig, TrustStore};
@@ -127,7 +126,7 @@ fn tlsv_030_the_ti_cases_are_judged_as_the_corpus_says() {
         let responder = OcspChecker::new(
             &TrustConfig::for_lab_ca(chain[0].der()),
             MockTransport::posting([answer]),
-            FixedClock::new(AT),
+            || AT,
         );
         let verdict = block_on(check.verify(
             &chain,

@@ -25,26 +25,25 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
+use std::rc::Rc;
 use std::time::Duration;
 
 use futures_lite::future::block_on;
-use ti_cache::{Cache, MemoryCacheStore};
+use ti_cache::{Cache, CacheEntry, CacheError, CacheStore, MemoryCacheStore};
 use ti_jwks::http::{Request, Response, Transport, TransportError};
 use ti_jwks::{Error, JwksSource, Limits, policy};
-use ti_types::{Clock, Timestamp};
+use ti_types::Timestamp;
 
 const T0: Timestamp = Timestamp(1_700_000_000);
 const URL: &str = "https://issuer.example/jwks";
 
 struct TestClock(Cell<Timestamp>);
 
-impl Clock for &TestClock {
+impl TestClock {
     fn now(&self) -> Timestamp {
         self.0.get()
     }
-}
 
-impl TestClock {
     fn advance(&self, by: Duration) {
         self.0.set(self.0.get() + by);
     }
@@ -125,10 +124,10 @@ fn status(status: u16) -> Response {
 fn source<'a>(
     origin: &'a Origin,
     clock: &'a TestClock,
-) -> JwksSource<MemoryCacheStore, &'a TestClock, &'a Origin> {
+) -> JwksSource<MemoryCacheStore, impl Fn() -> Timestamp + 'a, &'a Origin> {
     JwksSource::new(
         URL,
-        Cache::new(MemoryCacheStore::new(), clock, policy()),
+        Cache::new(MemoryCacheStore::new(), move || clock.now(), policy()),
         origin,
     )
     .unwrap()
@@ -148,7 +147,7 @@ fn the_set_comes_from_an_https_url_and_a_redirect_is_not_followed() {
         "issuer.example",
         "ftp://x",
     ] {
-        let cache = Cache::new(MemoryCacheStore::new(), &clock, policy());
+        let cache = Cache::new(MemoryCacheStore::new(), || clock.now(), policy());
         assert!(
             matches!(
                 JwksSource::new(url, cache, &origin),
@@ -157,7 +156,7 @@ fn the_set_comes_from_an_https_url_and_a_redirect_is_not_followed() {
             "{url}"
         );
     }
-    let cache = Cache::new(MemoryCacheStore::new(), &clock, policy());
+    let cache = Cache::new(MemoryCacheStore::new(), || clock.now(), policy());
     assert!(JwksSource::new("HTTPS://issuer.example/jwks", cache, &origin).is_ok());
 
     origin.then(status(302)).then(status(500));
@@ -392,4 +391,54 @@ fn rfc_9110_5_3_field_lines_of_one_name_are_one_value() {
         Some("public, max-age=600")
     );
     assert_eq!(response.header("x-missing"), None);
+}
+
+/// State behind an `Rc`, neither `Send` nor `Sync`, as a browser host over JS fetch holds it.
+struct Local<T>(Rc<T>);
+
+impl Transport for Local<Origin> {
+    async fn get(&self, request: &Request<'_>) -> Result<Response, TransportError> {
+        self.0.get(request).await
+    }
+}
+
+impl CacheStore for Local<MemoryCacheStore> {
+    async fn get(&self, key: &str) -> Result<Option<CacheEntry>, CacheError> {
+        self.0.get(key).await
+    }
+
+    async fn put(&self, key: &str, entry: &CacheEntry) -> Result<(), CacheError> {
+        self.0.put(key, entry).await
+    }
+}
+
+/// The transport and the store carry no `Send` bound so that a browser host can implement
+/// them; neither fetching the set nor choosing its keys may ask for one.
+#[test]
+fn a_transport_and_store_that_are_not_send_drive_the_source() {
+    let (origin, clock) = (Rc::new(Origin::default()), TestClock(Cell::new(T0)));
+    let source = JwksSource::new(
+        URL,
+        Cache::new(
+            Local(Rc::new(MemoryCacheStore::new())),
+            || clock.now(),
+            policy(),
+        ),
+        Local(Rc::clone(&origin)),
+    )
+    .unwrap();
+    origin.then(ok(set(&[key("a", "")]), &[]));
+    assert_eq!(
+        kids(&block_on(source.keys(Some("a"), "ES256")).unwrap()),
+        ["a"]
+    );
+    assert_eq!(
+        kids(&block_on(source.keys(Some("a"), "ES256")).unwrap()),
+        ["a"]
+    );
+    assert_eq!(
+        origin.requests(),
+        1,
+        "the second lookup is served from the store"
+    );
 }

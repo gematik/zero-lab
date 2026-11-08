@@ -61,21 +61,21 @@ wiring with a cache, an offline fallback and a reloader:
 use std::sync::Arc;
 use ti_pki::load::{
     Bundle, CachePolicy, CachingLoader, FallbackLoader, HttpLoader, ReloadOutcome,
-    ReloadPolicy, Reloader, StaticLoader, SystemClock,
+    ReloadPolicy, Reloader, StaticLoader,
 };
-use ti_pki::{Tier, TrustConfig};
+use ti_pki::{Tier, Timestamp, TrustConfig};
 
 let cfg = TrustConfig::preset_prod();
 let transport = my_transport; // any load::Transport; proxy, timeouts, TLS are the host's
 let online = CachingLoader::new(
-    HttpLoader::new(&cfg, transport, SystemClock),
+    HttpLoader::new(&cfg, transport, Timestamp::now),
     my_kv, // any CacheStore
-    SystemClock,
+    Timestamp::now,
     CachePolicy::default(),
 );
 let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.json")?, &cfg)?;
 let loader = FallbackLoader::new(online, bundle);
-let reloader = Arc::new(Reloader::new(cfg, Tier::Prod, loader, SystemClock, ReloadPolicy::default())?);
+let reloader = Arc::new(Reloader::new(cfg, Tier::Prod, loader, Timestamp::now, ReloadPolicy::default())?);
 if let ReloadOutcome::Expired { error } = reloader.tick().await {
     return Err(error.into()); // fail startup
 }
@@ -91,7 +91,7 @@ let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.json")?,
 let offline = CachingLoader::new(
     bundle.clone(),
     my_kv,
-    SystemClock,
+    Timestamp::now,
     CachePolicy { offline: true, ..CachePolicy::default() },
 );
 let loader = FallbackLoader::new(offline, bundle);
@@ -123,8 +123,9 @@ let config = TrustConfig {
 | `test-util` | `TrustConfig::for_lab_ca`, `FixedClock` and `MockTransport` for tests in downstream crates |
 | `brainpool` (default) | ECDSA on brainpoolP256r1 / brainpoolP384r1 in the default algorithm set; most TI roots and CAs and both TSL signer CAs need it |
 | `rsa` (default) | RSA PKCS#1 v1.5 and PSS in the default algorithm set; the historical RSA roots GEM.RCA2/6/9 need it for the roots walk |
-| `load` | Loaders, cache, reloader; no HTTP client or executor; builds for wasm32 |
-| `os` | `FileTransport`, `SystemClock`, bundle files |
+| `load` | Loaders, cache, reloader, and `offline`: a TSL and roots.json the host holds verified, certificates checked against them; no HTTP client or executor; builds for wasm32 |
+| `serde` | `Serialize` for the types of `model`, the JSON of the `ti` CLI and of `ti-wasm` |
+| `os` | `FileTransport`, `Timestamp::now`, bundle files |
 
 ## License
 

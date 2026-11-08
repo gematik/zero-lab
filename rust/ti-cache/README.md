@@ -19,22 +19,19 @@ closure per call, so one cache serves any kind of artefact.
 
 ```rust
 use ti_cache::{Cache, CacheEntry, CachePolicy, MemoryCacheStore, Meta, OriginResponse, Source};
-use ti_types::{Clock, Timestamp};
-
-struct Now;
-impl Clock for Now {
-    fn now(&self) -> Timestamp {
-        Timestamp(1_700_000_000)
-    }
-}
+use ti_types::Timestamp;
 
 # futures_lite::future::block_on(async {
-let cache = Cache::new(MemoryCacheStore::new(), Now, CachePolicy::default());
+let cache = Cache::new(
+    MemoryCacheStore::new(),
+    || Timestamp(1_700_000_000),
+    CachePolicy::default(),
+);
 let sds = cache
     .get("example/v1/sds", async |_validators| {
         Ok::<_, std::io::Error>(OriginResponse::Body(CacheEntry {
             body: b"<ConnectorServices/>".to_vec(),
-            meta: Meta::new(Now.now(), Source::Http),
+            meta: Meta::new(cache.now(), Source::Http),
         }))
     })
     .await?;

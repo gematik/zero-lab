@@ -1,0 +1,64 @@
+[package]
+name = "ti-client"
+version = "0.1.0"
+description = "The native host of the gematik Telematikinfrastruktur (TI) crates: their transports over ureq, the file storage, block_on and the commands' operations, shared by the command-line tool and the desktop app"
+keywords = ["gematik", "telematik"]
+categories = ["network-programming"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+ti-cache.workspace = true
+ti-types.workspace = true
+# The model the operations return (`serde`).
+ti-connector-client = { workspace = true, features = ["serde"] }
+ti-idpd-client = { workspace = true, features = ["serde"] }
+ti-directory-client = { workspace = true, features = ["serde"] }
+# The transport of roots.json, the TSL and OCSP (`load`), and the OCSP media types; the
+# system clock (`os`); the trust material of every environment, the non-prod presets fenced by TrustConfig::validate;
+# a server's handshake signature on brainpool and RSA keys too (`peer`); the model the
+# operations return (`serde`).
+ti-pki = { workspace = true, features = ["load", "os", "dangerous-nonprod", "brainpool", "rsa", "serde"] }
+# Certificates and keys from PKCS#12 files; truststores and re-encoded files written.
+ti-pkcs12 = { workspace = true, features = ["encode"] }
+# The OIDs of a PKCS#12 file's keys and curves; the identity's keys from PKCS#8 and SEC1.
+der.workspace = true
+# The identity's JWS: ES256 on brainpoolP256r1 (ti-jwz's brainpool) or P-256 (jwz's own
+# backend); its keys come from PKCS#8 and SEC1, not from JWKs.
+jwz = { workspace = true, features = ["std", "jws", "crypto-rustcrypto"] }
+ti-jwz = { workspace = true, features = ["legacy"] }
+pkcs8.workspace = true
+sec1.workspace = true
+pem-rfc7468 = { workspace = true, features = ["alloc"] }
+zeroize.workspace = true
+# The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
+ti-tls.workspace = true
+# Blocking HTTP without an async runtime; the TLS layer is ti-tls's rustls configuration
+# in a connector of our own (`unversioned` API, hence ureq pinned `~3.4`).
+ureq = { workspace = true, features = ["rustls-no-provider"] }
+# The proxy credentials of a CONNECT tunnel (`peer`).
+base64ct.workspace = true
+rustls.workspace = true
+rustls-pki-types = { workspace = true, features = ["std"] }
+# The operating system's trust store for a Konnektor without a `.kon` trust store.
+rustls-platform-verifier.workspace = true
+# Completes EC client keys that lack their public key, which ring requires.
+p256 = { workspace = true, features = ["pkcs8", "alloc"] }
+p384 = { workspace = true, features = ["pkcs8", "alloc"] }
+serde = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+# The cache file names and path components: a hash of the key.
+sha2.workspace = true
+
+[dev-dependencies]
+traceability.workspace = true
+# The Konnektor e2e test checks an ExternalAuthenticate signature against the card's C.AUT;
+# the trust tests verify the production TSL of spec/tsl-detached, read from files (`os`).
+ti-pki = { workspace = true, features = ["brainpool", "os"] }
+
+[lints]
+workspace = true

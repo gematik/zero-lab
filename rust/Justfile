@@ -128,7 +128,7 @@ release-notes version="Unreleased" crate="ti-cli":
     [[ -n "$notes" ]] || { echo "release-notes: no notes for {{crate}} {{version}}" >&2; exit 1; }
     printf '%s\n' "$notes"
 
-# Prepare a release from main, locally, of one or more crates (just release ti-cli=0.4.0 ti-idpd=0.2.0): gate, version bumps, release notes, ti binaries in target/dist when ti-cli is in it, one commit, a tag per crate
+# Prepare a release from main, locally, of one or more crates (just release ti-cli=0.4.0 ti-idpd-client=0.2.0): gate, version bumps, release notes, ti binaries in target/dist when ti-cli is in it, one commit, a tag per crate
 release +releases:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -364,7 +364,7 @@ check-changed base="main":
         just jwz-rsa-guard brainpool-absent jwz
     fi
     # wasm32 holds the cores; a crate outside them leaves it as it was.
-    if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-report|ti-wasm|jwz|ti-jwz|ti-idpd' <<<"$CRATES"; then
+    if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-wasm|jwz|ti-jwz|ti-idpd-client|ti-directory-client' <<<"$CRATES"; then
         just wasm32 wasm-unsafe-free
     fi
     if grep -qw ti-pki <<<"$CRATES"; then just nonprod-absent; fi
@@ -427,14 +427,13 @@ wasm32:
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
-    cargo check -p ti-report --target wasm32-unknown-unknown
     cargo check -p ti-wasm --target wasm32-unknown-unknown
     cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}
     cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
     cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
-    cargo check -p ti-idpd --target wasm32-unknown-unknown
+    cargo check -p ti-idpd-client --target wasm32-unknown-unknown
     cargo check -p ti-jwks --target wasm32-unknown-unknown
-    cargo check -p ti-directory --target wasm32-unknown-unknown
+    cargo check -p ti-directory-client --target wasm32-unknown-unknown
 
 # ti-wasm allows the unsafe glue `#[wasm_bindgen]` expands to; everything else forbids it
 # through the workspace lints.
@@ -447,12 +446,20 @@ wasm-unsafe-free:
 unsafe-free:
     cargo run -q --locked -p unsafe-audit -- check
 
-# ti-pki's and ti-connector-client's cores (everything but the optional adapter and
-# algorithm features) pull in no HTTP client, TLS, executor, file watcher or brainpool
-# arithmetic; cargo-deny bans are workspace-wide, so this is a tree check
+# ti-pki's core (everything but the algorithm features) and the product clients pull in
+# no HTTP client, TLS, executor, file watcher or brainpool
+# arithmetic; cargo-deny bans are workspace-wide, so this is a tree check. ti-types
+# depends on nothing but optional serde.
 core-deps:
     #!/usr/bin/env bash
     set -euo pipefail
+    why="every TI crate and host depends on ti-types, so whatever it depends on lands in all of them (decision-15)"
+    found=$(cargo tree -p ti-types -e normal --prefix none --all-features --depth 1 \
+        | tail -n +2 | grep -vE '^serde ' || true)
+    if [ -n "$found" ]; then echo "ti-types depends on $found; only serde is allowed: $why" >&2; exit 1; fi
+    found=$(cargo tree -p ti-types -e normal --prefix none --depth 1 | tail -n +2)
+    if [ -n "$found" ]; then echo "ti-types depends on $found by default; serde must stay optional: $why" >&2; exit 1; fi
+    echo "ti-types depends on nothing but optional serde"
     found=$(cargo tree -p ti-pki -e normal --prefix none --no-default-features \
             --features load,os,test-util,dangerous-nonprod \
         | grep -E '^(reqwest|tokio|hyper|notify|bp256|bp384) ' || true)
@@ -462,14 +469,14 @@ core-deps:
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper|bp256|bp384|rsa) ' || true)
     if [ -n "$found" ]; then echo "ti-connector-client core depends on: $found" >&2; exit 1; fi
     echo "ti-connector-client core is free of HTTP clients, TLS, executors and brainpool"
-    found=$(cargo tree -p ti-idpd -e normal --prefix none \
+    found=$(cargo tree -p ti-idpd-client -e normal --prefix none \
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
-    if [ -n "$found" ]; then echo "ti-idpd core depends on: $found" >&2; exit 1; fi
-    echo "ti-idpd core is free of HTTP clients, TLS and executors"
-    found=$(cargo tree -p ti-directory -e normal --prefix none \
+    if [ -n "$found" ]; then echo "ti-idpd-client core depends on: $found" >&2; exit 1; fi
+    echo "ti-idpd-client core is free of HTTP clients, TLS and executors"
+    found=$(cargo tree -p ti-directory-client -e normal --prefix none \
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
-    if [ -n "$found" ]; then echo "ti-directory depends on: $found" >&2; exit 1; fi
-    echo "ti-directory is free of HTTP clients, TLS and executors"
+    if [ -n "$found" ]; then echo "ti-directory-client depends on: $found" >&2; exit 1; fi
+    echo "ti-directory-client is free of HTTP clients, TLS and executors"
     found=$(cargo tree -p ti-jwks -e normal --prefix none \
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
     if [ -n "$found" ]; then echo "ti-jwks core depends on: $found" >&2; exit 1; fi
@@ -569,14 +576,15 @@ fuzz-ti-cli seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz every ti-pki parser of network bytes for `seconds` each (design time; nightly and
+# Fuzz every ti-pki parser of network bytes, and what ti-wasm hands ti-pki from a web page
+# (certificates, the TSL, a supplied roots.json), for `seconds` each (design time; nightly and
 # cargo-fuzz). Corpora start from ti-pki/fuzz/seeds and grow in ti-pki/fuzz/corpus (not
 # committed).
 fuzz-ti-pki seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
     cd ti-pki/fuzz
-    for target in detached_signature tsl_xml ocsp_response bundle certificate roots_json; do
+    for target in detached_signature tsl_xml ocsp_response bundle certificate roots_json describe_certificate verify_tsl verify_tsl_roots; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
             -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
@@ -584,11 +592,11 @@ fuzz-ti-pki seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz ti-idpd's parsers of the IDP-Dienst's answers: discovery, keys, challenge, code redirect, each target for `seconds`
-fuzz-ti-idpd seconds="30":
+# Fuzz ti-idpd-client's parsers of the IDP-Dienst's answers: discovery, keys, challenge, code redirect, each target for `seconds`
+fuzz-ti-idpd-client seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd ti-idpd/fuzz
+    cd ti-idpd-client/fuzz
     for target in discovery key challenge code_redirect; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
@@ -597,11 +605,11 @@ fuzz-ti-idpd seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz ti-directory's parsers of the FHIR-Directory's answers: owner redirect, tokens, sign-in, each target for `seconds`
-fuzz-ti-directory seconds="30":
+# Fuzz ti-directory-client's parsers of the FHIR-Directory's answers: owner redirect, tokens, sign-in, each target for `seconds`
+fuzz-ti-directory-client seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
-    cd ti-directory/fuzz
+    cd ti-directory-client/fuzz
     for target in owner_redirect token keycloak_token sign_in; do
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
@@ -634,19 +642,6 @@ fuzz-ti-cache seconds="30":
         mkdir -p "corpus/$target"
         cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
             -max_total_time={{seconds}} -max_len=4096 -print_final_stats=1 2>&1 \
-            | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
-        [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
-    done
-
-# Fuzz what ti-wasm hands ti-report from a web page: certificates, the TSL, a supplied roots.json
-fuzz-ti-report seconds="30":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd ti-report/fuzz
-    for target in describe_certificate verify_tsl verify_tsl_roots; do
-        mkdir -p "corpus/$target"
-        cargo +{{JWZ_NIGHTLY}} fuzz run -O "$target" "corpus/$target" "seeds/$target" -- \
-            -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
             | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
@@ -733,7 +728,7 @@ jwz-browser:
         CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
         cargo test --locked --target wasm32-unknown-unknown -p jwz -p ti-jwz --features ti-jwz/legacy --test browser
 
-# rustls brings ring into ti-cli and ti-connector-client for TLS, so this is a tree check
+# rustls brings ring into ti-client (and ti-cli through it) for TLS, so this is a tree check
 # for the jwz crates rather than a deny ban (ADR 0001, principle 8).
 # No openssl, ring, aws-lc or cryptoki under jwz or ti-jwz
 jwz-backends:
@@ -773,12 +768,12 @@ real-world:
 # TI_TEST_KON_RECORD_DIR, if set, records the exchanges. Not part of `check`.
 # Read-only tests against the Konnektor of TI_TEST_KON_PATH (a .kon file)
 konnektor-e2e:
-    cargo test -p ti-connector-client --features ureq --test e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
+    cargo test -p ti-client --test konnektor_e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
 
 # Optional TI_TEST_PDFA_PATH adds PAdES. A person enters the PIN; not part of `check`.
 # PIN entry, ExternalAuthenticate, sign and encrypt at the Konnektor of TI_TEST_KON_PATH
 konnektor-e2e-interactive:
-    TI_TEST_KON_INTERACTIVE=1 cargo test -p ti-connector-client --features ureq --test e2e -- --ignored --exact pin_and_external_authenticate --nocapture --test-threads 1
+    TI_TEST_KON_INTERACTIVE=1 cargo test -p ti-client --test konnektor_e2e -- --ignored --exact pin_and_external_authenticate --nocapture --test-threads 1
 
 # Regenerate the Konnektor bindings in ti-connector-client/src/api from the
 # wsdl2openapi checkout next to this repository (or WSDL2OPENAPI_DIR)

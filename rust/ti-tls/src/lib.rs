@@ -30,13 +30,15 @@
 //!
 //! The profile is the endpoint's, by configuration, never inferred from what a server
 //! presents (TLSV-001), and neither falls back to the other.
+//!
+//! A Konnektor is verified by neither: [`konnektor`] holds the trust its `.kon` file
+//! configures.
 #![forbid(unsafe_code)]
 
 pub mod algorithms;
 mod block;
 pub mod fetch;
-#[cfg(feature = "ureq")]
-pub mod ureq;
+pub mod konnektor;
 pub mod verdict;
 pub mod verifier;
 pub mod web;

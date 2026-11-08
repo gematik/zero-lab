@@ -30,7 +30,7 @@ use super::loader::{Fetched, LoadError, Loaded, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
 use super::transport::{Transport, TransportError, TransportErrorKind};
 use crate::TrustConfig;
-use crate::time::Clock;
+use crate::time::Timestamp;
 use ti_cache::{Conditional, Source};
 
 /// Loads the artefacts from the URLs in a [`TrustConfig`] through any [`Transport`],
@@ -47,23 +47,27 @@ use ti_cache::{Conditional, Source};
 /// set (`spec/tsl-detached` TSLDET-010), under a hash read from the HTTPS point. Without a
 /// readable hash the list comes from HTTPS itself, never from the plain-HTTP origin.
 #[derive(Debug)]
-pub struct HttpLoader<T, C> {
+pub struct HttpLoader<T, N> {
     roots_url: Cow<'static, str>,
     tsl_url: Cow<'static, str>,
     tsl_detached_url: Cow<'static, str>,
     transport: T,
-    clock: C,
+    now: N,
 }
 
-impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> HttpLoader<T, C> {
+impl<T, N> HttpLoader<T, N>
+where
+    T: Transport + MaybeSend + MaybeSync,
+    N: Fn() -> Timestamp + MaybeSend + MaybeSync,
+{
     /// A loader for `config`'s URLs.
-    pub fn new(config: &TrustConfig, transport: T, clock: C) -> Self {
+    pub fn new(config: &TrustConfig, transport: T, now: N) -> Self {
         HttpLoader {
             roots_url: config.roots_url.clone(),
             tsl_url: config.tsl_url.clone(),
             tsl_detached_url: config.tsl_detached_url.clone(),
             transport,
-            clock,
+            now,
         }
     }
 
@@ -118,7 +122,7 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Htt
         cond: Conditional<'_>,
     ) -> Result<Fetched, LoadError> {
         let published = format!("sha256:{hash}");
-        let now = self.clock.now();
+        let now = (self.now)();
         if cond.etag == Some(published.as_str()) {
             return Ok(Fetched::NotModified(
                 ResponseMeta {
@@ -185,8 +189,10 @@ fn checked_list(
     }
 }
 
-impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Loader
-    for HttpLoader<T, C>
+impl<T, N> Loader for HttpLoader<T, N>
+where
+    T: Transport + MaybeSend + MaybeSync,
+    N: Fn() -> Timestamp + MaybeSend + MaybeSync,
 {
     async fn fetch(&self, artifact: Artifact, cond: Conditional<'_>) -> Result<Fetched, LoadError> {
         if artifact == Artifact::Tsl
@@ -202,7 +208,7 @@ impl<T: Transport + MaybeSend + MaybeSync, C: Clock + MaybeSend + MaybeSync> Loa
             last_modified: cond.last_modified,
         };
         let response = self.transport.get(&request).await?;
-        let now = self.clock.now();
+        let now = (self.now)();
         Ok(match response {
             ArtifactResponse::Fresh { body, meta } => Fetched::Body(Loaded {
                 body,
@@ -246,7 +252,7 @@ mod tests {
 
     fn fetch(transport: &MockTransport, etag: Option<&str>) -> Result<Fetched, LoadError> {
         let clock = FixedClock::new(Timestamp(1_767_225_600));
-        let loader = HttpLoader::new(&TrustConfig::preset_prod(), transport, &clock);
+        let loader = HttpLoader::new(&TrustConfig::preset_prod(), transport, || clock.now());
         block_on(loader.fetch(
             Artifact::Tsl,
             Conditional {
@@ -271,7 +277,7 @@ mod tests {
         transport: &MockTransport,
     ) -> Result<TrustMaterial, LoadError> {
         let clock = FixedClock::new(Timestamp(1_767_225_600));
-        let loader = HttpLoader::new(config, transport, &clock);
+        let loader = HttpLoader::new(config, transport, || clock.now());
         block_on(loader.load_all())
     }
 
@@ -431,7 +437,7 @@ mod tests {
     fn tsldet_012_the_detached_uris_follow_the_list() {
         let transport = MockTransport::new([]);
         let clock = FixedClock::new(Timestamp(1_767_225_600));
-        let loader = HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock);
+        let loader = HttpLoader::new(&TrustConfig::preset_prod(), &transport, || clock.now());
         let origin = "http://download.crl.ti-dienste.de/TSL-ECC/ECC-RSA_TSL";
         assert_eq!(
             loader.url(Artifact::TslSignature).as_deref(),

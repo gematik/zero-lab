@@ -282,39 +282,7 @@ pub fn tree_prefixes(rows: usize) -> Vec<String> {
         .collect()
 }
 
-/// A span of seconds in words, the two largest adjacent units: `1 year 4 months`,
-/// `3 days`, `2 hours 1 minute`, `less than a minute`.
-pub fn span(seconds: u64) -> String {
-    const UNITS: [(u64, &str); 5] = [
-        (365 * 86_400, "year"),
-        (30 * 86_400, "month"),
-        (86_400, "day"),
-        (3_600, "hour"),
-        (60, "minute"),
-    ];
-    let mut parts = Vec::new();
-    let mut rest = seconds;
-    for (size, name) in UNITS {
-        if parts.len() == 2 {
-            break;
-        }
-        let count = rest / size;
-        if count > 0 {
-            parts.push(format!(
-                "{count} {name}{}",
-                if count == 1 { "" } else { "s" }
-            ));
-            rest %= size;
-        } else if !parts.is_empty() {
-            break;
-        }
-    }
-    if parts.is_empty() {
-        "less than a minute".to_owned()
-    } else {
-        parts.join(" ")
-    }
-}
+pub use ti_client::text::span;
 
 /// `at` in the system time zone to the minute, with the zone's abbreviation (its
 /// offset where it has none), e.g. `2023-02-09 00:00 CET`. Text and Markdown always
@@ -356,18 +324,6 @@ mod tests {
         let mut doc = Document::default();
         doc.items("none", Vec::new()).field("a", "b");
         assert_eq!(doc.blocks, [Block::Field("a".into(), Line::text("b"))]);
-    }
-
-    #[test]
-    fn spans_in_words() {
-        assert_eq!(span(0), "less than a minute");
-        assert_eq!(span(3 * 86_400 + 5), "3 days");
-        assert_eq!(
-            span(365 * 86_400 + 4 * 30 * 86_400 + 86_400),
-            "1 year 4 months"
-        );
-        assert_eq!(span(2 * 3_600 + 60), "2 hours 1 minute");
-        assert_eq!(span(365 * 86_400 + 86_400), "1 year", "stops at a gap");
     }
 
     #[test]

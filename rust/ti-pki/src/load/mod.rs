@@ -50,9 +50,10 @@
 //! [`Cache`] to a [`Loader`], and other crates cache their own artefacts with the same
 //! [`CacheStore`] and [`CachePolicy`].
 //!
-//! The traits ([`Transport`], [`CacheStore`], [`Loader`], [`Clock`]) have no `Send`
-//! bounds, so they can be implemented over single-threaded browser APIs; the loader
-//! structs bound their parameters with [`MaybeSend`]/[`MaybeSync`] instead.
+//! The traits ([`Transport`], [`CacheStore`], [`Loader`]) and the time function
+//! (`impl Fn() -> Timestamp`) have no `Send` bounds, so they can be implemented over
+//! single-threaded browser APIs; the loader structs bound their parameters with
+//! [`MaybeSend`]/[`MaybeSync`] instead.
 //!
 //! # Failure handling
 //!
@@ -78,6 +79,7 @@ mod file;
 mod http;
 mod loader;
 mod maybe_send;
+mod read_back;
 mod reload;
 mod static_;
 mod transport;
@@ -85,12 +87,7 @@ pub(crate) mod verify;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use crate::time::FixedClock;
-#[cfg(all(
-    feature = "os",
-    not(all(target_family = "wasm", target_os = "unknown"))
-))]
-pub use crate::time::SystemClock;
-pub use crate::time::{Clock, Timestamp};
+pub use crate::time::Timestamp;
 pub use artifact::{
     Artifact, ArtifactRequest, ArtifactResponse, Detached, ResponseMeta, TrustMaterial,
     content_etag,
@@ -102,6 +99,9 @@ pub use file::FileTransport;
 pub use http::HttpLoader;
 pub use loader::{Fetched, LoadError, Loaded, Loader};
 pub use maybe_send::{MaybeSend, MaybeSync};
+pub use read_back::{AtTime, NoNetwork, read_back};
+#[cfg(feature = "brainpool")]
+pub use read_back::{ReadBackError, verify_read_back};
 pub use reload::{
     Expired, MAX_PROD_HARD_EXPIRY, MAX_RELOAD_INTERVAL, ReloadError, ReloadOutcome, ReloadPolicy,
     ReloadStatus, Reloader, State, TrustStoreHandle,

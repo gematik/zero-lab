@@ -39,7 +39,7 @@ use crate::api::oasis::dss10core::{Base64Data, Base64Signature, SignatureObject}
 use crate::connector::Connector;
 use crate::error::Error;
 use crate::soap::Transport;
-use crate::types::{Crypt, SignatureMode, Status};
+use crate::types::{CardType, Crypt, SignatureMode, Status};
 
 /// The signature format.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -67,6 +67,65 @@ impl SignatureFormat {
             SignatureFormat::Pades => "pades",
         }
     }
+
+    /// The format a document is signed in unless one is asked for: PAdES for a PDF,
+    /// which carries its signature inside, CAdES for anything else.
+    pub const fn for_document(is_pdf: bool) -> Self {
+        if is_pdf {
+            SignatureFormat::Pades
+        } else {
+            SignatureFormat::Cades
+        }
+    }
+
+    /// The format of a signature to verify: CAdES with a `detached` signature, PAdES for
+    /// a PDF without one. `None` for any other document without one: a CAdES signature
+    /// is always detached.
+    pub const fn to_verify(detached: bool, is_pdf: bool) -> Option<Self> {
+        match (detached, is_pdf) {
+            (true, _) => Some(SignatureFormat::Cades),
+            (false, true) => Some(SignatureFormat::Pades),
+            (false, false) => None,
+        }
+    }
+}
+
+/// The media type of a document by its file `extension` (any case, without the dot). A
+/// PDF signed with PAdES is PDF/A, the only PDF Konnektors sign.
+pub fn media_type(extension: &str, pades: bool) -> &'static str {
+    match extension.to_ascii_lowercase().as_str() {
+        "pdf" if pades => "application/pdf-a",
+        "pdf" => "application/pdf",
+        "txt" => "text/plain",
+        "xml" => "text/xml",
+        "json" => "application/json",
+        "html" | "htm" => "text/html",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "p7s" | "p7m" => "application/pkcs7-mime",
+        _ => "application/octet-stream",
+    }
+}
+
+/// The most characters of a short text ([`ToSign::short_text`]) the Konnektor's schema
+/// allows.
+pub const SHORT_TEXT_MAX: usize = 30;
+
+/// `text` cut to [`SHORT_TEXT_MAX`] characters.
+pub fn short_text(text: &str) -> String {
+    text.chars().take(SHORT_TEXT_MAX).collect()
+}
+
+/// Whether the calls about a card of `card_type` belong to a card session of one user
+/// ID. The Konnektor keys an HBA's card session by card, client system and user ID, and
+/// refuses another ID while one has entered a PIN (gemSpec_Kon TAB_KON_510 C2 and C16,
+/// TAB_KON_514-01 error 4018): every call on such a card names the same ID. Other cards
+/// have no such sessions.
+pub fn has_user_sessions(card_type: CardType) -> bool {
+    matches!(
+        card_type,
+        CardType::Hba | CardType::HbaQSig | CardType::HbAx | CardType::Zod20
+    )
 }
 
 impl fmt::Display for SignatureFormat {
@@ -453,5 +512,47 @@ mod tests {
             ComfortUserId::parse("0000000g-0000-4000-8000-000000000000"),
             None
         );
+    }
+
+    /// TAB_KON_510 C2: an HBA's card session is the user ID's, other cards have none.
+    #[test]
+    fn tab_kon_510_only_an_hba_has_card_sessions_per_user() {
+        for card_type in [
+            CardType::Hba,
+            CardType::HbaQSig,
+            CardType::HbAx,
+            CardType::Zod20,
+        ] {
+            assert!(has_user_sessions(card_type), "{card_type}");
+        }
+        for card_type in [CardType::SmcB, CardType::SmcKt, CardType::Egk] {
+            assert!(!has_user_sessions(card_type), "{card_type}");
+        }
+    }
+
+    /// A PDF is signed with PAdES as PDF/A; a CAdES signature is always detached.
+    #[test]
+    fn a_pdf_is_signed_as_pdf_a_and_cades_is_detached() {
+        assert_eq!(SignatureFormat::for_document(true), SignatureFormat::Pades);
+        assert_eq!(SignatureFormat::for_document(false), SignatureFormat::Cades);
+        assert_eq!(media_type("PDF", true), "application/pdf-a");
+        assert_eq!(media_type("pdf", false), "application/pdf");
+        assert_eq!(media_type("", false), "application/octet-stream");
+        assert_eq!(
+            SignatureFormat::to_verify(true, true),
+            Some(SignatureFormat::Cades)
+        );
+        assert_eq!(
+            SignatureFormat::to_verify(false, true),
+            Some(SignatureFormat::Pades)
+        );
+        assert_eq!(SignatureFormat::to_verify(false, false), None);
+    }
+
+    #[test]
+    fn a_short_text_keeps_the_schemas_30_characters() {
+        let long = "ä".repeat(40);
+        assert_eq!(short_text(&long).chars().count(), SHORT_TEXT_MAX);
+        assert_eq!(short_text("brief.txt"), "brief.txt");
     }
 }

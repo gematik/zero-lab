@@ -42,23 +42,25 @@ mod dotkon;
 pub mod edit;
 mod encryption;
 mod error;
+pub mod model;
 mod pins;
 mod sds;
 mod signatures;
 mod soap;
-#[cfg(feature = "ureq")]
-pub mod ureq;
 
 pub use auth::{Auth, SignatureType};
-pub use cards::Cards;
+pub use cards::{Cards, IDENTITY_CARDS, is_restricted};
 pub use certificates::{CardCertificate, Certificates, cert_refs};
 pub use connector::Connector;
 pub use dotkon::{Credentials, Dotkon, DotkonError};
 pub use encryption::Encryption;
 pub use error::{DiscoveryError, Error, Fault, TraceEntry, fault_hint};
-pub use pins::{PinType, Pins};
+pub use pins::{PinType, Pins, UnfitPin};
 pub use sds::{Binding, Product, Service, ServiceDirectory, ServiceVersion, Target, sds_url};
-pub use signatures::{ComfortUserId, SignatureFormat, Signatures, Signed, ToSign};
+pub use signatures::{
+    ComfortUserId, SHORT_TEXT_MAX, SignatureFormat, Signatures, Signed, ToSign, has_user_sessions,
+    media_type, short_text,
+};
 pub use soap::{Method, Request, Response, Timeouts, Transport, TransportError};
 
 /// The services and `major.minor` versions this crate has bindings for, as

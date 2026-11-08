@@ -29,15 +29,14 @@ use jwz::header::HeaderParams;
 use jwz::jwa::SignatureAlgorithm;
 use serde::Serialize;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
-use ti_pki::load::SystemClock;
-use ti_pki::{Certificate, Clock};
+use ti_pki::Timestamp;
+use ti_pki::model;
 
 use crate::cli::{GlobalArgs, IdentityArgs, IdentitySignArgs};
 use crate::error::{CliError, Exit};
 use crate::identity::{Identity, SourceKind};
 use crate::input;
-use crate::output::{Document, Line, Output, SCHEMA, hex};
+use crate::output::{Document, Line, Output, SCHEMA};
 
 /// `ti identity inspect` as JSON.
 #[derive(Serialize)]
@@ -46,8 +45,8 @@ struct InspectReport {
     source: SourceInfo,
     telematik_id: Option<String>,
     signing: Signing,
-    certificate: ti_report::CertificateInfo,
-    chain: Vec<ti_report::CertificateInfo>,
+    certificate: model::Certificate,
+    chain: Vec<model::Certificate>,
 }
 
 #[derive(Serialize)]
@@ -87,14 +86,10 @@ fn source_info(identity: &Identity) -> SourceInfo {
     }
 }
 
-fn fingerprint(cert: &Certificate) -> String {
-    hex(&Sha256::digest(cert.der()))
-}
-
 /// Runs `ti identity inspect`.
 pub fn inspect(args: &IdentityArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let identity = Identity::load(args, global, out)?;
-    let now = SystemClock.now();
+    let identity = crate::identity::load(args, global, out)?;
+    let now = Timestamp::now();
     let report = InspectReport {
         schema: SCHEMA,
         source: source_info(&identity),
@@ -103,11 +98,11 @@ pub fn inspect(args: &IdentityArgs, global: &GlobalArgs, out: &Output) -> Result
             alg: "ES256",
             curve: identity.curve.name(),
         },
-        certificate: ti_report::describe(&identity.certificate, now),
+        certificate: model::Certificate::new(&identity.certificate, now),
         chain: identity
             .chain
             .iter()
-            .map(|cert| ti_report::describe(cert, now))
+            .map(|cert| model::Certificate::new(cert, now))
             .collect(),
     };
     if out.is_json() {
@@ -172,7 +167,7 @@ pub fn inspect(args: &IdentityArgs, global: &GlobalArgs, out: &Output) -> Result
 pub fn sign(args: &IdentitySignArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     let claims = read_claims(&args.claims)?;
     let params = header_params(args)?;
-    let identity = Identity::load(&args.identity, global, out)?;
+    let identity = crate::identity::load(&args.identity, global, out)?;
     let payload = serde_json::to_vec(&claims)?;
     let alg = SignatureAlgorithm::from(args.alg);
     let jws = identity.sign(&payload, params, alg)?;
@@ -184,7 +179,7 @@ pub fn sign(args: &IdentitySignArgs, global: &GlobalArgs, out: &Output) -> Resul
         identity: IdentityInfo {
             subject: identity.certificate.subject().to_string(),
             telematik_id: identity.telematik_id(),
-            sha256: fingerprint(&identity.certificate),
+            sha256: identity.certificate.fingerprint_sha256(),
         },
         jws,
     };

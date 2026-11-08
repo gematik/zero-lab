@@ -197,7 +197,9 @@ mod tests {
         .with_signer_status(dir.0.join("tsl.ocsp"));
         let clock = crate::time::FixedClock::new(crate::time::Timestamp(1_767_225_600));
         let loader =
-            crate::load::HttpLoader::new(&crate::TrustConfig::preset_prod(), transport, &clock);
+            crate::load::HttpLoader::new(&crate::TrustConfig::preset_prod(), transport, || {
+                clock.now()
+            });
         let material = block_on(loader.load_all()).unwrap();
         let detached = material.detached.unwrap();
         assert_eq!(detached.signature, b"sig");

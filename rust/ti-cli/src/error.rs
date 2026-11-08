@@ -187,11 +187,11 @@ pub enum CliError {
     /// The IDP-Dienst flow failed: the IDP refused, did not answer, or answered
     /// outside the protocol.
     #[error("IDP-Dienst: {0}")]
-    Idpd(#[source] ti_idpd::Error),
+    Idpd(#[source] ti_idpd_client::Error),
     /// The FHIR-Directory refused, did not answer, or answered outside the protocol;
     /// a failure of the IDP-Dienst flow inside it is reported as [`CliError::Idpd`].
     #[error("{0}")]
-    Directory(#[source] Box<ti_directory::Error>),
+    Directory(#[source] Box<ti_directory_client::Error>),
     /// Writing to stdout failed.
     #[error("cannot write output: {0}")]
     Output(#[from] io::Error),
@@ -238,14 +238,14 @@ impl CliError {
             CliError::Header(_) => "header_invalid",
             CliError::Signing(_) => "signing_failed",
             CliError::SignatureMalformed(_) => "signature_malformed",
-            CliError::Idpd(ti_idpd::Error::Idp(_)) => "idpd_error",
-            CliError::Idpd(ti_idpd::Error::Transport { .. }) => "idpd_unreachable",
-            CliError::Idpd(ti_idpd::Error::Untrusted { .. }) => "idpd_untrusted",
+            CliError::Idpd(ti_idpd_client::Error::Idp(_)) => "idpd_error",
+            CliError::Idpd(ti_idpd_client::Error::Transport { .. }) => "idpd_unreachable",
+            CliError::Idpd(ti_idpd_client::Error::Untrusted { .. }) => "idpd_untrusted",
             CliError::Idpd(_) => "idpd_protocol",
             CliError::Directory(error) => match **error {
-                ti_directory::Error::Directory(_) => "directory_error",
-                ti_directory::Error::AuthServer(_) => "directory_auth_server_error",
-                ti_directory::Error::Transport { .. } => "directory_unreachable",
+                ti_directory_client::Error::Directory(_) => "directory_error",
+                ti_directory_client::Error::AuthServer(_) => "directory_auth_server_error",
+                ti_directory_client::Error::Transport { .. } => "directory_unreachable",
                 _ => "directory_protocol",
             },
             CliError::Output(_) => "output_failed",
@@ -318,26 +318,26 @@ impl CliError {
             CliError::SignatureMalformed(_) => {
                 Some("expected a DER ECDSA-Sig-Value or r‖s of the curve's size (64 bytes)")
             }
-            CliError::Idpd(ti_idpd::Error::Idp(_)) => Some(
+            CliError::Idpd(ti_idpd_client::Error::Idp(_)) => Some(
                 "the IDP refused; gematik_error_text says why (client_id, redirect_uri, an expired challenge, an unknown card)",
             ),
-            CliError::Idpd(ti_idpd::Error::Transport { .. }) => {
+            CliError::Idpd(ti_idpd_client::Error::Transport { .. }) => {
                 Some("check the network, --proxy and the IDP URL; -v shows each request")
             }
-            CliError::Idpd(ti_idpd::Error::Untrusted { .. }) => Some(
+            CliError::Idpd(ti_idpd_client::Error::Untrusted { .. }) => Some(
                 "the IDP's certificate is not valid in the environment's TSL (wrong --env, revoked, expired); `pki verify` explains, --idp-unverified skips the check",
             ),
             CliError::Idpd(_) => {
                 Some("the IDP's answer departs from gemSpec_IDP_Dienst; -v shows the exchange")
             }
             CliError::Directory(error) => Some(match **error {
-                ti_directory::Error::Directory(_) => {
+                ti_directory_client::Error::Directory(_) => {
                     "the FHIR-Directory refused; its message says why (an identity without an entry in the directory, a code it did not issue, a token it does not accept)"
                 }
-                ti_directory::Error::AuthServer(_) => {
+                ti_directory_client::Error::AuthServer(_) => {
                     "the directory's Keycloak refused the client credentials: check --client-id, the secret file and the endpoint (holder, service, ti-provider have their own realms)"
                 }
-                ti_directory::Error::Transport { .. } => {
+                ti_directory_client::Error::Transport { .. } => {
                     "check the network, --proxy and the directory URL; -v shows each request"
                 }
                 _ => {
@@ -391,6 +391,60 @@ impl CliError {
     /// Whether the reader of stdout went away (`ti … | head`), which is not an error.
     pub fn is_broken_pipe(&self) -> bool {
         matches!(self, CliError::Output(e) if e.kind() == io::ErrorKind::BrokenPipe)
+    }
+}
+
+impl From<ti_client::Error> for CliError {
+    fn from(error: ti_client::Error) -> Self {
+        match error {
+            ti_client::Error::Setup(message) => CliError::HttpSetup(message),
+            ti_client::Error::Connector(error) => CliError::Connector(error),
+            ti_client::Error::ConnectorConfig(message) => CliError::ConnectorConfig(message),
+            ti_client::Error::CardRestricted { card_type, source } => {
+                CliError::CardRestricted { card_type, source }
+            }
+            ti_client::Error::PinType(error) => CliError::PinType(error.to_string()),
+            ti_client::Error::Refused(message) => CliError::Arguments(message),
+            ti_client::Error::Write(error) => CliError::Output(error),
+            ti_client::Error::NoCertificate { source_name } => {
+                CliError::NoCertificate { source_name }
+            }
+            ti_client::Error::Certificate {
+                source_name,
+                source,
+            } => CliError::Certificate {
+                source_name,
+                source,
+            },
+            ti_client::Error::Pkcs12 {
+                source_name,
+                source,
+            } => CliError::Pkcs12 {
+                source_name,
+                source,
+            },
+            ti_client::Error::EnvironmentUndetected(message) => {
+                CliError::EnvironmentUndetected(message)
+            }
+            ti_client::Error::Trust(error) => CliError::Trust(error),
+            ti_client::Error::TrustLoad(message) => CliError::TrustLoad(message),
+            ti_client::Error::TslRollback(message) => CliError::TslRollback(message),
+            ti_client::Error::ServerUnreachable(message) => CliError::ServerUnreachable(message),
+            ti_client::Error::Cache { path, reason } => CliError::Cache { path, reason },
+            ti_client::Error::State { path, reason } => CliError::State { path, reason },
+            ti_client::Error::IdentityNotFound(message) => CliError::IdentityNotFound(message),
+            ti_client::Error::KeyUnsupported(message) => CliError::KeyUnsupported(message),
+            ti_client::Error::Signing(message) => CliError::Signing(message),
+            ti_client::Error::SignatureMalformed(message) => CliError::SignatureMalformed(message),
+            ti_client::Error::Idpd(error) => CliError::Idpd(error),
+            ti_client::Error::Directory(error) => CliError::Directory(error),
+            error @ ti_client::Error::ProbeEndpoints(_) => {
+                CliError::ConnectorConfig(error.to_string())
+            }
+            ti_client::Error::Randomness => {
+                CliError::Output(io::Error::other("no system randomness"))
+            }
+        }
     }
 }
 
@@ -497,6 +551,18 @@ mod tests {
         );
     }
 
+    /// TSLSIG-053: ti-client's rollback stays apart from a failed download, so its hint
+    /// points at the kept list, not at the network.
+    #[test]
+    fn tslsig_053_a_rejected_older_list_hints_at_the_kept_state() {
+        let error = CliError::from(ti_client::Error::TslRollback("tsl_id_incorrect".into()));
+        assert_eq!(error.kind(), "trust_material_unavailable");
+        let hint = error.hint().unwrap();
+        assert!(hint.contains("older list"), "{hint}");
+        assert!(hint.contains("tsl/ID.json"), "{hint}");
+        assert!(!hint.contains("port 80"), "not a network problem: {hint}");
+    }
+
     /// One error of every kind, in the order of [`CliError`]'s variants.
     fn every_kind() -> Vec<CliError> {
         let mut errors = local_kinds();
@@ -584,30 +650,32 @@ mod tests {
             CliError::Header("a".into()),
             CliError::Signing("a".into()),
             CliError::SignatureMalformed("a".into()),
-            CliError::Idpd(ti_idpd::Error::Idp(ti_idpd::IdpError::default())),
-            CliError::Idpd(ti_idpd::Error::Transport {
+            CliError::Idpd(ti_idpd_client::Error::Idp(
+                ti_idpd_client::IdpError::default(),
+            )),
+            CliError::Idpd(ti_idpd_client::Error::Transport {
                 what: "a",
-                source: ti_idpd::http::TransportError("a".into()),
+                source: ti_idpd_client::http::TransportError("a".into()),
             }),
-            CliError::Idpd(ti_idpd::Error::Untrusted {
-                which: ti_idpd::trust::IdpCertificate::TokenSigner,
+            CliError::Idpd(ti_idpd_client::Error::Untrusted {
+                which: ti_idpd_client::trust::IdpCertificate::TokenSigner,
                 detail: "a".into(),
             }),
-            CliError::Idpd(ti_idpd::Error::Malformed {
+            CliError::Idpd(ti_idpd_client::Error::Malformed {
                 what: "a",
                 detail: "a".into(),
             }),
-            CliError::Directory(Box::new(ti_directory::Error::Directory(
-                ti_directory::DirectoryError::default(),
+            CliError::Directory(Box::new(ti_directory_client::Error::Directory(
+                ti_directory_client::DirectoryError::default(),
             ))),
-            CliError::Directory(Box::new(ti_directory::Error::AuthServer(
-                ti_directory::OAuthError::default(),
+            CliError::Directory(Box::new(ti_directory_client::Error::AuthServer(
+                ti_directory_client::OAuthError::default(),
             ))),
-            CliError::Directory(Box::new(ti_directory::Error::Transport {
+            CliError::Directory(Box::new(ti_directory_client::Error::Transport {
                 what: "a",
-                source: ti_idpd::http::TransportError("a".into()),
+                source: ti_directory_client::http::TransportError("a".into()),
             })),
-            CliError::Directory(Box::new(ti_directory::Error::Malformed {
+            CliError::Directory(Box::new(ti_directory_client::Error::Malformed {
                 what: "a",
                 detail: "a".into(),
             })),

@@ -30,7 +30,7 @@ use ti_cache::{
     Cache, CacheControl, CacheEntry, CacheLookupError, CachePolicy, CacheStore, Conditional,
     FreshnessBounds, Meta, OriginResponse, Source,
 };
-use ti_types::Clock;
+use ti_types::Timestamp;
 
 use crate::error::Error;
 use crate::http::{Request, Response, Transport};
@@ -71,22 +71,22 @@ pub fn policy() -> CachePolicy {
 
 /// The keys at one `jwks_uri`.
 #[derive(Debug)]
-pub struct JwksSource<S, C, T> {
+pub struct JwksSource<S, N, T> {
     url: String,
     key: String,
-    cache: Cache<S, C>,
+    cache: Cache<S, N>,
     transport: T,
     limits: Limits,
 }
 
-impl<S: CacheStore, C: Clock, T: Transport> JwksSource<S, C, T> {
+impl<S: CacheStore, N: Fn() -> Timestamp, T: Transport> JwksSource<S, N, T> {
     /// The set at `url`, kept in `cache` (built with [`policy`] or a policy of the
     /// caller's) and fetched through `transport`.
     ///
     /// # Errors
     ///
     /// [`Error::NotHttps`] for a URL that is not `https`.
-    pub fn new(url: &str, cache: Cache<S, C>, transport: T) -> Result<Self, Error> {
+    pub fn new(url: &str, cache: Cache<S, N>, transport: T) -> Result<Self, Error> {
         let https = url
             .get(..8)
             .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"));
@@ -180,7 +180,7 @@ impl<S: CacheStore, C: Clock, T: Transport> JwksSource<S, C, T> {
             max_body: self.limits.max_body,
         };
         let response = self.transport.get(&request).await?;
-        let mut meta = Meta::new(self.cache.clock().now(), Source::Http);
+        let mut meta = Meta::new(self.cache.now(), Source::Http);
         meta.max_age = response
             .header("cache-control")
             .and_then(|value| CacheControl::parse(&value).freshness());

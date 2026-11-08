@@ -29,9 +29,10 @@ use std::time::Duration;
 
 use serde::Serialize;
 use ti_pki::config::MAX_TSL_GRACE_PERIOD;
+use ti_pki::model::{self, SCHEMA};
+use ti_pki::offline;
 use ti_pki::tsl_signature::DetachedTsl;
 use ti_pki::{Certificate, Env, Timestamp, TrustConfig, parse_pem_certificates};
-use ti_report::{CertificateInfo, CheckContext, SCHEMA, describe, tsl_view};
 
 #[derive(Serialize)]
 struct Version {
@@ -49,7 +50,7 @@ struct TrustUrls {
 #[derive(Serialize)]
 struct Certificates {
     schema: u32,
-    certificates: Vec<CertificateInfo>,
+    certificates: Vec<model::Certificate>,
 }
 
 /// See [`crate::version`].
@@ -99,9 +100,8 @@ pub fn verify_tsl(
         signer_status,
     };
     // ROOTS-002: supplied roots count as far as the walk from the anchor takes them.
-    Ok(to_json(&tsl_view(
-        xml, files, env, &config, roots_json, now,
-    )))
+    let verified = offline::Tsl::verify(xml, files, env, &config, roots_json, now);
+    Ok(to_json(&model::Tsl::new(env, &verified, now)))
 }
 
 /// See [`crate::describe_certificate`].
@@ -114,12 +114,15 @@ pub fn describe_certificate(input: &[u8], now: &str) -> Result<String, String> {
     let certificates = parse_certificates(input)?;
     Ok(to_json(&Certificates {
         schema: SCHEMA,
-        certificates: certificates.iter().map(|c| describe(c, now)).collect(),
+        certificates: certificates
+            .iter()
+            .map(|c| model::Certificate::new(c, now))
+            .collect(),
     }))
 }
 
 /// See [`crate::TrustContext`].
-pub struct Context(CheckContext);
+pub struct Context(offline::Check);
 
 impl Context {
     /// See [`crate::TrustContext::new`].
@@ -139,14 +142,14 @@ impl Context {
         let now = parse_now(now)?;
         let config = config_for(env, grace_seconds)?;
         // ROOTS-002: supplied roots count as far as the walk from the anchor takes them.
-        Ok(Context(CheckContext::new(
+        Ok(Context(offline::Check::new(
             env, config, roots_json, xml, signature, now,
         )))
     }
 
     /// See [`crate::TrustContext::tsl`].
     pub fn tsl(&self) -> String {
-        to_json(self.0.tsl())
+        to_json(&model::TslState::new(self.0.material()))
     }
 
     /// See [`crate::TrustContext::check`].
@@ -157,7 +160,13 @@ impl Context {
     pub fn check(&self, input: &[u8], now: &str) -> Result<String, String> {
         let now = parse_now(now)?;
         let certificates = parse_certificates(input)?;
-        Ok(to_json(&self.0.check(&certificates, now)))
+        let outcome = self.0.check(&certificates, now);
+        Ok(to_json(&model::Check::new(
+            &self.0,
+            &certificates,
+            &outcome,
+            now,
+        )))
     }
 }
 

@@ -21,10 +21,10 @@
  * find details in the "Readme" file.
  */
 
-//! The TI's TSL verification and certificate reports for JavaScript, as `ti-report`
-//! builds them: every function is pure, the caller passes the bytes and the instant and
-//! gets JSON back. Network and clock stay in JavaScript, so the same module runs on a
-//! server and in a browser.
+//! The TI's TSL verification and certificate reports for JavaScript, from ti-pki's
+//! `offline` and `model`: every function is pure, the caller passes the bytes and the
+//! instant and gets JSON back. Network and clock stay in JavaScript, so the same module
+//! runs on a server and in a browser.
 //!
 //! A `JsError` means the caller asked wrongly (unknown environment, bad time, grace
 //! period too long, no certificate); every verification verdict is inside the JSON.

@@ -36,21 +36,17 @@ use core::str::FromStr;
 #[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
-#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum Env {
     /// Development environment.
     Dev,
     /// Test environment (Testumgebung, TU).
     #[cfg_attr(feature = "serde", serde(alias = "tu"))]
-    #[cfg_attr(feature = "clap", value(alias = "tu"))]
     Test,
     /// Reference environment (Referenzumgebung, RU).
     #[cfg_attr(feature = "serde", serde(alias = "ru"))]
-    #[cfg_attr(feature = "clap", value(alias = "ru"))]
     Ref,
     /// Production (Produktivumgebung, PU).
     #[cfg_attr(feature = "serde", serde(alias = "pu"))]
-    #[cfg_attr(feature = "clap", value(alias = "pu"))]
     Prod,
 }
 
@@ -228,14 +224,5 @@ mod tests {
             assert_eq!(serde_json::from_str::<Env>(&json).unwrap(), env);
         }
         assert_eq!(serde_json::from_str::<Env>(r#""pu""#).unwrap(), Env::Prod);
-    }
-
-    #[cfg(feature = "clap")]
-    #[test]
-    fn clap_value_enum_parses() {
-        use clap::ValueEnum;
-        assert_eq!(<Env as ValueEnum>::from_str("prod", false), Ok(Env::Prod));
-        assert_eq!(<Env as ValueEnum>::from_str("ru", false), Ok(Env::Ref));
-        assert!(<Env as ValueEnum>::from_str("staging", false).is_err());
     }
 }

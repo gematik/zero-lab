@@ -42,7 +42,7 @@ import (
 	"github.com/gematik/zero-lab/go/openid"
 )
 
-// challengeSkew is the clock skew tolerated on a challenge's time claims, as in ti-idpd's profile.
+// challengeSkew is the clock skew tolerated on a challenge's time claims, as in ti-idpd-client's profile.
 const challengeSkew = time.Minute
 
 // ChallengeSignerFunc signs an IDP-Dienst challenge and returns the compact JWS that nests it. Being a
@@ -209,7 +209,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 		return nil, fmt.Errorf("parsing challenge NJWT: %w", err)
 	}
 
-	// What gets the card holder's signature is judged first, as ti-idpd does: BP256R1 alone, while josebp would take any
+	// What gets the card holder's signature is judged first, as ti-idpd-client does: BP256R1 alone, while josebp would take any
 	// algorithm of the key's size, and within its lifetime. An exp is required, and the response's JWE repeats it.
 	if alg := token.Headers["alg"]; alg != josebp.AlgorithmNameBP256R1 {
 		return nil, fmt.Errorf("challenge signed with alg %v, expected %s", alg, josebp.AlgorithmNameBP256R1)
@@ -284,7 +284,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 }
 
 // refusalOf is the IDP's error in a redirect's query, nil if there is none. An error goes before a code that came with
-// it, as in ti-idpd.
+// it, as in ti-idpd-client.
 func refusalOf(location *url.URL) *Error {
 	query := location.Query()
 	if query.Get("error") == "" {

@@ -16,48 +16,44 @@ name = "ti"
 path = "src/main.rs"
 
 [dependencies]
+# Its transports, files and block_on: the host it shares with the desktop app.
+ti-client.workspace = true
 # A tool for every environment: the non-prod presets are in; TrustConfig::validate
 # still fences production from TEST-ONLY material.
 ti-pkcs12 = { workspace = true, features = ["encode"] }
-ti-connector-client = { workspace = true, features = ["ureq"] }
-# base64url of the IDP's signed discovery document in `probe`.
+ti-connector-client.workspace = true
+# The protected header `identity sign` shows, decoded from its JWS.
 base64ct.workspace = true
-ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod"] }
-ti-report.workspace = true
-# `identity sign`: JWS with the SMC-B or HBA key, ES256 on brainpoolP256r1 (ti-jwz's brainpool) or
-# P-256 (jwz's own backend); the keys come from PKCS#8 (`pkcs8`, `sec1`), not from JWKs.
+ti-pki = { workspace = true, features = ["brainpool", "rsa", "os", "dangerous-nonprod", "serde"] }
+# `identity sign`'s header parameters and algorithm names; the identity signs in ti-client.
+# The owner login's test signs with a brainpoolP256r1 key of its own.
 jwz = { workspace = true, features = ["std", "jws", "jwt", "crypto-rustcrypto"] }
 ti-jwz = { workspace = true, features = ["legacy"] }
-# `idpd authenticate`: the IDP-Dienst flow over this tool's ureq.
-ti-idpd = { workspace = true, features = ["ureq"] }
-# `directory login`: the FHIR-Directory's owner authentication over the same transport.
-ti-directory.workspace = true
-pkcs8.workspace = true
-sec1.workspace = true
-der.workspace = true
-zeroize.workspace = true
-# rustls without a built-in provider (ring is passed in); the trust is ti-tls's.
-ureq = { workspace = true, features = ["rustls-no-provider"] }
-# Every https server verified under spec/pki-validation's web profile.
-ti-tls = { workspace = true, features = ["ureq"] }
-rustls.workspace = true
+# `idpd authenticate`: the IDP-Dienst flow over ti-client's ureq.
+ti-idpd-client.workspace = true
+# `directory login`: the FHIR-Directory's token paths over the same transport; the owner
+# login by card joins its steps with ti-idpd-client's flow here.
+ti-directory-client.workspace = true
 clap = { workspace = true, features = ["std", "help", "usage", "error-context", "suggestions", "color", "env"] }
 clap_complete.workspace = true
 anstream.workspace = true
 anstyle.workspace = true
 jiff.workspace = true
-pem-rfc7468 = { workspace = true, features = ["alloc"] }
-ti-cache.workspace = true
 ti-types.workspace = true
 rpassword.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-sha2.workspace = true
 thiserror.workspace = true
-x509-cert.workspace = true
 
 [dev-dependencies]
 traceability.workspace = true
+# The fakes' TLS servers: a Konnektor, and a host the probe refuses.
+rustls.workspace = true
+# The digests the tests recompute: the cache's file names, a pinned certificate's.
+sha2.workspace = true
+# The fakes' certificates and keys, read from PEM.
+pem-rfc7468 = { workspace = true, features = ["alloc"] }
+sec1.workspace = true
 
 [lints]
 workspace = true

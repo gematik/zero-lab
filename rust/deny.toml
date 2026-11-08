@@ -24,7 +24,7 @@ allow = [
 ]
 # Allowed for single crates only rather than for the whole graph.
 exceptions = [
-    # Mozilla's root store as data, via rustls-platform-verifier (ti-cli only).
+    # Mozilla's root store as data, via rustls-platform-verifier (ti-client, a host, only).
     { crate = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
 ]
 

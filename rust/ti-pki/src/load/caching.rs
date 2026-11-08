@@ -30,35 +30,35 @@ use ti_cache::{
 use super::artifact::Artifact;
 use super::loader::{Fetched, LoadError, Loaded, Loader};
 use super::maybe_send::{MaybeSend, MaybeSync};
-use crate::time::Clock;
+use crate::time::Timestamp;
 
 /// [`Cache`] over a [`Loader`]: the trust-material stack's caching layer.
 #[derive(Debug)]
-pub struct CachingLoader<L, S, C> {
+pub struct CachingLoader<L, S, N> {
     inner: L,
-    cache: Cache<S, C>,
+    cache: Cache<S, N>,
 }
 
-impl<L, S, C> CachingLoader<L, S, C>
+impl<L, S, N> CachingLoader<L, S, N>
 where
     L: Loader + MaybeSend + MaybeSync,
     S: CacheStore + MaybeSend + MaybeSync,
-    C: Clock + MaybeSend + MaybeSync,
+    N: Fn() -> Timestamp + MaybeSend + MaybeSync,
 {
     /// Caches `inner` in `store`.
-    pub fn new(inner: L, store: S, clock: C, policy: CachePolicy) -> Self {
+    pub fn new(inner: L, store: S, now: N, policy: CachePolicy) -> Self {
         CachingLoader {
             inner,
-            cache: Cache::new(store, clock, policy),
+            cache: Cache::new(store, now, policy),
         }
     }
 }
 
-impl<L, S, C> Loader for CachingLoader<L, S, C>
+impl<L, S, N> Loader for CachingLoader<L, S, N>
 where
     L: Loader + MaybeSend + MaybeSync,
     S: CacheStore + MaybeSend + MaybeSync,
-    C: Clock + MaybeSend + MaybeSync,
+    N: Fn() -> Timestamp + MaybeSend + MaybeSync,
 {
     async fn fetch(&self, artifact: Artifact, cond: Conditional<'_>) -> Result<Fetched, LoadError> {
         let key = self.inner.cache_key(artifact);
@@ -197,9 +197,9 @@ mod tests {
         let store = MemoryCacheStore::default();
         let transport = MockTransport::new([Ok(fresh(b"old", "e1")), unreachable()]);
         let loader = CachingLoader::new(
-            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, || clock.now()),
             &store,
-            &clock,
+            || clock.now(),
             policy(false),
         );
         block_on(loader.load(Artifact::TslSignerStatus)).unwrap();
@@ -227,9 +227,9 @@ mod tests {
             unreachable(),
         ]);
         let loader = CachingLoader::new(
-            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, || clock.now()),
             &store,
-            &clock,
+            || clock.now(),
             policy(false),
         );
         block_on(loader.load(Artifact::TslSignature)).unwrap();
@@ -252,9 +252,9 @@ mod tests {
         let store = MemoryCacheStore::default();
         let transport = MockTransport::new([Ok(fresh(b"old", "e1")), Ok(fresh(b"new", "e2"))]);
         let loader = CachingLoader::new(
-            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, || clock.now()),
             &store,
-            &clock,
+            || clock.now(),
             policy(false),
         );
         let load = || block_on(loader.load(Artifact::TslSignature)).unwrap().body;
@@ -270,9 +270,9 @@ mod tests {
         assert_eq!(transport.requests()[1].etag, None);
 
         let offline = CachingLoader::new(
-            HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock),
+            HttpLoader::new(&TrustConfig::preset_prod(), &transport, || clock.now()),
             &store,
-            &clock,
+            || clock.now(),
             policy(true),
         );
         block_on(offline.revalidate()).unwrap();
@@ -289,20 +289,14 @@ mod tests {
         }
     }
 
-    type Stack<'a> = CachingLoader<
-        HttpLoader<&'a MockTransport, &'a FixedClock>,
-        &'a MemoryCacheStore,
-        &'a FixedClock,
-    >;
-
     fn stack<'a>(
         transport: &'a MockTransport,
         store: &'a MemoryCacheStore,
         clock: &'a FixedClock,
         offline: bool,
-    ) -> Stack<'a> {
-        let http = HttpLoader::new(&TrustConfig::preset_prod(), transport, clock);
-        CachingLoader::new(http, store, clock, policy(offline))
+    ) -> impl Loader + 'a {
+        let http = HttpLoader::new(&TrustConfig::preset_prod(), transport, move || clock.now());
+        CachingLoader::new(http, store, move || clock.now(), policy(offline))
     }
 
     #[test]
@@ -416,7 +410,7 @@ mod tests {
     #[test]
     fn http_loader_keys_by_url() {
         let (transport, clock) = (MockTransport::new([]), FixedClock::new(T0));
-        let http = HttpLoader::new(&TrustConfig::preset_prod(), &transport, &clock);
+        let http = HttpLoader::new(&TrustConfig::preset_prod(), &transport, || clock.now());
         assert_eq!(
             http.cache_key(Artifact::Roots),
             Artifact::Roots.cache_key(crate::roots::URL_PROD)

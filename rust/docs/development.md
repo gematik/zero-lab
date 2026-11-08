@@ -170,8 +170,8 @@ names the trigger for removing it.
 | The TSL admits no CA on its own; of its per-CA metadata only the certificate types and the revocation time decide | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it. From a CA's entry, ti-pki uses the certificate types it may issue (TUC_PKI_007: `cert_type_ca_not_authorized`, also when the entry lists none), which makes a CA one for components, SMC-B, eGK or HBA, and a revocation with its `StatusStartingTime` (Tab_PKI_271: `ca_revoked_in_tsl`, `issued_before_ca_revocation`); provider names and the other metadata decide nothing. A CA's standing is otherwise checked by OCSP at its root; for OCSP responders see the next row | the TSL becomes a trust source of its own, admitting CAs no walked root signed |
 | OCSP responders beyond RFC 6960 must be certified by a CA of the issuing CA's TSP that a root signed, not only listed in the TSL: id-kp-OCSPSigning, valid now, signature verified under that TSL CA. Listed by the verified TSL under that TSP they are authorized (`tsl_listed`); not listed, they are accepted with an `ocsp_responder_not_rfc6960` warning | the TSL ties a responder to CAs only by the TSP it is listed under (its supply point and extension are placeholders), and TI TSPs sign for their CAs with delegates of other CAs (ehca: a GEM.KOMP-CA51 delegate answers for GEM.SMCB-CA51 and GEM.SMCB-CA9). Requiring the certification by a CA of the same TSP keeps a listed responder from answering for another TSP's CAs. The D-Trust responders under GEM.OCSP-CA1/3 stay rejected (their CA is not in the TSL) | gematik aligns responder issuance with RFC 6960 (then the fallback without listing goes) |
 | OCSP CertIDs use SHA-1 (`sha1` crate) | TI responders reject SHA-256 CertIDs as malformed (RFC 5019 profile). SHA-1 only names the certificate there; integrity rests on the response signature and the SHA-256 certHash | TI responders accept SHA-256 CertIDs |
-| `ureq`'s `unversioned` transport API in `ti_connector_client::ureq`, `ureq` pinned `~3.4` | `TlsConfig` takes no certificate verifier, and a Konnektor needs Go's: `.kon` pins accepted by equality, CA chains checked for `expectedHost`, which is also the SNI. A 60-line connector in ureq's chain does the TLS with our rustls config | ureq accepts a custom verifier or rustls config, or the adapter moves to a crate of its own before ti-connector-client 1.0 |
-| `webpki-root-certs` licence CDLA-Permissive-2.0 allowed for that crate only | a permissive data licence for Mozilla's root certificates, which `rustls-platform-verifier` bundles for platforms without a usable OS store; only `ti-cli` depends on it | never, unless the licence policy changes |
+| `ureq`'s `unversioned` transport API in ti-client (the Konnektor's transport and the profiles' agent), `ureq` pinned `~3.4` | `TlsConfig` takes no certificate verifier, and a Konnektor needs Go's: `.kon` pins accepted by equality, CA chains checked for `expectedHost`, which is also the SNI (ti-tls's `konnektor` profile), as the `ti` and `web` profiles need theirs. A 60-line connector in ureq's chain does the TLS with that rustls config | ureq accepts a custom verifier or rustls config |
+| `webpki-root-certs` licence CDLA-Permissive-2.0 allowed for that crate only | a permissive data licence for Mozilla's root certificates, which `rustls-platform-verifier` bundles for platforms without a usable OS store; only ti-client (and through it ti-cli) depends on it | never, unless the licence policy changes |
 
 ## Test PKI
 
@@ -295,16 +295,16 @@ is released, every suite listed for it runs green and the release PR records the
 
 ## WebAssembly (ti-wasm)
 
-`ti-wasm` exposes `ti-report` to JavaScript: `verify_tsl` gives the TSL view (signature
-verdict, roots, services with chains, certificate details), `describe_certificate` what `ti
-pki inspect` shows. Its exports are pure; downloads, caching and the clock belong to the
+`ti-wasm` exposes ti-pki's `offline` and `model` to JavaScript: `verify_tsl` gives the TSL
+view (signature verdict, roots, services with chains, certificate details),
+`describe_certificate` what `ti pki inspect` shows. Its exports are pure; downloads, caching and the clock belong to the
 caller, since the TI download hosts send no CORS headers and the OCSP responders speak
 plain HTTP. One module serves Node (`initSync` with the bytes) and the browser (`init`
 with a URL).
 
 `#[wasm_bindgen]` expands to `unsafe` glue, so ti-wasm has its own lint table without
 `unsafe_code = "forbid"`; its sources are thin wrappers, `just wasm-unsafe-free` keeps
-`unsafe` out of them, and all logic stays in `ti-report` under the workspace lints.
+`unsafe` out of them, and all logic stays in `ti-pki` under the workspace lints.
 
 The `wasm` profile is `release` (opt-level 3) and `wasm-build` runs `wasm-opt -O3`:
 verification speed before size. `wasm-build` needs `wasm-bindgen-cli` at the version
@@ -443,8 +443,8 @@ one crate with binaries. A release takes two commands from `main`:
    release against the real systems and record the results in the release PR; `just
    release` cannot do this for you.
 1. **`just release CRATE=X.Y.Z …`**, local only, e.g.
-   `just release ti-cli=0.4.0 ti-idpd=0.2.0 ti-directory=0.1.0`. It stops unless `main`
-   is clean and equal to `origin/main`, each tag is new and above the crate's last
+   `just release ti-cli=0.4.0 ti-idpd-client=0.2.0 ti-directory-client=0.1.0`. It stops unless
+   `main` is clean and equal to `origin/main`, each tag is new and above the crate's last
    `rust/<crate>/v*`, and `ReleaseNotes.md` has exactly one `### <crate>` block under
    `## Unreleased` for each. Then `just check-full` and `just advisories vet msrv`; per crate the version in
    its `Cargo.toml`, the workspace requirement on it in `Cargo.toml` (`"0.2"` for 0.x,
@@ -490,7 +490,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `cli-check` | `cli-targets check`: clippy with `-D warnings` for the Linux (musl) and Windows targets of `ti` in their cross containers; needs Docker |
 | `check-changed [base]` | While working on a branch: the fast checks of the crates it changed against `base` (default `main`) and of their dependents; `wasm32`, `nonprod-absent`, the manifest checks (`unsafe-free`, `core-deps`, `jwz-backends`, `machete`, `deny`, `vet`) and `scripts-test` only when their inputs changed |
 | `check` | Tier 1, once per branch before it merges: `fmt`, `clippy`, `doc`, `test`, `wasm32`, `wasm-unsafe-free`, `core-deps`, `nonprod-absent`, `jwz-backends`, `jwz-rsa-guard`, `machete`, `deny`, `vet`, `brainpool-absent` for jwz and ti-jwz |
-| `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer, ti-report, ti-wasm and the jwz crates |
+| `wasm32` | `cargo check` for wasm32 of ti-types with `std`, ti-pki's loading layer, ti-wasm and the jwz crates |
 | `wasm-unsafe-free` | No `unsafe` in ti-wasm's own sources |
 | `check-jwz` | The jwz crates only (fmt, clippy, doc, test, feature matrix, wasm32, guards): the loop while working on jwz |
 | `jwz-backends` | No openssl, ring, aws-lc or cryptoki under jwz or ti-jwz |

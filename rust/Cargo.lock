@@ -1621,11 +1621,9 @@ dependencies = [
  "base64ct",
  "clap",
  "clap_complete",
- "der",
  "jiff",
  "jwz",
  "pem-rfc7468",
- "pkcs8",
  "rpassword",
  "rustls",
  "sec1",
@@ -1633,19 +1631,46 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror",
- "ti-cache",
+ "ti-client",
  "ti-connector-client",
- "ti-directory",
- "ti-idpd",
+ "ti-directory-client",
+ "ti-idpd-client",
  "ti-jwz",
  "ti-pkcs12",
  "ti-pki",
- "ti-report",
+ "ti-types",
+ "traceability",
+]
+
+[[package]]
+name = "ti-client"
+version = "0.1.0"
+dependencies = [
+ "base64ct",
+ "der",
+ "jwz",
+ "p256",
+ "p384",
+ "pem-rfc7468",
+ "pkcs8",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
+ "sec1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ti-cache",
+ "ti-connector-client",
+ "ti-directory-client",
+ "ti-idpd-client",
+ "ti-jwz",
+ "ti-pkcs12",
+ "ti-pki",
  "ti-tls",
  "ti-types",
  "traceability",
  "ureq",
- "x509-cert",
  "zeroize",
 ]
 
@@ -1655,12 +1680,8 @@ version = "0.1.0"
 dependencies = [
  "base64ct",
  "futures-lite",
- "p256",
- "p384",
  "quick-xml",
- "rustls",
  "rustls-pki-types",
- "rustls-platform-verifier",
  "serde",
  "serde_json",
  "sha2",
@@ -1670,25 +1691,22 @@ dependencies = [
  "ti-pki",
  "ti-types",
  "traceability",
- "ureq",
 ]
 
 [[package]]
-name = "ti-directory"
+name = "ti-directory-client"
 version = "0.1.0"
 dependencies = [
  "base64ct",
- "jwz",
  "serde",
  "serde_json",
  "thiserror",
- "ti-idpd",
- "ti-jwz",
+ "ti-types",
  "traceability",
 ]
 
 [[package]]
-name = "ti-idpd"
+name = "ti-idpd-client"
 version = "0.1.0"
 dependencies = [
  "base64ct",
@@ -1702,7 +1720,6 @@ dependencies = [
  "ti-pki",
  "ti-types",
  "traceability",
- "ureq",
 ]
 
 [[package]]
@@ -1782,18 +1799,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-report"
-version = "0.1.0"
-dependencies = [
- "const-oid",
- "pem-rfc7468",
- "serde",
- "serde_json",
- "sha2",
- "ti-pki",
-]
-
-[[package]]
 name = "ti-tls"
 version = "0.1.0"
 dependencies = [
@@ -1808,7 +1813,6 @@ dependencies = [
  "sha2",
  "ti-pki",
  "traceability",
- "ureq",
  "x509-cert",
 ]
 
@@ -1816,7 +1820,6 @@ dependencies = [
 name = "ti-types"
 version = "0.1.0"
 dependencies = [
- "clap",
  "serde",
  "serde_json",
 ]
@@ -1828,7 +1831,6 @@ dependencies = [
  "serde",
  "serde_json",
  "ti-pki",
- "ti-report",
  "traceability",
  "wasm-bindgen",
 ]

@@ -41,6 +41,8 @@ use serde::Deserialize;
 use serde_json::Value;
 use ti_types::Env;
 
+use crate::error::Error;
+
 /// A parsed and validated `.kon` file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dotkon {
@@ -106,6 +108,27 @@ impl Credentials {
             Credentials::Pkcs12 { .. } => "pkcs12",
             Credentials::None => "none",
         }
+    }
+
+    /// The client certificate (DER) and its private key that `pkcs12` credentials present
+    /// in the TLS handshake: the file's first certificate that has its key. `None` for
+    /// `basic` and `none`.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Config`] when the file cannot be decoded or holds no such pair.
+    pub fn client_identity(&self) -> Result<Option<(Vec<u8>, ti_pkcs12::KeyBag)>, Error> {
+        let Credentials::Pkcs12 { data, password } = self else {
+            return Ok(None);
+        };
+        let mut p12 = ti_pkcs12::decode(data, password)
+            .map_err(|e| Error::Config(format!("credentials: {e}")))?;
+        let pair = p12.pairs().into_iter().next().ok_or_else(|| {
+            Error::Config("credentials: no certificate with its private key".into())
+        })?;
+        let key = p12.keys.swap_remove(pair.key);
+        let certificate = p12.certificates.swap_remove(pair.certificate).der;
+        Ok(Some((certificate, key)))
     }
 }
 

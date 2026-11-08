@@ -1,0 +1,30 @@
+[package]
+name = "ti-directory-client"
+version = "0.1.0"
+description = "Client of the gematik FHIR-Directory (VZD): its Auth-Service token paths, the owner by smartcard through the IDP-Dienst the host runs, sans I/O"
+keywords = ["gematik", "telematik", "fhir", "vzd", "oidc"]
+categories = ["authentication", "wasm"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[features]
+# `Serialize` for the types of `model`, the JSON the front ends publish.
+serde = []
+
+[dependencies]
+ti-types.workspace = true
+serde = { workspace = true, features = ["std"] }
+serde_json.workspace = true
+thiserror.workspace = true
+# The owner token's payload, for the record.
+base64ct.workspace = true
+
+[dev-dependencies]
+traceability.workspace = true
+
+[lints]
+workspace = true

@@ -32,193 +32,36 @@
 
 use std::time::Duration;
 
-use der::asn1::ObjectIdentifier;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use ti_pki::load::{Detached, Meta, Source, SystemClock};
-use ti_pki::ocsp::OcspChecker;
-use ti_pki::tsl::{self, Intermediate, Tsl};
-use ti_pki::tsl_signature::{Sequence, TslError, TslState, VerifiedTsl, embedded_config_for};
-use ti_pki::{Certificate, Clock, Tier, Timestamp, TrustConfig, TrustStore};
-use ti_report::tsl::{CertSummary, Finding, rejection_code};
+use ti_client::pki::tsl::{self as engine, CaFilter, CaInfo, Files, Loaded, Overview, Verdict};
+use ti_pki::{Certificate, Timestamp};
 
-use crate::block::block_on;
 use crate::cli::{
-    CaFilterArgs, Environment, GlobalArgs, TrustArgs, TslBundleArgs, TslExportArgs, TslShowArgs,
-    TslVerifyArgs,
+    CaFilterArgs, GlobalArgs, TrustArgs, TslBundleArgs, TslExportArgs, TslShowArgs, TslVerifyArgs,
 };
 use crate::error::{CliError, Exit};
 use crate::output::document::{date, when};
-use crate::output::{Document, Line, OidInfo, Output, SCHEMA, Tone, hex, pem};
-use crate::trust::{Session, VerifiedSet};
+use crate::output::{Document, Line, Output, SCHEMA, Tone};
 
-/// The JSON document.
+/// The JSON document of `ti pki tsl show`.
 #[derive(Serialize)]
 struct Report {
     schema: u32,
-    environment: &'static str,
-    source: SourceInfo,
-    insecure_transport: bool,
-    /// The C.TSL.SIG certificate the list is signed with.
-    signer: String,
-    /// The TSL signer CA that issued it.
-    tsl_signer_ca: String,
-    /// `no_ocsp_check`, `validity_warning_1`.
-    warnings: Vec<&'static str>,
-    sequence_number: u64,
-    issued_at: String,
-    #[serde(skip)]
-    issued_at_ts: Timestamp,
-    next_update: Option<String>,
-    #[serde(skip)]
-    next_update_ts: Option<Timestamp>,
-    /// Past `next_update`: a newer list should exist.
-    overdue: bool,
-    /// Over the whole list, whatever the filters.
-    counts: Counts,
-    /// The verified roots with the CAs they signed, after the filters.
-    roots: Vec<RootEntry>,
-    /// The CAs no verified root signed, after the filters.
-    rejected: Vec<CaInfo>,
-    /// Whether filters left anything out.
-    filtered: bool,
-}
-
-#[derive(Serialize)]
-struct SourceInfo {
-    /// `http` or `cache`.
-    source: &'static str,
-    /// When the TSL was downloaded or last confirmed.
-    fetched_at: String,
-    #[serde(skip)]
-    fetched_at_ts: Timestamp,
-}
-
-#[derive(Serialize)]
-struct Counts {
-    /// CA services in accord with a certificate: the candidates.
-    listed: usize,
-    /// Signed by a verified root; these take part in chain building.
-    kept: usize,
-    rejected: usize,
-}
-
-#[derive(Serialize)]
-struct RootEntry {
-    common_name: String,
-    not_after: String,
-    validity: &'static str,
-    cas: Vec<CaInfo>,
-}
-
-#[derive(Serialize)]
-struct CaInfo {
-    common_name: String,
-    subject: String,
-    issuer: String,
-    /// The TSPName the TSL lists the CA under.
-    provider: String,
-    not_before: String,
-    not_after: String,
-    #[serde(skip)]
-    not_after_at: Timestamp,
-    /// `valid`, `expired` or `not_yet_valid`, now.
-    validity: &'static str,
-    /// The certificate policies the CA certificate asserts.
-    policies: Vec<OidInfo>,
-    /// The certificate's path length constraint.
-    path_len: Option<u8>,
-    /// For a CA the TSL lists as revoked, its `StatusStartingTime` (RFC 3339): end
-    /// entities issued before stay valid, later ones do not. Null for a CA in accord.
-    revoked_since: Option<String>,
-    /// The certificate types the TSL lets it issue (`C.FD.TLS-S`, …); OIDs it names no
-    /// type for appear as dotted strings. Empty when the TSL states none.
-    issuable_types: Vec<String>,
-    /// Why no verified root signed it: `not_ca`, `self_signed`, `unknown_issuer`,
-    /// `bad_signature`; absent for kept CAs.
-    rejection: Option<&'static str>,
-    sha256: String,
-    pem: String,
+    #[serde(flatten)]
+    overview: Overview,
 }
 
 /// Runs `ti pki tsl show`.
 pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let Loaded {
-        env,
-        session,
-        material,
-        meta,
-        verified,
-        matched,
-        now,
-        ..
-    } = load(&args.trust, global, out)?;
-    let list = &verified.tsl;
-    let roots = material.store.roots();
-
-    let store = &material.store;
-    let wanted = |ca: &Intermediate| {
-        args.filter.wants(ca) && args.filter.wants_types(store.tsl_types_of(&ca.certificate))
-    };
-    let mut root_entries: Vec<RootEntry> = roots
-        .iter()
-        .filter(|root| !args.rejected && args.filter.wants_root(root))
-        .map(|root| RootEntry {
-            common_name: root.subject_cn().to_owned(),
-            not_after: root.not_after().to_string(),
-            validity: super::validity(root, now),
-            cas: matched
-                .intermediates
-                .iter()
-                .filter(|ca| issued_by(&ca.certificate, root) && wanted(ca))
-                .map(|ca| describe(ca, None, now, store))
-                .collect(),
-        })
-        .collect();
-    let any_ca_filter = !args.filter.ca.is_empty()
-        || !args.filter.provider.is_empty()
-        || !args.filter.issues.is_empty();
-    if any_ca_filter {
-        root_entries.retain(|root| !root.cas.is_empty());
-    }
-    let rejected: Vec<CaInfo> = matched
-        .rejected
-        .iter()
-        .filter(|(ca, _)| args.filter.root.is_empty() && wanted(ca))
-        .map(|(ca, reason)| describe(ca, Some(rejection_code(*reason)), now, store))
-        .collect();
-
+    let loaded = load(&args.trust, global, out)?;
     let report = Report {
         schema: SCHEMA,
-        environment: env.as_str(),
-        source: SourceInfo {
-            source: source_name(&meta),
-            fetched_at: meta.fetched_at.to_string(),
-            fetched_at_ts: meta.fetched_at,
-        },
-        insecure_transport: session.insecure,
-        signer: verified.signer.subject_cn().to_owned(),
-        tsl_signer_ca: verified.anchor.subject_cn().to_owned(),
-        warnings: material.info.tsl_warnings.clone(),
-        sequence_number: list.sequence_number,
-        issued_at: list.issued_at.to_string(),
-        issued_at_ts: list.issued_at,
-        next_update: list.next_update.map(|t| t.to_string()),
-        next_update_ts: list.next_update,
-        overdue: list.next_update.is_some_and(|next| now > next),
-        counts: Counts {
-            listed: matched.intermediates.len() + matched.rejected.len(),
-            kept: matched.intermediates.len(),
-            rejected: matched.rejected.len(),
-        },
-        roots: root_entries,
-        rejected,
-        filtered: args.rejected || any_ca_filter || !args.filter.root.is_empty(),
+        overview: engine::overview(&loaded, &args.filter.filter(), args.rejected),
     };
     if out.is_json() {
         out.json(&report)?;
     } else {
-        out.render(&document(&report, !args.filter.ca.is_empty()))?;
+        out.render(&document(&report.overview, !args.filter.ca.is_empty()))?;
     }
     Ok(Exit::Ok)
 }
@@ -227,55 +70,8 @@ pub fn show(args: &TslShowArgs, global: &GlobalArgs, out: &Output) -> Result<Exi
 #[derive(Serialize)]
 struct VerifyReport {
     schema: u32,
-    /// The file name, or `<stdin>`.
-    source: String,
-    /// `--env`: `auto` or the environment asked for.
-    environment: &'static str,
-    /// The validation time.
-    at: String,
-    /// `valid` or `invalid`.
-    result: &'static str,
-    /// `prod` or `nonprod`, from the TSL signer CA; valid lists only.
-    tier: Option<&'static str>,
-    /// The result code of an invalid list, e.g. `detached_signature_error`.
-    code: Option<&'static str>,
-    /// Its gemSpec_PKI Tab_PKI_274 number, if it has one.
-    code_number: Option<u16>,
-    /// The rule of `spec/tsl-detached` or `spec/tsl-xmldsig` that failed.
-    rule: Option<&'static str>,
-    detail: Option<String>,
-    /// From here on, valid lists only, read from the signed bytes.
-    sequence_number: Option<u64>,
-    issued_at: Option<String>,
-    next_update: Option<String>,
-    anchor: Option<CertSummary>,
-    signer: Option<CertSummary>,
-    /// CA services in accord with a certificate.
-    cas: Option<usize>,
-    /// Warnings about a valid list: `no_ocsp_check`, `validity_warning_1`.
-    warnings: Vec<Finding>,
-    /// Services of a valid list that could not be processed and were left out.
-    skipped: Vec<SkippedInfo>,
-    /// The signer's OCSP status, when it was queried or supplied.
-    signer_status: Option<SignerStatus>,
-    /// `newer` or `same` against `--previous`; null without it or for an invalid list.
-    sequence: Option<&'static str>,
-}
-
-#[derive(Serialize)]
-struct SkippedInfo {
-    provider: String,
-    name: String,
-    reason: String,
-}
-
-#[derive(Serialize)]
-struct SignerStatus {
-    /// `good`; anything else makes the list invalid.
-    status: &'static str,
-    /// The responder asked, or `supplied` for a response given with the list.
-    responder_url: String,
-    produced_at: Option<String>,
+    #[serde(flatten)]
+    verdict: Verdict,
 }
 
 /// Runs `ti pki tsl verify`.
@@ -304,161 +100,43 @@ pub fn verify(args: &TslVerifyArgs, global: &GlobalArgs, out: &Output) -> Result
     let previous = args
         .previous
         .as_deref()
-        .map(|path| {
-            let previous = crate::input::read(path)?;
-            Tsl::parse(&previous.bytes)
-                .map(|tsl| TslState::of(&tsl))
-                .map_err(|e| CliError::TrustLoad(format!("{}: {e}", previous.name)))
-        })
+        .map(crate::input::read)
         .transpose()?;
-    let now = args.at.unwrap_or_else(|| SystemClock.now());
-    let grace = Duration::from_hours(24 * u64::from(args.grace));
-    let config = match args.env.concrete() {
-        Some(env) => Ok(TrustConfig::preset(env)),
-        None => embedded_config_for(&signature.bytes),
-    }
-    .map(|config| TrustConfig {
-        // TSLSIG-054: how long past its NextUpdate the list stays usable.
-        tsl_grace_period: grace,
-        ..config
-    });
-    if let (Ok(config), Some(env)) = (&config, args.env.concrete()) {
-        config.validate(env.tier()).map_err(CliError::Trust)?;
-    }
-    let mut sequence = None;
-    let result = config.map_err(VerifyFailure::from).and_then(|config| {
-        // TSLDET-005: the detached signature over the bytes as read, before any parsing.
-        let mut verified = Tsl::parse_verified(&source.bytes, &signature.bytes, &config, now)?;
-        if previous.is_some() {
-            // TSLSIG-053: a list may not roll back behind the one given as previous.
-            sequence = Some(verified.check_sequence(previous.as_ref())?);
-        }
-        // TSLDET-020: a supplied status is verified like a queried one and replaces it.
-        if let Some(status) = &supplied_status {
-            verified.check_signer_status_supplied(&status.bytes, now, &config.algorithms)?;
-        }
-        // The status now says nothing about another time (TSLDET-023).
-        if supplied_status.is_none() && !args.offline && args.at.is_none() {
-            let transport = crate::http::transport(&global.net, out.verbosity())?;
-            let store = crate::file_cache::open_cache(global)?;
-            let checker = OcspChecker::new(&config, &transport, SystemClock).with_store(store);
-            block_on(verified.check_signer_status(&checker))?;
-        }
-        Ok(verified)
-    });
-    let result = match result {
-        Err(VerifyFailure::Cli(e)) => return Err(e),
-        Err(VerifyFailure::Tsl(e)) => Err(e),
-        Ok(verified) => Ok(verified),
+    let files = Files {
+        source: source.name,
+        list: &source.bytes,
+        signature: &signature.bytes,
+        signer_status: supplied_status.as_ref().map(|s| s.bytes.as_slice()),
+        previous: previous
+            .as_ref()
+            .map(|p| (p.bytes.as_slice(), p.name.as_str())),
     };
-    let mut report = verify_report(source.name, args.env, now, &result);
-    report.sequence = sequence.map(|s| match s {
-        Sequence::Same => "same",
-        _ => "newer",
-    });
+    let verdict = engine::verify(
+        &files,
+        args.env.concrete(),
+        args.at,
+        Duration::from_hours(24 * u64::from(args.grace)),
+        args.offline,
+        || {
+            let transport = crate::http::transport(&global.net, out.verbosity())?;
+            let store = crate::profile::open_cache(global)?;
+            Ok::<_, CliError>((transport, store))
+        },
+    )?;
+    let valid = verdict.result == "valid";
+    let report = VerifyReport {
+        schema: SCHEMA,
+        verdict,
+    };
     if out.is_json() {
         out.json(&report)?;
     } else {
-        out.render(&verify_document(&report))?;
+        out.render(&verify_document(&report.verdict))?;
     }
-    Ok(if result.is_ok() {
-        Exit::Ok
-    } else {
-        Exit::Invalid
-    })
+    Ok(if valid { Exit::Ok } else { Exit::Invalid })
 }
 
-/// What can stop `tsl verify`: a verdict on the list, or the tool itself.
-enum VerifyFailure {
-    Tsl(TslError),
-    Cli(CliError),
-}
-
-impl From<TslError> for VerifyFailure {
-    fn from(e: TslError) -> Self {
-        VerifyFailure::Tsl(e)
-    }
-}
-
-impl From<CliError> for VerifyFailure {
-    fn from(e: CliError) -> Self {
-        VerifyFailure::Cli(e)
-    }
-}
-
-fn verify_report(
-    source: String,
-    env: Environment,
-    now: Timestamp,
-    result: &Result<VerifiedTsl, TslError>,
-) -> VerifyReport {
-    let mut report = VerifyReport {
-        schema: SCHEMA,
-        source,
-        environment: env.concrete().map_or("auto", |e| e.as_str()),
-        at: now.to_string(),
-        result: "invalid",
-        tier: None,
-        code: None,
-        code_number: None,
-        rule: None,
-        detail: None,
-        sequence_number: None,
-        issued_at: None,
-        next_update: None,
-        anchor: None,
-        signer: None,
-        cas: None,
-        warnings: Vec::new(),
-        skipped: Vec::new(),
-        signer_status: None,
-        sequence: None,
-    };
-    match result {
-        Ok(verified) => {
-            report.result = "valid";
-            report.tier = Some(match verified.tier {
-                Tier::Prod => "prod",
-                Tier::NonProd => "nonprod",
-            });
-            report.sequence_number = Some(verified.tsl.sequence_number);
-            report.issued_at = Some(verified.tsl.issued_at.to_string());
-            report.next_update = verified.tsl.next_update.map(|t| t.to_string());
-            report.anchor = Some(CertSummary::new(&verified.anchor));
-            report.signer = Some(CertSummary::new(&verified.signer));
-            report.cas = Some(verified.tsl.intermediate_cas().len());
-            report.warnings = verified.warnings.iter().map(Finding::from).collect();
-            report.skipped = verified
-                .tsl
-                .skipped
-                .iter()
-                .map(|s| SkippedInfo {
-                    provider: s.provider.clone(),
-                    name: s.name.clone(),
-                    reason: s.reason.clone(),
-                })
-                .collect();
-            report.signer_status = verified.signer_status.as_ref().map(|r| SignerStatus {
-                status: r.status.as_str(),
-                responder_url: if r.responder_url.is_empty() {
-                    "supplied".to_owned()
-                } else {
-                    r.responder_url.clone()
-                },
-                produced_at: r.produced_at.map(|t| t.to_string()),
-            });
-        }
-        Err(e) => {
-            report.code = Some(e.code.as_str());
-            report.code_number = e.code.number();
-            report.rule = Some(e.rule);
-            report.detail = Some(e.detail.clone());
-        }
-    }
-    report
-}
-
-fn verify_document(report: &VerifyReport) -> Document {
+fn verify_document(report: &Verdict) -> Document {
     let mut doc = Document::default();
     let at = Timestamp::parse_rfc3339(&report.at).map_or_else(|| report.at.clone(), date);
     let Some(sequence) = report.sequence_number else {
@@ -535,85 +213,27 @@ fn verify_document(report: &VerifyReport) -> Document {
     doc
 }
 
-/// Whether `root` issued `ca`: its subject is the CA's issuer. The CA is among the kept
-/// ones, so a root of that name has verified its signature.
 /// Runs `ti pki tsl bundle`: the CAs `tsl show` keeps under the verified roots, with its
 /// filters; the rejected ones never.
 pub fn bundle(args: &TslBundleArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
     super::bundle::refuse_existing(&args.bundle)?;
-    let Loaded {
-        env,
-        session,
-        material,
-        verified,
-        matched,
-        ..
-    } = load(&args.trust, global, out)?;
-    let usable = |cert: &Certificate| {
-        !args.nist_only
-            || ti_pki::algorithms::supports_key(ti_pki::algorithms::NIST, &cert.public_key_alg_id())
-    };
-    let roots = material.store.roots();
+    let loaded = load(&args.trust, global, out)?;
+    let env = loaded.env;
     let issued = issued_certificates(args, global, out)?;
-    // A CA counts when it issued one of the certificates, or is one of them (a chain
-    // file, or a server that sends its CA).
-    let issuer_wanted = |ca: &Certificate| {
-        issued.is_empty()
-            || issued
-                .iter()
-                .any(|cert| cert.issuer() == ca.subject() || cert.der() == ca.der())
-    };
-    let mut certificates: Vec<Certificate> = matched
-        .intermediates
-        .iter()
-        // A bundle cannot carry the rule for revoked CAs (only what they issued before
-        // their StatusStartingTime counts), so they stay out.
-        .filter(|ca| ca.revoked_since.is_none())
-        .filter(|ca| {
-            args.filter.wants(ca)
-                && args
-                    .filter
-                    .wants_types(material.store.tsl_types_of(&ca.certificate))
-                && usable(&ca.certificate)
-                && issuer_wanted(&ca.certificate)
-                && roots
-                    .iter()
-                    .any(|root| issued_by(&ca.certificate, root) && args.filter.wants_root(root))
-        })
-        .map(|ca| ca.certificate.clone())
-        .collect();
-    for cert in &issued {
-        let known = certificates
-            .iter()
-            .any(|ca| cert.issuer() == ca.subject() || cert.der() == ca.der())
-            || roots.iter().any(|root| cert.issuer() == root.subject());
-        if !known {
-            crate::output::warning(format_args!(
-                "{}: its issuer is neither a selected TSL CA nor a root of {env}",
-                cert.subject_cn()
-            ));
-        }
+    let (found, unknown) = engine::bundle(
+        loaded,
+        &args.filter.filter(),
+        args.nist_only,
+        args.with_roots,
+        &issued,
+    );
+    for cert in unknown {
+        crate::output::warning(format_args!(
+            "{}: its issuer is neither a selected TSL CA nor a root of {env}",
+            cert.subject_cn()
+        ));
     }
-    if args.with_roots {
-        let mut chained: Vec<Certificate> = roots
-            .iter()
-            .filter(|root| usable(root) && certificates.iter().any(|ca| issued_by(ca, root)))
-            .cloned()
-            .collect();
-        chained.sort_by_key(|root| super::roots::generation(root.subject_cn()));
-        certificates.extend(chained);
-    }
-    super::bundle::write(
-        super::bundle::Found {
-            environment: env.as_str(),
-            certificates,
-            tsl_sequence_number: Some(verified.tsl.sequence_number),
-            trust: material.info,
-            insecure_transport: session.insecure,
-        },
-        &args.bundle,
-        out,
-    )
+    super::bundle::write(found, &args.bundle, out)
 }
 
 /// The certificates of `--connect` servers and `--cert` files, whose issuers select the
@@ -681,6 +301,8 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
     {
         return Err(CliError::OutputExists(path.display().to_string()));
     }
+    let loaded = load(&args.trust, global, out)?;
+    let sha256 = loaded.sha256();
     let Loaded {
         env,
         config,
@@ -689,7 +311,7 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
         detached,
         verified,
         ..
-    } = load(&args.trust, global, out)?;
+    } = loaded;
     // The list cannot be verified later without its signature (TSLDET-013).
     let mut signature_file = None;
     let mut signer_status_file = None;
@@ -720,10 +342,10 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
         sequence_number: list.sequence_number,
         issued_at: list.issued_at.to_string(),
         next_update: list.next_update.map(|t| t.to_string()),
-        sha256: hex(&Sha256::digest(&bytes)),
+        sha256,
         bytes: bytes.len(),
         url: config.tsl_url.to_string(),
-        source: source_name(&meta),
+        source: engine::source_name(&meta),
         fetched_at: meta.fetched_at.to_string(),
         output: args.output.as_ref().map(|p| p.display().to_string()),
         signature_file,
@@ -753,135 +375,26 @@ pub fn export(args: &TslExportArgs, global: &GlobalArgs, out: &Output) -> Result
     })
 }
 
-/// The verified TSL of an environment and what its verified roots make of it.
-struct Loaded {
-    env: ti_pki::Env,
-    config: TrustConfig,
-    session: Session,
-    material: crate::trust::Material,
-    /// The TSL as published, and verified.
-    bytes: Vec<u8>,
-    meta: Meta,
-    /// The files the list verified with.
-    detached: Option<Detached>,
-    verified: VerifiedTsl,
-    matched: tsl::Matched,
-    now: Timestamp,
-}
-
-/// The roots first: they decide which of the TSL's CAs count, and loading them refreshes
-/// the cached TSL too. The TSL is then read from its signed bytes once it verified.
+/// The verified TSL of the environment `trust` names ([`engine::load`]).
 fn load(trust: &TrustArgs, global: &GlobalArgs, out: &Output) -> Result<Loaded, CliError> {
     let env = super::concrete(trust.env, global)?;
-    let config = TrustConfig::preset(env);
-    config.validate(env.tier()).map_err(CliError::Trust)?;
-    let session = Session::new(global, trust.offline, out)?;
-    let material = session.load(&config, env.tier(), trust.at)?;
-    let now = trust.at.unwrap_or_else(|| SystemClock.now());
-    let VerifiedSet { set, verified } = session.verified_set(&config, &material, trust.at)?;
-    let matched = tsl::match_to_roots(
-        verified.tsl.intermediate_cas(),
-        &TrustStore::new(material.store.roots().iter().cloned()),
-        &config.algorithms,
-    );
-    Ok(Loaded {
-        env,
-        config,
-        session,
-        material,
-        meta: set.meta[1].clone(),
-        detached: set.detached,
-        bytes: set.tsl,
-        verified,
-        matched,
-        now,
-    })
+    let session = crate::trust::session(global, trust.offline, out)?;
+    Ok(engine::load(&session, env, trust.at)?)
 }
 
 impl CaFilterArgs {
-    /// Whether `ca` passes `--ca` and `--provider`.
-    fn wants(&self, ca: &Intermediate) -> bool {
-        contains(&self.ca, ca.certificate.subject_cn()) && contains(&self.provider, &ca.provider)
-    }
-
-    /// Whether a CA the TSL lets issue `types` passes `--issues`; one it states no types
-    /// for passes only without the filter.
-    fn wants_types(&self, types: Option<&[ObjectIdentifier]>) -> bool {
-        if self.issues.is_empty() {
-            return true;
+    /// The filter as ti-client takes it.
+    fn filter(&self) -> CaFilter {
+        CaFilter {
+            ca: self.ca.clone(),
+            provider: self.provider.clone(),
+            root: self.root.clone(),
+            issues: self.issues.clone(),
         }
-        let fold = ti_pki::cert_type::fold_name;
-        type_names(types).iter().any(|name| {
-            let name = fold(name);
-            self.issues.iter().any(|f| name.contains(&fold(f)))
-        })
-    }
-
-    /// Whether `root` passes `--root`.
-    fn wants_root(&self, root: &Certificate) -> bool {
-        contains(&self.root, root.subject_cn())
     }
 }
 
-/// The Tab_PKI_405 names of `types` (gemSpec_OID's certificate type table, `C.FD.TLS-S`),
-/// an OID the table does not name as its dotted string.
-fn type_names(types: Option<&[ObjectIdentifier]>) -> Vec<String> {
-    types
-        .unwrap_or_default()
-        .iter()
-        .map(|oid| {
-            ti_pki::oid::lookup(oid)
-                .map(|info| info.description)
-                .filter(|name| name.starts_with("C."))
-                .map_or_else(|| oid.to_string(), str::to_owned)
-        })
-        .collect()
-}
-
-/// Whether `text` contains any of `filters`, ignoring case; true without filters.
-fn contains(filters: &[String], text: &str) -> bool {
-    let text = text.to_lowercase();
-    filters.is_empty() || filters.iter().any(|f| text.contains(&f.to_lowercase()))
-}
-
-fn issued_by(ca: &Certificate, root: &Certificate) -> bool {
-    root.subject() == ca.issuer()
-}
-
-fn describe(
-    ca: &Intermediate,
-    rejection: Option<&'static str>,
-    now: Timestamp,
-    store: &TrustStore,
-) -> CaInfo {
-    let cert = &ca.certificate;
-    CaInfo {
-        issuable_types: type_names(store.tsl_types_of(cert)),
-        revoked_since: ca.revoked_since.map(|t| t.to_string()),
-        common_name: cert.subject_cn().to_owned(),
-        subject: cert.subject().to_string(),
-        issuer: cert.issuer().to_string(),
-        provider: ca.provider.clone(),
-        not_before: cert.not_before().to_string(),
-        not_after: cert.not_after().to_string(),
-        not_after_at: cert.not_after(),
-        validity: super::validity(cert, now),
-        policies: cert.policies().iter().map(OidInfo::new).collect(),
-        path_len: cert.basic_constraints().and_then(|b| b.path_len_constraint),
-        rejection,
-        sha256: hex(&Sha256::digest(cert.der())),
-        pem: pem(cert.der()),
-    }
-}
-
-fn source_name(meta: &Meta) -> &'static str {
-    match meta.source {
-        Source::Http => "http",
-        _ => "cache",
-    }
-}
-
-fn document(report: &Report, with_pem: bool) -> Document {
+fn document(report: &Overview, with_pem: bool) -> Document {
     let mut doc = Document::default();
     let mut head = Line::strong(format!("TSL #{}", report.sequence_number))
         .and_text(format!(" · {}", report.environment))

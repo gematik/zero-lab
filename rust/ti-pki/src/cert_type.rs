@@ -436,6 +436,16 @@ pub fn detect_certificate_type(cert: &Certificate) -> Option<CertificateType> {
         .or_else(|| from_admission(cert))
 }
 
+/// Whether `cert` is an authentication certificate by its key usage, as PROF-002 tells
+/// AUT from its siblings: digitalSignature set, contentCommitment (nonRepudiation, the mark
+/// of QES and OSIG) not set. An SMC-B's or HBA's identity signs with such a key.
+pub fn is_authentication(cert: &Certificate) -> bool {
+    cert.key_usage().is_some_and(|ku| {
+        let usages = ku.0;
+        usages.contains(KeyUsages::DigitalSignature) && !usages.contains(KeyUsages::NonRepudiation)
+    })
+}
+
 fn from_admission(cert: &Certificate) -> Option<CertificateType> {
     let admission = cert.admission().ok().flatten()?;
     let family = admission.profession_oids.iter().find_map(|role| {
@@ -616,6 +626,25 @@ mod tests {
             assert_eq!(detect_certificate_type(&cert), Some(t), "{name}");
             crate::checks::role_oid(t.spec().role_oids)(&cert).unwrap();
         }
+    }
+
+    #[cfg(feature = "brainpool")]
+    #[test]
+    fn prof_002_an_authentication_key_signs_without_content_commitment() {
+        use crate::testing::typed;
+        for (name, aut) in [
+            ("type-hci-aut", true),
+            ("type-hp-aut", true),
+            ("fallback-hci-aut-krankenhaus", true),
+            ("type-hci-osig", false),
+            ("type-hp-qes", false),
+            ("type-hci-enc", false),
+            ("type-hp-enc", false),
+        ] {
+            assert_eq!(is_authentication(&typed(name)), aut, "{name}");
+        }
+        let ca = crate::testing::TestPki::new().sub_ca_hba;
+        assert!(!is_authentication(&ca), "a CA signs certificates");
     }
 
     #[cfg(feature = "brainpool")]

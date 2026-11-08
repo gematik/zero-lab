@@ -33,7 +33,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the OS roots or those of `--cacert`/`--capath`, end-entity keys ECDSA P-256/P-384 or
   RSA ≥ 3000, no SHA-1, MD5 or SHA-224, serverAuth, at most 398 days of validity, and a
   revocation status by OCSP or CRL, or no connection. The TSL download points, the IDP-Dienst
-  and the FHIR-Directory pass it (`cargo test -p ti-tls --features ureq --test real_world --
+  and the FHIR-Directory pass it (`cargo test -p ti-client --test web_real_world --
   --ignored`). `-k` no longer reaches the IDP-Dienst and the FHIR-Directory, as documented: it
   skips the check for downloads only. `-v` names the profile.
 - `ti probe` verifies every https endpoint, where it checked none (TASK-228): ePA under the
@@ -158,6 +158,86 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
   longer turns the help of `ti` without arguments into an error.
 
+### ti-client
+
+#### added
+- New crate (decision-15, TASK-249): the native host the `ti` command-line tool and the desktop
+  app share, not published. `block_on` for the product clients' futures, `FileCache` (the
+  `CacheStore` of the profile's cache directory, as ti-cli kept it) and `files` (private,
+  atomically written files), all moved from ti-cli. It holds no protocol logic.
+- `connector`: ti-connector-client's `Transport` over ureq (`UreqTransport`), the TCP and TLS
+  probe of `config test` (`probe`, `check_config`, `TestOptions`) and `server_certificate`,
+  moved from ti-connector-client's `ureq` feature. TLS is ti-tls's `konnektor` profile, with the
+  operating system's verifier (rustls-platform-verifier) for an empty trust store.
+- `tls`: an agent per ti-tls profile (`agent`, the profile's rustls configuration in ureq's
+  connector chain) and the `web` profile's revocation sources over ureq (`UreqFetch`), moved
+  from ti-tls's `ureq` feature.
+- `net` and `http`: the curl-like settings (`Net`: `-k`, `--cacert`, `--capath`, the proxy as
+  curl picks it, timeouts, `--retry`, user agent) and the transports built from them, moved
+  from ti-cli: ti-pki's `load::Transport` with retries (`Http`), reporting each request to an
+  `Observer` the host passes instead of printing, and the IDP-Dienst's and FHIR-Directory's
+  transport (`UreqTransport`, from ti-idpd-client's `ureq` feature), which implements both
+  clients' traits.
+- `Client`: the transports made from one `Net` and observer (`downloads`, `idp`,
+  `connector`). It is Send and Sync and every method blocks.
+- The operations of `ti`'s pki commands (TASK-250), moved from ti-cli with typed inputs and
+  results, the results deriving `Serialize` in the shape of the commands' JSON:
+  `trust::Session` (roots.json and the TSL loaded, cached and verified, the TSL state that
+  rejects an older list, the embedded roots offline) over the profile's `Dirs`;
+  `pki::verify`, `pki::inspect`, `pki::signature`, `pki::tsl` (overview, CA filter, bundle
+  selection, a TSL file's verdict), `pki::roots`, `pki::bundle`, `pki::export` (the trust
+  bundle); `pkcs12` (re-encoding), `identity` (the SMC-B or HBA AUT identity from PKCS#12,
+  PEM or a card at the Konnektor, and its JWS), `idp_trust` (the IDP-Dienst's certificates
+  against the TSL), `input` (PEM, DER, PKCS#12), `peer` (a TLS server's chain) and
+  `text::span`. The TSL and key-usage rules they apply are ti-pki's (`Tsl::verify_file`,
+  `load::verify_read_back`, `load::AtTime`, `cert_type::is_authentication`).
+- `Error` covers what the operations report (certificates, PKCS#12 files, trust material, the
+  TSL rollback, state and cache files, identities, signatures); it moved from `net`, which
+  re-exports it. A session's warnings reach the front end through a closure, and what it
+  reads and keeps through the client's `Observer`.
+- The operations of `ti`'s connector commands (TASK-250), moved from ti-cli:
+  `connector::store` (the `.kon` files found, listed, selected and written as the Go `ti`
+  keeps them), `connector::Session` and `connect` (a Konnektor with its service directory
+  through the cache), `card_user` (one user ID per HBA, kept in a private file of the
+  profile's state), `connector::cards` (info, services, cards, certificates, status,
+  identities, expiration, a card described, PIN verification and change, the Konnektor's
+  verdict on a certificate), `connector::documents` (sign, verify a signature, encrypt,
+  decrypt, comfort signature, export) and `connector::setup` (a `.kon` file shown, judged,
+  refused and tested). They return ti-connector-client's `model`; a wait at the card
+  terminal reaches the front end as a closure called with a `Wait`, documents come and go
+  as bytes, and no PIN passes through. `pkcs12::keep_pair` keeps one pair of a file.
+  `Error` gains `ConnectorConfig`, `CardRestricted`, `PinType`, `Refused` and `Write`.
+- The operations of `ti idpd authenticate` and `ti directory login` (TASK-250), moved from
+  ti-cli: `idpd::authenticate` (the Authenticator-Modul flow with an identity, as a `Card`
+  that signs `BP256R1`), `directory::{card, search, regservice, client_credentials}`, and
+  `directory::owner`, the owner login that joins the directory's steps and the IDP-Dienst
+  flow, with `OwnerTokens`, the host's `ti_directory_client::tokens::Tokens` (renewed
+  before expiry and after a refusal). They return ti-idpd-client's and
+  ti-directory-client's `model`; the transport is the one `Client::idp` makes, or a test
+  double. `Error` gains `Idpd` and `Directory`.
+- `watch` (TASK-250): the client's `Watcher`, set with `Client::watched`, is called before
+  each request to the Konnektor, the IDP-Dienst and the FHIR-Directory and once its answer
+  is in, with the method, URL, SOAP operation, status, bodies and time; a Konnektor body
+  with its comfort user ID masked, never a credential. `Client::idp` and
+  `Client::connector` return their transports in `Watched`, so a front end shows the
+  requests without wrapping a transport, and `connector::setup::test` takes the `Client`.
+- `Identity::from_card` (TASK-250): the identity of a card at the Konnektor, found, its
+  card session's user and its ECC C.AUT read through the connector operations, in place of
+  `Identity::on_card`, which left these calls to the front end.
+- `probe` (TASK-250): `ti probe`'s checks, moved from ti-cli: the endpoints of each
+  environment (`endpoints`, the built-in list or the front end's), the agents per TLS
+  profile (`Agents`, the `ti` one over the environment's verified TSL with OCSP), the probes
+  run in parallel with progress through a closure (`run`), what an answer means per kind
+  and path (`Status`, `available`), and the `Report` in the shape of the JSON. The live
+  table stays the front end's. `Error` gains `ProbeEndpoints`.
+- `profile` and `pki::profiles` (TASK-250): the profiles' directories below their bases
+  (`Bases`, `validate_name`), listed with their sizes and deleted, a symlink removed rather
+  than followed; the validation profiles listed and described, with the CAs of a verified
+  TSL that may issue a profile's types. Which bases and profile are in effect stays the
+  front end's configuration.
+- `pki::tsl::Loaded::sha256` and `connector::store::remove_copy` (TASK-250): the digest
+  `tsl export` reports and the removal of an edited `.kon` copy, which ti-cli did itself.
+
 ### ti-tls
 
 #### added
@@ -166,6 +246,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   rustls-webpki paths, gematik's and the ZETA SDK's key, hash, name, validity and revocation
   rules) as rustls verifiers; `client_config` offers TLS 1.3/1.2, AES-GCM with ECDHE, P-256 and
   P-384 only. Verdicts are reused until their certificate, status or snapshot ends.
+- `konnektor`: the Konnektor's TLS as its `.kon` file configures it, moved from
+  ti-connector-client's ureq transport (decision-15, TASK-249). `konnektor::Trust` verifies
+  pins by equality, CA chains for `expectedHost` (or the URL's host), the operating system's
+  trust through a verifier the host supplies for an empty trust store, and any certificate
+  with `insecureSkipVerify`; `Trust::client_config` takes the client certificate and key the
+  host decoded. `konnektor::server_name` is `expectedHost`, else the URL's host.
+
+#### removed
+- The `ureq` feature and the module `ureq` (decision-15, TASK-249): `agent` and `UreqFetch`
+  are ti-client's (`ti_client::tls`). ti-tls holds no HTTP client.
 
 ### ti-jwks
 
@@ -177,7 +267,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   set at most once a minute. `https` only, redirects refused, 64 KiB and 100 keys at most.
   `http::Transport` for any client, a blocking one with the `ureq` feature.
 
-### ti-idpd
+### ti-idpd-client
+
+#### added
+- `model` (TASK-250): the read-only projections of a completed flow the front ends show,
+  `IdpInfo`, `CertificateInfo` (a certificate by subject and SHA-256 fingerprint) and
+  `ChallengeInfo`; the feature `serde` derives `Serialize` for them.
+
+#### removed
+- The `ureq` feature and `ureq::UreqTransport` (decision-15, TASK-249): the crate has no HTTP
+  client. ti-client's `http::UreqTransport` is the blocking transport, without
+  `UreqTransport::agent`; `ti_client::http::idp_agent` makes the agent, verified under ti-tls's
+  `web` profile.
 
 #### security
 - The discovery document's signer is checked before its key verifies the document
@@ -191,6 +292,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - A code redirect whose `code` is empty is malformed, as one without `code` is.
 
 #### changed
+- Renamed from `ti-idpd`: product clients are named `ti-<product>-client` (decision-15). The
+  package and crate are `ti-idpd-client` and `ti_idpd_client`, the fuzz recipe
+  `just fuzz-ti-idpd-client`.
 - `discovery::parse` takes the `Idp` asked and refuses a signed document that names another
   issuer.
 - `authenticator::authenticate` takes a `trust::CertificateTrust` and hands it the
@@ -204,16 +308,45 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `jwz::keys::AsyncSigner`, so a card at the Konnektor signs without blocking;
   `authenticator::authenticate` and `challenge::respond` are `async`. Every `Signer` is
   an `AsyncSigner`, and with one the future is ready at its first poll (TASK-60).
+- `http::Transport::send` is `async` without a `Send` bound, as the other TI crates'
+  transports, so a browser's fetch can carry the flow (decision-15, TASK-245).
+- `trust::CertificateTrust::check` is `async` without a `Send` bound: a check may need the
+  TSL or OCSP, and a browser host cannot block for them. `discovery::parse` is `async`, as it
+  asks the trust check; `authenticator::authenticate` takes the check as a generic `&C`
+  rather than `&dyn CertificateTrust` (decision-15).
+- Time is a function `impl Fn() -> Timestamp` (ti-types) in `authenticator::authenticate`,
+  `discovery::parse` and `challenge::parse`, no longer a `now: u64`: each token is judged
+  at the time read when it arrives, not at the start of a login that may wait for a PIN
+  (decision-15).
 
-### ti-directory
+### ti-directory-client
 
 #### changed
-- `owner::login` is `async`: it awaits the IDP-Dienst flow's asynchronous signer
-  (ti-idpd, TASK-60).
+- Renamed from `ti-directory`, as `ti-idpd-client` (decision-15): the package and crate are
+  `ti-directory-client` and `ti_directory_client`, the fuzz recipe
+  `just fuzz-ti-directory-client`.
+- No dependency on ti-idpd-client: no product client depends on another (decision-15).
+  The crate has its own `http` module (`Request`, `Response`, `Method`, `TransportError`,
+  and `Transport`, async without a `Send` bound); `Env` is ti-types', `Idp` is no longer
+  re-exported. `Directory::new` takes the IDP-Dienst's base URL, `Directory::idp_url`
+  replaces `Directory::idp`.
+- `owner::login` and `owner::Login` are gone: the host runs the IDP-Dienst flow between
+  `owner::authorization_url` and `owner::sign_in`, which takes the IDP's redirect URL in
+  place of ti-idpd-client's `CodeRedirect`. `Error::Idpd` is gone; `Error::Token` is a token the
+  host could not provide.
+- `exchange::login_bearer` and `exchange::login_client_credentials` are `async`, as
+  ti-idpd-client's transport is (TASK-245).
 
 #### added
+- `model` (TASK-250): the read-only projection of a login the front ends show, `Token` with
+  `DirectoryInfo`, and `Credential`; the feature `serde` derives `Serialize` for them.
+  `Token::for_search` names the Search API (`Directory::search_url`) and warns with
+  `Warning::SearchNotInAudience` when the token's `aud` does not.
+- `tokens::Tokens`, implemented by the host: the access token for the directory's API
+  and the report that the directory refused one (401). `tokens::send` sends a request with
+  it and, after a 401, once more with the next token (RFC 6750 §3.1).
 - New crate: the gematik FHIR-Directory's Auth-Service (gemSpec_VZD_FHIR_Directory
-  V1.7.0, I_VZD_Owner) as its clients see it, sans I/O over ti-idpd's HTTP types:
+  V1.7.0, I_VZD_Owner) as its clients see it, sans I/O:
   `Directory::for_env` (PU, RU, TU with the environment's IDP-Dienst and Keycloak),
   `Endpoint` (owner, holder, service, ti-provider with path and realm), `owner` (the card
   flow with its redirect guards), `keycloak`
@@ -252,26 +385,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (TSLSIG-023). The ECDSA check and the certificate are left to the caller; the
   `verify` example shows both.
 
-### ti-report
-
-#### added
-- `tsl_view` and `CheckContext::new` take the list's detached files; `SignatureView` loses
-  `signing_time` (TASK-166).
-- `check::CheckContext`: an environment's TSL and roots verified once, then any number of
-  certificates checked against them offline as `ti pki verify --profile auto` does
-  (`CheckReport`: verdict, profile, type, errors, warnings and the trust tree, end entity
-  first). Revocation is not checked.
-- New crate: the JSON reports on certificates and TSLs that the `ti` CLI and its
-  WebAssembly build share. `describe(cert, now)` gives a certificate as `ti pki inspect`
-  shows it (`CertificateInfo`, `OidInfo`); `tsl::Finding`, `tsl::CertSummary` and
-  `tsl::rejection_code` give the TSL findings as `ti pki tsl verify` and `tsl show` report
-  them. No I/O, no clock; builds for `wasm32-unknown-unknown`.
-- `tsl_view(xml, env, config, roots, now)`: a TSL verified for one environment as one
-  document for web views (`TslView`): signature verdict and warnings, list and scheme
-  metadata, the roots walked from the anchor with the CAs each signed, every service by
-  provider with its certificate types (`TypeOid`) and the chain of its certificate, and
-  every certificate named, keyed by `fingerprint` (lower-case SHA-256 hex).
-
 ### ti-wasm
 
 #### added
@@ -281,7 +394,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `TrustContext`: `new TrustContext(xml, env, now, roots_json?, grace)` verifies once,
   `check(der_or_pem, now)` returns `schemas/check.json`; for certificate checks in the
   browser. The smoke test cross-checks it with `ti pki verify --offline`.
-- New crate: `ti-report` for JavaScript through wasm-bindgen, server and browser alike.
+- New crate: the TSL view and certificate description for JavaScript through wasm-bindgen,
+  server and browser alike.
   `verify_tsl`, `describe_certificate`, `trust_urls` and `version` return JSON
   (`schemas/tsl-view.json`, `schemas/certificates.json`, typed in `js/types.d.ts`); the
   caller passes the bytes and the instant, the module has no network and no clock.
@@ -289,6 +403,32 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `ti pki tsl verify`) and `wasm-vendor`.
 
 ### ti-connector-client
+
+#### removed
+- The `ureq` feature and the module `ureq` (decision-15, TASK-249): the crate has no HTTP
+  client and no TLS library. `UreqTransport`, `server_certificate` and `probe` are
+  ti-client's (`ti_client::connector`), the verification of the `.kon` trust ti-tls's
+  (`ti_tls::konnektor`); `check_config` and `TestOptions` became `check::run` and
+  `check::Options` here, with ti-client's probe passed in.
+
+#### added
+- `model` (TASK-250): the Konnektor's cards, certificates, PIN states and outcomes, status,
+  identities, expiry dates, services, product, and its verdicts on certificates and
+  signatures, as the front ends show them; `Serialize` with the new feature `serde`.
+  `Severity` reads an error condition's severity by TAB_KON_503, one not known an error.
+- The Konnektor's rules the `ti` CLI applied itself: `PinType::choose` and `UnfitPin` (the
+  PIN a card has), `has_user_sessions` (an HBA's card session belongs to one user ID,
+  TAB_KON_510), `is_restricted` (SMC-KT, KVK and eGK on the SOAP API), `IDENTITY_CARDS`,
+  `Certificates::telematik_id` (from the ECC C.AUT), `SignatureFormat::for_document` and
+  `to_verify`, `media_type` (PDF/A for PAdES), `short_text` and `SHORT_TEXT_MAX` (the
+  schema's 30 characters), `edit::validate` (a file judged without its environment) and
+  `edit::pins` (the trust store's server certificates).
+- `check::run`: the configuration checks from the file to the cards, with the host's TCP
+  and TLS probe (or none, behind a proxy) and its transport; `check::host_port`.
+- `Credentials::client_identity`: the client certificate and key `pkcs12` credentials
+  present in the handshake.
+- `Request::redacted_body`: a request's body as it may be shown, the content of every
+  `UserId` element masked (TASK-250).
 
 #### changed
 - Base64 through `base64ct` in constant time, in the generated bindings (wsdl2openapi
@@ -372,6 +512,51 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 ### ti-pki
 
 #### added
+- `model::{ValidationProfile, TypeRequirements, TslCas, TslCa}` (TASK-250): a validation
+  profile as `ti pki profiles` shows it, what it requires of each type it accepts, and the
+  CAs of a verified TSL that may issue those types.
+- `Tsl::verify_file` (feature `brainpool`, TASK-250): a TSL file verified the way
+  `spec/tsl-detached` asks of a consumer, in one operation: the detached signature and the
+  signer, the sequence against a previous list (TSLSIG-053), a supplied signer status taking
+  the place of the query (TSLDET-020), and the query only at the current time (TSLDET-023),
+  through a checker the host opens when it is needed. `TslFile`, `FileVerdict`, `FileError`.
+- `load::AtTime`, `load::NoNetwork`, `load::read_back` and `load::verify_read_back` (the last
+  with `brainpool`, TASK-250): the loader of a validation at another time, which never loads
+  the published signer status (TSLDET-023); the set a load verified, read back from the
+  cache without the network under the load's age rules (TSLDET-015), and checked to be the
+  very list the load verified (TSLSIG-053, `ReadBackError`). Moved from the `ti` CLI.
+- `cert_type::is_authentication`: an AUT certificate by its key usage (PROF-002), as an SMC-B's
+  or HBA's identity needs it. Moved from the `ti` CLI.
+- `model` (TASK-248): the response model of ti-pki's use cases, plain types that only map,
+  with no I/O, no validation and no clock of their own, always compiled; `Serialize` with the
+  new `serde` feature. They are the JSON the `ti` CLI and its WebAssembly build publish, which
+  their schemas describe, and replace the ti-report crate:
+  - `Certificate::new(cert, now)`: a certificate as `ti pki inspect` shows it (`Key`,
+    `ProfileHint`, `Admission`, `Oid`, `TypeOid`); `validity(cert, now)`.
+  - `Finding`, `CertSummary` and `rejection_code`: the TSL findings as `ti pki tsl verify` and
+    `tsl show` report them.
+  - `Tsl::new(env, &offline::Tsl::verify(..), now)`: a TSL verified for one environment as
+    one document for web views: signature verdict and warnings, list and scheme metadata,
+    the roots walked from the anchor with the CAs each signed, every service by provider
+    with its certificate types and the chain of its certificate, and every certificate
+    named, keyed by its lower-case SHA-256 hex. A failed list yields the verdict only.
+  - `Check::new(&check, certs, &outcome, now)` and `TslState::new(material)`: an offline
+    check as one document: verdict, profile, type, errors, warnings and the trust tree, end
+    entity first; revocation is not checked.
+  - `SCHEMA`, the version of every document.
+- `offline::Tsl::verify` (features `load`, `brainpool`): a TSL verified for one environment
+  by its detached files, its CAs matched to the roots of a supplied roots.json if that walks
+  from the anchor, of the embedded one otherwise, and the chain of every service certificate
+  in accord towards a verified root (TASK-248).
+- `offline::Check` (feature `load`): an environment's TSL and roots.json verified once
+  without a network, a supplied roots.json used only if it walks from the anchor, then any
+  number of certificates validated against them with revocation disabled, under the profile
+  picked for the end entity or as a chain only. It returns Rust types: `Material` (the
+  roots' `RootsSource` and why supplied roots were not used, the verified TSL or why it was
+  rejected) and `Outcome` (`ProfileChoice` and the `ValidationResult`). Taken from
+  ti-report's `CheckContext` (TASK-247).
+- `Certificate::fingerprint_sha256` (upper-case hex pairs joined by `:`, as OpenSSL prints
+  them) and `Certificate::to_pem` (TASK-247).
 - `tls::ServerCheck`: a TLS server of the TI under the `ti` profile of `spec/pki-validation`
   (TUC_PKI_018 with Tab_PKI_273, C.FD.TLS-S and C.ZD.TLS-S, the host in the commonName or a
   `dNSName`, wildcards as RFC 9525 has them, OCSP stapled within the grace period or asked),
@@ -551,7 +736,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `STANDARD` (ECDSA P-256, P-384), `brainpool` module (brainpoolP256r1, brainpoolP384r1,
   default feature `brainpool`), `DEFAULT`, `find`. `TrustConfig::algorithms`, checked by
   `validate` against the anchor's key type. Wycheproof vectors for all four.
-- `load` feature: `Transport`, `CacheStore`, `Clock` and `Loader` traits; `HttpLoader`,
+- `load` feature: `Transport`, `CacheStore` and `Loader` traits; `HttpLoader`,
   `CachingLoader`, `StaticLoader` with CBOR `Bundle`, `FallbackLoader`, `FileTransport`
   (`os`); `Reloader` with `TrustStoreHandle`, `ReloadPolicy` (production `hard_expiry`
   capped at 24 h) and `ReloadStatus`. Verification of loaded material is stubbed until
@@ -654,9 +839,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Tsl` has new fields `id`, `skipped` and `scheme` (`SchemeInfo`: version, type, scheme
   and operator name, postal and electronic addresses, `PointersToOtherTSL` with
   `primary_location()` / `backup_location()`).
-- `Timestamp`, `Clock` and `SystemClock` come from `ti-types`, so every TI crate
-  shares them; the paths `ti_pki::{Timestamp, Clock}` and `ti_pki::load::SystemClock`
-  stay as re-exports.
+- `Timestamp` comes from `ti-types`, so every TI crate shares it; the paths
+  `ti_pki::Timestamp` and `ti_pki::load::Timestamp` stay as re-exports.
+- Time enters as a function `impl Fn() -> Timestamp`, no longer as a `Clock`
+  (decision-15): `HttpLoader`, `CachingLoader`, `Reloader`, `TrustStoreHandle` and
+  `OcspChecker` take one, a host passes `Timestamp::now`. `Clock` and `SystemClock` are
+  gone; `FixedClock` (`test-util`) is a settable time for tests, passed as
+  `|| clock.now()`.
 - The caching layer lives in `ti-store`, so other crates cache their own artefacts
   (e.g. a Konnektor's service directory) with the same store and policy.
   `load::{CacheStore, CacheEntry, CacheError, CachePolicy, MemoryCacheStore, Meta,
@@ -731,14 +920,18 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   keyed by string, with the origin passed per call (moved from ti-pki's
   `CachingLoader`). `CacheStore`, `CacheEntry`, `Meta`, `Source`, `CachePolicy`,
   `Conditional`, `OriginResponse`, `Cached`, `CacheLookupError`, `MemoryCacheStore`.
-- `Cache::clock`, so origins stamp `fetched_at` with the clock the cache ages by.
+- `Cache::now`, so origins stamp `fetched_at` with the time the cache ages by.
+- The cache reads the time through a function `impl Fn() -> Timestamp` it keeps as its
+  type parameter, no longer through a `Clock` (decision-15).
 
 ### ti-types
 
 #### added
-- `Env`, `Tier`, `EnvParseError`; `serde` and `clap` features.
-- `Timestamp` and `Clock` (moved from ti-pki), `SystemClock` behind `std` (not on
-  wasm32-unknown-unknown, where std has no clock and every call would panic).
+- `Env`, `Tier`, `EnvParseError`; `serde` feature, the crate's only dependency.
+- `Timestamp` (moved from ti-pki); `Timestamp::now`, the system clock, behind `std` (not
+  on wasm32-unknown-unknown, where std has no clock and every call would panic). Time
+  enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
+  `Timestamp::now` and tests a closure (decision-15).
 
 ## Release jwz 0.1.0, 2026-11-06
 

@@ -32,6 +32,8 @@ test-util = []
 load = ["dep:ti-cache"]
 # Operating-system facilities: file transport, system clock, bundle files.
 os = ["load", "ti-types/std"]
+# `Serialize` for the types of `model`, the JSON the front ends publish.
+serde = []
 
 [dependencies]
 ti-types.workspace = true

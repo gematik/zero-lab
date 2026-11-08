@@ -24,28 +24,28 @@
 //! `ti connector …`: the Konnektor's cards, certificates and PINs, with the Go `ti`'s
 //! commands and `.kon` files. Listings are tables, single records fields.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde::Serialize;
-use ti_connector_client::types::{
-    Card, CardType, CertRef, Crypt, PinResult, PinState, VerificationResult,
+use ti_client::connector::store;
+use ti_client::connector::{Prompt, Wait, cards as engine};
+use ti_connector_client::model::{
+    Card, CardDescription, CertificateCheck, Info, PinOutcome, PinStatus, Services, Severity,
+    Status,
 };
-use ti_connector_client::{BINDINGS, Error, PinType, Product};
-use ti_pki::load::SystemClock;
-use ti_pki::{Certificate, Clock, Timestamp};
+use ti_connector_client::types::{Crypt, VerificationResult};
+use ti_pki::{Certificate, Timestamp};
 
-use super::documents::card_user;
 use super::inspect;
-use crate::block::block_on;
 use crate::cli::{
     ConnectorArgs, ConnectorChange, ConnectorCli, ConnectorCommand, ConnectorConfig,
-    ConnectorDescribe, ConnectorGet, ConnectorVerify, CryptArg, GlobalArgs, PinArgs,
+    ConnectorDescribe, ConnectorGet, ConnectorVerify, GlobalArgs, PinArgs,
 };
 use crate::connector::{self, Session};
 use crate::error::{CliError, Exit};
 use crate::input;
 use crate::output::document::{date, when};
-use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting, pem};
+use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting};
 
 /// Runs `ti connector …`.
 pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
@@ -82,7 +82,7 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
         ConnectorCommand::Get(ConnectorGet::Status) => status(&open()?, out),
         ConnectorCommand::Get(ConnectorGet::Identities) => identities(&open()?, out),
         ConnectorCommand::Get(ConnectorGet::Expiration { card, crypt }) => {
-            expiration(&open()?, card.as_deref(), *crypt, out)
+            expiration(&open()?, card.as_deref(), (*crypt).into(), out)
         }
         ConnectorCommand::Describe(ConnectorDescribe::Card { card }) => {
             describe_card(&open()?, card, out)
@@ -90,7 +90,7 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
         ConnectorCommand::Describe(ConnectorDescribe::Certificate(args)) => {
             let session = open()?;
             let (what, certificate) =
-                card_certificate(&session, &args.card, args.cert_ref, args.crypt)?;
+                engine::card_certificate(&session, &args.card, args.cert_ref, args.crypt.into())?;
             inspect::show(what, vec![certificate], global, out)
         }
         ConnectorCommand::Verify(ConnectorVerify::Pin(args)) => {
@@ -133,7 +133,7 @@ pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit
             let (source, certificate) = match (card, cert_ref, file) {
                 (_, _, Some(file)) => from_file(file, p12_password)?,
                 (Some(card), Some(cert_ref), None) => {
-                    card_certificate(&session, card, *cert_ref, *crypt)?
+                    engine::card_certificate(&session, card, *cert_ref, (*crypt).into())?
                 }
                 _ => unreachable!("clap requires CARD REF or --file"),
             };
@@ -173,58 +173,25 @@ fn cell(value: Option<&str>) -> Line {
     Line::text(value.unwrap_or("-"))
 }
 
-/// Runs a Konnektor call.
-pub(super) fn call<T>(future: impl Future<Output = Result<T, Error>>) -> Result<T, CliError> {
-    block_on(future).map_err(CliError::Connector)
-}
-
-/// Runs a call about `card`; a refusal for a card type the Konnektor restricts on its
-/// SOAP API (SMC-KT, KVK, eGK) says so.
-pub(super) fn card_call<T>(
-    card: &Card,
-    future: impl Future<Output = Result<T, Error>>,
-) -> Result<T, CliError> {
-    block_on(future).map_err(|error| match (card.card_type, error) {
-        (CardType::SmcKt | CardType::Kvk | CardType::Egk, error @ Error::Fault(_)) => {
-            CliError::CardRestricted {
-                card_type: card.card_type.to_string(),
-                source: error,
+/// The line shown while a call waits at the card terminal, for `timeout`; dropping it
+/// ends it.
+pub(super) fn waiting(args: &ConnectorArgs) -> impl FnOnce(&Wait<'_>) -> Waiting + '_ {
+    |wait| {
+        let message = match wait.prompt {
+            Prompt::EnterPin(pin) => format!("Enter {pin} at the card terminal"),
+            Prompt::ChangePin(pin) => format!("Change {pin} at the card terminal"),
+            Prompt::SignWithPin => "Enter PIN.QES at the card terminal".to_owned(),
+            Prompt::Sign => "Signing with the card".to_owned(),
+            Prompt::Decrypt => "Decrypting with the card".to_owned(),
+            Prompt::ActivateComfort => {
+                "Enter PIN.QES at the card terminal to activate comfort signature".to_owned()
             }
-        }
-        (_, error) => CliError::Connector(error),
-    })
-}
-
-pub(super) fn find(session: &Session, card: &str) -> Result<Card, CliError> {
-    call(session.connector.cards().find(card))
-}
-
-/// `SMC-B 80276001011699910102`, or the handle for a card without ICCSN.
-pub(super) fn card_label(card: &Card) -> String {
-    let id = card.iccsn.as_deref().unwrap_or(&card.card_handle);
-    format!("{} {id}", card.card_type)
-}
-
-/// Certificate `cert_ref` of `crypt` from `card`, with a description of where it came
-/// from.
-pub(super) fn card_certificate(
-    session: &Session,
-    card: &str,
-    cert_ref: CertRef,
-    crypt: CryptArg,
-) -> Result<(String, Certificate), CliError> {
-    let card = find(session, card)?;
-    let crypt = Crypt::from(crypt);
-    let user = card_user(session, &card)?;
-    let certificates = session.connector.certificates().as_user(user.as_ref());
-    let read = card_call(
-        &card,
-        certificates.read(&card.card_handle, crypt, &[cert_ref]),
-    )?;
-    let what = format!("{cert_ref} {crypt} of {}", card_label(&card));
-    match read.into_iter().next() {
-        Some(c) => Ok((what, c.certificate)),
-        None => Err(CliError::NoCertificate { source_name: what }),
+        };
+        let detail = match wait.job_number {
+            Some(job) => format!("{} · job {job}", wait.card.label()),
+            None => wait.card.label(),
+        };
+        Waiting::start(&message, &detail, args.card_timeout)
     }
 }
 
@@ -239,64 +206,8 @@ pub(super) fn from_file(
 
 // ---- configurations ----------------------------------------------------------------
 
-#[derive(Serialize)]
-struct ConfigsReport {
-    /// The configuration commands use without -c.
-    selected: String,
-    configurations: Vec<ConfigInfo>,
-}
-
-#[derive(Serialize)]
-struct ConfigInfo {
-    name: String,
-    path: String,
-    url: Option<String>,
-    /// `mandant/workplace/client system`.
-    context: Option<String>,
-    /// Why the file cannot be used.
-    error: Option<String>,
-}
-
 fn configs(args: &ConnectorArgs, out: &Output) -> Result<Exit, CliError> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-    for dir in [Some(PathBuf::from(".")), connector::connectors_dir()]
-        .into_iter()
-        .flatten()
-    {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut found: Vec<PathBuf> = entries
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "kon"))
-            .collect();
-        found.sort();
-        paths.extend(found);
-    }
-    let configurations = paths
-        .into_iter()
-        .map(|path| {
-            let kon = connector::read(&path);
-            ConfigInfo {
-                name: path
-                    .file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                path: path.display().to_string(),
-                url: kon.as_ref().ok().map(|k| k.url.clone()),
-                context: kon
-                    .as_ref()
-                    .ok()
-                    .map(|k| format!("{}/{}/{}", k.mandant_id, k.workplace_id, k.client_system_id)),
-                error: kon.err().map(|e| e.to_string()),
-            }
-        })
-        .collect();
-    let report = ConfigsReport {
-        selected: connector::selected(args.connector_config.as_deref()).0,
-        configurations,
-    };
+    let report = store::list(args.connector_config.as_deref());
     emit(out, Exit::Ok, &report, |doc| {
         let rows = report.configurations.iter().map(|c| {
             // `*` first marks the configuration commands use without -c.
@@ -323,34 +234,8 @@ fn configs(args: &ConnectorArgs, out: &Output) -> Result<Exit, CliError> {
     })
 }
 
-#[derive(Serialize)]
-struct UseReport {
-    name: String,
-    path: String,
-}
-
 fn use_config(name: &str, out: &Output) -> Result<Exit, CliError> {
-    let path = connector::resolve(name)?;
-    connector::read(&path)?;
-    let file = connector::active_file().ok_or_else(|| {
-        CliError::ConnectorConfig("no home directory for the active selection".into())
-    })?;
-    let write = || -> std::io::Result<()> {
-        if let Some(dir) = file.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        std::fs::write(&file, format!("{name}\n"))
-    };
-    write().map_err(|e| {
-        CliError::Output(std::io::Error::new(
-            e.kind(),
-            format!("{}: {e}", file.display()),
-        ))
-    })?;
-    let report = UseReport {
-        name: name.to_owned(),
-        path: path.display().to_string(),
-    };
+    let report = store::select(name)?;
     emit(out, Exit::Ok, &report, |doc| {
         doc.field(
             "selected",
@@ -361,46 +246,20 @@ fn use_config(name: &str, out: &Output) -> Result<Exit, CliError> {
 
 // ---- get -----------------------------------------------------------------------------
 
-#[derive(Serialize)]
-struct InfoReport<'a> {
-    name: &'a str,
-    url: &'a str,
-    mandant_id: &'a str,
-    workplace_id: &'a str,
-    client_system_id: &'a str,
-    user_id: Option<&'a str>,
-    /// `basic`, `pkcs12` or `none`.
-    credentials: &'static str,
-    /// The TI environment the `.kon` file states.
-    environment: Option<String>,
-    product: &'a Product,
-}
-
 fn info(session: &Session, out: &Output) -> Result<Exit, CliError> {
-    let k = &session.dotkon;
-    let r = InfoReport {
-        name: &session.name,
-        url: &k.url,
-        mandant_id: &k.mandant_id,
-        workplace_id: &k.workplace_id,
-        client_system_id: &k.client_system_id,
-        user_id: k.user_id.as_deref(),
-        credentials: k.credentials.kind(),
-        environment: k.env.map(|e| e.to_string()),
-        product: &session.connector.directory().product,
-    };
+    let r: Info = engine::info(session);
     emit(out, Exit::Ok, &r, |doc| {
-        let p = r.product;
+        let p = &r.product;
         let context = format!("{}/{}/{}", r.mandant_id, r.workplace_id, r.client_system_id);
         doc.section("Connector");
-        doc.field("name", Line::strong(r.name));
-        doc.field("url", Line::code(r.url));
+        doc.field("name", Line::strong(&r.name));
+        doc.field("url", Line::code(&r.url));
         doc.field(
             "context",
             Line::text(context).and_dim(" · mandant/workplace/client system"),
         );
-        if let Some(user) = r.user_id {
-            doc.field("user", user);
+        if let Some(user) = &r.user_id {
+            doc.field("user", user.as_str());
         }
         doc.field("credentials", r.credentials);
         if let Some(env) = &r.environment {
@@ -424,54 +283,8 @@ fn info(session: &Session, out: &Output) -> Result<Exit, CliError> {
     })
 }
 
-#[derive(Serialize)]
-struct ServicesReport<'a> {
-    product: &'a Product,
-    services: Vec<ServiceInfo<'a>>,
-}
-
-#[derive(Serialize)]
-struct ServiceInfo<'a> {
-    name: &'a str,
-    versions: Vec<VersionInfo<'a>>,
-}
-
-#[derive(Serialize)]
-struct VersionInfo<'a> {
-    version: &'a str,
-    endpoint: Option<&'a str>,
-    /// This tool calls this version.
-    used: bool,
-}
-
 fn services(session: &Session, out: &Output) -> Result<Exit, CliError> {
-    let directory = session.connector.directory();
-    let used: Vec<_> = BINDINGS
-        .iter()
-        .flat_map(|(service, versions)| versions.iter().map(move |v| (*service, *v)))
-        .filter_map(|(service, v)| directory.resolve(service, &[v]).ok())
-        .collect();
-    let report = ServicesReport {
-        product: &directory.product,
-        services: directory
-            .services
-            .iter()
-            .map(|s| ServiceInfo {
-                name: &s.name,
-                versions: s
-                    .versions
-                    .iter()
-                    .map(|v| VersionInfo {
-                        version: &v.version,
-                        endpoint: v.endpoint_tls.as_deref().or(v.endpoint.as_deref()),
-                        used: used
-                            .iter()
-                            .any(|b| b.service == s.name && b.version == v.version),
-                    })
-                    .collect(),
-            })
-            .collect(),
-    };
+    let report: Services = engine::services(session);
     emit(out, Exit::Ok, &report, |doc| {
         let rows = report.services.iter().flat_map(|s| {
             s.versions.iter().map(|v| {
@@ -481,56 +294,15 @@ fn services(session: &Session, out: &Output) -> Result<Exit, CliError> {
                     Line::text("")
                 };
                 vec![
-                    Line::strong(s.name),
-                    Line::code(v.version),
+                    Line::strong(&s.name),
+                    Line::code(&v.version),
                     used,
-                    cell(v.endpoint),
+                    cell(v.endpoint.as_deref()),
                 ]
             })
         });
         doc.table(&["SERVICE", "VERSION", "", "ENDPOINT"], rows.collect());
     })
-}
-
-#[derive(Serialize)]
-pub(super) struct CardInfo {
-    handle: String,
-    card_type: &'static str,
-    iccsn: Option<String>,
-    /// The card terminal's `CtId`.
-    terminal: String,
-    slot: i64,
-    holder: Option<String>,
-    kvnr: Option<String>,
-    inserted: String,
-    certificate_expiration: Option<String>,
-    /// `major.minor.revision` of the card's software.
-    cos_version: Option<String>,
-    object_system_version: Option<String>,
-}
-
-impl From<&Card> for CardInfo {
-    fn from(c: &Card) -> Self {
-        let v = |v: &ti_connector_client::types::VersionInfoType| {
-            format!("{}.{}.{}", v.major, v.minor, v.revision)
-        };
-        CardInfo {
-            handle: c.card_handle.clone(),
-            card_type: c.card_type.as_str(),
-            iccsn: c.iccsn.clone(),
-            terminal: c.ct_id.clone(),
-            slot: c.slot_id,
-            holder: c.card_holder_name.clone(),
-            kvnr: c.kvnr.clone(),
-            inserted: c.insert_time.clone(),
-            certificate_expiration: c.certificate_expiration_date.clone(),
-            cos_version: c.card_version.as_ref().map(|cv| v(&cv.cos_version)),
-            object_system_version: c
-                .card_version
-                .as_ref()
-                .map(|cv| v(&cv.object_system_version)),
-        }
-    }
 }
 
 /// Identifiers longer than this are shortened in tables; JSON and `-v` keep them whole.
@@ -550,7 +322,7 @@ fn shorten(value: &str, full: bool) -> String {
 }
 
 /// The table of `cards`; `full` keeps long identifiers whole.
-fn card_table(doc: &mut Document, cards: &[&CardInfo], full: bool) {
+fn card_table(doc: &mut Document, cards: &[&Card], full: bool) {
     let rows = cards.iter().map(|c| {
         vec![
             Line::code(shorten(&c.handle, full)),
@@ -566,13 +338,12 @@ fn card_table(doc: &mut Document, cards: &[&CardInfo], full: bool) {
 
 #[derive(Serialize)]
 struct CardsReport {
-    cards: Vec<CardInfo>,
+    cards: Vec<Card>,
 }
 
 fn cards(session: &Session, out: &Output) -> Result<Exit, CliError> {
-    let cards = call(session.connector.cards().list(&[]))?;
     let report = CardsReport {
-        cards: cards.iter().map(CardInfo::from).collect(),
+        cards: engine::cards(session)?,
     };
     emit(out, Exit::Ok, &report, |doc| {
         card_table(
@@ -586,68 +357,15 @@ fn cards(session: &Session, out: &Output) -> Result<Exit, CliError> {
     })
 }
 
-#[derive(Serialize)]
-struct CertificatesReport {
-    card: CardInfo,
-    certificates: Vec<CertificateInfo>,
-}
-
-#[derive(Serialize)]
-struct CertificateInfo {
-    cert_ref: &'static str,
-    crypt: &'static str,
-    subject: String,
-    telematik_id: Option<String>,
-    profession: Vec<String>,
-    not_before: String,
-    not_after: String,
-    #[serde(skip)]
-    not_after_at: Timestamp,
-    /// `valid`, `expired` or `not_yet_valid`, now.
-    validity: &'static str,
-    key: String,
-    pem: String,
-}
-
 fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, CliError> {
-    let card = find(session, card)?;
-    let user = card_user(session, &card)?;
-    let certificates = session.connector.certificates().as_user(user.as_ref());
-    let read = card_call(
-        &card,
-        certificates.read_all(&card.card_handle, card.card_type),
-    )?;
-    let now = SystemClock.now();
-    let report = CertificatesReport {
-        card: CardInfo::from(&card),
-        certificates: read
-            .iter()
-            .map(|c| CertificateInfo {
-                cert_ref: c.cert_ref.as_str(),
-                crypt: c.crypt.as_str(),
-                subject: c.certificate.subject_cn().to_owned(),
-                telematik_id: c.telematik_id().map(str::to_owned),
-                profession: c
-                    .admission
-                    .iter()
-                    .flat_map(|a| a.profession_items.clone())
-                    .collect(),
-                not_before: c.certificate.not_before().to_string(),
-                not_after: c.certificate.not_after().to_string(),
-                not_after_at: c.certificate.not_after(),
-                validity: super::validity(&c.certificate, now),
-                key: inspect::key_algorithm(&c.certificate, now),
-                pem: pem(c.certificate.der()),
-            })
-            .collect(),
-    };
+    let report = engine::certificates(session, card)?;
     emit(out, Exit::Ok, &report, |doc| {
         doc.section("Card");
         card_table(doc, &[&report.card], out.verbosity() > 0);
         // A card's certificates usually name one holder: said once above the table, a
         // column only where they differ.
         let certs = &report.certificates;
-        let shared = |value: fn(&CertificateInfo) -> Option<&str>| {
+        let shared = |value: fn(&ti_connector_client::model::Certificate) -> Option<&str>| {
             let first = value(certs.first()?);
             certs.iter().all(|c| value(c) == first).then_some(first)
         };
@@ -687,60 +405,8 @@ fn certificates(session: &Session, card: &str, out: &Output) -> Result<Exit, Cli
     })
 }
 
-#[derive(Serialize)]
-struct StatusReport {
-    vpn_ti: Option<VpnInfo>,
-    vpn_sis: Option<VpnInfo>,
-    errors: Vec<ErrorStateInfo>,
-}
-
-#[derive(Serialize)]
-struct VpnInfo {
-    status: String,
-    since: String,
-}
-
-#[derive(Serialize)]
-struct ErrorStateInfo {
-    condition: String,
-    severity: String,
-    #[serde(rename = "type")]
-    kind: String,
-    active: bool,
-    since: String,
-}
-
 fn status(session: &Session, out: &Output) -> Result<Exit, CliError> {
-    let state = call(session.connector.status())?.connector;
-    let vpn = |status: &str, since: &str| VpnInfo {
-        status: status.to_owned(),
-        since: since.to_owned(),
-    };
-    let report = StatusReport {
-        vpn_ti: state.as_ref().map(|s| {
-            vpn(
-                &s.vpn_ti_status.connection_status,
-                &s.vpn_ti_status.timestamp,
-            )
-        }),
-        vpn_sis: state.as_ref().map(|s| {
-            vpn(
-                &s.vpn_sis_status.connection_status,
-                &s.vpn_sis_status.timestamp,
-            )
-        }),
-        errors: state
-            .into_iter()
-            .flat_map(|s| s.operating_state.error_state)
-            .map(|e| ErrorStateInfo {
-                condition: e.error_condition,
-                severity: e.severity,
-                kind: e.r#type,
-                active: e.value,
-                since: e.valid_from,
-            })
-            .collect(),
-    };
+    let report: Status = engine::status(session)?;
     emit(out, Exit::Ok, &report, |doc| {
         doc.section("Konnektor");
         for (label, vpn) in [("VPN TI", &report.vpn_ti), ("VPN SIS", &report.vpn_sis)] {
@@ -773,66 +439,25 @@ fn status(session: &Session, out: &Output) -> Result<Exit, CliError> {
     })
 }
 
-/// An active condition, colored by its severity (gemSpec_Kon TAB_KON_503). A severity
-/// that is not known stays red: a manufacturer chooses its own for its own conditions.
+/// An active condition, colored by its severity (gemSpec_Kon TAB_KON_503): a severity
+/// that is not known stays red.
 fn condition_line(condition: &str, severity: &str) -> Line {
-    if severity.eq_ignore_ascii_case("info") {
-        Line::text(condition)
-    } else if severity.eq_ignore_ascii_case("warning") {
-        Line::status(Tone::Warn, condition)
-    } else {
-        Line::status(Tone::Bad, condition)
+    match Severity::of(severity) {
+        Severity::Info => Line::text(condition),
+        Severity::Warning => Line::status(Tone::Warn, condition),
+        Severity::Error => Line::status(Tone::Bad, condition),
     }
 }
 
 #[derive(Serialize)]
 struct IdentitiesReport {
-    identities: Vec<IdentityInfo>,
-}
-
-#[derive(Serialize)]
-struct IdentityInfo {
-    telematik_id: Option<String>,
-    card_type: &'static str,
-    holder: Option<String>,
-    iccsn: Option<String>,
-    handle: String,
-}
-
-/// The Telematik-ID in `card`'s ECC C.AUT; `None` for a card without one or whose C.AUT
-/// cannot be read, which is still shown, without an ID.
-fn telematik_id(session: &Session, card: &Card) -> Option<String> {
-    let user = card_user(session, card).ok()?;
-    block_on(
-        session
-            .connector
-            .certificates()
-            .as_user(user.as_ref())
-            .read(&card.card_handle, Crypt::Ecc, &[CertRef::CAut]),
-    )
-    .ok()?
-    .iter()
-    .find_map(|c| c.telematik_id().map(str::to_owned))
+    identities: Vec<ti_connector_client::model::Identity>,
 }
 
 fn identities(session: &Session, out: &Output) -> Result<Exit, CliError> {
-    let cards = call(
-        session
-            .connector
-            .cards()
-            .list(&[CardType::Hba, CardType::SmcB]),
-    )?;
-    let identities = cards
-        .iter()
-        .map(|card| IdentityInfo {
-            telematik_id: telematik_id(session, card),
-            card_type: card.card_type.as_str(),
-            holder: card.card_holder_name.clone(),
-            iccsn: card.iccsn.clone(),
-            handle: card.card_handle.clone(),
-        })
-        .collect();
-    let report = IdentitiesReport { identities };
+    let report = IdentitiesReport {
+        identities: engine::identities(session)?,
+    };
     emit(out, Exit::Ok, &report, |doc| {
         let rows = report.identities.iter().map(|i| {
             vec![
@@ -852,50 +477,17 @@ fn identities(session: &Session, out: &Output) -> Result<Exit, CliError> {
 
 #[derive(Serialize)]
 struct ExpirationReport {
-    certificates: Vec<ExpirationInfo>,
-}
-
-#[derive(Serialize)]
-struct ExpirationInfo {
-    terminal: String,
-    handle: String,
-    iccsn: String,
-    subject: String,
-    serial: String,
-    /// The expiry date as the Konnektor states it.
-    validity: String,
+    certificates: Vec<ti_connector_client::model::Expiration>,
 }
 
 fn expiration(
     session: &Session,
     card: Option<&str>,
-    crypt: CryptArg,
+    crypt: Crypt,
     out: &Output,
 ) -> Result<Exit, CliError> {
-    let card = card.map(|card| find(session, card)).transpose()?;
-    let handle = card.as_ref().map(|c| c.card_handle.as_str());
-    let user = match &card {
-        Some(card) => card_user(session, card)?,
-        None => None,
-    };
-    let certificates = session.connector.certificates().as_user(user.as_ref());
-    let future = certificates.expiration(handle, crypt.into());
-    let expiry = match &card {
-        Some(card) => card_call(card, future)?,
-        None => call(future)?,
-    };
     let report = ExpirationReport {
-        certificates: expiry
-            .into_iter()
-            .map(|e| ExpirationInfo {
-                terminal: e.ct_id,
-                handle: e.card_handle,
-                iccsn: e.iccsn,
-                subject: e.subject_common_name,
-                serial: e.serial_number,
-                validity: e.validity,
-            })
-            .collect(),
+        certificates: engine::expiration(session, card, crypt)?,
     };
     emit(out, Exit::Ok, &report, |doc| {
         let rows = report.certificates.iter().map(|e| {
@@ -916,54 +508,9 @@ fn expiration(
 
 // ---- describe ------------------------------------------------------------------------
 
-#[derive(Serialize)]
-struct CardReport {
-    card: CardInfo,
-    /// From the card's C.AUT, for an HBA or SMC-B.
-    telematik_id: Option<String>,
-    /// The card type's user PINs: whether one must be entered before signing.
-    pins: Vec<PinInfo>,
-}
-
-#[derive(Serialize)]
-struct PinInfo {
-    /// `PIN.SMC`, `PIN.CH` or `PIN.QES`.
-    pin: &'static str,
-    /// The Konnektor's `PinStatus`: `VERIFIED`, `VERIFIABLE`, `TRANSPORT_PIN`,
-    /// `EMPTY_PIN`, `BLOCKED` or `DISABLED`; null when the query failed.
-    status: Option<&'static str>,
-    left_tries: Option<i64>,
-    /// Why the status could not be read.
-    error: Option<String>,
-}
-
-/// The status of each of `card`'s user PINs. A failed query is reported per PIN, so the
-/// rest of the description still shows.
-fn pin_infos(session: &Session, card: &Card) -> Result<Vec<PinInfo>, CliError> {
-    let user = card_user(session, card)?;
-    let pins = session.connector.pins().as_user(user.as_ref());
-    Ok(PinType::for_card(card.card_type)
-        .iter()
-        .map(|pin| match call(pins.status(&card.card_handle, *pin)) {
-            Ok(s) => PinInfo {
-                pin: pin.as_str(),
-                status: s.pin_status.map(PinState::as_str),
-                left_tries: s.left_tries,
-                error: None,
-            },
-            Err(e) => PinInfo {
-                pin: pin.as_str(),
-                status: None,
-                left_tries: None,
-                error: Some(e.to_string()),
-            },
-        })
-        .collect())
-}
-
 /// `verified`, or `PIN entry needed · 3 tries left` and the like, by what it means for
 /// the next signature.
-fn pin_line(p: &PinInfo) -> Line {
+fn pin_line(p: &PinStatus) -> Line {
     let tries = |line: Line| match p.left_tries {
         Some(n) => line.and_dim(format!(
             " · {n} {} left",
@@ -1005,13 +552,7 @@ fn xsd_date(value: &str) -> &str {
 }
 
 fn describe_card(session: &Session, card: &str, out: &Output) -> Result<Exit, CliError> {
-    let found = find(session, card)?;
-    let holder = matches!(found.card_type, CardType::Hba | CardType::SmcB);
-    let report = CardReport {
-        card: CardInfo::from(&found),
-        telematik_id: holder.then(|| telematik_id(session, &found)).flatten(),
-        pins: pin_infos(session, &found)?,
-    };
+    let report: CardDescription = engine::describe(session, card)?;
     emit(out, Exit::Ok, &report, |doc| {
         let c = &report.card;
         doc.section("Card");
@@ -1047,15 +588,6 @@ fn describe_card(session: &Session, card: &str, out: &Output) -> Result<Exit, Cl
 
 // ---- verify and change ---------------------------------------------------------------
 
-#[derive(Serialize)]
-struct PinReport {
-    card: CardInfo,
-    pin: &'static str,
-    /// `OK`, `REJECTED`, `WASBLOCKED`, `NOWBLOCKED`, `TRANSPORT_PIN` or `ERROR`.
-    result: &'static str,
-    left_tries: Option<i64>,
-}
-
 fn pin(
     session: &Session,
     args: &ConnectorArgs,
@@ -1063,43 +595,8 @@ fn pin(
     change: bool,
     out: &Output,
 ) -> Result<Exit, CliError> {
-    let card = find(session, &pin.card)?;
-    let allowed = PinType::for_card(card.card_type);
-    let pin_type = match (pin.pin, allowed) {
-        (Some(p), _) if allowed.is_empty() || allowed.contains(&p) => p,
-        (None, [only]) => *only,
-        (named, _) => {
-            let known: Vec<String> = allowed.iter().map(ToString::to_string).collect();
-            let has = match known.as_slice() {
-                [] => "no known PIN".to_owned(),
-                known => known.join(", "),
-            };
-            let problem = named.map_or_else(|| "name one".to_owned(), |p| format!("not {p}"));
-            return Err(CliError::PinType(format!(
-                "{} has {has}; {problem}",
-                card.card_type
-            )));
-        }
-    };
-    let verb = if change { "Change" } else { "Enter" };
-    let message = format!("{verb} {pin_type} at the card terminal");
-    let waiting = Waiting::start(&message, &card_label(&card), args.card_timeout);
-    let user = card_user(session, &card)?;
-    let pins = session.connector.pins().as_user(user.as_ref());
-    let response = if change {
-        card_call(&card, pins.change(&card.card_handle, pin_type))
-    } else {
-        card_call(&card, pins.verify(&card.card_handle, pin_type))
-    };
-    drop(waiting);
-    let response = response?;
-    let accepted = response.pin_result == PinResult::Ok;
-    let report = PinReport {
-        card: CardInfo::from(&card),
-        pin: pin_type.as_str(),
-        result: response.pin_result.as_str(),
-        left_tries: response.left_tries,
-    };
+    let report: PinOutcome = engine::pin(session, &pin.card, pin.pin, change, waiting(args))?;
+    let accepted = report.accepted();
     let exit = if accepted { Exit::Ok } else { Exit::Invalid };
     emit(out, exit, &report, |doc| {
         let tone = if accepted { Tone::Good } else { Tone::Bad };
@@ -1116,20 +613,15 @@ fn pin(
             result,
         );
         doc.field("PIN", report.pin);
-        doc.field("card", card_label(&card));
+        doc.field("card", report.card.label());
     })
 }
 
 #[derive(Serialize)]
-struct VerifyReport {
-    source: String,
-    subject: String,
-    /// `VALID`, `INCONCLUSIVE` or `INVALID`.
-    result: &'static str,
-    /// The profession OIDs the Konnektor read from the certificate.
-    roles: Vec<String>,
-    /// The Konnektor's reason for a result other than `VALID`.
-    errors: Vec<String>,
+struct VerifyReport<'a> {
+    source: &'a str,
+    #[serde(flatten)]
+    check: &'a CertificateCheck,
 }
 
 fn verify_certificate(
@@ -1139,48 +631,35 @@ fn verify_certificate(
     at: Option<Timestamp>,
     out: &Output,
 ) -> Result<Exit, CliError> {
-    let verdict = call(
-        session
-            .connector
-            .certificates()
-            .verify(certificate.der(), at),
-    )?;
-    let status = verdict.verification_status;
-    let result = status.verification_result;
+    let check = engine::verify_certificate(session, certificate, at)?;
     let report = VerifyReport {
-        source: source.to_owned(),
-        subject: certificate.subject_cn().to_owned(),
-        result: result.as_str(),
-        roles: verdict.role_list.role,
-        errors: status
-            .error
-            .into_iter()
-            .flat_map(|e| e.trace)
-            .map(|t| format!("{} {}", t.code, t.error_text))
-            .collect(),
+        source,
+        check: &check,
     };
-    let exit = if result == VerificationResult::Valid {
+    let exit = if check.valid() {
         Exit::Ok
     } else {
         Exit::Invalid
     };
     emit(out, exit, &report, |doc| {
-        let tone = match result {
-            VerificationResult::Valid => Tone::Good,
-            VerificationResult::Inconclusive => Tone::Warn,
-            VerificationResult::Invalid => Tone::Bad,
+        let tone = if check.valid() {
+            Tone::Good
+        } else if check.result == VerificationResult::Inconclusive.as_str() {
+            Tone::Warn
+        } else {
+            Tone::Bad
         };
         let what = " · the Konnektor's check: path and OCSP";
-        doc.field("result", Line::status(tone, report.result).and_dim(what));
-        let source = format!(" · {}", report.source);
-        doc.field("certificate", Line::strong(&report.subject).and_dim(source));
+        doc.field("result", Line::status(tone, check.result).and_dim(what));
+        let source = format!(" · {source}");
+        doc.field("certificate", Line::strong(&check.subject).and_dim(source));
         if let Some(at) = at {
             doc.field("at", date(at));
         }
-        doc.items("roles", report.roles.iter().map(Line::code));
+        doc.items("roles", check.roles.iter().map(Line::code));
         doc.items(
             "errors",
-            report.errors.iter().map(|e| Line::status(Tone::Bad, e)),
+            check.errors.iter().map(|e| Line::status(Tone::Bad, e)),
         );
     })
 }

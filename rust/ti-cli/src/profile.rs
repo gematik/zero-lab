@@ -26,10 +26,25 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use ti_client::FileCache;
+pub use ti_client::profile::Bases;
+
 use crate::cli::GlobalArgs;
 use crate::error::CliError;
-use crate::files::is_plain_name;
 use crate::paths;
+
+/// The cache of the profile in effect.
+///
+/// # Errors
+///
+/// A profile that does not resolve, or a cache directory that cannot be created.
+pub fn open_cache(global: &GlobalArgs) -> Result<FileCache, CliError> {
+    let profile = Profile::resolve(global)?;
+    FileCache::open(profile.cache_dir.clone()).map_err(|e| CliError::Cache {
+        path: profile.cache_dir.display().to_string(),
+        reason: e.to_string(),
+    })
+}
 
 const GROUP: &str = "telematik";
 const TOOL: &str = "ti";
@@ -43,14 +58,6 @@ pub struct Profile {
     pub cache_dir: PathBuf,
 }
 
-/// The directories the profiles live below; a named profile's are `profiles/NAME` in
-/// each.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Bases {
-    pub state: PathBuf,
-    pub cache: PathBuf,
-}
-
 struct Inputs<'a> {
     profile: Option<&'a str>,
     state_dir: Option<PathBuf>,
@@ -58,6 +65,14 @@ struct Inputs<'a> {
 }
 
 impl Profile {
+    /// The directories as ti-client takes them.
+    pub fn dirs(&self) -> ti_client::Dirs {
+        ti_client::Dirs {
+            state: self.state_dir.clone(),
+            cache: self.cache_dir.clone(),
+        }
+    }
+
     /// `--profile`, else `TI_PROFILE`; `TI_STATE_DIR` and `--cache-dir` (`TI_CACHE_DIR`)
     /// override the bases.
     ///
@@ -137,15 +152,11 @@ fn resolve_from(
     if let Some(name) = at.profile {
         validate_name(name)?;
     }
-    let bases = bases_from(at.state_dir, at.cache_dir, state_home, cache_home)?;
-    let below = |base: PathBuf| match at.profile {
-        Some(name) => base.join("profiles").join(name),
-        None => base,
-    };
+    let dirs = bases_from(at.state_dir, at.cache_dir, state_home, cache_home)?.dirs(at.profile);
     Ok(Profile {
         name: at.profile.map(str::to_owned),
-        state_dir: below(bases.state),
-        cache_dir: below(bases.cache),
+        state_dir: dirs.state,
+        cache_dir: dirs.cache,
     })
 }
 
@@ -165,20 +176,14 @@ fn base(
 }
 
 /// A profile name is a single path component the tool can use as it is; no name is
-/// reserved.
+/// reserved ([`ti_client::profile::validate_name`]).
 ///
 /// # Errors
 ///
 /// `arguments_invalid` unless the name is 1 to 64 characters of `A-Z a-z 0-9 . _ -` and
 /// does not start with a dot.
 pub fn validate_name(name: &str) -> Result<(), CliError> {
-    if is_plain_name(name) {
-        Ok(())
-    } else {
-        Err(CliError::Arguments(format!(
-            "profile name {name:?} must be 1 to 64 characters of A-Z a-z 0-9 . _ - and not start with a dot"
-        )))
-    }
+    Ok(ti_client::profile::validate_name(name)?)
 }
 
 #[cfg(test)]
