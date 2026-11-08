@@ -17,13 +17,13 @@
 
 [scores."jwz"]
 version = "0.1.0"
-commit = "27ac1870e33d5c3510a991d140bb40dc76b0a116"
-date = "2026-11-06"
-caught = 565
-missed = 34
-timeout = 45
-unviable = 519
-score = 0.9472
+commit = "3a6f9f8d5bfb5c2d977ed30e0c5933ee4853deb0"
+date = "2026-11-08"
+caught = 621
+missed = 33
+timeout = 32
+unviable = 549
+score = 0.9519
 
 [scores."ti-pkcs12"]
 version = "0.1.0"
