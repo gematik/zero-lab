@@ -54,6 +54,7 @@ pub mod http;
 pub mod keycloak;
 pub mod model;
 pub mod owner;
+pub mod probe;
 pub(crate) mod request;
 pub mod token;
 pub mod tokens;

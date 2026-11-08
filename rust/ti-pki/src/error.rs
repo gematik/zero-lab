@@ -84,7 +84,8 @@ pub enum ErrorCode {
     /// reports its stricter variant as a custom exception, without an SE code.
     UnrecognizedCriticalExtension,
     /// Warning only: the OCSP responder is not authorized under RFC 6960, but was
-    /// accepted as a delegate of another CA of the same TSP. `ti-pki`'s own code.
+    /// accepted because the verified TSL lists it as an OCSP service (TUC_PKI_006 step 5).
+    /// `ti-pki`'s own code.
     OcspResponderNotRfc6960,
     /// The fully qualified domain name in the end entity's commonName is not the one
     /// expected (A_30046 (5) of C_12791). `ti-pki`'s own code.
@@ -135,10 +136,11 @@ pub enum ErrorCode {
     /// Warning only: OCSP reports the certificate revoked, but its `revocationTime` lies
     /// after the reference time, so it was valid then (TUC_PKI_006 variant 8a).
     RevokedAfterReferenceTime,
-    /// Warning only: a CA of the chain has expired, but was valid when it issued the
-    /// certificate below it, which the Kompromissmodell for nonQES certificates of HBA
-    /// and SMC-B accepts (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271).
-    IssuedBeforeCaExpiry,
+    /// Warning only: a CA of the chain has expired while the certificate below it is
+    /// still valid, which the Kompromissmodell for nonQES certificates of HBA and SMC-B
+    /// accepts, as the CA was valid when it issued it (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI
+    /// Tab_PKI_271).
+    CaExpired,
 }
 
 impl ErrorCode {
@@ -168,7 +170,7 @@ impl ErrorCode {
         ErrorCode::CaNotInTsl,
         ErrorCode::IssuedBeforeCaRevocation,
         ErrorCode::RevokedAfterReferenceTime,
-        ErrorCode::IssuedBeforeCaExpiry,
+        ErrorCode::CaExpired,
     ];
 
     /// The stable string form, as used in logs and by the Go implementation.
@@ -198,7 +200,7 @@ impl ErrorCode {
             ErrorCode::CaNotInTsl => "ca_not_in_tsl",
             ErrorCode::IssuedBeforeCaRevocation => "issued_before_ca_revocation",
             ErrorCode::RevokedAfterReferenceTime => "revoked_after_reference_time",
-            ErrorCode::IssuedBeforeCaExpiry => "issued_before_ca_expiry",
+            ErrorCode::CaExpired => "ca_expired",
         }
     }
 }
@@ -340,7 +342,7 @@ mod tests {
             ErrorCode::CaNotInTsl => 21,
             ErrorCode::IssuedBeforeCaRevocation => 22,
             ErrorCode::RevokedAfterReferenceTime => 23,
-            ErrorCode::IssuedBeforeCaExpiry => 24,
+            ErrorCode::CaExpired => 24,
         };
         assert_eq!(ErrorCode::ALL.len(), 25);
         for (i, code) in ErrorCode::ALL.iter().enumerate() {

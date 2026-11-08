@@ -35,11 +35,11 @@
 use core::fmt;
 use std::io::{Read as _, Write as _};
 use std::sync::Arc;
-use std::time::Duration;
 
 use rustls::client::danger::ServerCertVerifier;
 use rustls::{ClientConfig, ClientConnection, StreamOwned};
 use rustls_pki_types::{CertificateDer, PrivateKeyDer, ServerName};
+use ti_cache::CacheControl;
 use ti_connector_client::{Dotkon, Error, Method, Request, Response, Transport, TransportError};
 use ti_tls::konnektor::{self, Trust};
 use ureq::Agent;
@@ -182,7 +182,9 @@ impl Transport for UreqTransport {
             body,
             etag,
             last_modified,
-            max_age: cache_control.as_deref().and_then(max_age),
+            max_age: cache_control
+                .as_deref()
+                .and_then(|value| CacheControl::parse(value).freshness()),
         })
     }
 }
@@ -199,14 +201,6 @@ fn failed(error: &dyn std::error::Error, timed_out: bool) -> TransportError {
         source = cause.source();
     }
     TransportError { message, timed_out }
-}
-
-fn max_age(cache_control: &str) -> Option<Duration> {
-    cache_control
-        .split(',')
-        .find_map(|d| d.trim().strip_prefix("max-age="))
-        .and_then(|secs| secs.parse().ok())
-        .map(Duration::from_secs)
 }
 
 /// The TLS client config of `dotkon`: [`ti_tls::konnektor`]'s trust, its verifier passed

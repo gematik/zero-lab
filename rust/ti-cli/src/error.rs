@@ -428,8 +428,17 @@ impl From<ti_client::Error> for CliError {
             }
             ti_client::Error::Trust(error) => CliError::Trust(error),
             ti_client::Error::TrustLoad(message) => CliError::TrustLoad(message),
+            ti_client::Error::TslUncached(message) => {
+                CliError::TrustLoad(format!("{message}; run once without --offline"))
+            }
             ti_client::Error::TslRollback(message) => CliError::TslRollback(message),
             ti_client::Error::ServerUnreachable(message) => CliError::ServerUnreachable(message),
+            ti_client::Error::ProxyUnsupported { server, protocol } => CliError::ServerUnreachable(
+                format!("{server}: --connect goes through HTTP proxies only, not {protocol}"),
+            ),
+            ti_client::Error::ComfortUserIdInvalid => {
+                CliError::ConnectorConfig("--comfort-user-id is not a UUID".into())
+            }
             ti_client::Error::Cache { path, reason } => CliError::Cache { path, reason },
             ti_client::Error::State { path, reason } => CliError::State { path, reason },
             ti_client::Error::IdentityNotFound(message) => CliError::IdentityNotFound(message),
@@ -458,6 +467,40 @@ impl From<serde_json::Error> for CliError {
 mod tests {
     use super::*;
     use ti_connector_client::{Error, Fault, TraceEntry};
+
+    /// ti-client reports why without naming a flag; the CLI words it with its own flags,
+    /// as its output always did.
+    #[test]
+    fn client_reasons_are_worded_with_the_cli_flags() {
+        let cases = [
+            (
+                ti_client::Error::TslUncached("offline and no TSL cached".into()),
+                ti_client::Error::TrustLoad(
+                    "offline and no TSL cached; run once without --offline".into(),
+                ),
+            ),
+            (
+                ti_client::Error::ProxyUnsupported {
+                    server: "host:443".into(),
+                    protocol: "Socks5".into(),
+                },
+                ti_client::Error::ServerUnreachable(
+                    "host:443: --connect goes through HTTP proxies only, not Socks5".into(),
+                ),
+            ),
+            (
+                ti_client::Error::ComfortUserIdInvalid,
+                ti_client::Error::ConnectorConfig("--comfort-user-id is not a UUID".into()),
+            ),
+        ];
+        for (reason, worded) in cases {
+            let (reason, worded) = (CliError::from(reason), CliError::from(worded));
+            assert_eq!(
+                (reason.kind(), reason.to_string()),
+                (worded.kind(), worded.to_string())
+            );
+        }
+    }
 
     /// The hint of a fault whose trace carries `codes`, outermost first.
     fn hint(codes: &[i64]) -> &'static str {

@@ -67,6 +67,7 @@ pub mod discovery;
 mod error;
 pub mod http;
 pub mod model;
+pub mod probe;
 mod query;
 pub mod trust;
 

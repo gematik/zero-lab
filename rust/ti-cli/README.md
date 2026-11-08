@@ -139,7 +139,8 @@ listed.
 
 `ti pki verify` builds the chain to the TI roots through the CAs of the TSL and
 validates it: RFC 5280 path, gemSpec_Krypt key, the requirements of the profile
-(`--validation-profile auto|none|<name>`), and OCSP for the end entity and every CA below the root.
+(`--validation-profile auto|none|<name>`), and OCSP for the end entity; a CA's standing
+is its status in the verified TSL (gemSpec_PKI TUC_PKI_018 steps 5 and 7).
 The environment comes from `--env` (`TI_ENV`) or, with `auto`, from the certificates:
 production only on evidence from the production roots, otherwise ref. `--at` validates
 at another time. OCSP still answers for now, and its status is judged at that time
@@ -149,9 +150,9 @@ at another time. OCSP still answers for now, and its status is judged at that ti
 roots.json and the TSL are downloaded from the environment's URLs and verified by
 `ti-pki` against the embedded anchor; a CA from the TSL counts only if a verified root
 signed it. Where they came from does not matter, so the cache is as untrusted as the
-network. The revocation line reports the outcome over the chain (`not revoked`,
-`revoked`, `unknown`, `incomplete`, `failed`); `revocation_mode` in JSON names the
-policy. `--ocsp-responder URL` sends every OCSP request of the chain to one responder,
+network. The revocation line reports the end entity's outcome (`not revoked`,
+`revoked`, `unknown`, `failed`); `revocation_mode` in JSON names the
+policy. `--ocsp-responder URL` sends the OCSP request to one responder,
 e.g. a relay where the TI responders are not reachable, and `--ocsp-max-age DURATION`
 (`500ms`, `30s`, `5m`, `1h`) accepts responses older than the default 37.5 s, for
 responders that answer from a cache; the TSL signer's check keeps the defaults.

@@ -191,7 +191,8 @@ pub struct ChainEntry {
     pub common_name: String,
     /// Its `notAfter`, RFC 3339.
     pub not_after: String,
-    /// What OCSP said; absent when not asked (offline, the root, or not reached).
+    /// What OCSP said; only the end entity's responder is asked, so absent for the CAs,
+    /// and offline or when not reached.
     pub revocation: Option<RevocationEntry>,
     /// The certificate.
     pub pem: String,
@@ -208,8 +209,7 @@ pub struct RevocationEntry {
     pub responder_url: String,
     /// Common name of the response's signer.
     pub responder: String,
-    /// `issuer`, `delegate`, `tsl_listed` or `same_tsp_delegate`; absent without a verified
-    /// response.
+    /// `issuer`, `delegate` or `tsl_listed`; absent without a verified response.
     pub authorization: Option<&'static str>,
     /// The response's `producedAt`.
     pub produced_at: Option<String>,
@@ -442,10 +442,7 @@ fn validator(
                 warnings.push(Finding {
                     code: code.into(),
                     subject: ee.subject_cn().to_owned(),
-                    message: format!(
-                        "{}; checked the chain only, pass --validation-profile",
-                        selection.detail
-                    ),
+                    message: format!("{}; checked the chain only", selection.detail),
                 });
                 return (
                     Validator::new(config, store),
@@ -493,7 +490,6 @@ fn revocation_entry(r: &RevocationResult) -> RevocationEntry {
             ResponderAuthorization::Issuer => "issuer",
             ResponderAuthorization::Delegate => "delegate",
             ResponderAuthorization::TslListed { .. } => "tsl_listed",
-            ResponderAuthorization::SameTspDelegate { .. } => "same_tsp_delegate",
             _ => "other",
         }),
         produced_at: r.produced_at.map(|t| t.to_string()),

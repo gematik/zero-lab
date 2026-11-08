@@ -668,7 +668,9 @@ mod tests {
     use futures_lite::future::{block_on, yield_now, zip};
 
     use super::*;
-    use crate::load::{Conditional, Detached, Fetched, FixedClock, Meta, Verified};
+    #[cfg(any(feature = "dangerous-nonprod", feature = "brainpool"))]
+    use crate::load::Detached;
+    use crate::load::{Conditional, Fetched, FixedClock, Meta, Verified};
 
     const HOUR: Duration = Duration::from_hours(1);
     const T0: Timestamp = Timestamp(1_000_000);

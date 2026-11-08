@@ -167,8 +167,8 @@ names the trigger for removing it.
 | ti releases carry unsigned `SHA256SUMS` | signing was deferred; the checksums catch broken downloads and Homebrew pins them in the formula, but a replaced release could replace them too | a release key exists: sign `SHA256SUMS` in `just release` and verify it in `publish-brew` |
 | RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
 | The TSL signer CA does not change at run time: `spec/tsl-xmldsig` part E (TSLSIG-061 – 068: an anchor announced in the TSL becoming active at its `StatusStartingTime`, and the fallback through roots.json) is not implemented. `TrustConfig::tsl_signer_anchors` is a list; a `TSLServiceCertChange` the TSL announces is reported as the warning `tsl_anchor_announced` (shown by ti), and a release adds the CA to `anchors::TSL_SIGNER_CAS_*` | gematik changes the TSL signer CA rarely (GEM.TSL-CA3 runs until 2028-05-25) and announces it weeks ahead; adding it to the list in a release is simple and auditable, while part E needs persisted announcements re-verified on load, a roots.json path with its own profile, age and OCSP checks, and signed test TSLs | an installation must follow an anchor change without a release |
-| The TSL admits no CA on its own; of its per-CA metadata only the certificate types and the revocation time decide | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it. From a CA's entry, ti-pki uses the certificate types it may issue (TUC_PKI_007: `cert_type_ca_not_authorized`, also when the entry lists none), which makes a CA one for components, SMC-B, eGK or HBA, and a revocation with its `StatusStartingTime` (Tab_PKI_271: `ca_revoked_in_tsl`, `issued_before_ca_revocation`); provider names and the other metadata decide nothing. A CA's standing is otherwise checked by OCSP at its root; for OCSP responders see the next row | the TSL becomes a trust source of its own, admitting CAs no walked root signed |
-| OCSP responders beyond RFC 6960 must be certified by a CA of the issuing CA's TSP that a root signed, not only listed in the TSL: id-kp-OCSPSigning, valid now, signature verified under that TSL CA. Listed by the verified TSL under that TSP they are authorized (`tsl_listed`); not listed, they are accepted with an `ocsp_responder_not_rfc6960` warning | the TSL ties a responder to CAs only by the TSP it is listed under (its supply point and extension are placeholders), and TI TSPs sign for their CAs with delegates of other CAs (ehca: a GEM.KOMP-CA51 delegate answers for GEM.SMCB-CA51 and GEM.SMCB-CA9). Requiring the certification by a CA of the same TSP keeps a listed responder from answering for another TSP's CAs. The D-Trust responders under GEM.OCSP-CA1/3 stay rejected (their CA is not in the TSL) | gematik aligns responder issuance with RFC 6960 (then the fallback without listing goes) |
+| The TSL admits no CA on its own; of its per-CA metadata only the status, the certificate types and the OCSP services decide | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it. From a CA's entry, ti-pki uses its status as the CA's standing (TUC_PKI_018 step 5: in accord, or revoked with its `StatusStartingTime`, Tab_PKI_271: `ca_revoked_in_tsl`, `issued_before_ca_revocation`; VALID-008: no responder is asked about a CA) and the certificate types it may issue (TUC_PKI_007: `cert_type_ca_not_authorized`, also when the entry lists none), which makes a CA one for components, SMC-B, eGK or HBA; provider names and the other metadata decide nothing. For OCSP responders see the next row | the TSL becomes a trust source of its own, admitting CAs no walked root signed |
+| OCSP responders beyond RFC 6960 are authorized by their TSL listing alone, with the warning `ocsp_responder_not_rfc6960`; a listed responder must still carry id-kp-OCSPSigning and be valid now | gemSpec_PKI looks a responder certificate up among the TSL's OCSP services and nowhere else (TUC_PKI_006 step 5); the TSL binds a service to no CA (its supply point and extension are placeholders), and RFC 6960 option 2 is a duty of the TSPs for new responder certificates (A_23142-01). TI TSPs sign for their CAs with delegates of other CAs (ehca: a GEM.KOMP-CA51 delegate answers for GEM.SMCB-CA51), so the listing is accepted, but the deviation stays visible as a warning. Requiring validity now of a listed responder, although the TSL's status covers the signers of expired HBA/SMC-B CAs, is the maintainer's decision (TASK-270) | gematik aligns responder issuance with RFC 6960 (then the warning never shows) |
 | OCSP CertIDs use SHA-1 (`sha1` crate) | TI responders reject SHA-256 CertIDs as malformed (RFC 5019 profile). SHA-1 only names the certificate there; integrity rests on the response signature and the SHA-256 certHash | TI responders accept SHA-256 CertIDs |
 | `ureq`'s `unversioned` transport API in ti-client (the Konnektor's transport and the profiles' agent), `ureq` pinned `~3.4` | `TlsConfig` takes no certificate verifier, and a Konnektor needs Go's: `.kon` pins accepted by equality, CA chains checked for `expectedHost`, which is also the SNI (ti-tls's `konnektor` profile), as the `ti` and `web` profiles need theirs. A 60-line connector in ureq's chain does the TLS with that rustls config | ureq accepts a custom verifier or rustls config |
 | `webpki-root-certs` licence CDLA-Permissive-2.0 allowed for that crate only | a permissive data licence for Mozilla's root certificates, which `rustls-platform-verifier` bundles for platforms without a usable OS store; only ti-client (and through it ti-cli) depends on it | never, unless the licence policy changes |
@@ -217,15 +217,16 @@ responder, a certHash over the certificate and within the TUC_PKI_006 window (37
 HardFail and SoftFail, with a revocation judged at the reference time (TUC_PKI_006 8a
 and 8b). The test PKI script produces fixed-time responses (good, revoked,
 unknown and the failure cases) signed by OpenSSL, and `tests/fixtures` holds two live
-answers of the reference root responder. The `ocsp` example checks every link of a
-chain live, the end entity at its CA and each CA at its root.
+answers of the reference root responder. `tests/real_world.rs` checks a reference SMC-B
+live, by its own responder.
 
 ## Validation and profiles
 
 `Validator` is the entry point: built from a `TrustConfig` and a `TrustStore`, it
 validates an end entity through chain building, path validation, the gemSpec_Krypt key
-check and OCSP for the end entity and every CA below the root (the TSL is not
-authenticated, so a CA's standing comes from OCSP at its root). A profile
+check and OCSP for the end entity alone (TUC_PKI_018 step 7). A CA's standing is its
+status in the verified TSL (step 5, VALID-008): in accord, or revoked after the end entity
+was issued; under the Kompromissmodell this covers HBA and SMC-B CAs expired since. A profile
 (`ti_pki::profile`) fills in a use case's end-entity requirements on top of the type
 baseline; automatic selection matches a profile's role before the type's default and
 reports ambiguity instead of guessing. A profile's revocation mode can tighten the
@@ -274,7 +275,7 @@ real reference SMC-B chain, every CA of the production TSL fixture, and the OCSP
 fixtures. It skips when `openssl` or its brainpool curves are missing. `just real-world`
 runs the ignored tests in `tests/real_world.rs` against gematik's endpoints: roots.json
 and TSL of every environment through `HttpLoader` and `Reloader`, a reference SMC-B end
-to end with OCSP, and a production SubCA at its root responder. The deliberate
+to end with OCSP for the end entity. The deliberate
 differences to gematik's reference implementation are in
 [gemlibpki-comparison.md](gemlibpki-comparison.md).
 
@@ -287,7 +288,7 @@ is released, every suite listed for it runs green and the release PR records the
 
 | Suite | Run with | Needs | Proves | Required for |
 |---|---|---|---|---|
-| `ti-pki` real world (`tests/real_world.rs`, `#[ignore]`) | `just real-world` | network, `curl` | roots.json and TSL of every environment through `HttpLoader` and `Reloader`, a reference SMC-B end to end with OCSP, a production SubCA at its root responder | `ti-pki`, `ti-cli` |
+| `ti-pki` real world (`tests/real_world.rs`, `#[ignore]`) | `just real-world` | network, `curl` | roots.json and TSL of every environment through `HttpLoader` and `Reloader`, a reference SMC-B end to end with OCSP for the end entity, its responder listed in the TSL | `ti-pki`, `ti-cli` |
 | `ti-pki` OpenSSL parity (`tests/openssl_cross.rs`) | `just test` | `openssl` with brainpool curves | the same verdict as `openssl verify` / `openssl ocsp` on the same bytes | `ti-pki` |
 | Konnektor end to end (`ti-connector-client/tests/e2e.rs`) | `just konnektor-e2e`, `just konnektor-e2e-interactive` (PIN entry, HITL) | `TI_TEST_KON_PATH` (a `.kon`), optional `TI_TEST_PDFA_PATH` (interactive), `TI_TEST_KON_RECORD_DIR` (records the run for `tests/recorded.rs`) | the facades against a real Konnektor and card | `ti-connector-client`, `ti-cli` |
 | `probe` through the TI VPN (`ti-cli/tests/probe.rs`, `#[ignore]`, HITL) | `TI_TEST_PROBE_ENV=ref TI_TEST_PROBE_VPN=on cargo test -p ti-cli --test probe -- --ignored --exact hitl_the_ti_vpn_block_answers_exactly_with_the_vpn --nocapture`, then with `TI_TEST_PROBE_VPN=off` | a Konnektor or TI-Gateway with its TI VPN; network | the TI-VPN block of `probe` answers exactly when the VPN is up, the internet block either way | `ti-cli` |

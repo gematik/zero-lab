@@ -102,22 +102,12 @@ pub enum ResponderAuthorization {
     Issuer,
     /// A delegate the issuing CA certified with id-kp-OCSPSigning (RFC 6960 §4.2.2.2).
     Delegate,
-    /// A responder a verified TSL lists as an OCSP service under the issuing CA's TSP,
-    /// certified by a CA of that TSP that a root signed: how gemSpec_PKI authorizes the
-    /// responders TI TSPs run for several of their CAs.
+    /// Not RFC 6960 conform: a responder the verified TSL lists as an OCSP service, which
+    /// is how gemSpec_PKI authorizes a responder (TUC_PKI_006 step 5); the
+    /// [`Validator`](crate::Validator) reports it as the warning
+    /// [`ErrorCode::OcspResponderNotRfc6960`].
     TslListed {
-        /// Common name of the CA that certified the responder.
-        ca: String,
-        /// The TSP the TSL lists the responder and both CAs under.
-        tsp: String,
-    },
-    /// Not RFC 6960 conform: a delegate certified by another CA of the issuing CA's
-    /// TSP, accepted without a TSL listing; the delegate's CA must be a TSL CA a root
-    /// signed.
-    SameTspDelegate {
-        /// Common name of the CA that certified the delegate.
-        ca: String,
-        /// The TSP both CAs are listed under.
+        /// The TSP the TSL lists the responder under.
         tsp: String,
     },
 }
@@ -195,8 +185,8 @@ impl RevocationResult {
 )]
 pub trait RevocationChecker {
     /// The status of `cert`, which `issuer` issued. `store` is the trust store the
-    /// chain was built against; a checker may use its intermediates, e.g. to authorize
-    /// an OCSP responder.
+    /// chain was built against; a checker may use the OCSP responders its verified TSL
+    /// lists to authorize one (TUC_PKI_006 step 5).
     async fn check(
         &self,
         cert: &Certificate,

@@ -110,9 +110,13 @@ impl TrustStore {
     }
 
     /// The OCSP responders a verified TSL lists. Only the loader sets them, from a TSL
-    /// whose signature and signer verified.
+    /// whose signature and signer verified: a listing authorizes a responder (OCSP-001).
     #[must_use]
-    #[cfg(any(feature = "load", all(test, feature = "brainpool")))]
+    #[cfg(any(
+        feature = "load",
+        feature = "test-util",
+        all(test, feature = "brainpool")
+    ))]
     pub(crate) fn with_listed_responders(mut self, responders: Vec<(Certificate, String)>) -> Self {
         self.listed_responders = responders;
         self
@@ -145,6 +149,15 @@ impl TrustStore {
         self.with_ca_types(types)
     }
 
+    /// The OCSP responders a verified TSL would list, with their TSP, for tests in
+    /// downstream crates that stand in for one; the loader sets them from a verified TSL
+    /// otherwise.
+    #[must_use]
+    #[cfg(feature = "test-util")]
+    pub fn with_listed_responders_for_tests(self, responders: Vec<(Certificate, String)>) -> Self {
+        self.with_listed_responders(responders)
+    }
+
     /// The certificate types (Tab_PKI_405 OIDs) the verified TSL lets `ca` issue
     /// (TUC_PKI_007): `None` without a verified TSL, or if it does not list `ca` or states
     /// no types for it.
@@ -162,7 +175,8 @@ impl TrustStore {
     }
 
     /// The TSPs under which a verified TSL lists `responder` as an OCSP service; the
-    /// certificates must be identical.
+    /// certificates must be identical. Listed under any TSP, it may answer for any CA
+    /// (TUC_PKI_006 step 5).
     pub fn listed_responder_tsps<'a>(
         &'a self,
         responder: &'a Certificate,

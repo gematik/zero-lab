@@ -31,9 +31,10 @@
 //! ([`Tsl::intermediate_cas`]), and a candidate is only kept if a root in the
 //! [`TrustStore`] signed it ([`match_to_roots`], BUNDLE-003).
 //!
-//! The TSL's per-CA metadata is not used for trust decisions: a SubCA's standing is
-//! checked by OCSP at its root's responder, and a certificate's type by its policies
-//! rather than by the types the TSL lists per CA.
+//! Of a verified TSL, the [`Validator`](crate::Validator) relies on a CA's status (in
+//! accord, or revoked since a time: its standing, VALID-003, VALID-006, VALID-008), the
+//! certificate types it lists per CA (VALID-007) and its OCSP services, which authorize a
+//! responder (OCSP-001); provider names and the rest decide nothing.
 
 use core::fmt;
 
@@ -308,10 +309,8 @@ impl Tsl {
 
 /// A CA the TSL lists, with the trust service provider (TSP) it is listed under.
 ///
-/// The provider groups the CAs of one TSP; OCSP uses it to accept a responder one of
-/// the TSP's CAs certified for another of its CAs (see [`crate::ocsp`]). Only the
-/// grouping is taken from the TSL: whether the CAs themselves are trusted is decided by
-/// [`match_to_roots`].
+/// The provider is kept for display; it decides nothing. Whether the CAs themselves are
+/// trusted is decided by [`match_to_roots`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Intermediate {
     /// The CA certificate.

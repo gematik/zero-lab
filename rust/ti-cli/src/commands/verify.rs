@@ -33,7 +33,7 @@ use ti_client::pki::verify::{
 };
 use ti_pki::profile;
 use ti_pki::revocation::{RevocationMode, RevocationStatus};
-use ti_pki::{Certificate, ChainPosition, ErrorCode};
+use ti_pki::{Certificate, ErrorCode, ValidationResult};
 
 use crate::cli::{GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
@@ -102,7 +102,15 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     };
     let client = crate::http::client(&global.net, out.verbosity());
     let dirs = Profile::resolve(global)?.dirs();
-    let verification = engine::verify(&client, &dirs, &request, crate::trust::warn)?;
+    let mut verification = engine::verify(&client, &dirs, &request, crate::trust::warn)?;
+    for warning in &mut verification.warnings {
+        if matches!(
+            warning.code.as_str(),
+            "profile_ambiguous" | "profile_not_detected"
+        ) {
+            warning.message.push_str(", pass --validation-profile");
+        }
+    }
     let tree = tree(&verification);
     let report = Report {
         schema: SCHEMA,
@@ -159,25 +167,15 @@ fn chain_to_verify(
     }
 }
 
-/// The chain as a tree: each certificate marked by whether an error concerns it, with
+/// The chain as a tree: each certificate marked by the findings that concern it, with
 /// what OCSP said of it.
 fn tree(v: &Verification) -> Vec<TreeRow> {
     let result = &v.result;
-    let failed = |i: usize| {
-        let cn = result.chain[i].subject_cn();
-        result.errors.iter().any(|e| e.subject == cn)
-    };
     super::chain_tree(
         &result.chain,
         v.complete(),
         v.at_ts,
-        |i| {
-            if failed(i) {
-                Line::status(Tone::Bad, "✗ ")
-            } else {
-                Line::status(Tone::Good, "✓ ")
-            }
-        },
+        |i| mark(result, i),
         |i| {
             v.chain
                 .get(i)
@@ -186,6 +184,21 @@ fn tree(v: &Verification) -> Vec<TreeRow> {
                 .unwrap_or_default()
         },
     )
+}
+
+/// ✗ for the certificate at `index` of the chain if an error concerns it; for a CA only
+/// warnings concern (an expired CA the Kompromissmodell accepts, `ca_expired`) a yellow
+/// `!`; ✓ otherwise. The end entity's warnings stay in the findings: its mark says whether
+/// it holds.
+fn mark(result: &ValidationResult, index: usize) -> Line {
+    let subject = result.chain[index].subject_cn();
+    if result.errors.iter().any(|e| e.subject == subject) {
+        Line::status(Tone::Bad, "✗ ")
+    } else if index > 0 && result.warnings.iter().any(|w| w.subject == subject) {
+        Line::status(Tone::Warn, "! ")
+    } else {
+        Line::status(Tone::Good, "✓ ")
+    }
 }
 
 /// The terminal view: the end entity as `pki inspect` shows it, then the result, the
@@ -360,22 +373,9 @@ fn revocation_line(report: &Report) -> Line {
     } else if has(RevocationStatus::Unknown) {
         Line::status(Tone::Warn, "unknown").and_dim(" (no usable OCSP answer, see chain)")
     } else {
-        // The root has no issuer to ask; every other certificate needs an answer.
-        let needed = report
-            .chain
-            .iter()
-            .filter(|entry| entry.position != ChainPosition::Root.as_str())
-            .count();
-        let n = answers.len();
-        if n < needed {
-            Line::status(Tone::Warn, "incomplete")
-                .and_dim(format!(" (OCSP answered for {n} of {needed} certificates)"))
-        } else {
-            Line::status(Tone::Good, "not revoked").and_dim(format!(
-                " (OCSP for {n} certificate{})",
-                if n == 1 { "" } else { "s" }
-            ))
-        }
+        // Only the end entity is asked; the CAs' standing is the TSL's (TUC_PKI_018).
+        Line::status(Tone::Good, "not revoked")
+            .and_dim(" (OCSP for the end entity, the CAs by the TSL)")
     };
     // A responder answers for the time it is asked; the status is judged at --at.
     let line = if report.reference == Reference::Given {
@@ -463,4 +463,104 @@ fn finding(tone: Tone, f: &Finding) -> Line {
 /// `2 errors`, `1 warning`.
 fn count(n: usize, what: &str) -> String {
     format!("{n} {what}{}", if n == 1 { "" } else { "s" })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use ti_pki::tsl::Intermediate;
+    use ti_pki::{Timestamp, TrustConfig, TrustStore, ValidationWarning, Validator};
+
+    use super::*;
+    use crate::output::document::Span;
+
+    fn pki_fixture(name: &str) -> Certificate {
+        let path = format!(
+            "{}/../ti-pki/tests/pki/{name}.pem",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        ti_pki::parse_pem_certificates(&std::fs::read(path).unwrap())
+            .unwrap()
+            .remove(0)
+    }
+
+    /// The trust tree of an end entity under GEM.SubCA-Short TEST-ONLY in 2028, when the CA
+    /// has expired, validated offline.
+    fn trust_tree(ee: &str) -> Vec<TreeRow> {
+        let result = validated(ee);
+        super::super::chain_tree(
+            &result.chain,
+            true,
+            Timestamp(AT),
+            |i| mark(&result, i),
+            |_| Line::default(),
+        )
+    }
+
+    /// 2028-01-01, when GEM.SubCA-Short TEST-ONLY has expired.
+    const AT: u64 = 1_830_297_600;
+
+    /// `ee` under GEM.SubCA-Short TEST-ONLY, validated offline at [`AT`].
+    fn validated(ee: &str) -> ValidationResult {
+        let at = Timestamp(AT);
+        let store = TrustStore::new([pki_fixture("rca1")]).with_intermediates(vec![Intermediate {
+            certificate: pki_fixture("sub-ca-short"),
+            provider: "TSP".into(),
+            revoked_since: None,
+        }]);
+        let config = TrustConfig {
+            revocation: RevocationMode::Disabled,
+            ..TrustConfig::for_anchor(Vec::new())
+        };
+        let validator = Validator::new(&config, Arc::new(store));
+        ti_client::block_on(validator.validate(
+            &[pki_fixture(ee)],
+            at,
+            &ti_pki::revocation::Unchecked,
+        ))
+        .unwrap()
+    }
+
+    /// Only a CA gets the `!`: an end entity a warning concerns (here a responder outside
+    /// RFC 6960 that the TSL lists) keeps its ✓, the warning stays in the findings.
+    #[test]
+    fn only_a_ca_is_marked_by_its_warnings() {
+        let mut result = validated("ee-short-hci-aut");
+        let ee = result.chain[0].subject_cn().to_owned();
+        result.warnings.push(
+            ValidationWarning::new(ErrorCode::OcspResponderNotRfc6960, "listed").with_subject(ee),
+        );
+        assert_eq!(mark(&result, 0).0[0], Span::Status(Tone::Good, "✓ ".into()));
+        assert_eq!(mark(&result, 1).0[0], Span::Status(Tone::Warn, "! ".into()));
+    }
+
+    /// `ca_expired`: an expired CA the Kompromissmodell accepts is a warning in the trust
+    /// tree, a yellow `!` and nothing dimmed, not a failure; under the shell model the same
+    /// CA fails with ✗.
+    #[test]
+    fn ca_expired_is_rendered_as_a_warning_not_a_failure() {
+        let rows = trust_tree("ee-short-hci-aut");
+        let ca = &rows[1];
+        assert_eq!(ca.name.plain(), "! GEM.SubCA-Short TEST-ONLY");
+        assert_eq!(ca.name.0[0], Span::Status(Tone::Warn, "! ".into()));
+        assert_eq!(
+            ca.detail.plain(),
+            "CA · expired 2027-01-01, accepted under the Kompromissmodell"
+        );
+        assert!(
+            !ca.detail.0.iter().any(|s| matches!(s, Span::Dim(_))),
+            "{:?}",
+            ca.detail
+        );
+        assert_eq!(rows[0].name.0[0], Span::Status(Tone::Good, "✓ ".into()));
+
+        let component = &trust_tree("ee-short-fd-tls-s")[1];
+        assert_eq!(component.name.0[0], Span::Status(Tone::Bad, "✗ ".into()));
+        assert!(
+            !component.detail.plain().contains("Kompromissmodell"),
+            "{:?}",
+            component.detail
+        );
+    }
 }

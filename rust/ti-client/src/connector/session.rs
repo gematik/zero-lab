@@ -159,7 +159,7 @@ pub fn find<T: Transport>(session: &Session<T>, identifier: &str) -> Result<Card
 ///
 /// # Errors
 ///
-/// [`Error::ConnectorConfig`] for a session ID that is no UUID, [`Error::State`] for a
+/// [`Error::ComfortUserIdInvalid`] for a session ID that is no UUID, [`Error::State`] for a
 /// kept ID that cannot be read or kept, [`Error::Randomness`].
 pub fn card_user<T: Transport>(
     session: &Session<T>,
@@ -171,7 +171,7 @@ pub fn card_user<T: Transport>(
     if let Some(text) = session.comfort_user_id.as_deref() {
         return ComfortUserId::parse(text)
             .map(Some)
-            .ok_or_else(|| Error::ConnectorConfig("--comfort-user-id is not a UUID".into()));
+            .ok_or(Error::ComfortUserIdInvalid);
     }
     let store = UserIdStore::of(session);
     if let Some(user) = store.load(card)? {

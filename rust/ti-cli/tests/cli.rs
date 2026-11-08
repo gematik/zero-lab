@@ -545,6 +545,34 @@ fn verify_json(extra: &[&str]) -> (Option<i32>, serde_json::Value) {
     )
 }
 
+/// A certificate whose type selects no profile is checked as a chain, and the warning
+/// names the option that picks one.
+#[test]
+fn verify_names_the_option_when_no_profile_is_detected() {
+    let ca = fixture("smcb-ca51-test-only.pem");
+    let out = ti(&[
+        "--format",
+        "json",
+        "pki",
+        "verify",
+        "--offline",
+        &ca,
+        "--env",
+        "ref",
+    ]);
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let warning = json["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|w| w["code"] == "profile_not_detected")
+        .unwrap_or_else(|| panic!("{json}"));
+    assert_eq!(
+        warning["message"],
+        "the certificate type is not detected; checked the chain only, pass --validation-profile"
+    );
+}
+
 #[test]
 fn verify_with_the_issuer_is_valid_but_says_revocation_was_not_checked() {
     let ca = fixture("smcb-ca51-test-only.pem");

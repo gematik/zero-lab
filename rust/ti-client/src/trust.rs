@@ -534,9 +534,7 @@ impl<T: Transport + Send + Sync> Session<T> {
             self.is_offline(),
         ))
         .map_err(|error| match error {
-            LoadError::Offline(_) => {
-                Error::TrustLoad("offline and no TSL cached; run once without --offline".into())
-            }
+            LoadError::Offline(_) => Error::TslUncached("offline and no TSL cached".into()),
             LoadError::Transport(_) => Error::TrustLoad(
                 "the cached TSL set is gone: another process removed it; run again".into(),
             ),

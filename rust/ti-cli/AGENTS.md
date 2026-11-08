@@ -232,7 +232,8 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
     `ocsp_responder_not_rfc6960`.
   - `revocation_checked: false` means revocation was not checked (`--offline`). A
     valid result then says nothing about revocation.
-  - `chain[].revocation` holds the OCSP answer per certificate. The root has none.
+  - `chain[].revocation` holds the OCSP answer for the end entity. Only its responder
+    is asked: a CA's standing is its status in the verified TSL, so CAs have none.
     `cached: true` when it came from the cache of an earlier run (`produced_at` says
     how old it is) rather than from the responder now.
     Under hard-fail an unreachable responder leaves no answer but an
@@ -252,8 +253,10 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 - The TSL is verified whenever trust material is loaded; a list that fails is not used.
   `trust.tsl` names the list, its signer and the TSL signer CA; `trust.tsl_warnings`
   holds `no_ocsp_check` when the signer's OCSP status was not queried (offline, `--at`).
-  `revocation.authorization` is `tsl_listed` for a responder the TSL lists for the
-  issuing CA's TSP. A CA counts only if a verified root signed it and, with a verified
+  `revocation.authorization` is `issuer` or `delegate` for a responder RFC 6960
+  authorizes, and `tsl_listed` for one only the verified TSL lists as an OCSP service
+  (TUC_PKI_006 step 5), with the warning `ocsp_responder_not_rfc6960`; any other is
+  `ocsp_responder_untrusted`. A CA counts only if a verified root signed it and, with a verified
   TSL, the TSL names it (`ca_not_in_tsl`). A responder is asked only about a certificate
   that has passed everything else, so a failed one shows no revocation results.
   `--validation-profile` refuses a type the profile does not accept
@@ -266,8 +269,9 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 - The validity model follows the certificate type (gemKPT_PKI_TIP 2.4). For the nonQES
   certificates of an SMC-B or HBA (C.HCI.AUT, .ENC, .OSIG, C.HP.AUT, .ENC) each CA
   counts as it was when it issued the certificate below (Kompromissmodell): a CA that
-  has expired since gives the warning `issued_before_ca_expiry`, one that had expired
-  before is `expired`. Every other type, components and the eGK, needs every
+  has expired since gives the warning `ca_expired` (`issued_before_ca_expiry` up to
+  0.6.0-rc.1), one that had expired before is `expired`. The trust tree marks a
+  CA with a yellow `!` when only warnings concern it; the end entity keeps ✓ or ✗. Every other type, components and the eGK, needs every
   certificate of the chain valid at the reference time (shell model). The end entity
   itself is always checked at the reference time.
 - `pki verify --at T`: OCSP answers for the time of the query and its status is judged

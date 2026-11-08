@@ -102,7 +102,10 @@ The checks always run in this order:
 4. **Listed CAs:** every CA must be named by the verified TSL.
 5. **CA types:** the TSL must let the issuing CA issue this type.
 6. **Revoked CAs:** a CA the TSL revoked vouches only for what it issued before that.
-7. **Revocation:** OCSP, only if nothing above has failed.
+7. **Revocation:** OCSP for the end entity, only if nothing above has failed. A CA's standing is its status in
+   the verified TSL (steps 4 and 6); no responder is asked about a CA (VALID-008). A responder is the issuing
+   CA or its RFC 6960 delegate, or one the verified TSL lists as an OCSP service, which is accepted with the
+   warning `ocsp_responder_not_rfc6960` (OCSP-001).
 8. **Roles:** the admission roles, only for a certificate valid otherwise.
 
 Step 7 is late on purpose: a responder's address comes from the certificate, so a forged certificate must

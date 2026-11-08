@@ -63,6 +63,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   gone.
 
 #### changed
+- **Schema change:** the warning `issued_before_ca_expiry` of 0.6.0-rc.1 is `ca_expired` in
+  `pki verify`'s JSON (TASK-270): every certificate is issued before its CA expires, and what
+  it reports is a CA that has expired while its certificate is still accepted under the
+  Kompromissmodell. The trust tree marks a CA that carries only warnings with a yellow `!`
+  instead of ✓ or ✗; the end entity keeps ✓ or ✗, its warnings are in the findings.
 - `ti connector config set` takes its configuration from `-c` or the selection, like the other
   connector commands, no longer as an argument.
 - State and cache are plain files below `~/.local/state/telematik/ti` and
@@ -82,6 +87,15 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   && brew install gematik/tap/ti` switches.
 
 #### fixed
+- `pki verify` accepts an SMC-B under an expired HBA/SMC-B CA whose responder answers for it
+  (TASK-270): a reference SMC-B under GEM.SMCB-CA9 TEST-ONLY, valid under the Kompromissmodell,
+  failed with `ocsp_responder_untrusted`, because the CA itself was asked at the production
+  root responder its AIA names. Only the end entity is asked now, as TUC_PKI_018 does; a CA's
+  standing is its status in the verified TSL. The revocation line says so (`OCSP for the end
+  entity, the CAs by the TSL`), and `chain[].revocation` is set for the end entity only.
+- `connector config test` reports a Konnektor that requires a client certificate as
+  refusing basic credentials every time (TASK-262): under TLS 1.3 the refusal follows the
+  handshake and was now and then lost to a reset, which passed the auth step.
 - `ti probe` puts the Bestandsnetze on one line, the names grouped by result (TASK-235):
   production lists 17, and a row each pushed the TI VPN and Internet off the screen and the
   redrawn table into the scrollback. `--format json` keeps each one's detail.
@@ -115,10 +129,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   like the `connector` commands; `--connector` stays as an alias.
 - `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
   (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
-  has expired since it was issued is valid with the warning `issued_before_ca_expiry`;
-  it was rejected as `expired`. Components and the eGK keep the shell model. The trust
-  tree of `pki inspect` and `pki verify` shows such a CA in yellow as "expired …, valid
-  when it issued", no longer as a red error.
+  has expired since it was issued is valid with the warning `ca_expired`; it was
+  rejected as `expired`. Components and the eGK keep the shell model. The trust tree of
+  `pki inspect` and `pki verify` shows such a CA as a warning, a yellow `!` and "expired
+  …, accepted under the Kompromissmodell", no longer as a red error.
 
 #### security
 - crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,
@@ -273,6 +287,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `model` (TASK-250): the read-only projections of a completed flow the front ends show,
   `IdpInfo`, `CertificateInfo` (a certificate by subject and SHA-256 fingerprint) and
   `ChallengeInfo`; the feature `serde` derives `Serialize` for them.
+- `probe` (TASK-266): the path a connectivity probe asks (`PATH`) and what a discovery
+  document there says (`answer`, `Answer`), read without verifying it: it tells the
+  IDP-Dienst from a gateway and trusts nothing.
 
 #### removed
 - The `ureq` feature and `ureq::UreqTransport` (decision-15, TASK-249): the crate has no HTTP
@@ -320,6 +337,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (decision-15).
 
 ### ti-directory-client
+
+#### added
+- `probe` (TASK-266): the path a connectivity probe asks (`PATH`, `/owner-authenticate`)
+  and what its answer says (`answer`, `Answer`): a redirect to an IDP-Dienst's
+  authorization URL is the directory.
 
 #### changed
 - Renamed from `ti-directory`, as `ti-idpd-client` (decision-15): the package and crate are
@@ -563,6 +585,23 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   with the spec's result codes; `TrustStore::with_tsl_ca_types_for_tests` (`test-util`).
 
 #### changed
+- **Schema change:** `ErrorCode::IssuedBeforeCaExpiry` (`issued_before_ca_expiry`) is renamed
+  `ErrorCode::CaExpired` (`ca_expired`), in `spec/pki-path` and `go/tipki` alike (TASK-270);
+  its message says why the expired CA is still accepted.
+- **Revocation is checked for the end entity only (TASK-270, VALID-008).** A CA's standing is its
+  status in the verified TSL (TUC_PKI_018 step 5, Tab_PKI_271: in accord, or revoked after the
+  end entity was issued, expired HBA/SMC-B CAs included), and no responder is asked about a CA
+  (step 7). The `Validator` sends one OCSP request per certificate instead of one per link.
+- **OCSP responders are authorized as TUC_PKI_006 step 5 does (OCSP-001).** The issuing CA or its
+  RFC 6960 delegate (id-kp-OCSPSigning, valid now) are accepted silently; otherwise a responder
+  whose certificate the verified TSL lists as an OCSP service, under any TSP, with
+  id-kp-OCSPSigning and valid now, is `ResponderAuthorization::TslListed { tsp }` and the
+  warning `ocsp_responder_not_rfc6960`, where a listed responder used to pass without one; any
+  other is `ocsp_responder_untrusted`. Whether the responder's CA is a TSL CA of the issuing
+  CA's TSP no longer matters, and an unlisted responder of another CA is refused. A listed
+  responder outside its validity is refused although the TSL's status covers the signers of
+  expired HBA/SMC-B CAs: the maintainer's decision.
+- `TrustStore::with_listed_responders_for_tests` (feature `test-util`).
 - The `hci-aut` profile checks revocation hard-fail, like every other profile: an SMC-B whose OCSP
   answer cannot be had is refused, also under a configured soft-fail.
 - The OID tables follow gemSpec_OID V3.26.0: `TECH_ROLE_ZETA_PRV_APPROV` (`oid_zeta-prv-approv`,
@@ -600,6 +639,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   process. Found by the new `ocsp_response` fuzz target (TASK-166).
 
 #### removed
+- `Validator::skip_sub_ca_revocation`: no CA is asked about any more, so there is nothing to
+  skip (TASK-270).
+- `ResponderAuthorization::SameTspDelegate`, the unlisted delegate of another CA of the same TSP
+  accepted with a warning, and `TslListed`'s field `ca`: the TSL authorizes a responder by
+  listing it and binds it to no CA (TASK-270).
 - **The XMLDSig path and `ti-xmldsig` are gone, with `roxmltree` and `proptest`.** A list
   without a fitting `.sig` no longer verifies, in every environment, and `.sig` exists only
   on the plain-HTTP CRL host of A_21182: a network that blocks it cannot take new lists,
@@ -634,7 +678,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The validity model follows the end entity's type (gemKPT_PKI_TIP 2.4): the
   Kompromissmodell for C.HCI.AUT/ENC/OSIG and C.HP.AUT/ENC, under which each CA must have
   been valid when it issued the certificate below and one expired since gives the
-  warning `issued_before_ca_expiry` (`ErrorCode::IssuedBeforeCaExpiry`); the shell model
+  warning `ca_expired` (`ErrorCode::CaExpired`); the shell model
   for every other type. `ValidityModel` and `PathOptions::model` are new (breaking for
   callers that build `PathOptions`).
 - A certificate OCSP reports revoked after the reference time is valid for that time,

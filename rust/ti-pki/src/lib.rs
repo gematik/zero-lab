@@ -92,8 +92,8 @@
 //!
 //! A [`Validator`] runs chain building ([`chain`], topology only), path
 //! validation ([`path`], RFC 5280 §6 plus the end-entity checks), the gemSpec_Krypt
-//! key check ([`key`]) and the revocation check for the end entity and every CA
-//! ([`revocation`], [`ocsp`]), and folds every finding into one result, each error
+//! key check ([`key`]) and the revocation check for the end entity ([`revocation`],
+//! [`ocsp`]; a CA's standing is its status in the verified TSL), and folds every finding into one result, each error
 //! carrying an [`ErrorCode`] ([`validate`]). [`trustdomain`] tells production from
 //! test certificates before a configuration is chosen.
 //!

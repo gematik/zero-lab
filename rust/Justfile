@@ -367,7 +367,10 @@ check-changed base="main":
     if grep -qwE 'ti-types|ti-cache|ti-connector-client|ti-pki|ti-pkcs12|ti-wasm|jwz|ti-jwz|ti-idpd-client|ti-directory-client' <<<"$CRATES"; then
         just wasm32 wasm-unsafe-free
     fi
-    if grep -qw ti-pki <<<"$CRATES"; then just nonprod-absent; fi
+    if grep -qw ti-pki <<<"$CRATES"; then
+        cargo clippy -p ti-pki --all-targets --no-default-features --features load -- -D warnings
+        just nonprod-absent
+    fi
     if [ -n "$MANIFESTS" ]; then just unsafe-free core-deps jwz-backends machete deny vet; fi
     if [ -n "$SCRIPTS" ]; then just scripts-test; fi
 
@@ -399,6 +402,9 @@ clippy:
     cargo clippy --workspace --exclude jwz --all-targets --all-features -- -D warnings
     cargo clippy -p jwz --all-targets --features {{JWZ_FEATURES}} -- -D warnings
     cargo clippy --workspace --all-targets -- -D warnings
+    # ti-pki's loading layer alone: test helpers gated on an algorithm or nonprod feature
+    # go dead here and nowhere else.
+    cargo clippy -p ti-pki --all-targets --no-default-features --features load -- -D warnings
 
 # Rustdoc must build warning-free (broken intra-doc links, missing docs)
 doc:
@@ -426,6 +432,7 @@ wasm32:
     cargo check -p ti-cache --target wasm32-unknown-unknown
     cargo check -p ti-connector-client --target wasm32-unknown-unknown
     cargo check -p ti-pki --target wasm32-unknown-unknown --features load
+    cargo check -p ti-pki --target wasm32-unknown-unknown --features load --test wasm32_not_send
     cargo check -p ti-pkcs12 --target wasm32-unknown-unknown
     cargo check -p ti-wasm --target wasm32-unknown-unknown
     cargo check -p jwz --target wasm32-unknown-unknown --features {{JWZ_FEATURES}}

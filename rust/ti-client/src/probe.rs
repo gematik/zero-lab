@@ -46,9 +46,10 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use base64ct::{Base64UrlUnpadded, Encoding};
 use rustls::CertificateError;
 use serde::{Deserialize, Serialize};
+use ti_directory_client::probe as directory;
+use ti_idpd_client::probe as idpd;
 use ti_pki::ocsp::OcspChecker;
 use ti_pki::tls::ServerCheck;
 use ti_pki::{Env, Timestamp};
@@ -574,11 +575,11 @@ fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
     };
     let base = endpoint.url.trim_end_matches('/');
     let url = match endpoint.kind {
-        Kind::Oidc => format!("{base}/.well-known/openid-configuration"),
+        Kind::Oidc => format!("{base}{}", ti_idpd_client::probe::PATH),
         Kind::Zeta => format!("{base}/.well-known/oauth-protected-resource"),
         Kind::Erp => format!("{base}/VAUCertificate"),
         Kind::Epa => format!("{base}/information/api/v1/ehr"),
-        Kind::Directory => format!("{base}/owner-authenticate"),
+        Kind::Directory => format!("{base}{}", ti_directory_client::probe::PATH),
         Kind::Catalog | Kind::Http | Kind::Dns => endpoint.url.clone(),
     };
     let start = Instant::now();
@@ -778,15 +779,11 @@ fn judge(
         return warn(format!("HTTP {status}"));
     }
     match kind {
-        Kind::Oidc => {
-            match discovery(body).and_then(|d| d.get("issuer")?.as_str().map(str::to_owned)) {
-                Some(issuer) if issuer.trim_end_matches('/').eq_ignore_ascii_case(base) => {
-                    (Status::Ok, "oidc discovery".into(), Vec::new())
-                }
-                Some(issuer) => warn(format!("issuer {issuer} differs")),
-                None => warn("no OIDC discovery document".into()),
-            }
-        }
+        Kind::Oidc => match ti_idpd_client::probe::answer(base, body) {
+            idpd::Answer::Idp => (Status::Ok, "oidc discovery".into(), Vec::new()),
+            idpd::Answer::OtherIssuer(issuer) => warn(format!("issuer {issuer} differs")),
+            idpd::Answer::NoDiscovery => warn("no OIDC discovery document".into()),
+        },
         Kind::Zeta => {
             let servers = serde_json::from_slice::<serde_json::Value>(body)
                 .ok()
@@ -805,36 +802,17 @@ fn judge(
     }
 }
 
-/// The FHIR-Directory's answer to `/owner-authenticate`; `location` is the redirect's
-/// `Location` (the body is not read).
+/// The FHIR-Directory's answer to its probe; `location` is the redirect's `Location` (the
+/// body is not read).
 fn directory(status: u16, location: &[u8]) -> (Status, String, Vec<Endpoint>) {
-    let location = String::from_utf8_lossy(location);
-    let authorization = location.starts_with("https://") && location.contains("client_id=");
-    match status {
-        300..=399 if authorization => (Status::Ok, "directory owner auth".into(), Vec::new()),
-        300..=399 => (
-            Status::Warn,
-            format!("HTTP {status}, no IDP authorization URL"),
-            Vec::new(),
-        ),
-        _ => (
-            Status::Warn,
-            format!("HTTP {status}, no owner-authenticate redirect"),
-            Vec::new(),
-        ),
-    }
-}
-
-/// An OIDC discovery document: JSON, or the gematik IDP's signed document (a compact
-/// JWS whose payload is the JSON). Only its issuer is read, to tell the IDP from another
-/// answer; its signature is the IDP-Dienst client's to verify.
-fn discovery(body: &[u8]) -> Option<serde_json::Value> {
-    if let Ok(value) = serde_json::from_slice(body) {
-        return Some(value);
-    }
-    let text = std::str::from_utf8(body).ok()?.trim();
-    let payload = text.split('.').nth(1)?;
-    serde_json::from_slice(&Base64UrlUnpadded::decode_vec(payload).ok()?).ok()
+    let detail = match ti_directory_client::probe::answer(status, location) {
+        directory::Answer::OwnerAuth => {
+            return (Status::Ok, "directory owner auth".into(), Vec::new());
+        }
+        directory::Answer::NoAuthorizationUrl => format!("HTTP {status}, no IDP authorization URL"),
+        directory::Answer::NoRedirect => format!("HTTP {status}, no owner-authenticate redirect"),
+    };
+    (Status::Warn, detail, Vec::new())
 }
 
 /// The service-discovery catalog: its format, its environment, and the instances it
@@ -933,6 +911,8 @@ fn host(url: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use base64ct::{Base64UrlUnpadded, Encoding as _};
+
     use super::*;
 
     fn all() -> HashMap<String, Vec<Endpoint>> {

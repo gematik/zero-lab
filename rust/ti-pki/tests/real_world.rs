@@ -45,8 +45,8 @@ use ti_pki::load::{
     Reloader, ResponseMeta, Source, Transport, TransportError, TransportErrorKind,
 };
 use ti_pki::ocsp::OcspChecker;
-use ti_pki::revocation::{ResponderAuthorization, RevocationChecker, RevocationStatus};
-use ti_pki::{Env, Timestamp, TrustConfig, TrustStore, profile, roots};
+use ti_pki::revocation::ResponderAuthorization;
+use ti_pki::{Env, ErrorCode, Timestamp, TrustConfig, TrustStore, profile, roots};
 
 /// A transport over the `curl` CLI, for these tests only.
 struct Curl;
@@ -164,11 +164,11 @@ fn live_trust_material_of_every_environment() {
 }
 
 /// A real SMC-B of the reference environment: chain from the live TSL, profile picked
-/// automatically, OCSP for the CA at the root responder and for the end entity at its
-/// TSP. The TSP answers with a responder certified by another of its CAs, which the
-/// TSL lists as an OCSP service of that TSP (since October 2026; before, it was an
-/// unlisted delegate accepted by the same-TSP rule with a warning). The test pins exactly
-/// that, so it notices when gematik changes either side.
+/// automatically, OCSP for the end entity at its TSP and for nothing else (VALID-008).
+/// The TSP answers with a responder certified by another of its CAs, which the TSL lists
+/// as an OCSP service (since October 2026): authorized by the listing, with the warning
+/// `ocsp_responder_not_rfc6960`. The test pins exactly that, so it notices when gematik
+/// changes either side.
 #[test]
 #[ignore = "network: gematik download endpoints and OCSP responders"]
 fn live_smcb_end_to_end() {
@@ -201,54 +201,27 @@ fn live_smcb_end_to_end() {
         println!("warning: {warning}");
     }
     assert_eq!(result.chain.len(), 3);
-    let ca = result.cert_results[1]
-        .revocation
-        .as_ref()
-        .expect("the CA was checked");
-    assert_eq!(
-        ca.status,
-        RevocationStatus::Good,
-        "TUC_PKI_006 at the root responder"
+    assert!(
+        result.cert_results[1..]
+            .iter()
+            .all(|c| c.revocation.is_none()),
+        "no responder is asked about a CA"
     );
     assert!(result.valid, "{:?}", result.errors);
     let ee = result.cert_results[0]
         .revocation
         .as_ref()
         .expect("the end entity was checked");
-    let Some(ResponderAuthorization::TslListed { ca, .. }) = &ee.authorization else {
-        panic!("{:?}", ee.authorization)
-    };
-    assert_eq!(ca, "GEM.KOMP-CA51 TEST-ONLY");
-    assert!(result.warnings.is_empty(), "{:?}", result.warnings);
-}
-
-/// A production SubCA from the live TSL, checked at the production root responder.
-#[test]
-#[ignore = "network: gematik download endpoints and the production root responder"]
-fn live_prod_sub_ca_at_its_root() {
-    let (config, store) = live_store(Env::Prod);
-    let checker = OcspChecker::new(&config, Curl, Timestamp::now);
-    let now = Timestamp::now();
-    let ca = store
-        .intermediates()
-        .iter()
-        .find(|ca| ca.is_valid_at(now) && !ca.ocsp_urls().is_empty())
-        .expect("a current CA with a responder");
-    let root = store
-        .roots()
-        .iter()
-        .find(|root| {
-            root.subject_der() == ca.issuer_der()
-                && ca.verify_signed_by(root, &config.algorithms).is_ok()
-        })
-        .expect("its root");
-    let result = block_on(checker.check(ca, root, &store)).unwrap();
-    println!(
-        "{} at {}: {} by {}",
-        ca.subject_cn(),
-        result.responder_url,
-        result.status,
-        result.responder_name
+    assert!(
+        matches!(
+            ee.authorization,
+            Some(ResponderAuthorization::TslListed { .. })
+        ),
+        "{:?}",
+        ee.authorization
     );
-    assert_eq!(result.status, RevocationStatus::Good);
+    let responder = ee.responder.as_ref().expect("a delegated responder");
+    assert_eq!(responder.issuer_cn(), "GEM.KOMP-CA51 TEST-ONLY");
+    let warnings: Vec<ErrorCode> = result.warnings.iter().map(|w| w.code).collect();
+    assert_eq!(warnings, [ErrorCode::OcspResponderNotRfc6960]);
 }

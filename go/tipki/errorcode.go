@@ -40,7 +40,7 @@ const (
 	// not processed, which RFC 5280 §4.2 requires to reject.
 	CodeUnrecognizedCriticalExtension ErrorCode = "unrecognized_critical_extension"
 	// CodeOCSPResponderNotRFC6960 is a warning: the OCSP responder is not authorized under RFC 6960, but
-	// was accepted as a delegate of another CA of the same TSP.
+	// was accepted because the verified list names it as an OCSP service (TUC_PKI_006 step 5).
 	CodeOCSPResponderNotRFC6960 ErrorCode = "ocsp_responder_not_rfc6960"
 	// CodeFQDNMismatch: the domain name in the end entity's commonName is not the one expected
 	// (A_30046 (5) of C_12791).
@@ -87,9 +87,9 @@ const (
 	// CodeRevokedAfterReferenceTime is a warning: OCSP reports the certificate revoked, but after the
 	// reference time, so it was valid then (TUC_PKI_006 variant 8a).
 	CodeRevokedAfterReferenceTime ErrorCode = "revoked_after_reference_time"
-	// CodeIssuedBeforeCAExpiry is a warning: a CA of the chain has expired, but was valid when it issued
-	// the certificate below it, which the Kompromissmodell accepts (gemKPT_PKI_TIP 2.4.2, Tab_PKI_271).
-	CodeIssuedBeforeCAExpiry ErrorCode = "issued_before_ca_expiry"
+	// CodeCAExpired is a warning: a CA of the chain has expired while the certificate below it is still valid,
+	// which the Kompromissmodell accepts, as the CA was valid when it issued it (gemKPT_PKI_TIP 2.4.2, Tab_PKI_271).
+	CodeCAExpired ErrorCode = "ca_expired"
 )
 
 // ErrorCodes returns every code, in ti-pki's order.
@@ -100,6 +100,6 @@ func ErrorCodes() []ErrorCode {
 		CodeExpired, CodeNotYetValid, CodeChainIncomplete, CodePolicyMismatch, CodeSignatureInvalid,
 		CodeKeyUsageMismatch, CodeKeyNotAdmissible, CodeKeyPhasedOut, CodeProfileNotDetected,
 		CodeProfileAmbiguous, CodeProfileTypeMismatch, CodeCertTypeCANotAuthorized, CodeCARevokedInTSL,
-		CodeCANotInTSL, CodeIssuedBeforeCARevocation, CodeRevokedAfterReferenceTime, CodeIssuedBeforeCAExpiry,
+		CodeCANotInTSL, CodeIssuedBeforeCARevocation, CodeRevokedAfterReferenceTime, CodeCAExpired,
 	}
 }
