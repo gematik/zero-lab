@@ -56,30 +56,30 @@ pub fn concat_kdf(
     apv: &[u8],
     key_len: usize,
 ) -> Result<Zeroizing<Vec<u8>>, Error> {
-    let too_long = Error::new(ErrorCode::InvalidMember, "concat kdf length");
+    const TOO_LONG: Error = Error::new(ErrorCode::InvalidMember, "concat kdf length");
     // RFC 7518 §4.6.2: keydatalen in bits, as a 32-bit big-endian SuppPubInfo.
     let key_bits = key_len
         .checked_mul(8)
         .and_then(|bits| u32::try_from(bits).ok())
         .filter(|bits| *bits > 0)
-        .ok_or(too_long)?;
+        .ok_or(TOO_LONG)?;
     // The 32-bit length prefixes of OtherInfo, and OtherInfo as a whole within usize
     // (on a 32-bit target the prefixes alone do not bound it); kdf::other_info's
     // precondition.
     for datum in [algorithm_id, apu, apv] {
-        u32::try_from(datum.len()).map_err(|_| too_long)?;
+        u32::try_from(datum.len()).map_err(|_| TOO_LONG)?;
     }
     algorithm_id
         .len()
         .checked_add(apu.len())
         .and_then(|n| n.checked_add(apv.len()))
         .and_then(|n| n.checked_add(16))
-        .ok_or(too_long)?;
+        .ok_or(TOO_LONG)?;
     let other_info = kdf::other_info(algorithm_id, apu, apv, key_bits);
 
     let hash_len = hash.algorithm().output_len();
     // reps = ceil(key_len / hash_len) <= key_len, which fits u32 by the check above.
-    let reps = u32::try_from(key_len.div_ceil(hash_len)).map_err(|_| too_long)?;
+    let reps = u32::try_from(key_len.div_ceil(hash_len)).map_err(|_| TOO_LONG)?;
     // Allocated once at full size: no reallocation leaves a copy of key material behind.
     let mut derived = Zeroizing::new(Vec::with_capacity(key_len.div_ceil(hash_len) * hash_len));
     kdf::rounds(&Backed(hash), z, &other_info, reps, &mut derived);

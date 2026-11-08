@@ -83,14 +83,15 @@ impl<B: Backend> SoftwareKey<B> {
             .ok_or(UNSUPPORTED)?;
         jwk.check(registry)?;
         jwk.require(KeyPurpose::Signature)?;
-        // RFC 7517 §4.4: a key that names its algorithm is only for that algorithm.
+        // RFC 7517 §4.4: a key that names its algorithm is only for that algorithm;
+        // RFC 9864 §5, §7: so one whose alg is Ed25519 is no key for EdDSA, nor the reverse.
         if jwk.key_type() != entry.key_type || jwk.alg.as_deref().is_some_and(|a| a != alg.as_str())
         {
             return Err(MISMATCH);
         }
         let kind = match &jwk.material {
             KeyMaterial::Ec(k) => ecdsa_kind(k, entry.curve, registry, backend.as_ref())?,
-            KeyMaterial::Okp(k) => eddsa_kind(k, registry, backend.as_ref())?,
+            KeyMaterial::Okp(k) => eddsa_kind(k, entry.curve, registry, backend.as_ref())?,
             KeyMaterial::Oct(k) => hmac_kind(k, entry.hash, backend.as_ref())?,
             KeyMaterial::Rsa(_) => return Err(UNSUPPORTED),
         };
@@ -127,8 +128,9 @@ impl<B: Backend> SoftwareKey<B> {
                 secret: Some(secret),
             }
         } else if entry.key_type == KeyType::OKP {
-            // EdDSA's curve comes from the key; generated keys are Ed25519.
-            let curve = Curve::ED25519;
+            // A fully specified algorithm names its curve (RFC 9864 §2.2); the polymorphic
+            // EdDSA takes it from the key, and generated keys are Ed25519.
+            let curve = entry.curve.unwrap_or(Curve::ED25519);
             let len = coordinate_len(registry, curve)?;
             let eddsa = backend.eddsa(curve).ok_or(UNSUPPORTED)?;
             let (secret, public) = random_scalar(backend.as_ref(), len, |s| eddsa.public_key(s))?;
@@ -201,6 +203,13 @@ impl<B: Backend> SoftwareKey<B> {
 impl<B: Backend> JwsKey for SoftwareKey<B> {
     fn algorithm(&self) -> SignatureAlgorithm {
         self.alg
+    }
+
+    fn curve(&self) -> Option<Curve> {
+        match &self.kind {
+            Kind::Ecdsa { curve, .. } | Kind::EdDsa { curve, .. } => Some(*curve),
+            Kind::Hmac { .. } => None,
+        }
     }
 
     fn key_id(&self) -> Option<&str> {
@@ -456,9 +465,18 @@ fn ecdsa_kind<B: Backend>(
     })
 }
 
-fn eddsa_kind<B: Backend>(k: &OkpKey, registry: &Registry, backend: &B) -> Result<Kind, Error> {
-    // RFC 8037 §3.1: EdDSA takes its curve from the key; X25519/X448 do not sign.
+fn eddsa_kind<B: Backend>(
+    k: &OkpKey,
+    expected: Option<Curve>,
+    registry: &Registry,
+    backend: &B,
+) -> Result<Kind, Error> {
+    // RFC 8037 §3.1: EdDSA takes its curve from the key; X25519/X448 do not sign. A fully
+    // specified algorithm (RFC 9864 §2.2) names its curve, and the key must be on it.
     let curve = registry.curve(&k.crv).map(|e| e.crv).ok_or(MISMATCH)?;
+    if expected.is_some_and(|expected| expected != curve) {
+        return Err(MISMATCH);
+    }
     let eddsa = backend.eddsa(curve).ok_or(MISMATCH)?;
     if let Some(d) = &k.d
         && eddsa.public_key(d.expose())? != k.x
@@ -479,7 +497,8 @@ fn hmac_kind<B: Backend>(
 ) -> Result<Kind, Error> {
     let hash = hash.ok_or(UNSUPPORTED)?;
     backend.mac(hash).ok_or(UNSUPPORTED)?;
-    // RFC 7518 §3.2: a key of the same size as the hash output or larger MUST be used.
+    // RFC 7518 §3.2: a key of the same size as the hash output or larger MUST be used;
+    // RFC 8725 §3.5: that keeps a memorable password from being used as the key.
     if k.k.expose().len() < hash.output_len() {
         return Err(Error::new(ErrorCode::KeyLength, "hmac key"));
     }

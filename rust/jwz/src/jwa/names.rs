@@ -164,8 +164,15 @@ impl Name<Signature> {
     /// RSASSA-PSS using SHA-512 and MGF1 with SHA-512.
     pub const PS512: Self = Self::new("PS512");
     // RFC 8037 §3.1: Edwards-curve signatures.
-    /// EdDSA over the curve named in the key's `crv` (Ed25519 or Ed448).
+    /// EdDSA over the curve named in the key's `crv` (Ed25519 or Ed448). Deprecated by
+    /// RFC 9864 §4.1.2 in favour of the fully specified [`ED25519`](Self::ED25519) and
+    /// [`ED448`](Self::ED448): the algorithm does not say which curve it means.
     pub const EDDSA: Self = Self::new("EdDSA");
+    // RFC 9864 §2.2: fully specified Edwards-curve signatures.
+    /// EdDSA with the Ed25519 parameter set (RFC 8032 §5.1).
+    pub const ED25519: Self = Self::new("Ed25519");
+    /// EdDSA with the Ed448 parameter set (RFC 8032 §5.2; reserved, not implemented).
+    pub const ED448: Self = Self::new("Ed448");
     // Reserved for post-quantum signatures (draft-ietf-cose-dilithium); not implemented.
     /// ML-DSA-44 (reserved).
     pub const ML_DSA_44: Self = Self::new("ML-DSA-44");

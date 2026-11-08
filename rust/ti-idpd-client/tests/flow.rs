@@ -195,7 +195,14 @@ impl FakeIdp {
         } else {
             &self.disc_sig
         };
-        jws::sign(Self::metadata().to_string().as_bytes(), params, signer).unwrap()
+        jws::sign(
+            Self::metadata().to_string().as_bytes(),
+            params,
+            signer,
+            &ti_jwz::ti_legacy().policy,
+            &ti_jwz::registry(),
+        )
+        .unwrap()
     }
 
     fn challenge(&self) -> String {
@@ -227,6 +234,8 @@ impl FakeIdp {
             claims.to_string().as_bytes(),
             HeaderParams::new().typ("JWT"),
             signer,
+            &ti_jwz::ti_legacy().policy,
+            &ti_jwz::registry(),
         )
         .unwrap()
     }
@@ -483,6 +492,8 @@ fn a_20700_the_signed_challenge_nests_the_challenge_under_the_card_certificate()
         nested.as_bytes(),
         HeaderParams::new().typ("JWT").cty("NJWT").x5c(&[&cert]),
         &key,
+        &ti_jwz::ti_legacy().policy,
+        &ti_jwz::registry(),
     )
     .unwrap();
     let header: Value =

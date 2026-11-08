@@ -36,15 +36,15 @@ use alloc::vec::Vec;
 use serde_json::{Map, Value};
 
 use super::{
-    Encrypted, EncryptionKey, Jwe, UNSUPPORTED, encode_header, entries, key_id, manage, party_from,
-    random,
+    Encrypted, Jwe, UNSUPPORTED, check_producible, encode_header, entries, key_id, manage,
+    party_from, random,
 };
 use crate::b64;
 use crate::crypto::Backend;
 use crate::error::{Error, ErrorCode};
 use crate::header::{Header, HeaderParams};
 use crate::json;
-use crate::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm, Registry};
+use crate::jwa::{ContentEncryptionAlgorithm, Registry};
 use crate::profile::Policy;
 
 /// Every recipient of a JWE in JSON serialization, each accepted under `policy`.
@@ -59,18 +59,18 @@ pub fn parse(
     policy: &Policy,
     registry: &Registry,
 ) -> Result<Vec<Jwe<Encrypted>>, Error> {
+    const MALFORMED: Error = Error::new(ErrorCode::Malformed, "jwe json");
     if text.len() > policy.max_token_len {
         return Err(Error::new(ErrorCode::TokenTooLarge, "jwe json"));
     }
-    let malformed = Error::new(ErrorCode::Malformed, "jwe json");
     let object = json::parse_object(text.as_bytes(), "jwe json")?;
-    let string = |name: &str| object.get(name).and_then(Value::as_str).ok_or(malformed);
+    let string = |name: &str| object.get(name).and_then(Value::as_str).ok_or(MALFORMED);
     let protected = string("protected")?;
     let protected_header = Header::decode(protected)?;
     // RFC 7516 §5.1 step 14: ASCII(protected), and '.' and the encoded aad if present.
     let mut aad = protected.as_bytes().to_vec();
     if let Some(extra) = object.get("aad") {
-        let extra = extra.as_str().ok_or(malformed)?;
+        let extra = extra.as_str().ok_or(MALFORMED)?;
         b64::decode(extra, "aad")?;
         aad.push(b'.');
         aad.extend_from_slice(extra.as_bytes());
@@ -91,11 +91,11 @@ pub fn parse(
         {
             items
                 .iter()
-                .map(|item| item.as_object().ok_or(malformed))
+                .map(|item| item.as_object().ok_or(MALFORMED))
                 .collect::<Result<_, _>>()?
         }
         None => vec![&object],
-        Some(_) => return Err(malformed),
+        Some(_) => return Err(MALFORMED),
     };
     recipients
         .into_iter()
@@ -106,7 +106,7 @@ pub fn parse(
             }
             let encrypted_key = match recipient.get("encrypted_key") {
                 None => "",
-                Some(value) => value.as_str().ok_or(malformed)?,
+                Some(value) => value.as_str().ok_or(MALFORMED)?,
             };
             Jwe::accept(
                 Header::from_members(merged),
@@ -122,25 +122,28 @@ pub fn parse(
 /// RFC 7516 §7.2.1: the protected, shared unprotected and per-recipient headers MUST be
 /// disjoint. jwz: `enc`, `crit` and `zip` only count when protected.
 fn merge(into: &mut Map<String, Value>, unprotected: &Value) -> Result<(), Error> {
-    let malformed = Error::new(ErrorCode::Malformed, "jwe json header");
-    for (name, value) in unprotected.as_object().ok_or(malformed)? {
+    const MALFORMED: Error = Error::new(ErrorCode::Malformed, "jwe json header");
+    for (name, value) in unprotected.as_object().ok_or(MALFORMED)? {
         if into.contains_key(name) || matches!(name.as_str(), "enc" | "crit" | "zip") {
-            return Err(malformed);
+            return Err(MALFORMED);
         }
         into.insert(name.clone(), value.clone());
     }
     Ok(())
 }
 
-/// One recipient of [`encrypt`].
+pub use super::Recipient;
+
+/// What all recipients of [`encrypt`] share (RFC 7516 §7.2.1): the content encryption,
+/// the protected header parameters and the additional authenticated data.
 #[derive(Clone, Debug)]
-pub struct Recipient<'a> {
-    /// Its key management algorithm.
-    pub alg: KeyEncryptionAlgorithm,
-    /// Its key.
-    pub key: EncryptionKey<'a>,
-    /// Its unprotected header parameters (`kid` defaults to the key's).
-    pub header: HeaderParams,
+pub struct Shared<'a> {
+    /// The content encryption algorithm, in the protected header.
+    pub enc: ContentEncryptionAlgorithm,
+    /// The protected header parameters.
+    pub protected: HeaderParams,
+    /// Authenticated but not encrypted (`aad`), if any.
+    pub aad: Option<&'a [u8]>,
 }
 
 /// Encrypts `plaintext` once for all `recipients` into the general JSON serialization
@@ -151,20 +154,28 @@ pub struct Recipient<'a> {
 ///
 /// [`ErrorCode::InvalidMember`] without recipients, for a direct mode (`dir`, `ECDH-ES`)
 /// among several recipients, or for a parameter both in the protected and a recipient's
-/// header; otherwise as [`super::encrypt`].
+/// header; otherwise as [`super::encrypt`], every recipient checked against `policy`
+/// before any key is used.
 pub fn encrypt(
     plaintext: &[u8],
-    enc: ContentEncryptionAlgorithm,
-    protected: HeaderParams,
+    shared: &Shared<'_>,
     recipients: &[Recipient<'_>],
-    aad: Option<&[u8]>,
+    policy: &Policy,
     registry: &Registry,
     backend: &dyn Backend,
 ) -> Result<String, Error> {
-    let protected = protected.into_members(&[("enc", enc.as_str())]);
+    let (enc, aad) = (shared.enc, shared.aad);
+    let protected = shared
+        .protected
+        .clone()
+        .into_members(&[("enc", enc.as_str())]);
     let first = recipients
         .first()
         .ok_or(Error::new(ErrorCode::InvalidMember, "no recipients"))?;
+    for recipient in recipients {
+        let (kek, cee) = entries(recipient.alg, enc, registry)?;
+        check_producible(policy, &kek, &cee, recipient.key, registry)?;
+    }
     let (_, cee) = entries(first.alg, enc, registry)?;
     // One recipient may use a direct mode, which determines the CEK itself.
     let shared_cek = if recipients.len() > 1 {
@@ -188,6 +199,7 @@ pub fn encrypt(
         }
         let mut visible = protected.clone();
         visible.extend(header.clone());
+        policy.check_produced_jwe(&Header::from_members(visible.clone()))?;
         let (apu, apv) = party_from(&visible)?;
         let managed = manage(
             &kek,

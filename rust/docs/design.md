@@ -15,7 +15,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
               │                            │                        │
  adapters   ti-client (ureq, files, the commands' operations), ti-tls (rustls), ti-pki's `os`: the only code that does I/O or holds a TLS library
               │
- engines    ti-idpd-client  ti-directory-client  ti-connector-client  ti-jwks   (sans I/O)
+ engines    ti-idpd-client  ti-directory-client  ti-connector-client   (sans I/O)
               │
  core       ti-pki (+ load)  jwz (+ ti-jwz)         ti-pkcs12
               │
@@ -162,7 +162,6 @@ with `cargo fuzz tmin`; structure-aware targets with `arbitrary`.
 | ti-pkcs12 | `decode` with password, MAC and KDF parameters, legacy PBEs |
 | ti-connector-client | `.kon` files, SOAP responses and faults, service directory |
 | ti-idpd-client, ti-directory-client | discovery document, IDP keys and challenge, redirects, token responses |
-| ti-jwks | a `jwks_uri`'s answers: status, `Cache-Control`, the set within its limits |
 | ti-tls | the chain a TLS server presents, under the `web` profile (`fuzz-ti-tls`) |
 
 ## 8. Dependencies
@@ -177,8 +176,7 @@ are in [development.md](./development.md#known-compromises).
 
 **No `unsafe` in a core, also not through its dependencies.** The cores are ti-types,
 ti-cache, ti-pki, ti-pkcs12, ti-connector-client, jwz,
-ti-jwz, ti-jwks, ti-idpd-client and ti-directory-client, with every feature but ti-jwks's
-`ureq` transport and `test-util`.
+ti-jwz, ti-idpd-client and ti-directory-client, with every feature but `test-util`.
 The hosts are ti-client, ti-cli and ti-wasm: a crate that reaches the terminal, the
 operating system or foreign code through `unsafe` (rpassword, rustls-platform-verifier)
 belongs there. ti-client is the native host library ti-cli and the desktop app share; it

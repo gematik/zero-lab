@@ -220,7 +220,8 @@ impl Ecdsa for P256 {
     }
 
     fn sign(&self, secret: &[u8], msg: &[u8], _rng: &dyn Rng) -> Result<Vec<u8>, CryptoError> {
-        // RFC 6979 §3.2: deterministic nonces, so signing needs no randomness and `rng` is unused.
+        // RFC 6979 §3.2: deterministic nonces, so signing needs no randomness and `rng` is unused;
+        // RFC 8725 §3.2: a predictable nonce would give the private key away.
         let key =
             p256::ecdsa::SigningKey::from_slice(secret).map_err(|_| CryptoError::InvalidKey)?;
         let signature: p256::ecdsa::Signature = key.sign(msg);

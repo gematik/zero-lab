@@ -117,3 +117,19 @@ fn rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings() {
         assert_eq!(validate(text), Err(ErrorCode::InvalidClaim), "{text}");
     }
 }
+
+/// Time enters as the host passes it everywhere: a function returning the seconds since
+/// the epoch is a clock, as FixedClock is.
+#[test]
+fn rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function() {
+    let claims = Claims::parse(br#"{"exp":1000}"#).unwrap();
+    let policy = Profile::strict().claims;
+    assert!(claims.validate(&policy, &|| 999).is_ok());
+    assert_eq!(
+        claims.validate(&policy, &|| 2000).map_err(|e| e.code()),
+        claims
+            .validate(&policy, &FixedClock(2000))
+            .map_err(|e| e.code())
+    );
+    assert!(claims.validate(&policy, &|| 2000).is_err());
+}

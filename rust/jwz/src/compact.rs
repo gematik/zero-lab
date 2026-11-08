@@ -35,20 +35,20 @@ use crate::error::{Error, ErrorCode};
 /// [`ErrorCode::TokenTooLarge`] above `max_len` (checked before anything else),
 /// [`ErrorCode::Malformed`] for any other number of parts.
 pub fn split<const N: usize>(token: &str, max_len: usize) -> Result<[&str; N], Error> {
+    const MALFORMED: Error = Error::new(ErrorCode::Malformed, "compact serialization");
     if token.len() > max_len {
         return Err(Error::new(
             ErrorCode::TokenTooLarge,
             "compact serialization",
         ));
     }
-    let malformed = Error::new(ErrorCode::Malformed, "compact serialization");
     let mut parts = [""; N];
     let mut pieces = token.split('.');
     for part in &mut parts {
-        *part = pieces.next().ok_or(malformed)?;
+        *part = pieces.next().ok_or(MALFORMED)?;
     }
     if pieces.next().is_some() {
-        return Err(malformed);
+        return Err(MALFORMED);
     }
     Ok(parts)
 }

@@ -154,11 +154,21 @@ pub async fn respond(
         .typ("JWT")
         .cty("NJWT")
         .x5c(&[certificate_der]);
-    let nested_jws = jws::sign_async(nested.to_string().as_bytes(), params, signer)
-        .await
-        .map_err(Error::jose("signed challenge"))?;
-    let plaintext = json!({ "njwt": nested_jws }).to_string();
     let registry = ti_jwz::registry();
+    // ti_legacy for BP256R1; the IDP's encryption key is on BP-256, which no TI profile
+    // lists for key agreement because none decrypts brainpool JWE, so this request adds
+    // it for its own encryption only.
+    let profile = ti_jwz::ti_legacy().with(&ti_jwz::BRAINPOOL_KEY_AGREEMENT);
+    let nested_jws = jws::sign_async(
+        nested.to_string().as_bytes(),
+        params,
+        signer,
+        &profile.policy,
+        &registry,
+    )
+    .await
+    .map_err(Error::jose("signed challenge"))?;
+    let plaintext = json!({ "njwt": nested_jws }).to_string();
     let backend = discovery::backend();
     let params = HeaderParams::new()
         .cty("NJWT")
@@ -166,10 +176,13 @@ pub async fn respond(
         .map_err(Error::jose("signed challenge header"))?;
     let encrypted = jwe::encrypt(
         plaintext.as_bytes(),
-        KeyEncryptionAlgorithm::ECDH_ES,
         ContentEncryptionAlgorithm::A256GCM,
-        EncryptionKey::Public(puk_idp_enc),
-        params,
+        &jwe::Recipient {
+            alg: KeyEncryptionAlgorithm::ECDH_ES,
+            key: EncryptionKey::Public(puk_idp_enc),
+            header: params,
+        },
+        &profile.policy,
         &registry,
         backend.as_ref(),
     )

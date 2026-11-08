@@ -236,16 +236,15 @@ fn verifier(
         .map_err(|e| e.to_string())
 }
 
-/// Verifies a JWS case with jwz under `ti_legacy`-like policy (BP256R1 and ES256) and
-/// checks its payload. Brainpool JWE is not decrypted by jwz yet.
+/// Verifies a JWS case with jwz under `ti_legacy` (BP256R1, and ES256 on P-256 and
+/// BP-256) and checks its payload. Brainpool JWE is not decrypted by jwz yet.
 pub fn verify_with_jwz(case: &Case, keys: &BTreeMap<String, Jwk>) -> Result<(), String> {
     if case.kind != "jws" {
         return Err(format!("{}: jwz does not decrypt brainpool JWE", case.id));
     }
     let registry = ti_jwz::brainpool::registry();
     let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
-    let mut policy = Profile::strict().policy;
-    policy.signature_algorithms.push(BP256R1);
+    let policy = ti_jwz::ti_legacy().policy;
     let all = if case.serialization == "compact" {
         vec![Jws::parse(&case.token, &policy, &registry).map_err(|e| format!("parse: {e}"))?]
     } else {
@@ -297,6 +296,8 @@ fn jws_cases(
             payload(id).as_bytes(),
             HeaderParams::new().typ("JWT"),
             signer.as_ref(),
+            &Profile::rfc7518_interop(registry).policy,
+            registry,
         )
         .map_err(|e| e.to_string())?;
         cases.push(Case {
@@ -327,7 +328,13 @@ fn jws_cases(
             .iter()
             .map(|s| (s.as_ref(), HeaderParams::new()))
             .collect();
-        let general = jws::json::sign(payload(id).as_bytes(), &pairs).map_err(|e| e.to_string())?;
+        let general = jws::json::sign(
+            payload(id).as_bytes(),
+            &pairs,
+            &Profile::rfc7518_interop(registry).policy,
+            registry,
+        )
+        .map_err(|e| e.to_string())?;
         cases.push(Case {
             id: id.into(),
             kind: "jws".into(),
@@ -358,10 +365,13 @@ fn jwe_cases(
         let id = format!("jwe-compact-{}-A256GCM", alg.as_str());
         let token = jwe::encrypt(
             payload(&id).as_bytes(),
-            alg,
             Enc::A256GCM,
-            EncryptionKey::Public(&idp_enc),
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key: EncryptionKey::Public(&idp_enc),
+                header: HeaderParams::new(),
+            },
+            &Profile::rfc7518_interop(registry).policy,
             registry,
             backend.as_ref(),
         )
@@ -399,10 +409,13 @@ fn jwe_cases(
             .collect();
         let general = jwe::json::encrypt(
             payload(id).as_bytes(),
-            Enc::A256GCM,
-            HeaderParams::new(),
+            &jwe::json::Shared {
+                enc: Enc::A256GCM,
+                protected: HeaderParams::new(),
+                aad: None,
+            },
             &recipients,
-            None,
+            &Profile::rfc7518_interop(registry).policy,
             registry,
             backend.as_ref(),
         )

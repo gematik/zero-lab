@@ -43,8 +43,10 @@
 //! let backend = Arc::new(RustCrypto::new());
 //! let key = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend)?;
 //!
-//! let token = jws::sign(b"hello", HeaderParams::new().typ("JWT"), &key)?;
-//! let unverified = Jws::parse(&token, &Profile::strict().policy, &registry)?;
+//! let profile = Profile::strict();
+//! let params = HeaderParams::new().typ("JWT");
+//! let token = jws::sign(b"hello", params, &key, &profile.policy, &registry)?;
+//! let unverified = Jws::parse(&token, &profile.policy, &registry)?;
 //! let verified = unverified.verify(&key)?;
 //! assert_eq!(verified.payload(), b"hello");
 //! # }
@@ -62,16 +64,19 @@
 pub mod json;
 
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use crate::b64;
 use crate::compact;
+use crate::crypto::Backend;
 use crate::error::{Error, ErrorCode};
 use crate::header::{Header, HeaderParams};
 use crate::jwa::{Registry, SignatureAlgorithm};
-use crate::keys::{AsyncSigner, AsyncVerifier, JwsKey, Signature, Signer, Verifier};
-use crate::profile::Policy;
+use crate::jwk::{AsyncKeyResolver, Jwk, KeyResolver};
+use crate::keys::{AsyncSigner, AsyncVerifier, JwsKey, Signature, Signer, SoftwareKey, Verifier};
+use crate::profile::{Policy, SigningKeyRule};
 
 /// A JWS whose signature has not been checked: header only.
 #[derive(Debug)]
@@ -85,6 +90,8 @@ pub enum Verified {}
 pub struct Jws<S> {
     header: Header,
     alg: SignatureAlgorithm,
+    /// What the verifying key must be under the policy the header was accepted by.
+    key_rule: SigningKeyRule,
     /// The encoded protected header exactly as received: part of the signing input.
     protected: String,
     /// The encoded payload exactly as received: part of the signing input.
@@ -109,10 +116,11 @@ impl Jws<Unverified> {
         // RFC 7515 §5.2 steps 2-4: the header is a base64url JSON object.
         let header = Header::decode(protected)?;
         // RFC 7515 §5.2 step 5: the header is understood and acceptable.
-        let alg = policy.check_jws(&header, registry)?;
+        let (alg, key_rule) = policy.accept_jws(&header, registry)?;
         Ok(Jws {
             header,
             alg,
+            key_rule,
             protected: protected.into(),
             encoded_payload: encoded_payload.into(),
             // RFC 7515 §5.2 steps 6-7.
@@ -124,7 +132,7 @@ impl Jws<Unverified> {
 
     pub(crate) fn from_parts(
         header: Header,
-        alg: SignatureAlgorithm,
+        (alg, key_rule): (SignatureAlgorithm, SigningKeyRule),
         protected: String,
         encoded_payload: String,
         payload: Vec<u8>,
@@ -133,6 +141,7 @@ impl Jws<Unverified> {
         Jws {
             header,
             alg,
+            key_rule,
             protected,
             encoded_payload,
             payload,
@@ -146,9 +155,12 @@ impl Jws<Unverified> {
     /// # Errors
     ///
     /// [`ErrorCode::KeyMismatch`] if `key` is for another algorithm or names another
-    /// `kid` than the header; [`ErrorCode::VerificationFailed`] if the signature does not
-    /// verify.
+    /// `kid` than the header; [`ErrorCode::PolicyViolation`] if it is on a curve the
+    /// policy does not list ([`Policy::check_signing_key`]);
+    /// [`ErrorCode::VerificationFailed`] if the signature does not verify.
     pub fn verify(self, key: &dyn Verifier) -> Result<Jws<Verified>, Error> {
+        // RFC 8725 §3.3: the payload is reachable only through this check, so a token whose
+        // signature fails is rejected whole.
         self.check_key(key)?;
         key.verify(self.signing_input().as_bytes(), &self.signature)?;
         Ok(self.into_verified())
@@ -166,15 +178,75 @@ impl Jws<Unverified> {
         Ok(self.into_verified())
     }
 
+    /// Checks the signature with the keys `resolver` offers for this header, each made a
+    /// verifier for the accepted algorithm with `backend` and tried in turn; a key that
+    /// does not fit the algorithm, or is on a curve the policy does not list, is passed
+    /// over.
+    ///
+    /// # Errors
+    ///
+    /// The resolver's error; [`ErrorCode::VerificationFailed`] if no resolved key
+    /// verifies the signature, none resolved included.
+    pub fn verify_with<B: Backend>(
+        self,
+        resolver: &dyn KeyResolver,
+        registry: &Registry,
+        backend: &Arc<B>,
+    ) -> Result<Jws<Verified>, Error> {
+        let keys = resolver.resolve(&self.header, self.alg)?;
+        self.verify_with_any(&keys, registry, backend)
+    }
+
+    /// [`verify_with`](Self::verify_with) with a resolver that answers asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// As [`verify_with`](Self::verify_with).
+    pub async fn verify_with_async<B: Backend>(
+        self,
+        resolver: &dyn AsyncKeyResolver,
+        registry: &Registry,
+        backend: &Arc<B>,
+    ) -> Result<Jws<Verified>, Error> {
+        let keys = resolver.resolve_async(&self.header, self.alg).await?;
+        self.verify_with_any(&keys, registry, backend)
+    }
+
+    fn verify_with_any<B: Backend>(
+        self,
+        keys: &[Jwk],
+        registry: &Registry,
+        backend: &Arc<B>,
+    ) -> Result<Jws<Verified>, Error> {
+        let input = self.signing_input();
+        let verifies = |jwk: &Jwk| {
+            SoftwareKey::from_jwk(jwk, self.alg, registry, Arc::clone(backend)).is_ok_and(|key| {
+                self.check_key(&key).is_ok()
+                    && Verifier::verify(&key, input.as_bytes(), &self.signature).is_ok()
+            })
+        };
+        if keys.iter().any(verifies) {
+            Ok(self.into_verified())
+        } else {
+            Err(Error::new(
+                ErrorCode::VerificationFailed,
+                "no resolved key verifies the signature",
+            ))
+        }
+    }
+
     /// The key must be for the header's algorithm (a key is bound to one; the header
-    /// never chooses another for it) and, where both name one, the same `kid`.
+    /// never chooses another for it), on a curve the policy lists and, where both name
+    /// one, have the same `kid`.
     fn check_key(&self, key: &(impl JwsKey + ?Sized)) -> Result<(), Error> {
+        // RFC 8725 §3.1: each key has one algorithm, checked here, when it is used.
         if key.algorithm() != self.alg {
             return Err(Error::new(
                 ErrorCode::KeyMismatch,
                 "key for another algorithm",
             ));
         }
+        self.key_rule.check(key.curve())?;
         if let (Some(expected), Some(actual)) = (self.header.kid(), key.key_id())
             && expected != actual
         {
@@ -187,6 +259,7 @@ impl Jws<Unverified> {
         Jws {
             header: self.header,
             alg: self.alg,
+            key_rule: self.key_rule,
             protected: self.protected,
             encoded_payload: self.encoded_payload,
             payload: self.payload,
@@ -234,26 +307,43 @@ fn signing_input(protected: &str, encoded_payload: &str) -> String {
 }
 
 /// The protected header for `key`: `params` plus `alg` and, unless set, `kid`.
-fn protected_header(params: HeaderParams, key: &(impl JwsKey + ?Sized)) -> Result<String, Error> {
+fn protected_header(
+    params: HeaderParams,
+    key: &(impl JwsKey + ?Sized),
+    policy: &Policy,
+) -> Result<String, Error> {
     let kid = key.key_id().filter(|_| !params.has("kid"));
     let mut set = alloc::vec![("alg", key.algorithm().as_str())];
     if let Some(kid) = kid {
         set.push(("kid", kid));
     }
     let members = params.into_members(&set);
+    policy.check_produced_jws(&Header::from_members(members.clone()))?;
     let json =
         serde_json::to_string(&members).map_err(|_| Error::new(ErrorCode::Json, "header"))?;
     Ok(b64::encode(json.as_bytes()))
 }
 
 /// Signs `payload` with `signer` into a compact JWS (RFC 7515 §5.1): `alg` from the
-/// signer, `kid` from the signer unless `params` sets one.
+/// signer, `kid` from the signer unless `params` sets one. The signer's algorithm and
+/// curve must be ones `policy` lists, so nothing is signed that the profile would
+/// refuse to verify.
 ///
 /// # Errors
 ///
-/// The signer's error, or [`ErrorCode::Json`] if the header cannot be serialized.
-pub fn sign(payload: &[u8], params: HeaderParams, signer: &dyn Signer) -> Result<String, Error> {
-    let protected = protected_header(params, signer)?;
+/// The errors of [`Policy::check_signing_key`], and [`ErrorCode::PolicyViolation`] or
+/// [`ErrorCode::Critical`] for a header the policy would refuse (`typ`, a required `kid`,
+/// a key reference, `crit`), before anything is signed; the signer's error, or
+/// [`ErrorCode::Json`] if the header cannot be serialized.
+pub fn sign(
+    payload: &[u8],
+    params: HeaderParams,
+    signer: &dyn Signer,
+    policy: &Policy,
+    registry: &Registry,
+) -> Result<String, Error> {
+    policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
+    let protected = protected_header(params, signer, policy)?;
     let encoded_payload = b64::encode(payload);
     let input = signing_input(&protected, &encoded_payload);
     let signature = signer.try_sign(input.as_bytes())?;
@@ -269,8 +359,11 @@ pub async fn sign_async(
     payload: &[u8],
     params: HeaderParams,
     signer: &dyn AsyncSigner,
+    policy: &Policy,
+    registry: &Registry,
 ) -> Result<String, Error> {
-    let protected = protected_header(params, signer)?;
+    policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
+    let protected = protected_header(params, signer, policy)?;
     let encoded_payload = b64::encode(payload);
     let input = signing_input(&protected, &encoded_payload);
     let signature = signer.sign_async(input.as_bytes()).await?;

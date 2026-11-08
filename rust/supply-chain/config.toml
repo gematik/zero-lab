@@ -330,12 +330,12 @@ version = "1.0.26"
 criteria = "safe-to-deploy"
 
 [[exemptions.ureq]]
-version = "3.4.2"
+version = "3.5.1"
 criteria = "safe-to-deploy"
-notes = "Host only: the HTTP client of ti-client, the host library of ti-cli, and of ti-jwks's ureq adapter, which no core build enables (just core-deps). No imported audit covers this version."
+notes = "Host only: the HTTP client of ti-client, the host library of ti-cli and the desktop app, which no core build pulls in (just core-deps). No imported audit covers this version."
 
 [[exemptions.ureq-proto]]
-version = "0.6.4"
+version = "0.7.1"
 criteria = "safe-to-deploy"
 notes = "Host only, through ureq. No imported audit covers this version."
 

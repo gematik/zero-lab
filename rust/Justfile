@@ -439,7 +439,6 @@ wasm32:
     cargo check -p jwz --target wasm32-unknown-unknown --no-default-features
     cargo check -p ti-jwz --target wasm32-unknown-unknown --all-features
     cargo check -p ti-idpd-client --target wasm32-unknown-unknown
-    cargo check -p ti-jwks --target wasm32-unknown-unknown
     cargo check -p ti-directory-client --target wasm32-unknown-unknown
 
 # ti-wasm allows the unsafe glue `#[wasm_bindgen]` expands to; everything else forbids it
@@ -484,10 +483,6 @@ core-deps:
         | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
     if [ -n "$found" ]; then echo "ti-directory-client depends on: $found" >&2; exit 1; fi
     echo "ti-directory-client is free of HTTP clients, TLS and executors"
-    found=$(cargo tree -p ti-jwks -e normal --prefix none \
-        | grep -E '^(reqwest|ureq|rustls|tokio|hyper) ' || true)
-    if [ -n "$found" ]; then echo "ti-jwks core depends on: $found" >&2; exit 1; fi
-    echo "ti-jwks core is free of HTTP clients, TLS and executors"
 
 # Without dangerous-nonprod, the compiled ti-pki must contain none of the non-prod trust
 # files. Compares their bytes, not a marker string (the marker legitimately occurs in
@@ -867,7 +862,13 @@ semver *crates:
             echo "$crate: no baseline tag, skipped"
             continue
         fi
-        cargo semver-checks check-release -p "$crate" --baseline-rev "$latest"
+        # jwz's `rsa` feature refuses to build until RSA is implemented, so jwz is
+        # checked with the features it is built and tested with, as clippy and doc do.
+        features=()
+        if [ "$crate" = jwz ]; then
+            features=(--only-explicit-features --features "{{JWZ_FEATURES}}")
+        fi
+        cargo semver-checks check-release -p "$crate" --baseline-rev "$latest" "${features[@]}"
     done
 
 # ---- Optional, on demand -----------------------------------------------------------

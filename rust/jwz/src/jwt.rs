@@ -78,6 +78,14 @@ impl Clock for SystemClock {
     }
 }
 
+/// Any function returning the seconds since the epoch is a clock, as the host passes
+/// time everywhere else (`|| now`, a test's fixed value).
+impl<F: Fn() -> u64> Clock for F {
+    fn now(&self) -> u64 {
+        self()
+    }
+}
+
 /// A clock that always says the same time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FixedClock(pub u64);
@@ -137,15 +145,15 @@ impl Claims {
     ///
     /// [`ErrorCode::InvalidClaim`] for any other form.
     pub fn aud(&self) -> Result<Vec<&str>, Error> {
-        let invalid = Error::new(ErrorCode::InvalidClaim, "aud");
+        const INVALID: Error = Error::new(ErrorCode::InvalidClaim, "aud");
         match self.members.get("aud") {
             None => Ok(Vec::new()),
             Some(Value::String(one)) => Ok(alloc::vec![one.as_str()]),
             Some(Value::Array(items)) => items
                 .iter()
-                .map(|item| item.as_str().ok_or(invalid))
+                .map(|item| item.as_str().ok_or(INVALID))
                 .collect(),
-            Some(_) => Err(invalid),
+            Some(_) => Err(INVALID),
         }
     }
 
@@ -186,14 +194,13 @@ impl Claims {
         let Some(value) = self.members.get(name) else {
             return Ok(None);
         };
-        let invalid = Error::new(ErrorCode::InvalidClaim, name);
         if let Some(seconds) = value.as_u64() {
             return Ok(Some(seconds));
         }
         let seconds = value
             .as_f64()
             .filter(|s| s.is_finite() && *s >= 0.0 && *s < 18_446_744_073_709_551_616.0)
-            .ok_or(invalid)?;
+            .ok_or(Error::new(ErrorCode::InvalidClaim, name))?;
         #[allow(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,
@@ -247,13 +254,15 @@ impl Claims {
                 return Err(Error::new(ErrorCode::Expired, "iat"));
             }
         }
-        // RFC 7519 §4.1.1: iss is compared as a case-sensitive string.
+        // RFC 7519 §4.1.1: iss is compared as a case-sensitive string. RFC 8725 §3.8: that
+        // the verifying keys were this issuer's is the resolver's to ensure.
         if let Some(issuer) = &policy.issuer
             && self.iss() != Some(issuer.as_str())
         {
             return Err(Error::new(ErrorCode::InvalidClaim, "iss"));
         }
-        // RFC 7519 §4.1.3: the recipient MUST identify itself with a value in aud.
+        // RFC 7519 §4.1.3: the recipient MUST identify itself with a value in aud, so a
+        // token without aud is refused too (RFC 8725 §3.9).
         let aud = self.aud()?;
         if let Some(audience) = &policy.audience
             && !aud.contains(&audience.as_str())

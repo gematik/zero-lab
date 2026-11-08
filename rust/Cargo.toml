@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-jwks", "ti-tls", "ti-idpd-client", "ti-directory-client", "ti-client", "unsafe-audit", "traceability"]
+members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-tls", "ti-idpd-client", "ti-directory-client", "ti-client", "unsafe-audit", "traceability"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -26,7 +26,6 @@ ti-connector-client = { version = "0.1", path = "ti-connector-client" }
 jwz = { version = "0.1", path = "jwz", default-features = false }
 ti-jwz = { version = "0.1", path = "ti-jwz" }
 ti-idpd-client = { version = "0.1", path = "ti-idpd-client" }
-ti-jwks = { version = "0.1", path = "ti-jwks" }
 ti-tls = { version = "0.1", path = "ti-tls" }
 ti-directory-client = { version = "0.1", path = "ti-directory-client" }
 ti-client = { version = "0.1", path = "ti-client" }
@@ -81,7 +80,7 @@ digest = "0.11"
 # async runtime, no aws-lc build.
 # `~`: ti-connector-client's TLS connector uses ureq's semver-exempt `unversioned`
 # transport API (docs/development.md, Known compromises).
-ureq = { version = "~3.4.2", default-features = false }
+ureq = { version = "~3.5.1", default-features = false }
 rustls = { version = "0.23.46", default-features = false, features = ["std", "tls12", "ring"] }
 # The operating system's trust store for a Konnektor without a `.kon` trust store; the
 # version ureq's `platform-verifier` feature brings.

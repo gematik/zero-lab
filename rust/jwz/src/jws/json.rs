@@ -55,15 +55,15 @@ pub fn parse(
     policy: &Policy,
     registry: &Registry,
 ) -> Result<Vec<Jws<Unverified>>, Error> {
+    const MALFORMED: Error = Error::new(ErrorCode::Malformed, "jws json");
     if text.len() > policy.max_token_len {
         return Err(Error::new(ErrorCode::TokenTooLarge, "jws json"));
     }
-    let malformed = Error::new(ErrorCode::Malformed, "jws json");
     let object = json::parse_object(text.as_bytes(), "jws json")?;
     let encoded_payload = object
         .get("payload")
         .and_then(Value::as_str)
-        .ok_or(malformed)?;
+        .ok_or(MALFORMED)?;
     let payload = b64::decode(encoded_payload, "payload")?;
     // RFC 7515 §7.2.1 (general) has "signatures"; §7.2.2 (flattened) has the members of
     // one signature at the top level. Both at once is neither.
@@ -71,11 +71,11 @@ pub fn parse(
         Some(Value::Array(items)) if !object.contains_key("signature") && !items.is_empty() => {
             items
                 .iter()
-                .map(|item| item.as_object().ok_or(malformed))
+                .map(|item| item.as_object().ok_or(MALFORMED))
                 .collect::<Result<_, _>>()?
         }
         None => alloc::vec![&object],
-        Some(_) => return Err(malformed),
+        Some(_) => return Err(MALFORMED),
     };
     entries
         .into_iter()
@@ -90,33 +90,33 @@ fn one_signature(
     policy: &Policy,
     registry: &Registry,
 ) -> Result<Jws<Unverified>, Error> {
-    let malformed = Error::new(ErrorCode::Malformed, "jws json signature");
+    const MALFORMED: Error = Error::new(ErrorCode::Malformed, "jws json signature");
     let protected = entry
         .get("protected")
         .and_then(Value::as_str)
-        .ok_or(malformed)?;
+        .ok_or(MALFORMED)?;
     let protected_header = Header::decode(protected)?;
     let mut merged = protected_header.members().clone();
     if let Some(unprotected) = entry.get("header") {
-        let unprotected = unprotected.as_object().ok_or(malformed)?;
+        let unprotected = unprotected.as_object().ok_or(MALFORMED)?;
         for (name, value) in unprotected {
             // RFC 7515 §7.2.1: the protected and unprotected headers MUST be disjoint.
             // jwz: alg and crit only count when protected.
             if merged.contains_key(name) || matches!(name.as_str(), "alg" | "crit") {
-                return Err(malformed);
+                return Err(MALFORMED);
             }
             merged.insert(name.clone(), value.clone());
         }
     }
     let header = Header::from_members(merged);
-    let alg = policy.check_jws(&header, registry)?;
+    let accepted = policy.accept_jws(&header, registry)?;
     let signature = entry
         .get("signature")
         .and_then(Value::as_str)
-        .ok_or(malformed)?;
+        .ok_or(MALFORMED)?;
     Ok(Jws::from_parts(
         header,
-        alg,
+        accepted,
         protected.to_string(),
         encoded_payload.to_string(),
         payload.to_vec(),
@@ -125,16 +125,26 @@ fn one_signature(
 }
 
 /// Signs `payload` once per signer into the general JSON serialization (RFC 7515
-/// §7.2.1); each signer's header parameters are protected.
+/// §7.2.1); each signer's header parameters are protected. Every signer must be one
+/// `policy` accepts, as for [`super::sign`].
 ///
 /// # Errors
 ///
-/// A signer's error.
-pub fn sign(payload: &[u8], signers: &[(&dyn Signer, HeaderParams)]) -> Result<String, Error> {
+/// The errors of [`Policy::check_signing_key`] for any signer, before anything is
+/// signed; a signer's error.
+pub fn sign(
+    payload: &[u8],
+    signers: &[(&dyn Signer, HeaderParams)],
+    policy: &Policy,
+    registry: &Registry,
+) -> Result<String, Error> {
+    for (signer, _) in signers {
+        policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
+    }
     let encoded_payload = b64::encode(payload);
     let mut signatures = Vec::with_capacity(signers.len());
     for (signer, params) in signers {
-        let protected = protected_header(params.clone(), *signer)?;
+        let protected = protected_header(params.clone(), *signer, policy)?;
         let input = signing_input(&protected, &encoded_payload);
         let signature = signer.try_sign(input.as_bytes())?;
         let mut entry = Map::new();

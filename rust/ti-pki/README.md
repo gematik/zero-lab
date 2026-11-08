@@ -83,6 +83,25 @@ if let ReloadOutcome::Expired { error } = reloader.tick().await {
 let store = reloader.handle().snapshot()?; // per request
 ```
 
+Why the loaders look like this:
+
+- **The host owns all I/O.** ti-pki holds the rules (which list is newer, what verifies,
+  how long a copy stays fresh); the host supplies the [`Transport`](src/load/transport.rs)
+  and the [`CacheStore`](../ti-cache): its HTTP client, proxy, timeouts and TLS, its disk
+  or key-value store. The same loaders run in the `ti` CLI over ureq and files, in a
+  server over its own client, and in the browser over `fetch` and IndexedDB.
+- **Time is a function, `impl Fn() -> Timestamp`.** Hosts pass `Timestamp::now`, tests
+  `|| Timestamp(1_767_225_600)`, the browser a closure over `Date.now()`. A value would
+  freeze the clock of a reloader that runs for months; a trait would be ceremony for one
+  call; a global would make time impossible to fix in a test. `Timestamp::now` does not
+  exist on `wasm32-unknown-unknown`, where std has no clock and would panic.
+- **The traits are async without a `Send` bound.** A browser's fetch answers with a
+  promise whose future is not `Send`. The loaders bind their parameters with `MaybeSend`
+  and `MaybeSync`: `Send` and `Sync` on native targets, so a `Reloader` can be shared
+  across threads, nothing on wasm32. `tests/wasm32_not_send.rs`, type-checked by
+  `just wasm32`, builds every loader over hosts that are neither. A native host that
+  blocks implements the async methods by blocking inside them; ti-client does.
+
 Air-gapped, never touching the network: serve a pre-populated store and fall back to
 the bundle.
 

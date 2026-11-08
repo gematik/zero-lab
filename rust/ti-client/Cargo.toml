@@ -38,7 +38,7 @@ zeroize.workspace = true
 # The Konnektor's TLS trust (`konnektor`); this crate only wires it into ureq.
 ti-tls.workspace = true
 # Blocking HTTP without an async runtime; the TLS layer is ti-tls's rustls configuration
-# in a connector of our own (`unversioned` API, hence ureq pinned `~3.4`).
+# in a connector of our own (`unversioned` API, hence ureq pinned `~3.5`).
 ureq = { workspace = true, features = ["rustls-no-provider"] }
 # The proxy credentials of a CONNECT tunnel (`peer`).
 base64ct.workspace = true

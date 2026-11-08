@@ -88,7 +88,9 @@ fn rfc_8037_a_4_eddsa() {
     let registry = Registry::standard();
     let jwk = Jwk::parse(ED25519_KEY).unwrap();
     let key = SoftwareKey::from_jwk(&jwk, SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
-    let jws = Jws::parse(RFC8037_A4, &Profile::strict().policy, &registry).unwrap();
+    // RFC 8037's polymorphic EdDSA, which strict leaves out since RFC 9864.
+    let policy = Profile::strict().with(&jwz::profile::EDDSA).policy;
+    let jws = Jws::parse(RFC8037_A4, &policy, &registry).unwrap();
     assert_eq!(
         jws.verify(&key).unwrap().payload(),
         b"Example of Ed25519 signing"
@@ -117,12 +119,19 @@ fn rfc_7520_5_8_a128kw_a128gcm() {
 #[wasm_bindgen_test]
 fn generated_keys_sign_and_verify() {
     let registry = Registry::standard();
-    for alg in [SignatureAlgorithm::ES256, SignatureAlgorithm::EDDSA] {
+    for alg in [SignatureAlgorithm::ES256, SignatureAlgorithm::ED25519] {
         let key = SoftwareKey::generate(alg, &registry, backend()).unwrap();
         let other = SoftwareKey::generate(alg, &registry, backend()).unwrap();
         // Two keys from Crypto.getRandomValues: a stuck random source would repeat.
         assert_ne!(key.public_jwk(), other.public_jwk(), "{alg:?}");
-        let token = jws::sign(b"{}", HeaderParams::new().typ("JWT"), &key).unwrap();
+        let token = jws::sign(
+            b"{}",
+            HeaderParams::new().typ("JWT"),
+            &key,
+            &Profile::strict().policy,
+            &registry,
+        )
+        .unwrap();
         let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
         assert_eq!(jws.verify(&key).unwrap().payload(), b"{}", "{alg:?}");
         let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
@@ -157,10 +166,13 @@ fn ecdh_es_and_key_wrap_round_trip() {
     ] {
         let token = jwe::encrypt(
             b"in the browser",
-            alg,
             Enc::A256GCM,
-            encryption,
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key: encryption,
+                header: HeaderParams::new(),
+            },
+            &policy,
             &registry,
             backend.as_ref(),
         )

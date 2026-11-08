@@ -41,7 +41,7 @@ use jwz::jwe::json::Recipient;
 use jwz::jwe::{self, DecryptionKey, EncryptionKey, Jwe};
 use jwz::jwk::Jwk;
 use jwz::keys::{SoftwareAgreementKey, SymmetricKey};
-use jwz::profile::{Policy, Profile};
+use jwz::profile::{AES_GCM, AES_KW, DIRECT, Policy, Profile};
 use serde_json::{Value, json};
 
 fn backend() -> Arc<RustCrypto> {
@@ -151,7 +151,7 @@ fn rfc_7520_5_8_a128kw_a128gcm() {
 }
 
 /// RFC 7516 §4.1.3: jwz does not implement `zip`, so the RFC's compressed example is
-/// refused, compact and JSON.
+/// refused, compact and JSON (RFC 8725 §3.6).
 #[test]
 fn rfc_7520_5_9_zip_and_5_12_unprotected_enc_are_refused() {
     let key = symmetric(A128KW_KEY);
@@ -525,10 +525,13 @@ fn rfc_7516_5_1_step_14_the_aad_is_the_encoded_protected_header() {
 
     let token = jwe::encrypt(
         b"compact",
-        Alg::DIR,
         Enc::A128GCM,
-        EncryptionKey::Symmetric(&cek),
-        HeaderParams::new(),
+        &jwe::Recipient {
+            alg: Alg::DIR,
+            key: EncryptionKey::Symmetric(&cek),
+            header: HeaderParams::new(),
+        },
+        &interop(),
         &registry,
         backend.as_ref(),
     )
@@ -547,10 +550,13 @@ fn rfc_7516_5_1_step_14_the_aad_is_the_encoded_protected_header() {
     };
     let text = jwe::json::encrypt(
         b"json",
-        Enc::A128GCM,
-        HeaderParams::new(),
+        &jwe::json::Shared {
+            enc: Enc::A128GCM,
+            protected: HeaderParams::new(),
+            aad: Some(b"context"),
+        },
         &[recipient],
-        Some(b"context"),
+        &interop(),
         &registry,
         backend.as_ref(),
     )
@@ -673,13 +679,16 @@ fn round_trip_every_alg_and_enc() {
                 let plaintext: Vec<u8> = (0..=u8::MAX).cycle().step_by(7).take(size).collect();
                 let token = jwe::encrypt(
                     &plaintext,
-                    alg,
                     enc,
-                    encryption,
-                    HeaderParams::new()
-                        .cty("x")
-                        .param("apu", json!(b64(b"me")))
-                        .unwrap(),
+                    &jwe::Recipient {
+                        alg,
+                        key: encryption,
+                        header: HeaderParams::new()
+                            .cty("x")
+                            .param("apu", json!(b64(b"me")))
+                            .unwrap(),
+                    },
+                    &interop(),
                     &registry,
                     backend.as_ref(),
                 )
@@ -707,10 +716,13 @@ fn encryption_key_must_fit_the_algorithm() {
     let encrypt = |alg: Alg, key: EncryptionKey<'_>| {
         code(jwe::encrypt(
             b"x",
-            alg,
             Enc::A128GCM,
-            key,
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key,
+                header: HeaderParams::new(),
+            },
+            &interop(),
             &registry,
             backend.as_ref(),
         ))
@@ -747,12 +759,15 @@ fn encryption_key_must_fit_the_algorithm() {
     assert_eq!(
         code(jwe::encrypt(
             b"x",
-            Alg::ECDH_ES,
             Enc::A128CBC_HS256,
-            EncryptionKey::Public(&recipient.public_jwk()),
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg: Alg::ECDH_ES,
+                key: EncryptionKey::Public(&recipient.public_jwk()),
+                header: HeaderParams::new()
+            },
+            &interop(),
             &registry,
-            backend.as_ref(),
+            backend.as_ref()
         ))
         .map(|_| ()),
         Err(ErrorCode::UnsupportedAlgorithm)
@@ -791,10 +806,13 @@ fn rfc_7516_7_2_1_general_json_with_several_recipients() {
     ];
     let text = jwe::json::encrypt(
         b"to all",
-        Enc::A256GCM,
-        HeaderParams::new().typ("JWT"),
+        &jwe::json::Shared {
+            enc: Enc::A256GCM,
+            protected: HeaderParams::new().typ("JWT"),
+            aad: Some(b"context"),
+        },
         &recipients,
-        Some(b"context"),
+        &interop(),
         &registry,
         backend.as_ref(),
     )
@@ -837,12 +855,15 @@ fn rfc_7516_7_2_1_general_json_with_several_recipients() {
     assert_eq!(
         code(jwe::json::encrypt(
             b"x",
-            Enc::A256GCM,
-            HeaderParams::new(),
+            &jwe::json::Shared {
+                enc: Enc::A256GCM,
+                protected: HeaderParams::new(),
+                aad: None
+            },
             &direct,
-            None,
+            &interop(),
             &registry,
-            backend.as_ref(),
+            backend.as_ref()
         ))
         .map(|_| ()),
         Err(ErrorCode::InvalidMember)
@@ -882,10 +903,13 @@ fn decrypt_async_with_a_key_agreement() {
     let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
     let token = jwe::encrypt(
         b"async",
-        Alg::ECDH_ES_A128KW,
         Enc::A128GCM,
-        EncryptionKey::Public(&recipient.public_jwk()),
-        HeaderParams::new(),
+        &jwe::Recipient {
+            alg: Alg::ECDH_ES_A128KW,
+            key: EncryptionKey::Public(&recipient.public_jwk()),
+            header: HeaderParams::new(),
+        },
+        &interop(),
         &registry,
         backend.as_ref(),
     )
@@ -938,17 +962,27 @@ fn a_curve_added_through_the_extended_backend_works_end_to_end() {
     );
     let recipient = SoftwareAgreementKey::generate(TEST_CURVE, backend.clone()).unwrap();
     assert_eq!(recipient.public_jwk().crv(), Some("X-TEST-256"));
-    let token = jwe::encrypt(
-        b"extended",
-        Alg::ECDH_ES,
-        Enc::A128GCM,
-        EncryptionKey::Public(&recipient.public_jwk()),
-        HeaderParams::new(),
-        &registry,
-        backend.as_ref(),
-    )
-    .unwrap();
+    // The interop profile of this registry lists the new curve; the standard one does not.
     let policy = Profile::rfc7518_interop(&registry).policy;
+    let encrypt = |policy: &Policy| {
+        jwe::encrypt(
+            b"extended",
+            Enc::A128GCM,
+            &jwe::Recipient {
+                alg: Alg::ECDH_ES,
+                key: EncryptionKey::Public(&recipient.public_jwk()),
+                header: HeaderParams::new(),
+            },
+            policy,
+            &registry,
+            backend.as_ref(),
+        )
+    };
+    assert_eq!(
+        code(encrypt(&interop())).map(|_| ()),
+        Err(ErrorCode::PolicyViolation)
+    );
+    let token = encrypt(&policy).unwrap();
     let jwe = Jwe::parse(&token, &policy, &registry).unwrap();
     assert_eq!(
         jwe.header().epk().unwrap().unwrap().crv(),
@@ -965,5 +999,148 @@ fn a_curve_added_through_the_extended_backend_works_end_to_end() {
     assert_eq!(
         code(jwe.decrypt(DecryptionKey::Agreement(&p256), backend.as_ref())).map(|_| ()),
         Err(ErrorCode::KeyMismatch)
+    );
+}
+
+/// RFC 8725 §3.1 for JWE: jwz encrypts only what the profile it is given would decrypt.
+/// A key management algorithm, a content encryption or a recipient curve the profile
+/// does not list is refused before any key is used, compact and JSON alike; the same
+/// recipient under a profile that lists them is accepted.
+#[test]
+fn rfc_8725_3_1_encryption_refuses_what_the_profile_does_not_list() {
+    let registry = Registry::standard();
+    let backend = backend();
+    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let public = recipient.public_jwk();
+    let shared = SymmetricKey::new(vec![7; 32]);
+    let strict = Profile::strict().policy;
+    let mut no_p256 = strict.clone();
+    no_p256.key_agreement_curves.clear();
+    let encrypt = |alg, enc, key, policy: &Policy| {
+        code(jwe::encrypt(
+            b"x",
+            enc,
+            &jwe::Recipient {
+                alg,
+                key,
+                header: HeaderParams::new(),
+            },
+            policy,
+            &registry,
+            backend.as_ref(),
+        ))
+        .map(|_| ())
+    };
+    let ecdh = EncryptionKey::Public(&public);
+    for (alg, enc, key, policy, what) in [
+        (
+            Alg::DIR,
+            Enc::A256GCM,
+            EncryptionKey::Symmetric(&shared),
+            &strict,
+            "dir",
+        ),
+        (
+            Alg::A256KW,
+            Enc::A256GCM,
+            EncryptionKey::Symmetric(&shared),
+            &strict,
+            "A256KW",
+        ),
+        (Alg::ECDH_ES, Enc::A192GCM, ecdh, &strict, "A192GCM"),
+        (Alg::ECDH_ES, Enc::A256GCM, ecdh, &no_p256, "P-256"),
+        (Alg::ECDH_ES_A128KW, Enc::A256GCM, ecdh, &no_p256, "P-256"),
+    ] {
+        assert_eq!(
+            encrypt(alg, enc, key, policy),
+            Err(ErrorCode::PolicyViolation),
+            "{what}"
+        );
+    }
+    assert_eq!(encrypt(Alg::ECDH_ES, Enc::A256GCM, ecdh, &strict), Ok(()));
+    let with_dir = Profile::strict().with(&DIRECT).with(&AES_GCM).policy;
+    assert_eq!(
+        encrypt(
+            Alg::DIR,
+            Enc::A256GCM,
+            EncryptionKey::Symmetric(&shared),
+            &with_dir
+        ),
+        Ok(())
+    );
+    assert_eq!(encrypt(Alg::ECDH_ES, Enc::A192GCM, ecdh, &with_dir), Ok(()));
+    // The JSON serialization checks every recipient before it encrypts to any.
+    let recipients = [
+        Recipient {
+            alg: Alg::ECDH_ES_A128KW,
+            key: ecdh,
+            header: HeaderParams::new(),
+        },
+        Recipient {
+            alg: Alg::A128KW,
+            key: EncryptionKey::Symmetric(&symmetric(A128KW_KEY)),
+            header: HeaderParams::new(),
+        },
+    ];
+    let json = |policy: &Policy| {
+        code(jwe::json::encrypt(
+            b"x",
+            &jwe::json::Shared {
+                enc: Enc::A256GCM,
+                protected: HeaderParams::new(),
+                aad: None,
+            },
+            &recipients,
+            policy,
+            &registry,
+            backend.as_ref(),
+        ))
+        .map(|_| ())
+    };
+    assert_eq!(json(&strict), Err(ErrorCode::PolicyViolation));
+    assert_eq!(json(&Profile::strict().with(&AES_KW).policy), Ok(()));
+    let mut kw_without_p256 = Profile::strict().with(&AES_KW).policy;
+    kw_without_p256.key_agreement_curves.clear();
+    assert_eq!(json(&kw_without_p256), Err(ErrorCode::PolicyViolation));
+}
+
+/// RFC 7518 §4.6: the recipient's curve is a key-agreement rule. A public key under key
+/// wrapping is the wrong key, not a curve the profile refuses, and a curve the registry
+/// does not know is refused as such, whatever the profile lists.
+#[test]
+fn rfc_7518_4_6_the_recipient_curve_binds_key_agreement_only() {
+    let registry = Registry::standard();
+    let backend = backend();
+    let public = SoftwareAgreementKey::generate(Curve::P256, backend.clone())
+        .unwrap()
+        .public_jwk();
+    let encrypt = |alg, key, policy: &Policy| {
+        code(jwe::encrypt(
+            b"x",
+            Enc::A256GCM,
+            &jwe::Recipient {
+                alg,
+                key,
+                header: HeaderParams::new(),
+            },
+            policy,
+            &registry,
+            backend.as_ref(),
+        ))
+        .map(|_| ())
+    };
+    let mut kw_only = Profile::new("kw", 1).with(&AES_KW).with(&AES_GCM).policy;
+    assert_eq!(
+        encrypt(Alg::A256KW, EncryptionKey::Public(&public), &kw_only),
+        Err(ErrorCode::KeyMismatch)
+    );
+    kw_only.key_encryption_algorithms.push(Alg::ECDH_ES);
+    let mut unknown = public.clone();
+    if let jwz::jwk::KeyMaterial::Ec(k) = &mut unknown.material {
+        k.crv = "X-UNKNOWN".into();
+    }
+    assert_eq!(
+        encrypt(Alg::ECDH_ES, EncryptionKey::Public(&unknown), &kw_only),
+        Err(ErrorCode::UnknownCurve)
     );
 }

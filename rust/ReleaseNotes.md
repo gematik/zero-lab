@@ -251,7 +251,19 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   front end's configuration.
 - `pki::tsl::Loaded::sha256` and `connector::store::remove_copy` (TASK-250): the digest
   `tsl export` reports and the removal of an edited `.kon` copy, which ti-cli did itself.
+- `jwks::RemoteJwks` (decision-15, TASK-251): jwz's `KeyResolver` (and `AsyncKeyResolver`)
+  over HTTP, taking over every rule of the unreleased crate ti-jwks: the JWK Set at an
+  `https` `jwks_uri` over the IDP-Dienst's agent, no redirect followed, 64 KiB and 100 keys
+  at most, kept in a ti-cache store fresh for the origin's `Cache-Control` within
+  5 min–24 h (1 h without), revalidated with `ETag`/`Last-Modified`, no stale set when the
+  origin fails (`KeyUnavailable`, the cause as its source), an unknown `kid` refetching
+  the set at most once a minute. The candidates are jwz's `JwkSet::signing_keys`.
+  `with_transport` takes another `jwks::Transport`, such as a test's.
 
+
+#### changed
+- ureq 3.5 (pinned `~3.5`, TASK-272): its 3.4 releases left connection reuse, transfer
+  encoding and the TLS handshake's timeout unfixed.
 ### ti-tls
 
 #### added
@@ -270,16 +282,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### removed
 - The `ureq` feature and the module `ureq` (decision-15, TASK-249): `agent` and `UreqFetch`
   are ti-client's (`ti_client::tls`). ti-tls holds no HTTP client.
-
-### ti-jwks
-
-#### added
-- New crate (TASK-18): JWK Sets from a `jwks_uri`. `JwksSource::keys(kid, alg)` returns
-  the keys that fit a token; the set is kept in a ti-cache `Cache` with `policy()`: the
-  origin's `Cache-Control: max-age` within 5 min–24 h (1 h without), revalidation with
-  `ETag`/`Last-Modified`, no stale set on origin failure, an unknown `kid` refreshing the
-  set at most once a minute. `https` only, redirects refused, 64 KiB and 100 keys at most.
-  `http::Transport` for any client, a blocking one with the `ureq` feature.
 
 ### ti-idpd-client
 
@@ -388,6 +390,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   josebp and Python jwcrypto in both directions (`just jwz-interop`, checked by
   `cargo test`). It was the crate jwz-brainpool until TASK-225: brainpool is TI-only, so
   it lives with the TI profiles, and jwz stays a JOSE library without it.
+
+#### changed
+- The profiles are built from constants (TASK-271): `ti()` is
+  `Profile::new("ti", 2)` with jwz's `ECDSA_NIST`, `ECDH_ES_DIRECT_P256`, `DIRECT` and
+  `AES_256_GCM` and this crate's `EPA_BRAINPOOL_KEYS`; `ti_legacy()` is `ti()` with
+  `BRAINPOOL_SIGNATURES`. `ti()` lists `BP-256` among its signing curves, so ePA's ES256 on
+  brainpool keys passes it by a stated rule, not as a side effect, and jwz's `strict()`
+  refuses it. `BRAINPOOL_KEY_AGREEMENT` (`legacy`) lets a client encrypt to the IDP's
+  `BP-256` key; no profile lists it, as brainpool JWE is not decrypted. `BP_256` is also
+  available without `legacy`, as a name; `BrainpoolEs256Key` states its curve.
 
 ### ti-xmldsig
 
@@ -976,6 +988,85 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   on wasm32-unknown-unknown, where std has no clock and every call would panic). Time
   enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
   `Timestamp::now` and tests a closure (decision-15).
+
+### jwz
+
+#### added
+- `jwk::KeyResolver` and `jwk::AsyncKeyResolver` (TASK-243): where a verifier gets the keys
+  that may have signed a JWS, implemented by the host over its own fetching and cache;
+  jwz never fetches. `JwkSet` implements both.
+- `JwkSet::signing_keys(kid, alg)`: the keys with the header's `kid` (all when it names
+  none) whose `use` and `key_ops` allow signatures and whose `alg`, if stated, is the
+  accepted one (RFC 7517 §4.2–4.5).
+- `Jws::verify_with` and `Jws::verify_with_async`: each resolved key is made a verifier for
+  the accepted algorithm and tried; a key that does not fit is passed over, and
+  `VerificationFailed` follows when none verifies. A resolved key is a candidate, never
+  trusted for having been fetched.
+- Every `Fn() -> u64` is a `jwt::Clock`, so a host passes time as a function, as it does to
+  the ti crates; `SystemClock` and `FixedClock` stay.
+- `ErrorCode::KeyUnavailable` and a public `Error::new`, for the host's implementations of
+  jwz's traits (a resolver whose origin failed).
+- `Error::with_source` (TASK-273): a host's implementation of a jwz trait attaches its own
+  error, which reaches the caller through `source()` and never appears in `Display`; code,
+  context and equality are unchanged. **Breaking:** `Error` is no longer `Copy`, nor
+  `UnwindSafe` and `RefUnwindSafe`: a host's cause need not be, as `std::io::Error` is not.
+- `Header::parse`: a header from JSON, read as a token's is, so a host can ask a
+  `KeyResolver` without a token at hand.
+- `Ed25519` and `Ed448` (RFC 9864, TASK-241): fully specified EdDSA names. `Ed25519` signs
+  and verifies, with a key on Ed25519 only; `Ed448` is reserved. A JWK whose `alg` says
+  `Ed25519` is no key for `EdDSA`, nor the reverse. The constant `profile::ED25519`.
+- **Breaking:** signing and encryption check the header they produce against the policy
+  (RFC 8725 §3.11, TASK-276): a missing `typ` or `kid` the policy requires, a key
+  reference it does not opt into, a `crit` it does not understand, `b64` and, for JWE,
+  `zip` are refused with `PolicyViolation` or `Critical` before anything is signed or
+  encrypted. A profile with a `typ` no longer signs a token without it.
+- **Breaking:** `Profile::strict()` lists `Ed25519` instead of the polymorphic `EdDSA`,
+  which RFC 9864 deprecates: an `EdDSA` token is refused under `strict`, and a key for
+  `EdDSA` signs under it no more. A profile that must talk to an older peer adds
+  `profile::EDDSA`; `rfc7518-interop` has both.
+- `docs/guide.md`: verifying from a JWK Set with `verify_with`, why jwz never fetches keys,
+  why time is a function, and an `AsyncKeyResolver` over the browser's `fetch`.
+- Profiles as explicit lists (TASK-271): `profile::Algorithms` bundles and the constants
+  `ECDSA_NIST`, `EDDSA`, `HMAC`, `ECDH_ES_P256`, `ECDH_ES_DIRECT_P256`, `AES_KW`,
+  `DIRECT`, `AES_GCM`, `AES_128_GCM`, `AES_256_GCM` and `Algorithms::NONE`;
+  `Profile::new(name, version)`, a profile without algorithms on the strict defaults.
+- `Policy::signing_curves`, the curves a signing key may be on, and `JwsKey::curve`, the
+  curve a key states (`SoftwareKey` and the `test-util` doubles state theirs).
+- `Policy::check_signing_key` and `Policy::check_encryption`, the acceptance of what is
+  signed and encrypted.
+
+#### changed
+- **Breaking:** `jws::sign`, `jws::sign_async` and `jws::json::sign` take `policy` and
+  `registry` after the signer(s). They and the encrypt functions below refuse an
+  algorithm, a content encryption, a signing key's curve or an ECDH-ES recipient's curve
+  the policy does not list (`PolicyViolation`), so jwz no longer produces tokens its
+  profile would refuse.
+- **Breaking:** encryption follows RFC 7516's split of what is per recipient from what
+  all share. `jwe::Recipient` (formerly `jwe::json::Recipient`, still re-exported there)
+  holds a recipient's `alg`, key and header parameters, protected in the compact
+  serialization and unprotected in the JSON one. `jwe::encrypt(plaintext, enc,
+  &recipient, policy, registry, backend)`; `jwe::json::encrypt(plaintext, &shared,
+  recipients, policy, registry, backend)`, where `jwe::json::Shared` holds `enc`, the
+  protected header parameters and `aad`.
+- **Breaking:** `Profile::with` takes `&Algorithms` and appends its lists without
+  duplicates, changing nothing else; it took another profile and formed a union.
+- **Breaking:** verification (`verify`, `verify_async`, `verify_with`,
+  `verify_with_async`) refuses a key on a curve the profile does not list with
+  `PolicyViolation`, and an EdDSA key that states no curve; `verify_with` passes such
+  keys over. A key that states no curve is taken to be on its algorithm's registered
+  one, so ES256 keys behave as before; `strict()` now refuses ES256 with a
+  brainpoolP256r1 key (ti-jwz's `ti()` lists it).
+- **Breaking:** `Policy` has the field `signing_curves`; a `Policy` written as a struct
+  literal must set it. `strict` and `rfc7518-interop` are built with `Profile::new` and
+  `with`, at version 2; what they accept is otherwise unchanged.
+
+#### removed
+- **Breaking:** `Policy::with` and `ClaimsPolicy::with` (unions of policies): compose
+  algorithm lists with `Profile::with`, and set the other fields directly.
+
+#### fixed
+- A `typ` with the prefix `application/` and a further `/` no longer equals the type without
+  the prefix (RFC 7515 §4.1.9, TASK-278): `application/a/b` is not `a/b`.
 
 ## Release jwz 0.1.0, 2026-11-06
 

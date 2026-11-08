@@ -38,9 +38,11 @@ use zeroize::Zeroizing;
 
 use crate::b64;
 use crate::crypto::Hash;
+use crate::crypto::asynchronous::BoxFuture;
 use crate::error::{Error, ErrorCode};
+use crate::header::Header;
 use crate::json;
-use crate::jwa::{Curve, KeyType, Registry};
+use crate::jwa::{Curve, KeyType, Registry, SignatureAlgorithm};
 
 /// Private key material: zeroized on drop and never printed.
 #[derive(Clone, PartialEq, Eq)]
@@ -557,6 +559,70 @@ impl JwkSet {
             .iter()
             .filter(move |key| key.kid.as_deref() == Some(kid))
     }
+
+    /// The keys that may have signed a JWS whose header names `kid` (or none) with `alg`:
+    /// those with that `kid`, every key when the header names none (RFC 7517 §4.5); whose
+    /// `use` and `key_ops` allow signatures (§4.2, §4.3); and whose `alg`, if stated, is
+    /// `alg` (§4.4). Whether a key's type and curve fit `alg` is decided when it is made a
+    /// verifier; a candidate is never trusted for being in the set, its signature decides.
+    pub fn signing_keys<'a>(
+        &'a self,
+        kid: Option<&'a str>,
+        alg: SignatureAlgorithm,
+    ) -> impl Iterator<Item = &'a Jwk> + 'a {
+        self.keys.iter().filter(move |key| {
+            kid.is_none_or(|kid| key.kid.as_deref() == Some(kid))
+                && key.allows(KeyPurpose::Signature)
+                && key.alg.as_deref().is_none_or(|a| a == alg.as_str())
+        })
+    }
+}
+
+/// Where a verifier gets the keys that may have signed a JWS: the host's JWK Sets,
+/// fetched, configured or cached as it sees fit. jwz selects and verifies; it never
+/// fetches. A resolved key is a candidate, not trust: the signature decides.
+///
+/// RFC 8725 §3.8: a resolver offers the keys of the issuer the host expects, never keys
+/// the token points at, so the verifying key is that issuer's.
+///
+/// RFC 8725 §3.10: the header's `kid` arrives as the token has it; a resolver that looks
+/// it up in a database or directory validates or escapes it first.
+pub trait KeyResolver {
+    /// The candidate keys for a JWS with `header` and the algorithm `alg` its policy
+    /// accepted.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::KeyUnavailable`] (or another code of the resolver's choosing) when it
+    /// has no keys to offer, such as an unreachable origin.
+    fn resolve(&self, header: &Header, alg: SignatureAlgorithm) -> Result<Vec<Jwk>, Error>;
+}
+
+/// [`KeyResolver`] for resolvers that answer asynchronously (a fetch, a cache on disk).
+pub trait AsyncKeyResolver {
+    /// See [`KeyResolver::resolve`].
+    fn resolve_async<'a>(
+        &'a self,
+        header: &'a Header,
+        alg: SignatureAlgorithm,
+    ) -> BoxFuture<'a, Result<Vec<Jwk>, Error>>;
+}
+
+impl KeyResolver for JwkSet {
+    fn resolve(&self, header: &Header, alg: SignatureAlgorithm) -> Result<Vec<Jwk>, Error> {
+        Ok(self.signing_keys(header.kid(), alg).cloned().collect())
+    }
+}
+
+impl AsyncKeyResolver for JwkSet {
+    fn resolve_async<'a>(
+        &'a self,
+        header: &'a Header,
+        alg: SignatureAlgorithm,
+    ) -> BoxFuture<'a, Result<Vec<Jwk>, Error>> {
+        let keys = self.resolve(header, alg);
+        alloc::boxed::Box::pin(async move { keys })
+    }
 }
 
 /// Whether `crv` names a curve of `kty` in `registry`.
@@ -590,10 +656,10 @@ fn optional_str(m: &Map<String, Value>, name: &'static str) -> Result<Option<Str
 /// consistent. Only the pairs the RFC defines are judged; another `use` or operation is
 /// left to [`Jwk::allows`], which allows it nothing.
 fn check_key_ops(key_use: Option<&str>, ops: &[String]) -> Result<(), Error> {
-    let invalid = Error::new(ErrorCode::InvalidMember, "key_ops");
+    const INVALID: Error = Error::new(ErrorCode::InvalidMember, "key_ops");
     for (i, op) in ops.iter().enumerate() {
         if ops.iter().skip(i + 1).any(|other| other == op) {
-            return Err(invalid);
+            return Err(INVALID);
         }
     }
     let defined = match key_use {
@@ -603,7 +669,7 @@ fn check_key_ops(key_use: Option<&str>, ops: &[String]) -> Result<(), Error> {
     };
     let other = if defined == SIG_OPS { ENC_OPS } else { SIG_OPS };
     if ops.iter().any(|op| other.contains(&op.as_str())) {
-        return Err(invalid);
+        return Err(INVALID);
     }
     Ok(())
 }
@@ -615,11 +681,11 @@ fn optional_str_array(
     let Some(value) = m.get(name) else {
         return Ok(None);
     };
-    let invalid = Error::new(ErrorCode::InvalidMember, name);
-    let items = value.as_array().ok_or(invalid)?;
+    let invalid = || Error::new(ErrorCode::InvalidMember, name);
+    let items = value.as_array().ok_or_else(invalid)?;
     items
         .iter()
-        .map(|item| item.as_str().map(ToString::to_string).ok_or(invalid))
+        .map(|item| item.as_str().map(ToString::to_string).ok_or_else(invalid))
         .collect::<Result<Vec<_>, _>>()
         .map(Some)
 }

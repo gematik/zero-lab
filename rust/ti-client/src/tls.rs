@@ -26,7 +26,7 @@
 //! `web` profile's OCSP responders and CRL hosts over plain HTTP.
 //!
 //! ureq's stable TLS settings take root certificates, not a verifier, so the connector uses its
-//! semver-exempt `unversioned` transport API (ureq pinned `~3.4`, as for the Konnektor).
+//! semver-exempt `unversioned` transport API (ureq pinned `~3.5`, as for the Konnektor).
 
 use core::fmt;
 use std::io::{Read as _, Write as _};
@@ -129,7 +129,7 @@ impl<In: Transport> Connector<In> for Rustls {
         let name = ServerName::try_from(host.to_owned())
             .map_err(|_| ureq::Error::Tls("invalid server name"))?;
         let mut conn = ClientConnection::new(Arc::clone(&self.config), name)?;
-        let mut sock = TransportAdapter::new(transport.boxed());
+        let mut sock = TransportAdapter::new(transport.boxed(), details.current_time.clone());
         sock.set_timeout(details.timeout);
         conn.complete_io(&mut sock)?;
         Ok(Some(Either::B(Tls {

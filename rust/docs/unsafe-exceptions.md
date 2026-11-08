@@ -25,7 +25,6 @@ task.
 | ti-connector-client | – |
 | jwz | std, jws, jwe, jwt, crypto-rustcrypto, hmac |
 | ti-jwz | legacy |
-| ti-jwks | – |
 | ti-idpd-client | – |
 | ti-directory-client | – |
 

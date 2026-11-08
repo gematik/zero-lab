@@ -308,6 +308,8 @@ impl FakeIdp {
                         metadata.to_string().as_bytes(),
                         HeaderParams::new().typ("JWT").x5c(&[&disc_cert]),
                         &disc_sig,
+                        &ti_jwz::ti_legacy().policy,
+                        &ti_jwz::registry(),
                     )
                     .unwrap();
                     http(200, "application/jwt", token.as_bytes(), None)
@@ -340,6 +342,8 @@ impl FakeIdp {
                         claims.to_string().as_bytes(),
                         HeaderParams::new().typ("JWT"),
                         &idp_sig,
+                        &ti_jwz::ti_legacy().policy,
+                        &ti_jwz::registry(),
                     )
                     .unwrap();
                     let body = json!({"challenge": challenge, "user_consent": {"requested_scopes": {}, "requested_claims": {}}});

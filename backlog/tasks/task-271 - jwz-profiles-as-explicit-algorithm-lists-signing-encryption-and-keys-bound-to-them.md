@@ -3,9 +3,10 @@ id: TASK-271
 title: >-
   jwz: profiles as explicit algorithm lists; signing, encryption and keys bound
   to them
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-08T12:06:00Z'
+updated_date: '2026-11-08T17:37:00Z'
 labels:
   - jwz
   - security
@@ -25,9 +26,25 @@ A profile must state exactly what it accepts: no RSA, ECC only, ECC and brainpoo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 a Profile holds explicit lists of signature, key-encryption and content-encryption algorithms, key-agreement curves and signing-key curves; jwz and ti-jwz offer them as constant slices, and Profile::with composes them
-- [ ] #2 jws::sign and jwe::encrypt (compact and JSON) take the profile and refuse an algorithm or key outside it
-- [ ] #3 verification refuses a key whose kty or crv the profile does not list, including keys from a KeyResolver (TASK-243), which are skipped
-- [ ] #4 strict, rfc7518_interop, ti and ti_legacy are built from the constants; ti states ES256 on P-256 and brainpoolP256r1
-- [ ] #5 negative tests per binding: an RSA token, an RSA key and RSA signing against a profile without RSA, a curve the profile does not list; traceability and ADR 0001 updated
+- [x] #1 a Profile holds explicit lists of signature, key-encryption and content-encryption algorithms, key-agreement curves and signing-key curves; jwz and ti-jwz offer them as constant slices, and Profile::with composes them
+- [x] #2 jws::sign and jwe::encrypt (compact and JSON) take the profile and refuse an algorithm or key outside it
+- [x] #3 verification refuses a key whose kty or crv the profile does not list, including keys from a KeyResolver (TASK-243), which are skipped
+- [x] #4 strict, rfc7518_interop, ti and ti_legacy are built from the constants; ti states ES256 on P-256 and brainpoolP256r1
+- [x] #5 negative tests per binding: an RSA token, an RSA key and RSA signing against a profile without RSA, a curve the profile does not list; traceability and ADR 0001 updated
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Implemented on feat/jwz-0.2.0. Constants (jwz::profile): ECDSA_NIST (ES256+P-256), EDDSA (EdDSA+Ed25519), HMAC (HS256/384/512), ECDH_ES_P256 (ECDH-ES, +A128KW, +A256KW, P-256), ECDH_ES_DIRECT_P256 (ECDH-ES, P-256; ti), AES_KW, DIRECT, AES_GCM, AES_128_GCM, AES_256_GCM, Algorithms::NONE; Profile::new(name, version). ti-jwz: BP_256 (now ungated name, re-exported by brainpool), EPA_BRAINPOOL_KEYS, BRAINPOOL_SIGNATURES (legacy), BRAINPOOL_KEY_AGREEMENT (legacy). Error code for a key on an unlisted curve (verify and sign) and for unlisted alg/enc/recipient curve when producing: PolicyViolation (the key fits its algorithm; the profile refuses it). Decision taken: ti_legacy() does not list BP-256 for key agreement (would open untested brainpool decryption); ti-idpd-client encrypts under ti_legacy().with(&BRAINPOOL_KEY_AGREEMENT). rfc7518_interop keeps registry-derived lists (needed for ti-jwz brainpool registry). Profile versions bumped to 2 (strict, rfc7518-interop, ti). jwe::encrypt/json::encrypt allow clippy::too_many_arguments (8 params) with a reason. Kani harnesses key_reference_union_is_the_or and claims_policy_union_only_widens removed with the unions; stamps restamped in TASK-272. AC5 RSA: RS256 token, RSA key and RS256 signer are refused (UnsupportedAlgorithm, reserved in every profile).
+
+Review follow-up: the too_many_arguments allows are gone. jwe::Recipient (alg, key, header; re-exported from jwe::json) and jwe::json::Shared (enc, protected, aad) split per-recipient from shared parameters as RFC 7516 §7.2.1 does; jwe::encrypt and jwe::json::encrypt take six parameters.
+
+Maintainer confirmed (2026-11-08): BRAINPOOL_KEY_AGREEMENT as a separate constant only ti-idpd-client uses; profile versions 2; rfc7518_interop's lists from the registry.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Profiles are explicit lists built from Algorithms constants with Profile::with; Policy::signing_curves and JwsKey::curve bind keys; verification refuses keys on unlisted curves; sign and encrypt take the policy and registry and refuse what it does not list. jwe::Recipient and json::Shared keep the producers within clippy's argument limit. ti-jwz: ti() lists P-256 and BP-256 (EPA_BRAINPOOL_KEYS), ti_legacy = ti().with(&BRAINPOOL_SIGNATURES), BRAINPOOL_KEY_AGREEMENT for the IDP client. Profile versions 2.
+<!-- SECTION:FINAL_SUMMARY:END -->

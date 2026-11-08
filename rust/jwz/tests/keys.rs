@@ -431,7 +431,8 @@ fn rfc_3394_2_2_3_a_failed_integrity_check_returns_no_key_data() {
 }
 
 /// RFC 6979 Appendix A.2.5: P-256, SHA-256, message "sample"; the nonce comes from the
-/// key and the message, so the signature is the RFC's to the bit.
+/// key and the message, so the signature is the RFC's to the bit, as RFC 8725 §3.2
+/// recommends.
 #[test]
 fn rfc_6979_3_2_es256_signs_deterministically() {
     let backend = backend();
@@ -710,9 +711,6 @@ fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
 
     #[cfg(feature = "jwe")]
     {
-        use jwz::header::HeaderParams;
-        use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm};
-        use jwz::jwe::{self, EncryptionKey};
         use jwz::keys::SymmetricKey;
 
         let agrees = |jwk: &Jwk| {
@@ -720,19 +718,7 @@ fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
                 .map(|_| ())
                 .map_err(|e| e.code())
         };
-        let encrypts_to = |jwk: &Jwk| {
-            jwe::encrypt(
-                b"x",
-                KeyEncryptionAlgorithm::ECDH_ES,
-                ContentEncryptionAlgorithm::A256GCM,
-                EncryptionKey::Public(&jwk.public()),
-                HeaderParams::new(),
-                &registry,
-                backend().as_ref(),
-            )
-            .map(|_| ())
-            .map_err(|e| e.code())
-        };
+        let encrypts_to = |jwk: &Jwk| encrypt_ecdh_es(jwk, &registry);
         for allowed in ["", r#""use":"enc""#, r#""key_ops":["deriveKey"]"#] {
             assert_eq!(agrees(&with(allowed)), Ok(()), "{allowed}");
             assert_eq!(encrypts_to(&with(allowed)), Ok(()), "{allowed}");
@@ -967,4 +953,89 @@ mod seams {
         };
         assert_eq!(make(), make());
     }
+}
+
+/// A verifier asks a set for the keys that may have signed a JWS: those with the header's
+/// `kid`, every key when the header names none (RFC 7517 §4.5, RFC 7515 §4.1.4).
+#[test]
+fn rfc_7517_4_5_a_set_offers_the_keys_with_the_headers_kid_or_all() {
+    let set = JwkSet::parse(
+        r#"{"keys":[
+            {"kty":"oct","k":"AQ","kid":"a"},
+            {"kty":"oct","k":"Ag","kid":"b"},
+            {"kty":"oct","k":"Aw"}]}"#,
+    )
+    .unwrap();
+    let kids = |kid| {
+        set.signing_keys(kid, SignatureAlgorithm::HS256)
+            .map(|k| k.kid.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(kids(Some("a")), [Some("a".to_owned())]);
+    // A key without a kid cannot match a header that names one.
+    assert_eq!(kids(Some("c")), Vec::<Option<String>>::new());
+    assert_eq!(kids(None).len(), 3);
+}
+
+/// A set offers for a signature only keys whose `use` is `sig` and whose `key_ops` allow
+/// signing or verifying, or that state neither (RFC 7517 §4.2, §4.3).
+#[test]
+fn rfc_7517_4_2_a_set_offers_only_keys_its_use_and_key_ops_allow_for_signatures() {
+    let set = JwkSet::parse(
+        r#"{"keys":[
+            {"kty":"oct","k":"AQ","kid":"enc","use":"enc"},
+            {"kty":"oct","k":"AQ","kid":"wrap","key_ops":["wrapKey"]},
+            {"kty":"oct","k":"AQ","kid":"sig","use":"sig"},
+            {"kty":"oct","k":"AQ","kid":"verify","key_ops":["verify"]},
+            {"kty":"oct","k":"AQ","kid":"any"}]}"#,
+    )
+    .unwrap();
+    let kids: Vec<_> = set
+        .signing_keys(None, SignatureAlgorithm::HS256)
+        .filter_map(|k| k.kid.as_deref())
+        .collect();
+    assert_eq!(kids, ["sig", "verify", "any"]);
+}
+
+/// A key that names its algorithm is offered only for that algorithm (RFC 7517 §4.4,
+/// RFC 8725 §3.1).
+#[test]
+fn rfc_7517_4_4_a_set_offers_no_key_bound_to_another_algorithm() {
+    let set = JwkSet::parse(
+        r#"{"keys":[
+            {"kty":"oct","k":"AQ","kid":"384","alg":"HS384"},
+            {"kty":"oct","k":"AQ","kid":"256","alg":"HS256"},
+            {"kty":"oct","k":"AQ","kid":"free"}]}"#,
+    )
+    .unwrap();
+    let kids: Vec<_> = set
+        .signing_keys(None, SignatureAlgorithm::HS256)
+        .filter_map(|k| k.kid.as_deref())
+        .collect();
+    assert_eq!(kids, ["256", "free"]);
+}
+
+/// ECDH-ES with A256GCM to `jwk`'s public key under `strict`, for the key-use tests.
+#[cfg(feature = "jwe")]
+fn encrypt_ecdh_es(jwk: &Jwk, registry: &Registry) -> Result<(), ErrorCode> {
+    use jwz::header::HeaderParams;
+    use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm};
+    use jwz::jwe::{self, EncryptionKey, Recipient};
+
+    let public = jwk.public();
+    let recipient = Recipient {
+        alg: KeyEncryptionAlgorithm::ECDH_ES,
+        key: EncryptionKey::Public(&public),
+        header: HeaderParams::new(),
+    };
+    jwe::encrypt(
+        b"x",
+        ContentEncryptionAlgorithm::A256GCM,
+        &recipient,
+        &jwz::profile::Profile::strict().policy,
+        registry,
+        backend().as_ref(),
+    )
+    .map(|_| ())
+    .map_err(|e| e.code())
 }
