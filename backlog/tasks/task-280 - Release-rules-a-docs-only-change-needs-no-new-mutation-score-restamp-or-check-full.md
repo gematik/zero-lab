@@ -3,10 +3,10 @@ id: TASK-280
 title: >-
   Release rules: a docs-only change needs no new mutation score, restamp or
   check-full
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08T18:31:00Z'
-updated_date: '2026-11-08T18:56:00Z'
+updated_date: '2026-11-08T18:57:00Z'
 labels:
   - rust
   - release
@@ -36,3 +36,9 @@ Gate: scripts/mutation.py affecting <crate> <rev> lists the changed files that c
 
 Found while merging: just release updated only the workspace's Cargo.lock; the fuzz workspaces' own lock files still named jwz 0.1.0. The release now updates every */fuzz/Cargo.lock offline and commits them with the bump; the three stale ones are committed.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Mutation gate counts only code (scripts/mutation.py affecting: not README, LICENSE, uncompiled docs, verification/, fuzz/, or the [package] version line); a release with no code, workspace manifest or lock change since the last tags skips check-full and msrv; releases update the fuzz workspaces' lock files. Proven on jwz 0.2.1: gate passed on the 0.2.0 score, release in minutes instead of ~36. Dropped: version-agnostic stamp hashing (would have forced a new mutation score, saves ~3 min).
+<!-- SECTION:FINAL_SUMMARY:END -->
