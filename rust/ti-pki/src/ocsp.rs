@@ -767,8 +767,6 @@ fn reason_name(reason: CrlReason) -> &'static str {
     }
 }
 
-#[cfg(all(test, feature = "load"))]
-use checker::store_key as checker_store_key;
 #[cfg(feature = "load")]
 pub use checker::{NoStore, OcspChecker};
 
@@ -2084,7 +2082,7 @@ mod tests {
             // A planted entry under the same key does not verify and is passed over.
             let key = futures_lite::future::block_on(async {
                 let request = super::request(&pki.ee_arzt, &pki.sub_ca_hba);
-                let key = super::checker_store_key(&request);
+                let key = crate::ocsp::checker::store_key(&request);
                 (key.clone(), shared.get(&key).await.unwrap().unwrap())
             });
             let mut planted = key.1.clone();

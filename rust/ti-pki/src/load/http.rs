@@ -262,11 +262,13 @@ mod tests {
         ))
     }
 
+    #[cfg(feature = "dangerous-nonprod")]
     const DETACHED: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../spec/tsl-detached/testdata/ref/ECC-RSA_TSL-ref."
     );
 
+    #[cfg(feature = "dangerous-nonprod")]
     fn ref_set() -> (Vec<u8>, Vec<u8>, Vec<u8>) {
         let read = |suffix: &str| std::fs::read(format!("{DETACHED}{suffix}")).unwrap();
         (read("xml"), read("sig"), read("ocsp"))
