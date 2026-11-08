@@ -5,8 +5,9 @@
 
 The score is (caught + timeout) / (caught + missed + timeout): a mutant that makes the tests
 fail or hang has been noticed, one that passes them has not, and unviable mutants (those
-that do not build) do not count. A score holds only for the tree it was measured on: the gate refuses
-a crate whose code changed since the recorded commit, so a release cannot carry a score of
+that do not build) do not count. The gate holds only crates with a threshold to a score, those
+that make a security decision. A score holds only for the tree it was measured on: the gate refuses
+such a crate whose code changed since the recorded commit, so a release cannot carry a score of
 older code. Code is everything under the crate that a test compiles or runs; the README, the
 licence, documents no `include_str!` compiles into the crate, verification stamps and fuzz
 targets are not, and neither is the version line of its `[package]`.
@@ -148,24 +149,33 @@ def gate(crates):
     thresholds, scores = doc["thresholds"], doc.get("scores", {})
     failed = []
     for crate in crates:
-        s = scores.get(crate)
-        if s is None:
-            failed.append(f"{crate}: no mutation score; run `just mutants-record {crate}`")
-            continue
-        changed = affecting(crate, s["commit"])
-        if changed:
-            failed.append(f"{crate}: changed since its score ({s['commit'][:8]}); run `just mutants-record {crate}`")
-            continue
-        # The counts decide, not the stored score, so a score written by an older formula
-        # cannot pass or fail the gate.
-        value = score(s["caught"], s["missed"], s["timeout"])
-        threshold = thresholds.get(crate)
-        if threshold is not None and (value is None or value < threshold):
-            failed.append(f"{crate}: mutation score {value or 0:.1%} is below its threshold {threshold:.0%}")
-            continue
-        print(f"{crate}: mutation score {value:.1%}" + (f" (threshold {threshold:.0%})" if threshold else ""))
+        s, threshold = scores.get(crate), thresholds.get(crate)
+        changed = affecting(crate, s["commit"]) if s is not None and threshold is not None else []
+        passed, line = judge(crate, s, threshold, changed)
+        if passed:
+            print(line)
+        else:
+            failed.append(line)
     if failed:
         sys.exit("mutation gate:\n  " + "\n  ".join(failed))
+
+
+def judge(crate, s, threshold, changed):
+    """The gate's verdict on one crate: whether it passes, and why. Only a
+    crate with a threshold, one that holds a security decision, is held to a score; for any
+    other a score would decide nothing, and it is measured by hand when wanted."""
+    if threshold is None:
+        return True, f"{crate}: no threshold, not gated"
+    if s is None:
+        return False, f"{crate}: no mutation score; run `just mutants-record {crate}`"
+    if changed:
+        return False, f"{crate}: changed since its score ({s['commit'][:8]}); run `just mutants-record {crate}`"
+    # The counts decide, not the stored score, so a score written by an older formula
+    # cannot pass or fail the gate.
+    value = score(s["caught"], s["missed"], s["timeout"])
+    if value is None or value < threshold:
+        return False, f"{crate}: mutation score {value or 0:.1%} is below its threshold {threshold:.0%}"
+    return True, f"{crate}: mutation score {value:.1%} (threshold {threshold:.0%})"
 
 
 def main():
