@@ -497,7 +497,8 @@ fn hmac_kind<B: Backend>(
 ) -> Result<Kind, Error> {
     let hash = hash.ok_or(UNSUPPORTED)?;
     backend.mac(hash).ok_or(UNSUPPORTED)?;
-    // RFC 7518 §3.2: a key of the same size as the hash output or larger MUST be used.
+    // RFC 7518 §3.2: a key of the same size as the hash output or larger MUST be used;
+    // RFC 8725 §3.5: that keeps a memorable password from being used as the key.
     if k.k.expose().len() < hash.output_len() {
         return Err(Error::new(ErrorCode::KeyLength, "hmac key"));
     }

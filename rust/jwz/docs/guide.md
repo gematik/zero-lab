@@ -259,3 +259,52 @@ Every failure is a [`jwz::Error`](crate::Error). Its [`code`](crate::Error::code
 stable [`ErrorCode`](crate::ErrorCode) to decide on, and its message is for people. An
 error never contains key material or token contents, so it can be logged as it is. A
 token refused with `PolicyViolation` never reached the cryptography.
+
+## RFC 8725: what jwz does and what is yours
+
+RFC 8725, the JSON Web Token Best Current Practices, asks things of libraries and of
+applications. jwz meets what a library can. What needs knowledge only the application has
+(which issuers and subjects it trusts, which audience it is, which kinds of token it
+takes) is yours, and jwz gives it a place: a [`Profile`](crate::profile::Profile), its
+[`ClaimsPolicy`](crate::profile::ClaimsPolicy), a
+[`KeyResolver`](crate::jwk::KeyResolver). Each section is proven by the tests named
+`rfc_8725_3_<n>_…`; the code that meets it cites it, and `docs/traceability.md` lists
+both.
+
+| § | Requirement | jwz | Yours |
+| --- | --- | --- | --- |
+| 3.1 | The caller sets the algorithms, and no other is used | The profile's lists are the only algorithms jwz parses, verifies, signs or encrypts with; a name matches only exactly | Build the profile from the bundles you need (`Profile::new`, `with`) |
+| 3.1 | `alg` and `enc` are the algorithms used | The algorithm is the one the policy accepted from the header, and a key is made a verifier for it alone | – |
+| 3.1 | Each key is used with exactly one algorithm, checked when used | A JWS key states its one algorithm, checked at every verification; a JWK or shared key published with an `alg` is used for that algorithm only | Publish keys with `alg`: a key without one is bound by its type, its curve and your profile, which may list several algorithms for it (HS256 and HS512; `dir` and AES key wrap; ECDH-ES with and without key wrap) |
+| 3.2 | Only current algorithms; agility | `strict` lists ES256, Ed25519, ECDH-ES on P-256 and AES-GCM; RSA PKCS #1 v1.5 encryption is not implemented; a new algorithm comes through the registry and a profile | Choose your profile and revise it; `rfc7518-interop` never in production |
+| 3.2 | No `none` unless the caller asks | `none` can be neither parsed, registered nor signed, whatever the caller asks | – |
+| 3.2 | Deterministic ECDSA | ES256 signs with RFC 6979 nonces | A signer of yours (HSM, KMS) uses nonces of its own |
+| 3.3 | Every cryptographic operation validated, each layer of a Nested JWT | A JWS has a payload only after its signature verifies, a JWE a plaintext only after its tag | A Nested JWT: parse the plaintext as a JWS under its own profile and verify it with its issuer's key; jwz does not follow `cty` |
+| 3.4 | Cryptographic inputs validated | An `epk` must be on the recipient key's curve, and the point is validated on it before the key agreement | A backend of yours (`crypto::Extended`) validates its points as well |
+| 3.5 | Keys with sufficient entropy; no password as an HMAC key | Generated keys come from the backend's random source; an HMAC key shorter than its hash is refused; no PBES2 | Key material you bring comes from a random source, never from a password |
+| 3.6 | No compression before encryption | `zip` is neither produced nor accepted | – |
+| 3.7 | UTF-8 only | Headers, claims and JWKs are UTF-8 JSON; other bytes, a byte order mark and a lone surrogate are refused | – |
+| 3.8 | The keys belong to `iss`; `sub` is valid | `verify_with` takes the keys your resolver offers, never keys the token points at; `ClaimsPolicy::issuer` holds `iss` to one issuer | Resolve the keys of the issuer you expect (its `jwks_uri`) and set `issuer` to it; check `sub` (`Claims::sub`) against your subjects |
+| 3.9 | `aud` present and checked | `ClaimsPolicy::audience` refuses a token without `aud` or whose `aud` does not contain it | Set `audience` whenever an issuer serves more than one recipient |
+| 3.10 | `kid`, `jku` and `x5u` are untrusted input | Key references in a token are refused unless the profile opts in; jwz fetches nothing; a `JwkSet` only compares `kid` | A resolver that looks `kid` up in a database or directory escapes it; one that fetches holds the URL to an allowlist and sends no cookies |
+| 3.11 | Explicit typing | `Policy::typ` requires the `typ`, compared as a media type (`application/` optional, case ignored); `HeaderParams::typ` sets it | Name a new kind `example+jwt`; set `HeaderParams::typ` when you sign, since signing does not take it from the policy; in a Nested JWT the inner JWS carries it |
+| 3.12 | Mutually exclusive rules for different kinds of JWT | A profile per kind, told apart by `typ`, `issuer`, `audience`, `required` claims or keys | Write the profiles so that each refuses the others' tokens |
+
+### The revision: draft-ietf-oauth-rfc8725bis-10
+
+The IETF is revising RFC 8725; jwz follows draft-ietf-oauth-rfc8725bis-10 and is checked
+again when a later revision appears. What it adds or tightens, beyond the rows above, is
+proven by the tests named `draft_ietf_oauth_rfc8725bis_10_3_<n>_…`. The traceability table
+reads RFC numbers only, so this table traces them.
+
+| § | Requirement | jwz | Yours |
+| --- | --- | --- | --- |
+| 3.1, 2.11 | Allowlists, not blocklists; `alg` consistent with the key `kid` found; the algorithms permitted per issuer | The lists are allowlists matched exactly, `none` refused in every casing; a JWK Set offers no key published for another `alg` | A profile per issuer where issuers differ in their algorithms |
+| 3.2 | `none` MUST NOT be produced or consumed; fully specified names preferred | `none` never; `strict` lists `Ed25519`, and the polymorphic `EdDSA` comes only with the `EDDSA` bundle | Add `EDDSA` only for peers that still need it |
+| 3.3 | Unsecured, signed, encrypted and nested JWTs told apart | `Jws` and `Jwe` are separate types and parsers, neither parses the other, and an unsecured JWT is never parsed | Tell a nested JWT by its `cty` |
+| 3.9 | `aud` also when an issuer may serve more recipients later | As RFC 8725 §3.9 | Set `audience` |
+| 3.10 | `kid` validated before a lookup (now a MUST); no request to a loopback or local address without an allowlist | jwz fetches nothing | A fetching resolver refuses names that resolve to loopback or local addresses |
+| 3.11 | A `typ` without `/` is `application/` + `typ`; `JWT` is no explicit type | Compared so; a profile with another `typ` refuses `JWT` | `Policy::typ` requires a `typ`; for a kind of token that never carried one, check yourself that a `typ`, if present, is the expected one (`Jws::header`) |
+| 3.13, 2.10 | An upper limit on PBES2 iterations | No PBES2, so no `p2c` is ever run | – |
+| 3.14, 2.13 | A compact token is base64url and dots only | Every part is decoded as strict base64url; claims come only from a verified payload | – |
+| 3.15, 2.12 | An upper limit on decompression | Nothing is decompressed: `zip` is refused | – |

@@ -159,6 +159,8 @@ impl Jws<Unverified> {
     /// policy does not list ([`Policy::check_signing_key`]);
     /// [`ErrorCode::VerificationFailed`] if the signature does not verify.
     pub fn verify(self, key: &dyn Verifier) -> Result<Jws<Verified>, Error> {
+        // RFC 8725 §3.3: the payload is reachable only through this check, so a token whose
+        // signature fails is rejected whole.
         self.check_key(key)?;
         key.verify(self.signing_input().as_bytes(), &self.signature)?;
         Ok(self.into_verified())
@@ -237,6 +239,7 @@ impl Jws<Unverified> {
     /// never chooses another for it), on a curve the policy lists and, where both name
     /// one, have the same `kid`.
     fn check_key(&self, key: &(impl JwsKey + ?Sized)) -> Result<(), Error> {
+        // RFC 8725 §3.1: each key has one algorithm, checked here, when it is used.
         if key.algorithm() != self.alg {
             return Err(Error::new(
                 ErrorCode::KeyMismatch,

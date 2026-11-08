@@ -151,7 +151,7 @@ fn rfc_7520_5_8_a128kw_a128gcm() {
 }
 
 /// RFC 7516 §4.1.3: jwz does not implement `zip`, so the RFC's compressed example is
-/// refused, compact and JSON.
+/// refused, compact and JSON (RFC 8725 §3.6).
 #[test]
 fn rfc_7520_5_9_zip_and_5_12_unprotected_enc_are_refused() {
     let key = symmetric(A128KW_KEY);

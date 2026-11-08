@@ -254,13 +254,15 @@ impl Claims {
                 return Err(Error::new(ErrorCode::Expired, "iat"));
             }
         }
-        // RFC 7519 §4.1.1: iss is compared as a case-sensitive string.
+        // RFC 7519 §4.1.1: iss is compared as a case-sensitive string. RFC 8725 §3.8: that
+        // the verifying keys were this issuer's is the resolver's to ensure.
         if let Some(issuer) = &policy.issuer
             && self.iss() != Some(issuer.as_str())
         {
             return Err(Error::new(ErrorCode::InvalidClaim, "iss"));
         }
-        // RFC 7519 §4.1.3: the recipient MUST identify itself with a value in aud.
+        // RFC 7519 §4.1.3: the recipient MUST identify itself with a value in aud, so a
+        // token without aud is refused too (RFC 8725 §3.9).
         let aud = self.aud()?;
         if let Some(audience) = &policy.audience
             && !aud.contains(&audience.as_str())

@@ -300,7 +300,8 @@ impl Jwe<Encrypted> {
             .agreement
             .as_ref()
             .ok_or(Error::new(ErrorCode::KeyMismatch, "key agreement key"))?;
-        // RFC 7518 §4.6: the ephemeral key is on the recipient key's curve.
+        // RFC 7518 §4.6: the ephemeral key is on the recipient key's curve; RFC 8725 §3.4:
+        // the backend then refuses a point that is not on it.
         if agreement.curve != curve {
             return Err(Error::new(ErrorCode::KeyMismatch, "epk curve"));
         }
@@ -373,7 +374,8 @@ impl Jwe<Encrypted> {
         Ok(cek)
     }
 
-    /// RFC 7516 §5.2 steps 14-16: decrypt and authenticate.
+    /// RFC 7516 §5.2 steps 14-16: decrypt and authenticate. RFC 8725 §3.3: the plaintext
+    /// exists only once the tag verifies; an inner JWT is parsed and verified on its own.
     fn open(self, cek: &[u8], backend: &dyn Backend) -> Result<Jwe<Decrypted>, Error> {
         let aead = backend.aead(self.cee.enc).ok_or(UNSUPPORTED)?;
         let plaintext = aead.open(cek, &self.iv, &self.aad, &self.ciphertext, &self.tag)?;
@@ -445,8 +447,8 @@ fn check_len(key: &[u8], len: usize) -> Result<(), Error> {
     }
 }
 
-/// A symmetric key published with an `alg` is only for that `alg`; for `dir`, keys are
-/// commonly published with the `enc` as their `alg` (RFC 7520 §5.6).
+/// A symmetric key published with an `alg` is only for that `alg` (RFC 8725 §3.1); for
+/// `dir`, keys are commonly published with the `enc` as their `alg` (RFC 7520 §5.6).
 fn check_symmetric_alg(
     key: &SymmetricKey,
     alg: KeyEncryptionAlgorithm,

@@ -581,6 +581,12 @@ impl JwkSet {
 /// Where a verifier gets the keys that may have signed a JWS: the host's JWK Sets,
 /// fetched, configured or cached as it sees fit. jwz selects and verifies; it never
 /// fetches. A resolved key is a candidate, not trust: the signature decides.
+///
+/// RFC 8725 §3.8: a resolver offers the keys of the issuer the host expects, never keys
+/// the token points at, so the verifying key is that issuer's.
+///
+/// RFC 8725 §3.10: the header's `kid` arrives as the token has it; a resolver that looks
+/// it up in a database or directory validates or escapes it first.
 pub trait KeyResolver {
     /// The candidate keys for a JWS with `header` and the algorithm `alg` its policy
     /// accepted.

@@ -653,7 +653,8 @@ impl Registry {
     }
 }
 
-/// RFC 7518 §3.6: `none` means an unsecured JWS; jwz refuses it in any casing.
+/// RFC 7518 §3.6: `none` means an unsecured JWS; jwz refuses it in any casing, and no
+/// caller can register it, so jwz neither consumes nor produces it (RFC 8725 §3.2).
 fn is_none(name: &str) -> bool {
     name.eq_ignore_ascii_case("none")
 }

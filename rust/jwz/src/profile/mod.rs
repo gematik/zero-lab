@@ -65,6 +65,9 @@ use crate::jwa::{
 
 /// Header parameters that point at or carry a key; each must be opted into, because a
 /// token that brings its own key proves nothing unless that key is validated.
+///
+/// RFC 8725 §3.10: a followed `jku` or `x5u` invites server-side request forgery; jwz
+/// never fetches either, and a host that does holds the URL to its own allowlist.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[allow(
     clippy::struct_excessive_bools,
@@ -114,7 +117,8 @@ pub struct Policy {
     pub key_references: KeyReferences,
     /// Whether a token must name its key with a non-empty `kid`.
     pub require_kid: bool,
-    /// The `typ` a token must have, if any (compared as RFC 7515 §4.1.9 says).
+    /// The `typ` a token must have, if any (compared as RFC 7515 §4.1.9 says): the
+    /// explicit type that tells one kind of JWT from another (RFC 8725 §3.11).
     pub typ: Option<String>,
 }
 
@@ -220,6 +224,8 @@ impl Policy {
         name: &str,
         registry: &'r Registry,
     ) -> Result<&'r SignatureEntry, Error> {
+        // RFC 8725 §3.1: an allowlist matched by exact name, never a blocklist, so a name
+        // in another casing or spelling is no algorithm at all.
         let entry = registry
             .signature(name)
             .filter(|e| e.support == Support::Available)
@@ -280,8 +286,9 @@ impl Policy {
             .filter(|e| e.support == Support::Available && e.kind == ContentEncryptionKind::Aead)
             .ok_or(Error::new(ErrorCode::UnsupportedAlgorithm, "enc"))?;
         self.check_encryption(kek.alg, cee.enc, epk_curve(header, registry))?;
-        // RFC 7516 §4.1.3: compression before encryption leaks the plaintext's
-        // redundancy and makes decryption a decompression bomb; jwz does not implement it.
+        // RFC 7516 §4.1.3, RFC 8725 §3.6: compression before encryption leaks the
+        // plaintext's redundancy and makes decryption a decompression bomb; jwz does not
+        // implement it.
         if header.get("zip").is_some() {
             return Err(Error::new(ErrorCode::PolicyViolation, "zip unsupported"));
         }
@@ -424,9 +431,11 @@ pub(crate) fn union_into<T: Clone + PartialEq>(into: &mut Vec<T>, from: &[T]) {
 /// [`jwt::Claims::validate`](crate::jwt) once the token is verified or decrypted.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClaimsPolicy {
-    /// The `iss` required, if any.
+    /// The `iss` required, if any: the issuer whose keys verified the token
+    /// (RFC 8725 §3.8).
     pub issuer: Option<String>,
-    /// A value `aud` must contain, if any.
+    /// A value `aud` must contain, if any; a token without `aud` is then refused
+    /// (RFC 8725 §3.9).
     pub audience: Option<String>,
     /// Clock skew tolerated for `exp`, `nbf` and `iat`, in seconds.
     pub leeway: u64,
@@ -562,6 +571,9 @@ pub const AES_256_GCM: Algorithms<'static> = Algorithms {
 };
 
 /// A named, versioned validation profile.
+///
+/// RFC 8725 §3.12: one profile per kind of token, each refusing the others' (by `typ`,
+/// audience, issuer, required claims or keys), is the application's to write.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Profile {
     /// The name, e.g. `strict`.
@@ -614,7 +626,8 @@ impl Profile {
     /// and Ed25519 ([`ED25519`]); ECDH-ES on P-256 ([`ECDH_ES_P256`]) with A128GCM and
     /// A256GCM; otherwise as [`new`](Self::new). The polymorphic `EdDSA`, deprecated by
     /// RFC 9864, is not among them: the lists bind what a profile accepts and what it
-    /// signs alike, and a deprecated name is not signed anew.
+    /// signs alike, and a deprecated name is not signed anew. RFC 8725 §3.2: only current
+    /// algorithms, so no HMAC, which shares the verifier's key with every signer.
     pub fn strict() -> Profile {
         Profile::new("strict", 2)
             .with(&ECDSA_NIST)

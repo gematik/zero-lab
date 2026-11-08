@@ -431,7 +431,8 @@ fn rfc_3394_2_2_3_a_failed_integrity_check_returns_no_key_data() {
 }
 
 /// RFC 6979 Appendix A.2.5: P-256, SHA-256, message "sample"; the nonce comes from the
-/// key and the message, so the signature is the RFC's to the bit.
+/// key and the message, so the signature is the RFC's to the bit, as RFC 8725 §3.2
+/// recommends.
 #[test]
 fn rfc_6979_3_2_es256_signs_deterministically() {
     let backend = backend();
@@ -996,7 +997,8 @@ fn rfc_7517_4_2_a_set_offers_only_keys_its_use_and_key_ops_allow_for_signatures(
     assert_eq!(kids, ["sig", "verify", "any"]);
 }
 
-/// A key that names its algorithm is offered only for that algorithm (RFC 7517 §4.4).
+/// A key that names its algorithm is offered only for that algorithm (RFC 7517 §4.4,
+/// RFC 8725 §3.1).
 #[test]
 fn rfc_7517_4_4_a_set_offers_no_key_bound_to_another_algorithm() {
     let set = JwkSet::parse(

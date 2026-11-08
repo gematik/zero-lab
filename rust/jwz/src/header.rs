@@ -244,7 +244,7 @@ impl HeaderParams {
     /// # Errors
     ///
     /// [`ErrorCode::InvalidMember`] for `alg`, `enc`, `crit` and `epk`, which jwz sets
-    /// itself, and `zip`, which it does not implement.
+    /// itself, and `zip`, which it does not implement (RFC 8725 §3.6).
     pub fn param(mut self, name: &str, value: Value) -> Result<Self, Error> {
         if matches!(name, "alg" | "enc" | "crit" | "epk" | "zip") {
             return Err(Error::new(

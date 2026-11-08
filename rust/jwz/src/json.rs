@@ -41,6 +41,9 @@ use crate::error::{Error, ErrorCode};
 
 /// The members of the JSON object in `text`; `context` names it in errors.
 ///
+/// RFC 8725 §3.7: `text` is UTF-8 and nothing else; serde_json refuses invalid UTF-8, a
+/// byte order mark and an escaped lone surrogate, so no other encoding is admitted.
+///
 /// # Errors
 ///
 /// [`ErrorCode::DuplicateMember`] for a repeated member name at any depth,
