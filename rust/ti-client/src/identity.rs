@@ -76,6 +76,14 @@ impl Curve {
         }
     }
 
+    /// The curve as jwz names it, for the profile's signing curves.
+    const fn jwz(self) -> jwz::jwa::Curve {
+        match self {
+            Curve::Brainpool => ti_jwz::BP_256,
+            Curve::P256 => jwz::jwa::Curve::P256,
+        }
+    }
+
     /// The JWK `crv`.
     const fn crv(self) -> &'static str {
         match self {
@@ -315,12 +323,15 @@ impl Identity {
             Key::Connector(key) => Ok(Box::new(ConnectorSigner {
                 key: Rc::clone(key),
                 alg,
+                curve: self.curve.jwz(),
             })),
         }
     }
 
     /// `payload` as a compact JWS under `alg`: `x5c` the certificate, the rest from
-    /// `params`.
+    /// `params`. Signed under the TI profile the token needs: `ti_legacy()` for
+    /// `BP256R1` (the IDP), `ti()` otherwise, which lists ES256 with a brainpoolP256r1
+    /// key (ePA) beside P-256.
     ///
     /// # Errors
     ///
@@ -334,8 +345,20 @@ impl Identity {
     ) -> Result<String, Error> {
         let signer = self.signer(alg)?;
         let params = params.x5c(&[self.certificate.der()]);
-        block_on(jwz::jws::sign_async(payload, params, &*signer))
-            .map_err(|error| self.signing_error(error))
+        let profile = if alg == ti_jwz::brainpool::BP256R1 {
+            ti_jwz::ti_legacy()
+        } else {
+            ti_jwz::ti()
+        };
+        let registry = ti_jwz::registry();
+        block_on(jwz::jws::sign_async(
+            payload,
+            params,
+            &*signer,
+            &profile.policy,
+            &registry,
+        ))
+        .map_err(|error| self.signing_error(error))
     }
 
     /// A Konnektor's refusal as such, anything else as a signing failure.
@@ -561,11 +584,17 @@ impl<T: Transport> ConnectorKey<T> {
 struct ConnectorSigner {
     key: Rc<dyn CardKey>,
     alg: SignatureAlgorithm,
+    /// The C.AUT certificate's curve: the card's key is on it.
+    curve: jwz::jwa::Curve,
 }
 
 impl JwsKey for ConnectorSigner {
     fn algorithm(&self) -> SignatureAlgorithm {
         self.alg
+    }
+
+    fn curve(&self) -> Option<jwz::jwa::Curve> {
+        Some(self.curve)
     }
 
     fn key_id(&self) -> Option<&str> {
@@ -588,6 +617,10 @@ struct SoftSigner(Box<dyn Signer>);
 impl JwsKey for SoftSigner {
     fn algorithm(&self) -> SignatureAlgorithm {
         self.0.algorithm()
+    }
+
+    fn curve(&self) -> Option<jwz::jwa::Curve> {
+        self.0.curve()
     }
 
     fn key_id(&self) -> Option<&str> {

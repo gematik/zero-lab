@@ -55,7 +55,14 @@ fn bp256r1_signs_and_verifies_and_is_bound_to_its_curve() {
     let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
     let key = SoftwareKey::generate(BP256R1, &registry, Arc::clone(&backend)).unwrap();
     assert_eq!(key.public_jwk().crv(), Some("BP-256"));
-    let token = jws::sign(b"idp", HeaderParams::new().typ("JWT"), &key).unwrap();
+    let token = jws::sign(
+        b"idp",
+        HeaderParams::new().typ("JWT"),
+        &key,
+        &interop(),
+        &registry,
+    )
+    .unwrap();
     let jws = Jws::parse(&token, &interop(), &registry).unwrap();
     assert_eq!(jws.algorithm(), BP256R1);
     assert_eq!(jws.verify(&key).unwrap().payload(), b"idp");
@@ -93,9 +100,9 @@ fn epa_es256_on_a_brainpool_key() {
     let aut = BrainpoolEs256Key::generate(backend.rng())
         .unwrap()
         .with_kid("aut");
-    let token = jws::sign(b"epa", HeaderParams::new(), &aut).unwrap();
-    // The header says ES256, as ePA's do.
-    let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
+    let token = jws::sign(b"epa", HeaderParams::new(), &aut, &interop(), &registry).unwrap();
+    // The header says ES256, as ePA's do; ti() lists BP-256 for signing keys.
+    let jws = Jws::parse(&token, &ti_jwz::ti().policy, &registry).unwrap();
     assert_eq!(jws.algorithm(), SignatureAlgorithm::ES256);
     assert_eq!(jws.header().kid(), Some("aut"));
     assert_eq!(jws.verify(&aut).unwrap().payload(), b"epa");
@@ -104,18 +111,25 @@ fn epa_es256_on_a_brainpool_key() {
     let public = BrainpoolEs256Key::from_jwk(&aut.public_jwk())
         .unwrap()
         .with_kid("aut");
-    let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
+    let jws = Jws::parse(&token, &ti_jwz::ti().policy, &registry).unwrap();
     assert!(jws.verify(&public).is_ok());
 
     // A P-256 ES256 key does not verify it, and the brainpool key does not verify a
     // P-256 ES256 token: the curve is the key's, never the header's.
     let p256 =
         SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, Arc::clone(&backend)).unwrap();
-    let unkeyed = jws::sign(b"epa", HeaderParams::new(), &aut.clone().with_kid("x")).unwrap();
-    let jws = Jws::parse(&unkeyed, &Profile::strict().policy, &registry).unwrap();
+    let unkeyed = jws::sign(
+        b"epa",
+        HeaderParams::new(),
+        &aut.clone().with_kid("x"),
+        &interop(),
+        &registry,
+    )
+    .unwrap();
+    let jws = Jws::parse(&unkeyed, &ti_jwz::ti().policy, &registry).unwrap();
     assert!(jws.verify(&p256).is_err());
-    let p256_token = jws::sign(b"p256", HeaderParams::new(), &p256).unwrap();
-    let jws = Jws::parse(&p256_token, &Profile::strict().policy, &registry).unwrap();
+    let p256_token = jws::sign(b"p256", HeaderParams::new(), &p256, &interop(), &registry).unwrap();
+    let jws = Jws::parse(&p256_token, &ti_jwz::ti().policy, &registry).unwrap();
     assert!(
         jws.verify(&BrainpoolEs256Key::from_jwk(&aut.public_jwk()).unwrap())
             .is_err()
@@ -147,6 +161,7 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
             Enc::A256GCM,
             EncryptionKey::Public(&idp_enc),
             HeaderParams::new().cty("JSON"),
+            &interop(),
             &registry,
             backend.as_ref(),
         )
@@ -174,6 +189,7 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
         Enc::A256GCM,
         EncryptionKey::Public(&p256.public_jwk()),
         HeaderParams::new(),
+        &interop(),
         &registry,
         backend.as_ref(),
     )
@@ -189,6 +205,7 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
         Enc::A256GCM,
         EncryptionKey::Public(&idp_enc),
         HeaderParams::new(),
+        &interop(),
         &registry,
         backend.as_ref(),
     )

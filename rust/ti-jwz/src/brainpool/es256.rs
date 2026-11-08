@@ -27,7 +27,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 use jwz::crypto::{CryptoError, Ecdsa, Rng};
-use jwz::jwa::SignatureAlgorithm;
+use jwz::jwa::{Curve, SignatureAlgorithm};
 use jwz::jwk::{EcKey, Jwk, KeyMaterial, Secret};
 use jwz::keys::{JwsKey, Signature};
 
@@ -139,6 +139,10 @@ impl core::fmt::Debug for BrainpoolEs256Key {
 impl JwsKey for BrainpoolEs256Key {
     fn algorithm(&self) -> SignatureAlgorithm {
         SignatureAlgorithm::ES256
+    }
+
+    fn curve(&self) -> Option<Curve> {
+        Some(BP_256)
     }
 
     fn key_id(&self) -> Option<&str> {

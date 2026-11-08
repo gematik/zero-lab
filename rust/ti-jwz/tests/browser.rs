@@ -39,7 +39,6 @@ use jwz::crypto::Backend;
 use jwz::crypto::rustcrypto::RustCrypto;
 use jwz::header::HeaderParams;
 use jwz::jws::{self, Jws};
-use jwz::profile::Profile;
 use support::interop::{jwz_cases, jwz_file, parse_cases, parse_keys, pretty, verify_with_jwz};
 use ti_jwz::brainpool::BrainpoolEs256Key;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -79,9 +78,10 @@ fn epa_es256_on_a_generated_brainpool_key() {
     let key = BrainpoolEs256Key::generate(backend.rng()).unwrap();
     let other = BrainpoolEs256Key::generate(backend.rng()).unwrap();
     assert_ne!(key.public_jwk(), other.public_jwk());
-    let token = jws::sign(b"epa", HeaderParams::new(), &key).unwrap();
-    let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
+    let ti = ti_jwz::ti();
+    let token = jws::sign(b"epa", HeaderParams::new(), &key, &ti.policy, &registry).unwrap();
+    let jws = Jws::parse(&token, &ti.policy, &registry).unwrap();
     assert_eq!(jws.verify(&key).unwrap().payload(), b"epa");
-    let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
+    let jws = Jws::parse(&token, &ti.policy, &registry).unwrap();
     assert!(jws.verify(&other).is_err());
 }

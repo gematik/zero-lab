@@ -40,8 +40,10 @@
 //! ePA signs with the standard `ES256` but a brainpoolP256r1 key (an SMC-B or HBA AUT
 //! key, the certificate in `x5c`), which RFC 7518 §3.4 does not allow: ES256 is P-256.
 //! jwz keeps that meaning; [`BrainpoolEs256Key`] is the explicit exception, a key whose
-//! algorithm is `ES256` and whose curve is brainpoolP256r1. The verifier chooses it, so a
-//! token can never move ES256 onto brainpool by itself.
+//! algorithm is `ES256` and whose curve is brainpoolP256r1, and a profile accepts it only
+//! if it lists `BP-256` among its signing curves ([`crate::EPA_BRAINPOOL_KEYS`], which
+//! [`crate::ti`] has). The verifier chooses the key, so a token can never move ES256
+//! onto brainpool by itself.
 //!
 //! ```
 //! use std::sync::Arc;
@@ -54,10 +56,9 @@
 //! let registry = ti_jwz::brainpool::registry();
 //! let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
 //! let key = SoftwareKey::generate(ti_jwz::brainpool::BP256R1, &registry, backend)?;
-//! let token = jws::sign(b"legacy", HeaderParams::new(), &key)?;
+//! let policy = Profile::strict().with(&ti_jwz::BRAINPOOL_SIGNATURES).policy;
+//! let token = jws::sign(b"legacy", HeaderParams::new(), &key, &policy, &registry)?;
 //!
-//! let mut policy = Profile::strict().policy;
-//! policy.signature_algorithms.push(ti_jwz::brainpool::BP256R1);
 //! let verified = Jws::parse(&token, &policy, &registry)?.verify(&key)?;
 //! assert_eq!(verified.payload(), b"legacy");
 //! # Ok::<(), jwz::Error>(())
@@ -92,8 +93,7 @@ use jwz::jwa::{
 /// A_20591-01).
 pub const BP256R1: SignatureAlgorithm = SignatureAlgorithm::new("BP256R1");
 
-/// The JWK `crv` of brainpoolP256r1 keys.
-pub const BP_256: Curve = Curve::new("BP-256");
+pub use crate::BP_256;
 
 /// Adds `BP-256` and `BP256R1` to `registry`.
 ///

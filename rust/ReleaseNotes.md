@@ -389,6 +389,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `cargo test`). It was the crate jwz-brainpool until TASK-225: brainpool is TI-only, so
   it lives with the TI profiles, and jwz stays a JOSE library without it.
 
+#### changed
+- The profiles are built from constants (TASK-271): `ti()` is
+  `Profile::new("ti", 2)` with jwz's `ECDSA_NIST`, `ECDH_ES_DIRECT_P256`, `DIRECT` and
+  `AES_256_GCM` and this crate's `EPA_BRAINPOOL_KEYS`; `ti_legacy()` is `ti()` with
+  `BRAINPOOL_SIGNATURES`. `ti()` lists `BP-256` among its signing curves, so ePA's ES256 on
+  brainpool keys passes it by a stated rule, not as a side effect, and jwz's `strict()`
+  refuses it. `BRAINPOOL_KEY_AGREEMENT` (`legacy`) lets a client encrypt to the IDP's
+  `BP-256` key; no profile lists it, as brainpool JWE is not decrypted. `BP_256` is also
+  available without `legacy`, as a name; `BrainpoolEs256Key` states its curve.
+
 ### ti-xmldsig
 
 #### added
@@ -996,6 +1006,36 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   jwz's traits (a resolver whose origin failed).
 - `docs/guide.md`: verifying from a JWK Set with `verify_with`, why jwz never fetches keys,
   why time is a function, and an `AsyncKeyResolver` over the browser's `fetch`.
+- Profiles as explicit lists (TASK-271): `profile::Algorithms` bundles and the constants
+  `ECDSA_NIST`, `EDDSA`, `HMAC`, `ECDH_ES_P256`, `ECDH_ES_DIRECT_P256`, `AES_KW`,
+  `DIRECT`, `AES_GCM`, `AES_128_GCM`, `AES_256_GCM` and `Algorithms::NONE`;
+  `Profile::new(name, version)`, a profile without algorithms on the strict defaults.
+- `Policy::signing_curves`, the curves a signing key may be on, and `JwsKey::curve`, the
+  curve a key states (`SoftwareKey` and the `test-util` doubles state theirs).
+- `Policy::check_signing_key` and `Policy::check_encryption`, the acceptance of what is
+  signed and encrypted.
+
+#### changed
+- **Breaking:** `jws::sign`, `jws::sign_async` and `jws::json::sign` take `policy` and
+  `registry` after the signer(s); `jwe::encrypt` and `jwe::json::encrypt` take `policy`
+  before `registry`. They refuse an algorithm, a content encryption, a signing key's curve
+  or an ECDH-ES recipient's curve the policy does not list (`PolicyViolation`), so jwz no
+  longer produces tokens its profile would refuse.
+- **Breaking:** `Profile::with` takes `&Algorithms` and appends its lists without
+  duplicates, changing nothing else; it took another profile and formed a union.
+- **Breaking:** verification (`verify`, `verify_async`, `verify_with`,
+  `verify_with_async`) refuses a key on a curve the profile does not list with
+  `PolicyViolation`, and an EdDSA key that states no curve; `verify_with` passes such
+  keys over. A key that states no curve is taken to be on its algorithm's registered
+  one, so ES256 keys behave as before; `strict()` now refuses ES256 with a
+  brainpoolP256r1 key (ti-jwz's `ti()` lists it).
+- **Breaking:** `Policy` has the field `signing_curves`; a `Policy` written as a struct
+  literal must set it. `strict` and `rfc7518-interop` are built with `Profile::new` and
+  `with`, at version 2; what they accept is otherwise unchanged.
+
+#### removed
+- **Breaking:** `Policy::with` and `ClaimsPolicy::with` (unions of policies): compose
+  algorithm lists with `Profile::with`, and set the other fields directly.
 
 ## Release jwz 0.1.0, 2026-11-06
 

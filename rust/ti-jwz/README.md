@@ -3,11 +3,19 @@
 The gematik TI profiles for [jwz](../jwz/README.md), from gemSpec_Krypt V2.51.0 and
 gemSpec_IDP_Dienst V2.2.0:
 
-- `ti_jwz::ti()` for new components: ES256; ECDH-ES on P-256 and `dir`, both with
-  A256GCM; `x5c` allowed; a JWT needs `exp`.
+- `ti_jwz::ti()` for new components: ES256 with keys on P-256 and, for ePA, on
+  brainpoolP256r1; ECDH-ES on P-256 and `dir`, both with A256GCM; `x5c` allowed; a JWT
+  needs `exp`.
 - `ti_jwz::ti_legacy()` (feature `legacy`): `ti()` plus `BP256R1` signatures, for the IDP
   and other existing interfaces. Brainpool JWE is encryption only (to the IDP's `BP-256`
-  key); decrypting it is not supported yet.
+  key, adding `BRAINPOOL_KEY_AGREEMENT` for that request); decrypting it is not
+  supported yet.
+- The profiles are jwz profiles built from constants: jwz's (`ECDSA_NIST`,
+  `ECDH_ES_DIRECT_P256`, `DIRECT`, `AES_256_GCM`) and this crate's brainpool bundles,
+  `EPA_BRAINPOOL_KEYS` (the `BP-256` signing curve) and, with `legacy`,
+  `BRAINPOOL_SIGNATURES` (`BP256R1` on `BP-256`) and `BRAINPOOL_KEY_AGREEMENT`. jwz
+  signs and encrypts under them too, so a TI client produces only what the profile
+  allows.
 - `ti_jwz::registry()`: the registry to parse with (brainpool names with `legacy`).
 - `ti_jwz::brainpool` (feature `legacy`): the JWS algorithm `BP256R1` and the JWK curve
   `BP-256`. `brainpool::registry()` (or `register`) adds the names;
@@ -22,9 +30,10 @@ gemSpec_IDP_Dienst V2.2.0:
 `just brainpool-absent <crate>` fails if a crate's dependency tree contains brainpool; run
 it for every new component.
 
-ePA's `ES256` signatures on brainpool keys pass `ti()`: the curve is the key's, chosen
-with `brainpool::BrainpoolEs256Key`, so a token cannot move ES256 onto brainpool by
-itself. No RSA, no HMAC, no CBC-HMAC. Every rule cites its source in the crate
+ePA's `ES256` signatures on brainpool keys pass `ti()` because `ti()` lists `BP-256`
+among its signing curves, the TI's stated exception to RFC 7518 §3.4; jwz's `strict()`
+refuses them. The key is `brainpool::BrainpoolEs256Key`, chosen by the verifier, so a
+token cannot move ES256 onto brainpool by itself. No RSA, no HMAC, no CBC-HMAC. Every rule cites its source in the crate
 documentation.
 
 ## License
