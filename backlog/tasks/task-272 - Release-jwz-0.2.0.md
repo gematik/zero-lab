@@ -4,16 +4,14 @@ title: Release jwz 0.2.0
 status: To Do
 assignee: []
 created_date: '2026-11-08T12:06:00Z'
+updated_date: '2026-11-08T15:26:00Z'
 labels:
   - jwz
   - release
 milestone: m-1
 dependencies:
-  - TASK-243
-  - TASK-271
-  - TASK-251
-  - TASK-241
-  - TASK-258
+  - TASK-276
+  - TASK-278
 priority: medium
 ordinal: 288000
 ---

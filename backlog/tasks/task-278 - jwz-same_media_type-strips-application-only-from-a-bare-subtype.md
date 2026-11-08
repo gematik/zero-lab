@@ -4,8 +4,10 @@ title: 'jwz: same_media_type strips application/ only from a bare subtype'
 status: To Do
 assignee: []
 created_date: '2026-11-08T15:20:00Z'
+updated_date: '2026-11-08T15:26:00Z'
 labels:
   - jwz
+milestone: m-1
 dependencies: []
 priority: low
 ordinal: 294000
