@@ -251,6 +251,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   front end's configuration.
 - `pki::tsl::Loaded::sha256` and `connector::store::remove_copy` (TASK-250): the digest
   `tsl export` reports and the removal of an edited `.kon` copy, which ti-cli did itself.
+- `jwks::RemoteJwks` (decision-15, TASK-251): jwz's `KeyResolver` (and `AsyncKeyResolver`)
+  over HTTP, taking over every rule of the unreleased crate ti-jwks: the JWK Set at an
+  `https` `jwks_uri` over the IDP-Dienst's agent, no redirect followed, 64 KiB and 100 keys
+  at most, kept in a ti-cache store fresh for the origin's `Cache-Control` within
+  5 min–24 h (1 h without), revalidated with `ETag`/`Last-Modified`, no stale set when the
+  origin fails (`KeyUnavailable`, the cause in `last_error`), an unknown `kid` refetching
+  the set at most once a minute. The candidates are jwz's `JwkSet::signing_keys`.
+  `with_transport` takes another `jwks::Transport`, such as a test's.
 
 ### ti-tls
 

@@ -25,6 +25,11 @@ command-line tool and the desktop app: the I/O the product clients leave to thei
   would only add dependencies.
 - `FileCache`: the `ti_cache::CacheStore` of ti-pki's downloads and the Konnektor's service
   directory as plain files, one per key, named by the hash of the key.
+- `jwks`: `RemoteJwks`, jwz's `KeyResolver` over HTTP: the JWK Set at a `jwks_uri` over the
+  IDP-Dienst's agent, kept in a ti-cache store, fresh for the origin's `Cache-Control` within 5
+  minutes and 24 hours, revalidated by `ETag`/`Last-Modified`, never served stale, refetched for
+  an unknown `kid` at most once a minute, `https` only, no redirect followed, body and key
+  count capped. jwz chooses the candidates and verifies; no key is trusted for being fetched.
 - `files`: files written the way every state and cache file is: private to the user and
   never half-written.
 - `trust`: the trust material session of an operation (`Session`), over the profile's

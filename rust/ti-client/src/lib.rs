@@ -36,6 +36,7 @@ pub mod identity;
 pub mod idp_trust;
 pub mod idpd;
 pub mod input;
+pub mod jwks;
 pub mod net;
 pub mod peer;
 pub mod pkcs12;

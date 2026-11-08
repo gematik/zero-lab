@@ -132,9 +132,18 @@ pub fn transport(net: &Net, observer: Option<Observer>) -> Result<Http, Error> {
 ///
 /// [`Error::Setup`] for an unusable proxy or CA file or directory.
 pub fn idp_agent(net: &Net) -> Result<Agent, Error> {
+    redirectless_agent(net, web_config(net)?)
+}
+
+/// [`idp_agent`] over another rustls configuration, so a loopback test reaches its server
+/// with the agent's own settings.
+pub(crate) fn redirectless_agent(
+    net: &Net,
+    config: Arc<rustls::ClientConfig>,
+) -> Result<Agent, Error> {
     Ok(crate::tls::agent(
         builder(net, "https")?.max_redirects(0),
-        web_config(net)?,
+        config,
     ))
 }
 
