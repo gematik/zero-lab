@@ -250,7 +250,7 @@ func TestVALID001EveryVerdictIsThatOfTiPki(t *testing.T) {
 }
 
 // VALID-008 with the Kompromissmodell: GEM.SubCA-Short, expired, stays in accord in a list that lets it issue SMC-B
-// and HBA certificates. Its SMC-B's and HBA's certificates validate with issued_before_ca_expiry, and a responder that
+// and HBA certificates. Its SMC-B's and HBA's certificates validate with ca_expired, and a responder that
 // refuses every CA is never asked about it; a component's certificate under it is expired (shell model).
 func TestVALID008ACAExpiredUnderTheKompromissmodellIsNotAsked(t *testing.T) {
 	var corpus validateCorpus

@@ -720,7 +720,7 @@ mod tests {
                 let result = at(ee);
                 assert!(!result.has_error(ErrorCode::Expired), "{:?}", result.errors);
                 assert!(
-                    result.has_warning(ErrorCode::IssuedBeforeCaExpiry),
+                    result.has_warning(ErrorCode::CaExpired),
                     "{:?}",
                     result.warnings
                 );
@@ -731,7 +731,7 @@ mod tests {
                 "{:?}",
                 component.errors
             );
-            assert!(!component.has_warning(ErrorCode::IssuedBeforeCaExpiry));
+            assert!(!component.has_warning(ErrorCode::CaExpired));
         }
 
         #[test]

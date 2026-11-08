@@ -380,7 +380,7 @@ const AFTER_SHORT: u64 = 1_830_297_600;
 
 /// VALID-008 with the Kompromissmodell: sub-ca-short, expired, stays in accord in a list that
 /// lets it issue SMC-B and HBA certificates, so its SMC-B's and HBA's certificates validate with
-/// `issued_before_ca_expiry`, and a responder that would refuse any CA is never asked about it.
+/// `ca_expired`, and a responder that would refuse any CA is never asked about it.
 /// A component's certificate under it is under the shell model and expired.
 fn compromise() -> Vec<Value> {
     let ca = cert("sub-ca-short.pem");
@@ -580,7 +580,7 @@ fn valid_001_the_corpus_is_what_ti_pki_says() {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|w| w[0] == "issued_before_ca_expiry"),
+                .any(|w| w[0] == "ca_expired"),
             "{case}"
         );
     }

@@ -15,7 +15,7 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   holds at most 5 certificates and has no cycle. Otherwise it is `chain_incomplete`.
 - **PATH-002** The end entity MUST be valid at the reference time, and so must each CA under the shell
   model. Under the Kompromissmodell a CA MUST have been valid when it issued the certificate below it, and
-  one expired since is the warning `issued_before_ca_expiry`. The findings are `not_yet_valid` and `expired`.
+  one expired since is the warning `ca_expired`. The findings are `not_yet_valid` and `expired`.
 - **PATH-003** The model follows from the type: C.HP.AUT, C.HP.ENC, C.HCI.AUT, C.HCI.ENC and C.HCI.OSIG are
   under the Kompromissmodell, every other type under the shell model (gemKPT_PKI_TIP 2.4).
 - **PATH-004** Every certificate but the root MUST mark critical only the extensions this rule set processes,

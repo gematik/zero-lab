@@ -87,9 +87,9 @@ const (
 	// CodeRevokedAfterReferenceTime is a warning: OCSP reports the certificate revoked, but after the
 	// reference time, so it was valid then (TUC_PKI_006 variant 8a).
 	CodeRevokedAfterReferenceTime ErrorCode = "revoked_after_reference_time"
-	// CodeIssuedBeforeCAExpiry is a warning: a CA of the chain has expired, but was valid when it issued
-	// the certificate below it, which the Kompromissmodell accepts (gemKPT_PKI_TIP 2.4.2, Tab_PKI_271).
-	CodeIssuedBeforeCAExpiry ErrorCode = "issued_before_ca_expiry"
+	// CodeCAExpired is a warning: a CA of the chain has expired while the certificate below it is still valid,
+	// which the Kompromissmodell accepts, as the CA was valid when it issued it (gemKPT_PKI_TIP 2.4.2, Tab_PKI_271).
+	CodeCAExpired ErrorCode = "ca_expired"
 )
 
 // ErrorCodes returns every code, in ti-pki's order.
@@ -100,6 +100,6 @@ func ErrorCodes() []ErrorCode {
 		CodeExpired, CodeNotYetValid, CodeChainIncomplete, CodePolicyMismatch, CodeSignatureInvalid,
 		CodeKeyUsageMismatch, CodeKeyNotAdmissible, CodeKeyPhasedOut, CodeProfileNotDetected,
 		CodeProfileAmbiguous, CodeProfileTypeMismatch, CodeCertTypeCANotAuthorized, CodeCARevokedInTSL,
-		CodeCANotInTSL, CodeIssuedBeforeCARevocation, CodeRevokedAfterReferenceTime, CodeIssuedBeforeCAExpiry,
+		CodeCANotInTSL, CodeIssuedBeforeCARevocation, CodeRevokedAfterReferenceTime, CodeCAExpired,
 	}
 }

@@ -71,7 +71,7 @@ pub enum ValidityModel {
     Shell,
     /// The Kompromissmodell (2.4.2): each CA valid when it issued the certificate below
     /// it. For every nonQES certificate of the HBA and the SMC-B; a CA expired since is
-    /// a warning ([`ErrorCode::IssuedBeforeCaExpiry`]), as the TSL keeps such CAs in
+    /// a warning ([`ErrorCode::CaExpired`]), as the TSL keeps such CAs in
     /// accord (gemSpec_PKI Tab_PKI_271).
     Compromise,
 }
@@ -245,9 +245,10 @@ fn check_issuer_validity(
     } else if check_validity(cert, options.now, options.max_clock_skew).is_err() {
         result.warnings.push(
             ValidationWarning::new(
-                ErrorCode::IssuedBeforeCaExpiry,
+                ErrorCode::CaExpired,
                 format!(
-                    "expired (notAfter={}), but valid when it issued {:?}: the Kompromissmodell for HBA and SMC-B",
+                    "expired (notAfter={}); {:?}, which it issued, is accepted under the \
+                     Kompromissmodell for HBA and SMC-B, as the CA was valid when it issued it",
                     cert.not_after(),
                     below.subject_cn()
                 ),
@@ -483,7 +484,14 @@ mod tests {
         assert!(result.valid, "{:?}", result.errors);
         assert_eq!(
             warning_codes(&result),
-            [(ErrorCode::IssuedBeforeCaExpiry, "GEM.SubCA-Short TEST-ONLY")]
+            [(ErrorCode::CaExpired, "GEM.SubCA-Short TEST-ONLY")]
+        );
+        assert!(
+            result.warnings[0]
+                .message
+                .contains("is accepted under the Kompromissmodell for HBA and SMC-B"),
+            "{}",
+            result.warnings[0].message
         );
     }
 

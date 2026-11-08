@@ -269,8 +269,9 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 - The validity model follows the certificate type (gemKPT_PKI_TIP 2.4). For the nonQES
   certificates of an SMC-B or HBA (C.HCI.AUT, .ENC, .OSIG, C.HP.AUT, .ENC) each CA
   counts as it was when it issued the certificate below (Kompromissmodell): a CA that
-  has expired since gives the warning `issued_before_ca_expiry`, one that had expired
-  before is `expired`. Every other type, components and the eGK, needs every
+  has expired since gives the warning `ca_expired` (`issued_before_ca_expiry` up to
+  0.6.0-rc.1), one that had expired before is `expired`. The trust tree marks a
+  certificate with a yellow `!` when only warnings concern it. Every other type, components and the eGK, needs every
   certificate of the chain valid at the reference time (shell model). The end entity
   itself is always checked at the reference time.
 - `pki verify --at T`: OCSP answers for the time of the query and its status is judged

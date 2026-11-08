@@ -63,6 +63,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   gone.
 
 #### changed
+- **Schema change:** the warning `issued_before_ca_expiry` of 0.6.0-rc.1 is `ca_expired` in
+  `pki verify`'s JSON (TASK-270): every certificate is issued before its CA expires, and what
+  it reports is a CA that has expired while its certificate is still accepted under the
+  Kompromissmodell. The trust tree marks a certificate that carries only warnings with a
+  yellow `!` instead of ✓ or ✗.
 - `ti connector config set` takes its configuration from `-c` or the selection, like the other
   connector commands, no longer as an argument.
 - State and cache are plain files below `~/.local/state/telematik/ti` and
@@ -124,10 +129,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   like the `connector` commands; `--connector` stays as an alias.
 - `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
   (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
-  has expired since it was issued is valid with the warning `issued_before_ca_expiry`;
-  it was rejected as `expired`. Components and the eGK keep the shell model. The trust
-  tree of `pki inspect` and `pki verify` shows such a CA in yellow as "expired …, valid
-  when it issued", no longer as a red error.
+  has expired since it was issued is valid with the warning `ca_expired`; it was
+  rejected as `expired`. Components and the eGK keep the shell model. The trust tree of
+  `pki inspect` and `pki verify` shows such a CA as a warning, a yellow `!` and "expired
+  …, accepted under the Kompromissmodell", no longer as a red error.
 
 #### security
 - crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,
@@ -580,6 +585,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   with the spec's result codes; `TrustStore::with_tsl_ca_types_for_tests` (`test-util`).
 
 #### changed
+- **Schema change:** `ErrorCode::IssuedBeforeCaExpiry` (`issued_before_ca_expiry`) is renamed
+  `ErrorCode::CaExpired` (`ca_expired`), in `spec/pki-path` and `go/tipki` alike (TASK-270);
+  its message says why the expired CA is still accepted.
 - **Revocation is checked for the end entity only (TASK-270, VALID-008).** A CA's standing is its
   status in the verified TSL (TUC_PKI_018 step 5, Tab_PKI_271: in accord, or revoked after the
   end entity was issued, expired HBA/SMC-B CAs included), and no responder is asked about a CA
@@ -670,7 +678,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The validity model follows the end entity's type (gemKPT_PKI_TIP 2.4): the
   Kompromissmodell for C.HCI.AUT/ENC/OSIG and C.HP.AUT/ENC, under which each CA must have
   been valid when it issued the certificate below and one expired since gives the
-  warning `issued_before_ca_expiry` (`ErrorCode::IssuedBeforeCaExpiry`); the shell model
+  warning `ca_expired` (`ErrorCode::CaExpired`); the shell model
   for every other type. `ValidityModel` and `PathOptions::model` are new (breaking for
   callers that build `PathOptions`).
 - A certificate OCSP reports revoked after the reference time is valid for that time,

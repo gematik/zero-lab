@@ -205,8 +205,9 @@ func checkIssuerValidity(cert, below *x509.Certificate, options PathOptions, res
 		result.Errors = append(result.Errors, *finding)
 	} else if checkValidity(cert, options.Now, options.MaxClockSkew) != nil {
 		result.Warnings = append(result.Warnings, Finding{
-			CodeIssuedBeforeCAExpiry, cert.Subject.CommonName,
-			fmt.Sprintf("expired, but valid when it issued %q", below.Subject.CommonName),
+			CodeCAExpired, cert.Subject.CommonName,
+			fmt.Sprintf("expired (notAfter=%s); %q, which it issued, is accepted under the Kompromissmodell for HBA and SMC-B, as the CA was valid when it issued it",
+				cert.NotAfter.UTC().Format(time.RFC3339), below.Subject.CommonName),
 		})
 	}
 }
