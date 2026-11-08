@@ -4,7 +4,7 @@ title: 'jwz: RFC 8725 (JWT BCP) traced in full'
 status: In Progress
 assignee: []
 created_date: '2026-11-07T18:04:00Z'
-updated_date: '2026-11-08T15:19:00Z'
+updated_date: '2026-11-08T15:20:00Z'
 labels:
   - jwz
   - spec
@@ -29,7 +29,7 @@ jwz's README cites RFC 8725 (JSON Web Token Best Current Practices) only for §3
 <!-- AC:BEGIN -->
 - [x] #1 each requirement of RFC 8725 §3 is traced in jwz's traceability table to the code and tests that meet it, or recorded as the caller's duty (ClaimsPolicy, profile) with where jwz helps
 - [x] #2 the state of draft-ietf-oauth-rfc8725bis is checked and its new requirements are traced the same way, or a watch task records why not yet
-- [ ] #3 a gap found becomes its own task
+- [x] #3 a gap found becomes its own task
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -42,4 +42,6 @@ Traced (tests/rfc8725.rs, guide section "RFC 8725: what jwz does and what is you
 - Caller's duty, with jwz's part cited and tested: §3.2 algorithm choice and agility (Profile), §3.5 key provenance (HMAC key length, generated keys random), §3.8 issuer keys and sub (KeyResolver, ClaimsPolicy::issuer, Claims::sub), §3.9 audience (ClaimsPolicy::audience), §3.10 kid/jku/x5u (KeyReferences opt-in, no fetching, exact kid match), §3.11 explicit typing (Policy::typ, HeaderParams::typ), §3.12 exclusive rules (a Profile per kind).
 - draft-ietf-oauth-rfc8725bis-10 (document dated 2026-08-21, expires 2027-02-22) followed and pinned; a later revision is a watch item. The traceability generator reads RFC and NIST ids only, so the draft is cited in prose and traced in the guide's second table; its tests are named draft_ietf_oauth_rfc8725bis_10_3_<n>_… (§3.1 allowlist, §3.3 told apart, §3.13 no PBES2, §3.14 base64url only, §3.15 no zip).
 - Gaps for AC 3 (not implemented here): keys without alg are not bound to one algorithm (JWK without alg under several HS*, SymmetricKey without alg for dir and A*KW, KeyAgreement keys for every ECDH-ES variant); signing and encryption do not hold the header to Policy::typ, require_kid or key_references (a profile with typ signs a token it refuses; serves TASK-269); Policy::typ has no if-present rule or set of types (draft §3.11); same_media_type drops application/ also when another / follows.
+
+Gaps filed on main: TASK-275 (keys without alg bound to one algorithm, §3.1), TASK-276 (producing checks the header against the policy, §3.11), TASK-277 (accepted typ values as a rule, draft-10 §3.11), TASK-278 (same_media_type and application/).
 <!-- SECTION:NOTES:END -->
