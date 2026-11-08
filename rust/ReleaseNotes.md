@@ -989,9 +989,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
   `Timestamp::now` and tests a closure (decision-15).
 
-### jwz
+## Release jwz 0.2.0, 2026-11-08
 
-#### added
+### added
 - `jwk::KeyResolver` and `jwk::AsyncKeyResolver` (TASK-243): where a verifier gets the keys
   that may have signed a JWS, implemented by the host over its own fetching and cache;
   jwz never fetches. `JwkSet` implements both.
@@ -1035,7 +1035,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Policy::check_signing_key` and `Policy::check_encryption`, the acceptance of what is
   signed and encrypted.
 
-#### changed
+### changed
 - **Breaking:** `jws::sign`, `jws::sign_async` and `jws::json::sign` take `policy` and
   `registry` after the signer(s). They and the encrypt functions below refuse an
   algorithm, a content encryption, a signing key's curve or an ECDH-ES recipient's curve
@@ -1060,11 +1060,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   literal must set it. `strict` and `rfc7518-interop` are built with `Profile::new` and
   `with`, at version 2; what they accept is otherwise unchanged.
 
-#### removed
+### removed
 - **Breaking:** `Policy::with` and `ClaimsPolicy::with` (unions of policies): compose
   algorithm lists with `Profile::with`, and set the other fields directly.
 
-#### fixed
+### fixed
 - A `typ` with the prefix `application/` and a further `/` no longer equals the type without
   the prefix (RFC 7515 §4.1.9, TASK-278): `application/a/b` is not `a/b`.
 

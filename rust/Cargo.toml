@@ -23,7 +23,7 @@ ti-cache = { version = "0.1", path = "ti-cache" }
 ti-pki = { version = "0.1", path = "ti-pki", default-features = false }
 ti-pkcs12 = { version = "0.1", path = "ti-pkcs12" }
 ti-connector-client = { version = "0.1", path = "ti-connector-client" }
-jwz = { version = "0.1", path = "jwz", default-features = false }
+jwz = { version = "0.2", path = "jwz", default-features = false }
 ti-jwz = { version = "0.1", path = "ti-jwz" }
 ti-idpd-client = { version = "0.1", path = "ti-idpd-client" }
 ti-tls = { version = "0.1", path = "ti-tls" }
