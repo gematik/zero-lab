@@ -280,7 +280,7 @@ impl<In: UreqTransportLayer> Connector<In> for KonnektorTls {
         )
         .map_err(|_| ureq::Error::Tls("invalid server name"))?;
         let mut conn = ClientConnection::new(self.config.clone(), name)?;
-        let mut sock = TransportAdapter::new(transport.boxed());
+        let mut sock = TransportAdapter::new(transport.boxed(), details.current_time.clone());
         sock.set_timeout(details.timeout);
         conn.complete_io(&mut sock)?;
         Ok(Some(Either::B(TlsTransport {

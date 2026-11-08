@@ -260,6 +260,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the set at most once a minute. The candidates are jwz's `JwkSet::signing_keys`.
   `with_transport` takes another `jwks::Transport`, such as a test's.
 
+
+#### changed
+- ureq 3.5 (pinned `~3.5`, TASK-272): its 3.4 releases left connection reuse, transfer
+  encoding and the TLS handshake's timeout unfixed.
 ### ti-tls
 
 #### added
