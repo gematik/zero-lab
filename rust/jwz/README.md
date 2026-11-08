@@ -26,25 +26,33 @@ Start with the guide (`jwz::guide` in the API documentation, [`docs/guide.md`](h
 Every requirement jwz implements is traced to the tests that prove it:
 [`docs/traceability.md`](https://github.com/gematik/zero-lab/blob/main/rust/jwz/docs/traceability.md).
 
-## What's in 0.1
+## What's in it
 
-- `jwz::jwa`: the algorithm registry;
+- `jwz::jwa`: the algorithm registry, with RFC 9864's fully specified `Ed25519` (the
+  polymorphic `EdDSA` is deprecated and kept for older peers);
 - `jwz::crypto`: the backend traits (sync and async) and the RustCrypto backend
   (P-256 ES256 and ECDH, Ed25519, AES-GCM, AES Key Wrap, SHA-2, HMAC);
-- `jwz::jwk`: JWK and JWK Set, RFC 7638 thumbprints, strict parsing;
+- `jwz::jwk`: JWK and JWK Set, RFC 7638 thumbprints, strict parsing, and the
+  `KeyResolver` / `AsyncKeyResolver` seam through which a verifier gets keys the host
+  fetches and caches (jwz never fetches);
 - `jwz::keys`: key traits on RustCrypto's `signature` traits, `SoftwareKey`, and test
   doubles for HSM and KMS signers (`test-util`);
 - `jwz::jws`: compact and JSON serializations, `Jws<Unverified>` → `Jws<Verified>`,
-  sync and async signing;
+  sync and async signing, and `verify_with` / `verify_with_async` over resolved keys;
 - `jwz::jwe`: compact and JSON serializations, ECDH-ES (direct and with A128/192/256KW),
   `dir`, A128/192/256KW, A128/192/256GCM; `Jwe<Encrypted>` → `Jwe<Decrypted>`, async key
   agreement; further curves through `crypto::Extended`;
-- `jwz::jwt`: claims, `ClaimsPolicy`, `Clock`;
+- `jwz::jwt`: claims, `ClaimsPolicy`, `Clock` (any `Fn() -> u64` is one);
 - `jwz::profile`: `Policy` (the single acceptance check, for what jwz parses, verifies,
-  signs and encrypts), profiles as explicit lists built from constants (`ECDSA_NIST`,
-  `EDDSA`, `ECDH_ES_P256`, `AES_GCM`, ...) with `Profile::new` and `Profile::with`, and
-  the `strict` and `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the
-  `ChainValidator` seam.
+  signs and encrypts: algorithms, key curves and headers), profiles as explicit lists
+  built from constants (`ECDSA_NIST`, `ED25519`, `ECDH_ES_P256`, `AES_GCM`, ...) with
+  `Profile::new` and `Profile::with`, and the `strict` and `rfc7518-interop` profiles;
+  `jwz::x5c`: chain decoding and the `ChainValidator` seam;
+- errors with a stable code and fixed text, carrying a host's own cause where its
+  resolver or validator failed.
+
+What changed from release to release:
+[`ReleaseNotes.md`](https://github.com/gematik/zero-lab/blob/main/rust/ReleaseNotes.md).
 
 ## Design principles
 

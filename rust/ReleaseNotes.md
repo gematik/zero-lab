@@ -7,6 +7,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ## Unreleased
 
+### jwz
+
+#### fixed
+- The README on crates.io described 0.1: its contents section now lists what 0.2 brings
+  (key resolvers, `Ed25519`, profiles that bind signing, keys and headers, error causes)
+  under a heading without a version, and links the release notes.
+
 ### added
 - New crate: certificate verification for a server workload as a process beside it, protocol
   `pki/1` of `spec/ti-rpc`, over stdio or a Unix socket. Trust material comes from a mounted
