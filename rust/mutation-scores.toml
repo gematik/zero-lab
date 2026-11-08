@@ -11,7 +11,6 @@
 "jwz" = 0.8
 "ti-connector-client" = 0.8
 "ti-idpd-client" = 0.8
-"ti-jwks" = 0.8
 "ti-jwz" = 0.8
 "ti-pkcs12" = 0.8
 "ti-pki" = 0.8

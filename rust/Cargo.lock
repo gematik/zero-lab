@@ -1723,19 +1723,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ti-jwks"
-version = "0.1.0"
-dependencies = [
- "futures-lite",
- "jwz",
- "thiserror",
- "ti-cache",
- "ti-types",
- "traceability",
- "ureq",
-]
-
-[[package]]
 name = "ti-jwz"
 version = "0.1.0"
 dependencies = [

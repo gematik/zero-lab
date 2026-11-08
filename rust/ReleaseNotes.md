@@ -279,16 +279,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The `ureq` feature and the module `ureq` (decision-15, TASK-249): `agent` and `UreqFetch`
   are ti-client's (`ti_client::tls`). ti-tls holds no HTTP client.
 
-### ti-jwks
-
-#### added
-- New crate (TASK-18): JWK Sets from a `jwks_uri`. `JwksSource::keys(kid, alg)` returns
-  the keys that fit a token; the set is kept in a ti-cache `Cache` with `policy()`: the
-  origin's `Cache-Control: max-age` within 5 min–24 h (1 h without), revalidation with
-  `ETag`/`Last-Modified`, no stale set on origin failure, an unknown `kid` refreshing the
-  set at most once a minute. `https` only, redirects refused, 64 KiB and 100 keys at most.
-  `http::Transport` for any client, a blocking one with the `ureq` feature.
-
 ### ti-idpd-client
 
 #### added
