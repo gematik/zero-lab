@@ -26,152 +26,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - Renamed from `ti-store`, as it holds only the HTTP cache since the sealed store left: the
   package and crate are `ti-cache` and `ti_cache`. `ti-pki`'s re-exports keep their names.
 
-### ti-cli
-
-#### security
-- Every https server is verified under the `web` profile of `spec/pki-validation` (TASK-97):
-  the OS roots or those of `--cacert`/`--capath`, end-entity keys ECDSA P-256/P-384 or
-  RSA ≥ 3000, no SHA-1, MD5 or SHA-224, serverAuth, at most 398 days of validity, and a
-  revocation status by OCSP or CRL, or no connection. The TSL download points, the IDP-Dienst
-  and the FHIR-Directory pass it (`cargo test -p ti-client --test web_real_world --
-  --ignored`). `-k` no longer reaches the IDP-Dienst and the FHIR-Directory, as documented: it
-  skips the check for downloads only. `-v` names the profile.
-- `ti probe` verifies every https endpoint, where it checked none (TASK-228): ePA under the
-  `ti` profile, against the environment's TSL and roots with OCSP; the IDP-Dienst, E-Rezept
-  and the internet services under `web`. A refused certificate fails the probe as an answer
-  (`TLS web: unknown issuer`), and the JSON gains `tls: {profile, verified}`. The endpoint
-  list takes `"tls": "ti"` per endpoint; `web` is the default.
-
-#### added
-- `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
-  one bundle file for a server or an air-gapped site, written whole and only once a consumer's
-  load of it verified.
-- `ti connector config list` lists the .kon files, where the other `config` commands are.
-  `connector configs` still works, no longer in `--help`, and `connector use` without a name
-  shows the same list. `ti schema` knows the list as `connector config list`, and
-  `connector use` as either of its two answers.
-
-#### removed
-- The sealed store: `ti store`, `ti profile create|use|show|rotate|rewrap`, `TI_STORE_KEK_PATH`,
-  `TI_STORE_BACKEND` and `TI_STORE_TRACE` are gone, with the `store_*` error kinds, the
-  SQLite databases (`state.db`, `cache.db`), the keyring and the key file. They are not
-  read: files of the former store may be removed by hand (`~/.local/state/telematik/profiles`,
-  `~/.cache/telematik/profiles`, `~/.config/telematik/profiles`). `ti profile list` and
-  `delete` stay.
-- SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
-  `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are
-  gone.
-
-#### changed
-- **Schema change:** the warning `issued_before_ca_expiry` of 0.6.0-rc.1 is `ca_expired` in
-  `pki verify`'s JSON (TASK-270): every certificate is issued before its CA expires, and what
-  it reports is a CA that has expired while its certificate is still accepted under the
-  Kompromissmodell. The trust tree marks a CA that carries only warnings with a yellow `!`
-  instead of ✓ or ✗; the end entity keeps ✓ or ✗, its warnings are in the findings.
-- `ti connector config set` takes its configuration from `-c` or the selection, like the other
-  connector commands, no longer as an argument.
-- State and cache are plain files below `~/.local/state/telematik/ti` and
-  `~/.cache/telematik/ti` (`%LOCALAPPDATA%` on Windows). `--profile NAME` or `TI_PROFILE`
-  chooses `profiles/NAME` below them, created on first use; no profile is remembered
-  between runs and no name is reserved. For a throwaway run use `--profile "$(uuidgen)"`
-  or `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d)`.
-- The TSL state is kept on every run without setup, except with `--at`, so an older TSL is rejected from the
-  first verified list on. A corrupt TSL state file is refused with `state_file_failed`
-  naming it, where it was ignored.
-- Comfort IDs lie unencrypted in private files (mode 0600 in a directory of mode 0700), no
-  longer sealed, as `hba-user/KONNEKTOR/CARD`. Existing IDs, sealed or in `comfort/`, are not
-  migrated: **activate comfort signature again.** On POSIX such a file or directory that is a symbolic
-  link or open to group or others is refused.
-- Homebrew releases go to `gematik/tap` (`brew install gematik/tap/ti`), with the earlier
-  versions from `spilikin/tap`. Installs from `spilikin/tap` stay at 0.5.0: `brew uninstall ti
-  && brew install gematik/tap/ti` switches.
-
-#### fixed
-- `pki verify` accepts an SMC-B under an expired HBA/SMC-B CA whose responder answers for it
-  (TASK-270): a reference SMC-B under GEM.SMCB-CA9 TEST-ONLY, valid under the Kompromissmodell,
-  failed with `ocsp_responder_untrusted`, because the CA itself was asked at the production
-  root responder its AIA names. Only the end entity is asked now, as TUC_PKI_018 does; a CA's
-  standing is its status in the verified TSL. The revocation line says so (`OCSP for the end
-  entity, the CAs by the TSL`), and `chain[].revocation` is set for the end entity only.
-- `connector config test` reports a Konnektor that requires a client certificate as
-  refusing basic credentials every time (TASK-262): under TLS 1.3 the refusal follows the
-  handshake and was now and then lost to a reset, which passed the auth step.
-- `ti probe` puts the Bestandsnetze on one line, the names grouped by result (TASK-235):
-  production lists 17, and a row each pushed the TI VPN and Internet off the screen and the
-  redrawn table into the scrollback. `--format json` keeps each one's detail.
-- `ti probe -k` checks no TLS certificate, ePA's included, and loads no TSL; answers are
-  judged as usual, the detail says `TLS unchecked` (in yellow), `tls.verified` is null, and a
-  warning names it.
-- `-k` warns "the TLS certificates of download servers are not checked".
-- `pki tsl show`, `pki tsl export` and `pki trust export` use the list their load verified
-  against the TSL state. They read it back from the cache without asking the origin again, a
-  stale entry could send that read there, and refuse any other list. `tsl export` writes the
-  signature and status the list verified with, no status with `--at`, and none that is past
-  its age online (TSLDET-015). Past the age limit they refuse with `--offline`, where they
-  showed the cached list.
-- `connector get status` colors a condition by its severity: Info is not red.
-- Every call on an HBA uses one user ID, so PIN commands, `verify certificate`, `export` and
-  the like work while comfort signature is on, where they ended in 4018, and need no `userId`
-  in the `.kon` file: the one in the HBA's file under `hba-user/` of the profile's state, else
-  the `.kon` file's, else a new one kept there. `comfort activate` writes a new ID to that
-  file and `comfort deactivate` removes it. A 4018 says what to do.
-- `connector sign` asks the Konnektor whether a comfort session runs, so `comfort` is no
-  longer true for a session that has ended. `user_id_stored` is gone from `connector comfort`.
-- A rejected older TSL hints at what it means and how to recover, not at the network.
-- Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
-  sets a proxy for it.
-- A Konnektor whose service directory names another origin than the `.kon` url is refused
-  before anything is sent, and `connector config test` fails at `sds`, with the hint to
-  `rewriteServiceEndpoints`. Before, credentials and documents went wherever the directory
-  said, plain http included. **A Konnektor behind NAT that worked without the rewrite now
-  needs it.**
-- `--card` (identity, directory login) chooses its Konnektor with `-c`/`--connector-config`
-  like the `connector` commands; `--connector` stays as an alias.
-- `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
-  (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
-  has expired since it was issued is valid with the warning `ca_expired`; it was
-  rejected as `expired`. Components and the eGK keep the shell model. The trust tree of
-  `pki inspect` and `pki verify` shows such a CA as a warning, a yellow `!` and "expired
-  …, accepted under the Kompromissmodell", no longer as a red error.
-
-#### security
-- crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,
-  RUSTSEC-2026-0385, RUSTSEC-2026-0386); crypto-bigint 0.7.6, which fixed the first,
-  was yanked since.
-
-#### added
-- `pki tsl verify TSL SIG [--signer-status FILE.ocsp]`: the signature file is a required
-  argument, because the list is verified by gematik's detached signature file, and the
-  signer's status can come from the published response instead of a network query. `tsl
-  show`, `bundle` and `export` load the two files from the environment's automated download
-  point. Reports lose `signing_time`, and `xml_signature_error` became
-  `detached_signature_error` (`spec/tsl-detached`, TASK-166). `tsl export -o` writes the
-  `.sig` and `.ocsp` next to the list. **Lists need their `.sig`: scripts calling `pki tsl
-  verify FILE` must pass it as the second argument.**
-
-#### changed
-- `ti pki verify --validation-profile` fails a certificate whose type the profile does not accept: `profile_type_mismatch`
-  is an error, it was a warning. New error `ca_not_in_tsl`. The warning `cert_type_unchecked` is gone: a CA the TSL
-  states no types for fails with `cert_type_ca_not_authorized`. A report on a certificate that already failed shows no
-  revocation results, because no responder is asked about it.
-- Konnektor faults about the information model carry a hint naming the cause, the
-  `.kon` fields concerned and where to fix it (gemSpec_Kon): 4092 (no Remote-PIN-KT
-  for the workplace), 4053, 4004 to 4007 (unknown Mandant, client system, workplace,
-  card terminal), 4010 to 4012 (not assigned to the Mandant), 4021 (call context
-  incomplete), 4204 (client system not authenticated), 4093 and 4060 (card or terminal
-  busy). The fault's code and text are unchanged; the hint is in the text and in the
-  JSON error's `hint`.
-- `ti agent` states the rules agents follow with the tool (never ask for or print a real
-  `.kon` file, PKCS#12 file, PIN or token; PIN and destructive commands only on
-  request), lists every error kind with its exit code, describes the `.kon` format with
-  a sample of placeholders, and names the Konnektor fault hints. A test keeps the list
-  of error kinds equal to the binary's: `output_exists` is exit 2, `key_unsupported` 4,
-  the `store_*` kinds 2, except `store_busy` and `store_backend_error`, which are 5.
-- `ti` without arguments and a command group without its subcommand show the commands
-  without the output, profile, HTTP and Konnektor options every command shares; `-h` and
-  `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
-  longer turns the help of `ti` without arguments into an error.
-
 ### ti-client
 
 #### added
@@ -988,6 +842,152 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   on wasm32-unknown-unknown, where std has no clock and every call would panic). Time
   enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
   `Timestamp::now` and tests a closure (decision-15).
+
+## Release ti-cli 0.6.0, 2026-11-08
+
+### security
+- Every https server is verified under the `web` profile of `spec/pki-validation` (TASK-97):
+  the OS roots or those of `--cacert`/`--capath`, end-entity keys ECDSA P-256/P-384 or
+  RSA ≥ 3000, no SHA-1, MD5 or SHA-224, serverAuth, at most 398 days of validity, and a
+  revocation status by OCSP or CRL, or no connection. The TSL download points, the IDP-Dienst
+  and the FHIR-Directory pass it (`cargo test -p ti-client --test web_real_world --
+  --ignored`). `-k` no longer reaches the IDP-Dienst and the FHIR-Directory, as documented: it
+  skips the check for downloads only. `-v` names the profile.
+- `ti probe` verifies every https endpoint, where it checked none (TASK-228): ePA under the
+  `ti` profile, against the environment's TSL and roots with OCSP; the IDP-Dienst, E-Rezept
+  and the internet services under `web`. A refused certificate fails the probe as an answer
+  (`TLS web: unknown issuer`), and the JSON gains `tls: {profile, verified}`. The endpoint
+  list takes `"tls": "ti"` per endpoint; `web` is the default.
+
+### added
+- `ti pki trust export -o FILE`: roots.json, the TSL, its signature and its signer's status as
+  one bundle file for a server or an air-gapped site, written whole and only once a consumer's
+  load of it verified.
+- `ti connector config list` lists the .kon files, where the other `config` commands are.
+  `connector configs` still works, no longer in `--help`, and `connector use` without a name
+  shows the same list. `ti schema` knows the list as `connector config list`, and
+  `connector use` as either of its two answers.
+
+### removed
+- The sealed store: `ti store`, `ti profile create|use|show|rotate|rewrap`, `TI_STORE_KEK_PATH`,
+  `TI_STORE_BACKEND` and `TI_STORE_TRACE` are gone, with the `store_*` error kinds, the
+  SQLite databases (`state.db`, `cache.db`), the keyring and the key file. They are not
+  read: files of the former store may be removed by hand (`~/.local/state/telematik/profiles`,
+  `~/.cache/telematik/profiles`, `~/.config/telematik/profiles`). `ti profile list` and
+  `delete` stay.
+- SOCKS proxies: `-x socks5://` and a `socks5://` in the proxy variables are refused with
+  `http_setup` (exit 2), and `ureq`'s `socks-proxy` feature, `socks` and `byteorder` are
+  gone.
+
+### changed
+- **Schema change:** the warning `issued_before_ca_expiry` of 0.6.0-rc.1 is `ca_expired` in
+  `pki verify`'s JSON (TASK-270): every certificate is issued before its CA expires, and what
+  it reports is a CA that has expired while its certificate is still accepted under the
+  Kompromissmodell. The trust tree marks a CA that carries only warnings with a yellow `!`
+  instead of ✓ or ✗; the end entity keeps ✓ or ✗, its warnings are in the findings.
+- `ti connector config set` takes its configuration from `-c` or the selection, like the other
+  connector commands, no longer as an argument.
+- State and cache are plain files below `~/.local/state/telematik/ti` and
+  `~/.cache/telematik/ti` (`%LOCALAPPDATA%` on Windows). `--profile NAME` or `TI_PROFILE`
+  chooses `profiles/NAME` below them, created on first use; no profile is remembered
+  between runs and no name is reserved. For a throwaway run use `--profile "$(uuidgen)"`
+  or `TI_STATE_DIR=$(mktemp -d) TI_CACHE_DIR=$(mktemp -d)`.
+- The TSL state is kept on every run without setup, except with `--at`, so an older TSL is rejected from the
+  first verified list on. A corrupt TSL state file is refused with `state_file_failed`
+  naming it, where it was ignored.
+- Comfort IDs lie unencrypted in private files (mode 0600 in a directory of mode 0700), no
+  longer sealed, as `hba-user/KONNEKTOR/CARD`. Existing IDs, sealed or in `comfort/`, are not
+  migrated: **activate comfort signature again.** On POSIX such a file or directory that is a symbolic
+  link or open to group or others is refused.
+- Homebrew releases go to `gematik/tap` (`brew install gematik/tap/ti`), with the earlier
+  versions from `spilikin/tap`. Installs from `spilikin/tap` stay at 0.5.0: `brew uninstall ti
+  && brew install gematik/tap/ti` switches.
+
+### fixed
+- `pki verify` accepts an SMC-B under an expired HBA/SMC-B CA whose responder answers for it
+  (TASK-270): a reference SMC-B under GEM.SMCB-CA9 TEST-ONLY, valid under the Kompromissmodell,
+  failed with `ocsp_responder_untrusted`, because the CA itself was asked at the production
+  root responder its AIA names. Only the end entity is asked now, as TUC_PKI_018 does; a CA's
+  standing is its status in the verified TSL. The revocation line says so (`OCSP for the end
+  entity, the CAs by the TSL`), and `chain[].revocation` is set for the end entity only.
+- `connector config test` reports a Konnektor that requires a client certificate as
+  refusing basic credentials every time (TASK-262): under TLS 1.3 the refusal follows the
+  handshake and was now and then lost to a reset, which passed the auth step.
+- `ti probe` puts the Bestandsnetze on one line, the names grouped by result (TASK-235):
+  production lists 17, and a row each pushed the TI VPN and Internet off the screen and the
+  redrawn table into the scrollback. `--format json` keeps each one's detail.
+- `ti probe -k` checks no TLS certificate, ePA's included, and loads no TSL; answers are
+  judged as usual, the detail says `TLS unchecked` (in yellow), `tls.verified` is null, and a
+  warning names it.
+- `-k` warns "the TLS certificates of download servers are not checked".
+- `pki tsl show`, `pki tsl export` and `pki trust export` use the list their load verified
+  against the TSL state. They read it back from the cache without asking the origin again, a
+  stale entry could send that read there, and refuse any other list. `tsl export` writes the
+  signature and status the list verified with, no status with `--at`, and none that is past
+  its age online (TSLDET-015). Past the age limit they refuse with `--offline`, where they
+  showed the cached list.
+- `connector get status` colors a condition by its severity: Info is not red.
+- Every call on an HBA uses one user ID, so PIN commands, `verify certificate`, `export` and
+  the like work while comfort signature is on, where they ended in 4018, and need no `userId`
+  in the `.kon` file: the one in the HBA's file under `hba-user/` of the profile's state, else
+  the `.kon` file's, else a new one kept there. `comfort activate` writes a new ID to that
+  file and `comfort deactivate` removes it. A 4018 says what to do.
+- `connector sign` asks the Konnektor whether a comfort session runs, so `comfort` is no
+  longer true for a session that has ended. `user_id_stored` is gone from `connector comfort`.
+- A rejected older TSL hints at what it means and how to recover, not at the network.
+- Proxy variables no longer reach the Konnektor, as `AGENTS.md` always said: only `-x`
+  sets a proxy for it.
+- A Konnektor whose service directory names another origin than the `.kon` url is refused
+  before anything is sent, and `connector config test` fails at `sds`, with the hint to
+  `rewriteServiceEndpoints`. Before, credentials and documents went wherever the directory
+  said, plain http included. **A Konnektor behind NAT that worked without the rewrite now
+  needs it.**
+- `--card` (identity, directory login) chooses its Konnektor with `-c`/`--connector-config`
+  like the `connector` commands; `--connector` stays as an alias.
+- `pki verify` applies the Kompromissmodell to the nonQES certificates of SMC-B and HBA
+  (gemKPT_PKI_TIP 2.4.2, gemSpec_PKI Tab_PKI_271): an SMC-B or HBA certificate whose CA
+  has expired since it was issued is valid with the warning `ca_expired`; it was
+  rejected as `expired`. Components and the eGK keep the shell model. The trust tree of
+  `pki inspect` and `pki verify` shows such a CA as a warning, a yellow `!` and "expired
+  …, accepted under the Kompromissmodell", no longer as a red error.
+
+### security
+- crypto-bigint 0.7.10, ctutils 0.4.6 and tokio 1.54.1 (RUSTSEC-2026-0387,
+  RUSTSEC-2026-0385, RUSTSEC-2026-0386); crypto-bigint 0.7.6, which fixed the first,
+  was yanked since.
+
+### added
+- `pki tsl verify TSL SIG [--signer-status FILE.ocsp]`: the signature file is a required
+  argument, because the list is verified by gematik's detached signature file, and the
+  signer's status can come from the published response instead of a network query. `tsl
+  show`, `bundle` and `export` load the two files from the environment's automated download
+  point. Reports lose `signing_time`, and `xml_signature_error` became
+  `detached_signature_error` (`spec/tsl-detached`, TASK-166). `tsl export -o` writes the
+  `.sig` and `.ocsp` next to the list. **Lists need their `.sig`: scripts calling `pki tsl
+  verify FILE` must pass it as the second argument.**
+
+### changed
+- `ti pki verify --validation-profile` fails a certificate whose type the profile does not accept: `profile_type_mismatch`
+  is an error, it was a warning. New error `ca_not_in_tsl`. The warning `cert_type_unchecked` is gone: a CA the TSL
+  states no types for fails with `cert_type_ca_not_authorized`. A report on a certificate that already failed shows no
+  revocation results, because no responder is asked about it.
+- Konnektor faults about the information model carry a hint naming the cause, the
+  `.kon` fields concerned and where to fix it (gemSpec_Kon): 4092 (no Remote-PIN-KT
+  for the workplace), 4053, 4004 to 4007 (unknown Mandant, client system, workplace,
+  card terminal), 4010 to 4012 (not assigned to the Mandant), 4021 (call context
+  incomplete), 4204 (client system not authenticated), 4093 and 4060 (card or terminal
+  busy). The fault's code and text are unchanged; the hint is in the text and in the
+  JSON error's `hint`.
+- `ti agent` states the rules agents follow with the tool (never ask for or print a real
+  `.kon` file, PKCS#12 file, PIN or token; PIN and destructive commands only on
+  request), lists every error kind with its exit code, describes the `.kon` format with
+  a sample of placeholders, and names the Konnektor fault hints. A test keeps the list
+  of error kinds equal to the binary's: `output_exists` is exit 2, `key_unsupported` 4,
+  the `store_*` kinds 2, except `store_busy` and `store_backend_error`, which are 5.
+- `ti` without arguments and a command group without its subcommand show the commands
+  without the output, profile, HTTP and Konnektor options every command shares; `-h` and
+  `--help` both show everything. A set `TI_FORMAT` or `TI_CACHE_DIR` no
+  longer turns the help of `ti` without arguments into an error.
 
 ## Release jwz 0.2.1, 2026-11-08
 
