@@ -391,7 +391,10 @@ just changed                       # what changed since each crate's last tag
 git add -A && git commit -m "ti-pki: release 0.1.1"
 
 #    A crate's mutation score must belong to its code as released and reach its threshold
-#    (mutation-scores.toml); `just release` checks it with `just mutants-gate`
+#    (mutation-scores.toml); `just release` checks it with `just mutants-gate`. Code is what
+#    a test compiles or runs: a change to the README, the licence, a document no
+#    include_str! compiles in, the stamps, the fuzz targets or the [package] version line
+#    needs no new score (`python3 -I scripts/mutation.py affecting <crate> <rev>` lists the rest)
 just mutants-record ti-pki         # slow; commit mutation-scores.toml
 
 # 3. Tier 2 must be green before tagging (semver compares against the last tag)
@@ -447,11 +450,16 @@ one crate with binaries. A release takes two commands from `main`:
    `just release ti-cli=0.4.0 ti-idpd-client=0.2.0 ti-directory-client=0.1.0`. It stops unless
    `main` is clean and equal to `origin/main`, each tag is new and above the crate's last
    `rust/<crate>/v*`, and `ReleaseNotes.md` has exactly one `### <crate>` block under
-   `## Unreleased` for each. Then `just check-full` and `just advisories vet msrv`; per crate the version in
+   `## Unreleased` for each. Then `just check-full` and `just advisories vet msrv`, unless no
+   released crate's code or the workspace's `Cargo.toml` and `Cargo.lock` changed since its
+   last tag (a docs-only release, such as a README fix crates.io only shows with a new
+   version): that releases the same code, so only `just advisories vet` run; the mutation
+   gate and `just semver` run either way. Per crate the version in
    its `Cargo.toml`, the workspace requirement on it in `Cargo.toml` (`"0.2"` for 0.x,
    the major from 1.0) and its block becoming `## Release <crate> X.Y.Z, YYYY-MM-DD`;
    `Cargo.lock`; `just semver` for the released crates at their new versions;
-   `just jwz-recheck`, because `Cargo.toml` changed; when `ti-cli` is in
+   `just jwz-recheck`, because `Cargo.toml` changed (only the browser stamp hashes a manifest,
+   so a bump reruns that one, a few minutes); when `ti-cli` is in
    it, `just cli-targets` builds the three binaries into `target/dist` with their
    `SHA256SUMS`. One commit `release: <crate> X.Y.Z, …`, one tag `rust/<crate>/vX.Y.Z`
    per crate. A failure or Ctrl-C after the gate undoes the bumps.

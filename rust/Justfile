@@ -137,7 +137,7 @@ release +releases:
     [[ -z "$(git status --porcelain)" ]] || die "the working tree is not clean"
     git fetch -q origin main
     [[ "$(git rev-parse main)" == "$(git rev-parse origin/main)" ]] || die "main and origin/main differ"
-    crates=(); versions=()
+    crates=(); versions=(); docs_only=true
     for pair in {{releases}}; do
         crate="${pair%%=*}"; v="${pair#*=}"
         [[ "$crate" != "$pair" && -n "$v" ]] || die "$pair is not crate=version"
@@ -151,12 +151,28 @@ release +releases:
         blocks=$(awk -v c="### $crate" '/^## Unreleased/{u=1; next} /^## /{u=0} u && $0 == c {n++} END {print n+0}' ReleaseNotes.md)
         [[ "$blocks" == 1 ]] || die "$crate has $blocks blocks under Unreleased; merge them into one"
         crates+=("$crate"); versions+=("$v")
+        # A crate whose code is unchanged since its last tag (only the README, documents
+        # not compiled in, the stamps: scripts/mutation.py) and whose dependencies are too
+        # (the workspace manifest and lock file hold their versions) releases the same code
+        # it did then.
+        if [[ -z "$last" || -n "$(python3 -I scripts/mutation.py affecting "$crate" "rust/$crate/v$last")" ]] \
+            || ! git diff --quiet "rust/$crate/v$last" HEAD -- Cargo.toml Cargo.lock; then
+            docs_only=false
+        fi
     done
 
-    echo "==> just check-full"; just check-full
+    if $docs_only; then
+        echo "==> no code changed since the last tags: check-full and msrv skipped"
+    else
+        echo "==> just check-full"; just check-full
+    fi
     echo "==> just mutants-gate"; just mutants-gate "${crates[@]}"
     # The semver step waits for the bumps: it judges the released crates' new versions.
-    echo "==> just advisories vet msrv"; just advisories vet msrv
+    if $docs_only; then
+        echo "==> just advisories vet"; just advisories vet
+    else
+        echo "==> just advisories vet msrv"; just advisories vet msrv
+    fi
 
     # From here the working tree changes; a failure or Ctrl-C before the commit undoes it.
     undo() { git checkout -q -- .; echo "release: stopped, the bumps are undone" >&2; }
