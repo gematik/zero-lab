@@ -18,7 +18,8 @@ Start with the guide (`jwz::guide` in the API documentation, [`docs/guide.md`](h
 | [7519](https://www.rfc-editor.org/rfc/rfc7519) | JSON Web Token (JWT) | claims and their validation |
 | [7520](https://www.rfc-editor.org/rfc/rfc7520) | Examples of Protecting Content Using JOSE | test vectors |
 | [7638](https://www.rfc-editor.org/rfc/rfc7638) | JWK Thumbprint | thumbprints |
-| [8037](https://www.rfc-editor.org/rfc/rfc8037) | CFRG Curves in JOSE | Ed25519 (EdDSA) |
+| [8037](https://www.rfc-editor.org/rfc/rfc8037) | CFRG Curves in JOSE | Ed25519 keys; the polymorphic `EdDSA` (deprecated by RFC 9864) |
+| [9864](https://www.rfc-editor.org/rfc/rfc9864) | Fully-Specified Algorithms for JOSE and COSE | `Ed25519` (in `strict`); `EdDSA` deprecated, accepted only where a profile lists it; `Ed448` registered, not implemented |
 | [8725](https://www.rfc-editor.org/rfc/rfc8725) | JSON Web Token Best Current Practices | §3.4: cryptographic inputs validated (peer points on the curve) |
 
 Every requirement jwz implements is traced to the tests that prove it:

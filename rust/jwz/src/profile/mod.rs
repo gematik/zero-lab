@@ -474,8 +474,17 @@ pub const ECDSA_NIST: Algorithms<'static> = Algorithms {
     ..Algorithms::NONE
 };
 
-/// EdDSA (RFC 8037 §3.1) with keys on Ed25519, the one curve jwz implements; the key,
-/// not the algorithm, names the curve.
+/// `Ed25519` (RFC 9864 §2.2): EdDSA whose algorithm names its curve, as every other
+/// signature algorithm does.
+pub const ED25519: Algorithms<'static> = Algorithms {
+    signatures: &[SignatureAlgorithm::ED25519],
+    signing_curves: &[Curve::ED25519],
+    ..Algorithms::NONE
+};
+
+/// The polymorphic `EdDSA` (RFC 8037 §3.1) with keys on Ed25519, the one curve jwz
+/// implements; the key, not the algorithm, names the curve. Deprecated by RFC 9864
+/// §4.1.2: for peers that still send it, never in [`Profile::strict`].
 pub const EDDSA: Algorithms<'static> = Algorithms {
     signatures: &[SignatureAlgorithm::EDDSA],
     signing_curves: &[Curve::ED25519],
@@ -602,12 +611,14 @@ impl Profile {
     }
 
     /// The default: modern public-key algorithms only, ES256 on P-256 ([`ECDSA_NIST`])
-    /// and EdDSA on Ed25519 ([`EDDSA`]); ECDH-ES on P-256 ([`ECDH_ES_P256`]) with
-    /// A128GCM and A256GCM; otherwise as [`new`](Self::new).
+    /// and Ed25519 ([`ED25519`]); ECDH-ES on P-256 ([`ECDH_ES_P256`]) with A128GCM and
+    /// A256GCM; otherwise as [`new`](Self::new). The polymorphic `EdDSA`, deprecated by
+    /// RFC 9864, is not among them: the lists bind what a profile accepts and what it
+    /// signs alike, and a deprecated name is not signed anew.
     pub fn strict() -> Profile {
         Profile::new("strict", 2)
             .with(&ECDSA_NIST)
-            .with(&EDDSA)
+            .with(&ED25519)
             .with(&ECDH_ES_P256)
             .with(&AES_128_GCM)
             .with(&AES_256_GCM)
@@ -913,7 +924,7 @@ mod tests {
             extended.policy.signature_algorithms,
             [
                 SignatureAlgorithm::ES256,
-                SignatureAlgorithm::EDDSA,
+                SignatureAlgorithm::ED25519,
                 SignatureAlgorithm::HS256,
                 SignatureAlgorithm::HS384,
                 SignatureAlgorithm::HS512,
@@ -985,7 +996,7 @@ mod tests {
         assert_eq!((strict.name.as_str(), strict.version), ("strict", 2));
         assert_eq!(
             strict.policy.signature_algorithms,
-            [SignatureAlgorithm::ES256, SignatureAlgorithm::EDDSA]
+            [SignatureAlgorithm::ES256, SignatureAlgorithm::ED25519]
         );
         assert_eq!(strict.policy.signing_curves, [Curve::P256, Curve::ED25519]);
         assert_eq!(
@@ -1081,16 +1092,29 @@ mod tests {
     /// RFC 8725 §3.1: the profile decides the algorithms, for signing as for
     /// verification; RFC 7518 §3.4: a key that states no curve is on its algorithm's
     /// registered one; RFC 8037 §3.1: EdDSA's curve is the key's, so one that states none
-    /// is refused.
+    /// is refused; RFC 9864 §2.2: Ed25519 names its curve, as ES256 does.
     #[test]
     fn rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves() {
         let registry = Registry::standard();
         let strict = Profile::strict().policy;
-        let check = |alg, curve| {
+        assert_eq!(
             strict
+                .check_signing_key(SignatureAlgorithm::EDDSA, Some(Curve::ED25519), &registry)
+                .map_err(|e| e.code()),
+            Err(ErrorCode::PolicyViolation),
+            "strict lists Ed25519, not the deprecated EdDSA"
+        );
+        let with_eddsa = Profile::strict().with(&EDDSA).policy;
+        let check = |alg, curve| {
+            with_eddsa
                 .check_signing_key(alg, curve, &registry)
                 .map_err(|e| e.code())
         };
+        assert_eq!(check(SignatureAlgorithm::ED25519, None), Ok(()));
+        assert_eq!(
+            check(SignatureAlgorithm::ED25519, Some(Curve::ED448)),
+            Err(ErrorCode::PolicyViolation)
+        );
         assert_eq!(check(SignatureAlgorithm::ES256, None), Ok(()));
         assert_eq!(check(SignatureAlgorithm::ES256, Some(Curve::P256)), Ok(()));
         assert_eq!(

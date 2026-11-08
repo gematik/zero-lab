@@ -90,7 +90,7 @@ accepted. Signing and encryption take it too: `jws::sign` and `jwe::encrypt` ref
 algorithm, a content encryption or a key curve the policy does not list, so a program
 never produces a token its own profile would refuse.
 
-- `Profile::strict()` is the default: ES256 on P-256 and EdDSA on Ed25519; ECDH-ES on
+- `Profile::strict()` is the default: ES256 on P-256 and Ed25519 (RFC 9864); ECDH-ES on
   P-256 with A128GCM and A256GCM; no key references (`jku`, `jwk`, `x5u`, `x5c`) in
   tokens; no `crit` extensions; a JWT needs `exp`.
 - `Profile::rfc7518_interop(&registry)` allows everything the registry implements. It
@@ -100,12 +100,13 @@ never produces a token its own profile would refuse.
 A profile is the explicit lists its construction results in. `Profile::new` starts with
 no algorithm and strict defaults for everything else; `with` appends the lists of an
 [`Algorithms`](crate::profile::Algorithms) bundle. jwz's bundles are constants, each one
-RFC 7518 or RFC 8037 construction:
+RFC 7518, RFC 8037 or RFC 9864 construction:
 
 | Constant | Adds |
 | --- | --- |
 | `ECDSA_NIST` | `ES256`, signing keys on P-256 |
-| `EDDSA` | `EdDSA`, signing keys on Ed25519 |
+| `ED25519` | `Ed25519` (RFC 9864), signing keys on Ed25519 |
+| `EDDSA` | the polymorphic `EdDSA` (RFC 8037, deprecated by RFC 9864), signing keys on Ed25519; for older peers only |
 | `HMAC` | `HS256`, `HS384`, `HS512` (available with the feature `hmac`) |
 | `ECDH_ES_P256` | `ECDH-ES`, `ECDH-ES+A128KW`, `ECDH-ES+A256KW`, key agreement on P-256 |
 | `ECDH_ES_DIRECT_P256` | `ECDH-ES`, key agreement on P-256 |

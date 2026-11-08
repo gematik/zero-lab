@@ -1007,6 +1007,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   context and equality are unchanged. **Breaking:** `Error` is no longer `Copy`.
 - `Header::parse`: a header from JSON, read as a token's is, so a host can ask a
   `KeyResolver` without a token at hand.
+- `Ed25519` and `Ed448` (RFC 9864, TASK-241): fully specified EdDSA names. `Ed25519` signs
+  and verifies, with a key on Ed25519 only; `Ed448` is reserved. A JWK whose `alg` says
+  `Ed25519` is no key for `EdDSA`, nor the reverse. The constant `profile::ED25519`.
+- **Breaking:** `Profile::strict()` lists `Ed25519` instead of the polymorphic `EdDSA`,
+  which RFC 9864 deprecates: an `EdDSA` token is refused under `strict`, and a key for
+  `EdDSA` signs under it no more. A profile that must talk to an older peer adds
+  `profile::EDDSA`; `rfc7518-interop` has both.
 - `docs/guide.md`: verifying from a JWK Set with `verify_with`, why jwz never fetches keys,
   why time is a function, and an `AsyncKeyResolver` over the browser's `fetch`.
 - Profiles as explicit lists (TASK-271): `profile::Algorithms` bundles and the constants

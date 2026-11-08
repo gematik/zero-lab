@@ -48,6 +48,12 @@ fn strict() -> Policy {
     Profile::strict().policy
 }
 
+/// strict with the polymorphic `EdDSA` (RFC 8037), which RFC 9864 deprecates and strict
+/// no longer lists: for tests of EdDSA itself.
+fn eddsa() -> Policy {
+    Profile::strict().with(&jwz::profile::EDDSA).policy
+}
+
 fn code<T>(r: Result<T, jwz::Error>) -> Result<T, ErrorCode> {
     r.map_err(|e| e.code())
 }
@@ -90,7 +96,7 @@ fn rfc_8037_a_4_eddsa_compact() {
     let registry = Registry::standard();
     let key = SoftwareKey::from_jwk(&jwk, SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
     let token = "eyJhbGciOiJFZERTQSJ9.RXhhbXBsZSBvZiBFZDI1NTE5IHNpZ25pbmc.hgyY0il_MGCjP0JzlnLWG1PPOt7-09PGcvMg3AIbQR6dWbhijcNR4ki4iylGjg5BhVsPt9g7sVvpAr_MuM0KAg";
-    let verified = Jws::parse(token, &strict(), &registry)
+    let verified = Jws::parse(token, &eddsa(), &registry)
         .unwrap()
         .verify(&key)
         .unwrap();
@@ -221,7 +227,7 @@ fn invariant_header_never_selects_the_algorithm() {
     // A valid ES256 key cannot verify a token the header says is EdDSA, even if the
     // signature bytes were right: the key's own algorithm decides.
     let registry = Registry::standard();
-    let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
+    let ed = SoftwareKey::generate(SignatureAlgorithm::ED25519, &registry, backend()).unwrap();
     let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
     let parsed = Jws::parse(&token, &strict(), &registry).unwrap();
     assert_eq!(
@@ -397,7 +403,7 @@ fn rfc_7515_7_2_1_alg_protected_and_headers_disjoint() {
 fn rfc_7515_7_2_1_general_json_with_two_signers() {
     let registry = Registry::standard();
     let es = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend()).unwrap();
-    let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
+    let ed = SoftwareKey::generate(SignatureAlgorithm::ED25519, &registry, backend()).unwrap();
     let text = jws::json::sign(
         b"both",
         &[(&es, HeaderParams::new()), (&ed, HeaderParams::new())],
@@ -927,7 +933,7 @@ fn rfc_8725_3_1_a_key_on_a_curve_the_profile_does_not_list_is_refused() {
         .err(),
         Some(ErrorCode::PolicyViolation)
     );
-    let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
+    let token = jws::sign(b"x", HeaderParams::new(), &ed, &eddsa(), &registry).unwrap();
     let parsed = || Jws::parse(&token, &eddsa_on_p256, &registry).unwrap();
     assert_eq!(
         code(parsed().verify(&ed)).err(),
@@ -949,8 +955,8 @@ fn rfc_8725_3_1_a_key_on_a_curve_the_profile_does_not_list_is_refused() {
         .err(),
         Some(ErrorCode::VerificationFailed)
     );
-    // The same token and set under strict, which lists Ed25519, verify.
-    Jws::parse(&token, &strict(), &registry)
+    // The same token and set under a profile that lists EdDSA on Ed25519 verify.
+    Jws::parse(&token, &eddsa(), &registry)
         .unwrap()
         .verify_with(&set, &registry, &backend())
         .unwrap();
@@ -972,16 +978,16 @@ fn rfc_8037_3_1_an_eddsa_key_that_states_no_curve_is_refused() {
             b"x",
             HeaderParams::new(),
             &silent,
-            &strict(),
+            &eddsa(),
             &registry
         ))
         .err(),
         Some(ErrorCode::PolicyViolation)
     );
-    let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
+    let token = jws::sign(b"x", HeaderParams::new(), &ed, &eddsa(), &registry).unwrap();
     assert_eq!(
         code(
-            Jws::parse(&token, &strict(), &registry)
+            Jws::parse(&token, &eddsa(), &registry)
                 .unwrap()
                 .verify(&silent)
         )
@@ -995,8 +1001,8 @@ fn rfc_8037_3_1_an_eddsa_key_that_states_no_curve_is_refused() {
         alg: SignatureAlgorithm::ES256,
         curve: None,
     };
-    let token = jws::sign(b"x", HeaderParams::new(), &quiet, &strict(), &registry).unwrap();
-    Jws::parse(&token, &strict(), &registry)
+    let token = jws::sign(b"x", HeaderParams::new(), &quiet, &eddsa(), &registry).unwrap();
+    Jws::parse(&token, &eddsa(), &registry)
         .unwrap()
         .verify(&quiet)
         .unwrap();
@@ -1058,5 +1064,94 @@ fn rfc_7515_4_a_host_builds_a_header_from_json_as_a_token_has_it() {
     assert_eq!(keys.len(), 1);
     for text in [r#"{"kid":"a","kid":"b"}"#, "[]", "{"] {
         assert!(jwz::header::Header::parse(text).is_err(), "{text}");
+    }
+}
+
+/// RFC 9864 §2.2: `Ed25519` is EdDSA with the Ed25519 parameter set, a name that says its
+/// curve. The RFC 8037 example key signs and verifies under it; `Ed448` is registered
+/// but not implemented.
+#[test]
+fn rfc_9864_2_2_ed25519_signs_and_verifies_under_its_own_name() {
+    let registry = Registry::standard();
+    let jwk = Jwk::parse(
+        r#"{"kty":"OKP","crv":"Ed25519",
+            "d":"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A",
+            "x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
+    )
+    .unwrap();
+    let key =
+        SoftwareKey::from_jwk(&jwk, SignatureAlgorithm::ED25519, &registry, backend()).unwrap();
+    let token = jws::sign(b"x", HeaderParams::new(), &key, &strict(), &registry).unwrap();
+    let parsed = Jws::parse(&token, &strict(), &registry).unwrap();
+    assert_eq!(parsed.header().alg(), Some("Ed25519"));
+    assert_eq!(parsed.verify(&key).unwrap().payload(), b"x");
+    assert_eq!(
+        code(SoftwareKey::generate(
+            SignatureAlgorithm::ED448,
+            &registry,
+            backend()
+        ))
+        .err(),
+        Some(ErrorCode::UnsupportedAlgorithm)
+    );
+}
+
+/// RFC 9864 §5 and §7: a key's `alg` binds it to one algorithm. A JWK that says `Ed25519`
+/// is not made a key for `EdDSA` and the reverse; one that says neither serves either;
+/// `Ed25519` takes no key on another curve.
+#[test]
+fn rfc_9864_5_a_jwks_alg_binds_it_to_ed25519_or_eddsa() {
+    let registry = Registry::standard();
+    let make = |alg_member: Option<&str>, crv: &str, alg| {
+        let mut jwk = Jwk::parse(&format!(
+            r#"{{"kty":"OKP","crv":"{crv}","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}}"#
+        ))
+        .unwrap();
+        jwk.alg = alg_member.map(str::to_owned);
+        code(SoftwareKey::from_jwk(&jwk, alg, &registry, backend()).map(|_| ()))
+    };
+    let (ed25519, eddsa) = (SignatureAlgorithm::ED25519, SignatureAlgorithm::EDDSA);
+    assert_eq!(make(Some("Ed25519"), "Ed25519", ed25519), Ok(()));
+    assert_eq!(make(Some("EdDSA"), "Ed25519", eddsa), Ok(()));
+    assert_eq!(make(None, "Ed25519", ed25519), Ok(()));
+    assert_eq!(make(None, "Ed25519", eddsa), Ok(()));
+    assert_eq!(
+        make(Some("Ed25519"), "Ed25519", eddsa),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(
+        make(Some("EdDSA"), "Ed25519", ed25519),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert!(make(None, "Ed448", ed25519).is_err());
+}
+
+/// RFC 9864 §4.1.2: the polymorphic `EdDSA` is deprecated. strict neither accepts nor
+/// signs it; a profile that must talk to an older peer lists it explicitly, and the
+/// interop profile has both names.
+#[test]
+fn rfc_9864_4_1_2_strict_neither_accepts_nor_signs_the_deprecated_eddsa() {
+    let registry = Registry::standard();
+    let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
+    assert_eq!(
+        code(jws::sign(
+            b"x",
+            HeaderParams::new(),
+            &ed,
+            &strict(),
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    let token = jws::sign(b"x", HeaderParams::new(), &ed, &eddsa(), &registry).unwrap();
+    assert_eq!(
+        code(Jws::parse(&token, &strict(), &registry)).err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    assert!(Jws::parse(&token, &eddsa(), &registry).is_ok());
+    let interop = Profile::rfc7518_interop(&registry).policy;
+    for alg in [SignatureAlgorithm::EDDSA, SignatureAlgorithm::ED25519] {
+        assert!(interop.signature_algorithms.contains(&alg), "{alg:?}");
     }
 }
