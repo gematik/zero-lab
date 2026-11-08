@@ -1008,7 +1008,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   jwz's traits (a resolver whose origin failed).
 - `Error::with_source` (TASK-273): a host's implementation of a jwz trait attaches its own
   error, which reaches the caller through `source()` and never appears in `Display`; code,
-  context and equality are unchanged. **Breaking:** `Error` is no longer `Copy`.
+  context and equality are unchanged. **Breaking:** `Error` is no longer `Copy`, nor
+  `UnwindSafe` and `RefUnwindSafe`: a host's cause need not be, as `std::io::Error` is not.
 - `Header::parse`: a header from JSON, read as a token's is, so a host can ask a
   `KeyResolver` without a token at hand.
 - `Ed25519` and `Ed448` (RFC 9864, TASK-241): fully specified EdDSA names. `Ed25519` signs

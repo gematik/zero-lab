@@ -862,7 +862,13 @@ semver *crates:
             echo "$crate: no baseline tag, skipped"
             continue
         fi
-        cargo semver-checks check-release -p "$crate" --baseline-rev "$latest"
+        # jwz's `rsa` feature refuses to build until RSA is implemented, so jwz is
+        # checked with the features it is built and tested with, as clippy and doc do.
+        features=()
+        if [ "$crate" = jwz ]; then
+            features=(--only-explicit-features --features "{{JWZ_FEATURES}}")
+        fi
+        cargo semver-checks check-release -p "$crate" --baseline-rev "$latest" "${features[@]}"
     done
 
 # ---- Optional, on demand -----------------------------------------------------------
