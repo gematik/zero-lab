@@ -75,11 +75,23 @@ pub enum Error {
     Trust(ti_pki::Error),
     /// roots.json or the TSL could not be loaded or failed verification.
     TrustLoad(String),
+    /// No verified TSL is at hand and, offline, none can be loaded; the message says
+    /// which. Going online once fills the cache.
+    TslUncached(String),
     /// A TSL verified but does not follow the one kept from an earlier run (TSLSIG-053):
     /// apart from [`Error::TrustLoad`], since the network is not what to look at.
     TslRollback(String),
     /// A TLS server could not be reached or did not finish the handshake.
     ServerUnreachable(String),
+    /// The proxy that applies to a server cannot tunnel to it: only an HTTP proxy can.
+    ProxyUnsupported {
+        /// The server, `host:port`.
+        server: String,
+        /// The proxy's protocol, e.g. `Socks5`.
+        protocol: String,
+    },
+    /// The comfort signature's user ID given for a session is not a UUID.
+    ComfortUserIdInvalid,
     /// The download cache could not be opened, read, written or cleared.
     Cache {
         /// The cache directory or file.
@@ -121,6 +133,7 @@ impl fmt::Display for Error {
             Error::Setup(message)
             | Error::EnvironmentUndetected(message)
             | Error::TrustLoad(message)
+            | Error::TslUncached(message)
             | Error::TslRollback(message)
             | Error::ServerUnreachable(message)
             | Error::IdentityNotFound(message)
@@ -130,6 +143,13 @@ impl fmt::Display for Error {
             | Error::ConnectorConfig(message)
             | Error::Refused(message) => f.write_str(message),
             Error::Connector(error) => error.fmt(f),
+            Error::ProxyUnsupported { server, protocol } => {
+                write!(
+                    f,
+                    "{server}: only an HTTP proxy tunnels to it, not {protocol}"
+                )
+            }
+            Error::ComfortUserIdInvalid => f.write_str("the comfort user ID is not a UUID"),
             Error::CardRestricted { card_type, source } => {
                 write!(f, "{card_type} card: {source}")
             }

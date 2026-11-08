@@ -150,10 +150,17 @@ impl ServerCertVerifier for Capture {
 /// # Errors
 ///
 /// [`Error::ServerUnreachable`] when the server cannot be reached, the handshake fails or
-/// the server presents no certificate.
+/// the server presents no certificate; [`Error::ProxyUnsupported`] when the proxy that
+/// applies cannot tunnel.
 pub fn server_chain(net: &Net, host: &str, port: u16) -> Result<Vec<Vec<u8>>, Error> {
     let failed = |what: String| Error::ServerUnreachable(format!("{host}:{port}: {what}"));
-    let mut socket = connect(host, port, net).map_err(failed)?;
+    let mut socket = connect(host, port, net).map_err(|error| match error {
+        Connect::Failed(what) => failed(what),
+        Connect::ProxyUnsupported(protocol) => Error::ProxyUnsupported {
+            server: format!("{host}:{port}"),
+            protocol,
+        },
+    })?;
     socket
         .set_read_timeout(Some(net.max_time))
         .map_err(|e| failed(e.to_string()))?;
@@ -186,8 +193,21 @@ pub fn server_chain(net: &Net, host: &str, port: u16) -> Result<Vec<Vec<u8>>, Er
     Ok(chain)
 }
 
+/// Why [`connect`] failed.
+enum Connect {
+    Failed(String),
+    /// The proxy's protocol.
+    ProxyUnsupported(String),
+}
+
+impl From<String> for Connect {
+    fn from(what: String) -> Self {
+        Connect::Failed(what)
+    }
+}
+
 /// A TCP connection to `host:port`, tunnelled through an HTTP proxy when one applies.
-fn connect(host: &str, port: u16, net: &Net) -> Result<TcpStream, String> {
+fn connect(host: &str, port: u16, net: &Net) -> Result<TcpStream, Connect> {
     let proxy = net::proxy(net, "https").map_err(|e| format!("HTTP setup: {e}"))?;
     let proxy = proxy.filter(|p| {
         format!("https://{host}:{port}/")
@@ -195,13 +215,10 @@ fn connect(host: &str, port: u16, net: &Net) -> Result<TcpStream, String> {
             .is_ok_and(|uri| !p.is_no_proxy(&uri))
     });
     let Some(proxy) = proxy else {
-        return tcp(host, port, net);
+        return Ok(tcp(host, port, net)?);
     };
     if proxy.protocol() != ureq::ProxyProtocol::Http {
-        return Err(format!(
-            "--connect goes through HTTP proxies only, not {:?}",
-            proxy.protocol()
-        ));
+        return Err(Connect::ProxyUnsupported(format!("{:?}", proxy.protocol())));
     }
     let mut socket = tcp(proxy.host(), proxy.port(), net)?;
     let mut request = format!("CONNECT {host}:{port} HTTP/1.1\r\nHost: {host}:{port}\r\n");
@@ -225,7 +242,7 @@ fn connect(host: &str, port: u16, net: &Net) -> Result<TcpStream, String> {
         .read_line(&mut status)
         .map_err(|e| format!("proxy: {e}"))?;
     if status.split_whitespace().nth(1) != Some("200") {
-        return Err(format!("proxy refused the tunnel: {}", status.trim()));
+        return Err(format!("proxy refused the tunnel: {}", status.trim()).into());
     }
     loop {
         let mut line = String::new();

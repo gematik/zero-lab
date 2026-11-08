@@ -442,10 +442,7 @@ fn validator(
                 warnings.push(Finding {
                     code: code.into(),
                     subject: ee.subject_cn().to_owned(),
-                    message: format!(
-                        "{}; checked the chain only, pass --validation-profile",
-                        selection.detail
-                    ),
+                    message: format!("{}; checked the chain only", selection.detail),
                 });
                 return (
                     Validator::new(config, store),

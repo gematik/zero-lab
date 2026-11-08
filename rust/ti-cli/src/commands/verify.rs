@@ -102,7 +102,15 @@ pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit,
     };
     let client = crate::http::client(&global.net, out.verbosity());
     let dirs = Profile::resolve(global)?.dirs();
-    let verification = engine::verify(&client, &dirs, &request, crate::trust::warn)?;
+    let mut verification = engine::verify(&client, &dirs, &request, crate::trust::warn)?;
+    for warning in &mut verification.warnings {
+        if matches!(
+            warning.code.as_str(),
+            "profile_ambiguous" | "profile_not_detected"
+        ) {
+            warning.message.push_str(", pass --validation-profile");
+        }
+    }
     let tree = tree(&verification);
     let report = Report {
         schema: SCHEMA,

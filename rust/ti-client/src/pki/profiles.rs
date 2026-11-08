@@ -82,10 +82,9 @@ fn tsl_cas<E: From<Error>>(
     let session = open()?;
     let store = session.load(&config, env.tier(), None)?.store;
     if !store.has_tsl_types() {
-        return Err(Error::TrustLoad(
-            "no verified TSL: offline and nothing cached; run once without --offline".into(),
-        )
-        .into());
+        return Err(
+            Error::TslUncached("no verified TSL: offline and nothing cached".into()).into(),
+        );
     }
     Ok(TslCas::new(&store, profile, env))
 }
