@@ -1,10 +1,10 @@
 ---
 id: TASK-273
 title: 'jwz: errors carry the host''s cause; a public Header constructor'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08T13:47:00Z'
-updated_date: '2026-11-08T14:01:00Z'
+updated_date: '2026-11-08T17:37:00Z'
 labels:
   - jwz
   - api
@@ -33,3 +33,9 @@ Found by TASK-251 (RemoteJwks, the first fetching KeyResolver). jwz::Error holds
 <!-- SECTION:NOTES:BEGIN -->
 Error holds an optional Arc<dyn Error + Send + Sync> cause (with_source); source() returns it, Display/code/context unchanged, PartialEq compares code and context. Error is no longer Copy: local errors reused within a function became function-local consts (Error::new is const fn), two with a runtime name became closures; signature_error clones. Header::parse builds a header from JSON (duplicates and non-objects refused). RemoteJwks passes FetchError as the source and drops last_error(); its test reads the cause from verify_with's error. ti-client's identity card signer still keeps the Konnektor's error beside the jwz error (take_error), which could use with_source too: not changed here.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+jwz::Error carries an optional host cause (with_source, source(); not in Display, not in equality) and is no longer Copy or UnwindSafe; Header::parse builds a header from JSON. RemoteJwks passes its FetchError as the cause.
+<!-- SECTION:FINAL_SUMMARY:END -->

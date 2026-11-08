@@ -1,10 +1,10 @@
 ---
 id: TASK-258
 title: 'jwz: RFC 8725 (JWT BCP) traced in full'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07T18:04:00Z'
-updated_date: '2026-11-08T15:20:00Z'
+updated_date: '2026-11-08T17:37:00Z'
 labels:
   - jwz
   - spec
@@ -45,3 +45,9 @@ Traced (tests/rfc8725.rs, guide section "RFC 8725: what jwz does and what is you
 
 Gaps filed on main: TASK-275 (keys without alg bound to one algorithm, §3.1), TASK-276 (producing checks the header against the policy, §3.11), TASK-277 (accepted typ values as a rule, draft-10 §3.11), TASK-278 (same_media_type and application/).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+RFC 8725 §3.1-3.12 traced: code cites, rfc_8725_3_* tests, and the guide's table of what jwz does and what is the caller's; draft-ietf-oauth-rfc8725bis-10 traced in the guide. Gaps filed as TASK-275 to 278.
+<!-- SECTION:FINAL_SUMMARY:END -->

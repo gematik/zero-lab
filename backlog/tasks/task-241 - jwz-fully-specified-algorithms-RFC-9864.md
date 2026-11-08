@@ -1,10 +1,10 @@
 ---
 id: TASK-241
 title: 'jwz: fully-specified algorithms (RFC 9864)'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07T10:52:00Z'
-updated_date: '2026-11-08T14:29:00Z'
+updated_date: '2026-11-08T17:37:00Z'
 labels:
   - jwz
 milestone: m-1
@@ -33,3 +33,9 @@ Plan for jwz 0.2.0 (2026-11-08): Ed25519 per RFC 9864 is the name new tokens car
 
 Ed25519 registered (OKP, curve Ed25519, available), Ed448 reserved. SoftwareKey binds a fully specified EdDSA algorithm to its curve (from_jwk and generate). strict = ECDSA_NIST + ED25519 (constant profile::ED25519); profile::EDDSA stays for older peers and rfc7518-interop lists both. Existing EdDSA tests (RFC 8037 vectors, curve binding) run under strict().with(&EDDSA); the browser and JSON tests use Ed25519. ADR 0001 has a TASK-241 section; README standards table names RFC 9864.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Ed25519 (RFC 9864) registered and bound to its curve, Ed448 reserved; a JWK's alg binds it to Ed25519 or EdDSA; strict lists ES256 and Ed25519, the deprecated EdDSA stays as a constant and in rfc7518-interop.
+<!-- SECTION:FINAL_SUMMARY:END -->

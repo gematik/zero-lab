@@ -3,10 +3,10 @@ id: TASK-271
 title: >-
   jwz: profiles as explicit algorithm lists; signing, encryption and keys bound
   to them
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08T12:06:00Z'
-updated_date: '2026-11-08T13:23:00Z'
+updated_date: '2026-11-08T17:37:00Z'
 labels:
   - jwz
   - security
@@ -42,3 +42,9 @@ Review follow-up: the too_many_arguments allows are gone. jwe::Recipient (alg, k
 
 Maintainer confirmed (2026-11-08): BRAINPOOL_KEY_AGREEMENT as a separate constant only ti-idpd-client uses; profile versions 2; rfc7518_interop's lists from the registry.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Profiles are explicit lists built from Algorithms constants with Profile::with; Policy::signing_curves and JwsKey::curve bind keys; verification refuses keys on unlisted curves; sign and encrypt take the policy and registry and refuse what it does not list. jwe::Recipient and json::Shared keep the producers within clippy's argument limit. ti-jwz: ti() lists P-256 and BP-256 (EPA_BRAINPOOL_KEYS), ti_legacy = ti().with(&BRAINPOOL_SIGNATURES), BRAINPOOL_KEY_AGREEMENT for the IDP client. Profile versions 2.
+<!-- SECTION:FINAL_SUMMARY:END -->
