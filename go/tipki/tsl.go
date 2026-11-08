@@ -701,7 +701,7 @@ type ListedResponder struct {
 type TrustStore struct {
 	Roots         []*x509.Certificate
 	Intermediates []Intermediate
-	// ListedResponders are what authorizes a responder of a provider beyond RFC 6960.
+	// ListedResponders authorize a responder beyond RFC 6960, whatever CA it answers for (OCSP-001).
 	ListedResponders []ListedResponder
 	// CATypes are the certificate types the verified list states for its CAs, by the CA's DER. Nil
 	// without a verified list.

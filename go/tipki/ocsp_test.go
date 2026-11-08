@@ -121,30 +121,34 @@ func describeGot(result *RevocationResult, err error) string {
 	authorization := ""
 	if result.Authorization != nil {
 		authorization = result.Authorization.Kind
-		if result.Authorization.CA != "" {
-			authorization += "|" + result.Authorization.CA + "|" + result.Authorization.TSP
+		if result.Authorization.TSP != "" {
+			authorization += "|" + result.Authorization.TSP
 		}
 	}
 	return fmt.Sprintf("%s|%s|%s|%v|%s|%s|%s|%s|%s", result.Status, result.Reason, result.ResponderName, result.Responder != nil, authorization,
 		describeInt(unixOrNil(result.ProducedAt)), describeInt(unixOrNil(result.ThisUpdate)), describeInt(unixOrNil(result.NextUpdate)), describeInt(unixOrNil(result.RevokedAt)))
 }
 
+// testStore is one of the corpus's stores: none, the list's CAs, or the same with three responders listed under a
+// provider neither CA is listed under, since a listing binds a responder to no CA (OCSP-001).
 func testStore(t *testing.T, name string) *TrustStore {
 	t.Helper()
 	if name == "none" {
 		return nil
 	}
-	komp := "TSP A"
-	if name == "other_tsp" {
-		komp = "TSP B"
-	}
-	return &TrustStore{
+	store := &TrustStore{
 		Roots: []*x509.Certificate{pkiCert(t, "rca1.pem"), pkiCert(t, "rca7.pem")},
 		Intermediates: []Intermediate{
 			{Certificate: pkiCert(t, "sub-ca-hba.pem"), Provider: "TSP A"},
-			{Certificate: pkiCert(t, "sub-ca-komp.pem"), Provider: komp},
+			{Certificate: pkiCert(t, "sub-ca-komp.pem"), Provider: "TSP A"},
 		},
 	}
+	if name == "listed" {
+		for _, file := range []string{"ocsp-signer-komp.pem", "ocsp-signer-no-eku.pem", "ocsp-signer-expired.pem"} {
+			store.ListedResponders = append(store.ListedResponders, ListedResponder{pkiCert(t, file), "TSP B"})
+		}
+	}
+	return store
 }
 
 func checkAt(now int64, stapled bool, store *TrustStore) ResponseCheck {
@@ -153,14 +157,15 @@ func checkAt(now int64, stapled bool, store *TrustStore) ResponseCheck {
 	return check
 }
 
-// OCSP-001: every response against every certificate, at every time, online and stapled, with every store.
+// OCSP-001: every response against every certificate, at every time, online and stapled, with every store, a
+// responder only the list authorizes among them.
 func TestOCSP001EveryResponseIsJudgedAsInTiPki(t *testing.T) {
 	var corpus ocspCorpus
 	readJSON(t, pathCorpusDir+"ocsp.json", &corpus)
 	if len(corpus.Matrix) < 1000 {
 		t.Fatalf("%d cases", len(corpus.Matrix))
 	}
-	stores := map[string]*TrustStore{"none": nil, "same_tsp": testStore(t, "same_tsp"), "other_tsp": testStore(t, "other_tsp")}
+	stores := map[string]*TrustStore{"none": nil, "unlisted": testStore(t, "unlisted"), "listed": testStore(t, "listed")}
 	failures := 0
 	for _, want := range corpus.Matrix {
 		der, err := os.ReadFile("../../rust/ti-pki/tests/pki/ocsp/" + want.Response + ".der")

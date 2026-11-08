@@ -40,7 +40,7 @@ const (
 	// not processed, which RFC 5280 §4.2 requires to reject.
 	CodeUnrecognizedCriticalExtension ErrorCode = "unrecognized_critical_extension"
 	// CodeOCSPResponderNotRFC6960 is a warning: the OCSP responder is not authorized under RFC 6960, but
-	// was accepted as a delegate of another CA of the same TSP.
+	// was accepted because the verified list names it as an OCSP service (TUC_PKI_006 step 5).
 	CodeOCSPResponderNotRFC6960 ErrorCode = "ocsp_responder_not_rfc6960"
 	// CodeFQDNMismatch: the domain name in the end entity's commonName is not the one expected
 	// (A_30046 (5) of C_12791).

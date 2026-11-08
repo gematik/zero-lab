@@ -35,16 +35,33 @@ import (
 
 const validateNow = 1767225600
 
-type scripted string
+// scripted answers with one outcome and records whom it was asked about. The ca_* scripts answer good for the end
+// entity and fail for a CA, which no validator may ask about (VALID-008).
+type scripted struct {
+	script string
+	asked  []string
+}
 
-func (s scripted) Check(_ context.Context, cert, _ *x509.Certificate, _ *TrustStore) (*RevocationResult, error) {
+func newScripted(script string) *scripted { return &scripted{script: script} }
+
+func (s *scripted) Check(_ context.Context, cert, _ *x509.Certificate, _ *TrustStore) (*RevocationResult, error) {
+	s.asked = append(s.asked, cert.Subject.CommonName)
 	result := &RevocationResult{Status: RevocationUnknown, CheckedAt: time.Unix(validateNow, 0), Reason: "scripted", ResponderName: "scripted responder"}
-	switch s {
+	script := s.script
+	switch {
+	case (script == "ca_untrusted" || script == "ca_unavailable") && !cert.IsCA:
+		script = "good"
+	case script == "ca_untrusted":
+		script = "untrusted"
+	case script == "ca_unavailable":
+		script = "unavailable"
+	}
+	switch script {
 	case "good":
 		result.Status = RevocationGood
-	case "same_tsp":
+	case "tsl_listed":
 		result.Status = RevocationGood
-		result.Authorization = &ResponderAuthorization{Kind: "same_tsp_delegate", CA: "some CA", TSP: "some TSP"}
+		result.Authorization = &ResponderAuthorization{Kind: "tsl_listed", TSP: "some TSP"}
 	case "revoked":
 		result.Status, result.RevokedAt = RevocationRevoked, time.Unix(validateNow-3600, 0)
 	case "revoked_later":
@@ -71,6 +88,7 @@ type verdictJSON struct {
 	Revocation []*string  `json:"revocation"`
 	Errors     [][]string `json:"errors"`
 	Warnings   [][]string `json:"warnings"`
+	Asked      []string   `json:"asked"`
 }
 
 type validateCorpus struct {
@@ -87,6 +105,12 @@ type validateCorpus struct {
 		AllowExpired   bool        `json:"allow_expired"`
 		Verdict        verdictJSON `json:"verdict"`
 	} `json:"matrix"`
+	Compromise []struct {
+		File    string      `json:"file"`
+		Now     int64       `json:"now"`
+		Script  string      `json:"script"`
+		Verdict verdictJSON `json:"verdict"`
+	} `json:"compromise"`
 	Real []struct {
 		Profile string      `json:"profile"`
 		Verdict verdictJSON `json:"verdict"`
@@ -207,13 +231,14 @@ func TestVALID001EveryVerdictIsThatOfTiPki(t *testing.T) {
 			validator = NewValidator(chosen)
 			validator.Revocation = mode
 		}
-		validator.SkipSubCARevocation = want.Kind == "skip_sub_ca"
 		validator.ExpectedFQDN, validator.AllowExpired = want.FQDN, want.AllowExpired
-		result, err := validator.Validate(context.Background(), input, time.Unix(want.Now, 0), scripted(want.Script))
+		checker := newScripted(want.Script)
+		result, err := validator.Validate(context.Background(), input, time.Unix(want.Now, 0), checker)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got, expected := describeResult(result), describeWantedVerdict(want.Verdict); got != expected {
+		got := describeResult(result) + fmt.Sprintf(" asked=%v", checker.asked)
+		if expected := describeWantedVerdict(want.Verdict) + fmt.Sprintf(" asked=%v", want.Verdict.Asked); got != expected {
 			if failures++; failures <= 10 {
 				t.Errorf("%s kind=%s profile=%s @%d mode=%s script=%s since=%v fqdn=%q expired=%v:\n got  %s\n want %s", want.File, want.Kind, want.Profile, want.Now-validateNow, want.Mode, want.Script, want.CARevokedSince, want.FQDN, want.AllowExpired, got, expected)
 			}
@@ -221,6 +246,34 @@ func TestVALID001EveryVerdictIsThatOfTiPki(t *testing.T) {
 	}
 	if failures > 0 {
 		t.Errorf("%d of %d differ", failures, len(corpus.Matrix))
+	}
+}
+
+// VALID-008 with the Kompromissmodell: GEM.SubCA-Short, expired, stays in accord in a list that lets it issue SMC-B
+// and HBA certificates. Its SMC-B's and HBA's certificates validate with issued_before_ca_expiry, and a responder that
+// refuses every CA is never asked about it; a component's certificate under it is expired (shell model).
+func TestVALID008ACAExpiredUnderTheKompromissmodellIsNotAsked(t *testing.T) {
+	var corpus validateCorpus
+	readJSON(t, pathCorpusDir+"validate.json", &corpus)
+	if len(corpus.Compromise) != 3 {
+		t.Fatalf("%d cases", len(corpus.Compromise))
+	}
+	ca := pkiCert(t, "sub-ca-short.pem")
+	store := &TrustStore{
+		Roots:         []*x509.Certificate{pkiCert(t, "rca1.pem")},
+		Intermediates: []Intermediate{{Certificate: ca, Provider: "TSP"}},
+		CATypes:       map[string][]x509.OID{string(ca.Raw): {CertHciAut.OID(), CertHpAut.OID(), CertFdTLSS.OID()}},
+	}
+	for _, want := range corpus.Compromise {
+		checker := newScripted(want.Script)
+		result, err := NewValidator(store).Validate(context.Background(), []*x509.Certificate{pkiCert(t, want.File)}, time.Unix(want.Now, 0), checker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := describeResult(result) + fmt.Sprintf(" asked=%v", checker.asked)
+		if expected := describeWantedVerdict(want.Verdict) + fmt.Sprintf(" asked=%v", want.Verdict.Asked); got != expected {
+			t.Errorf("%s:\n got  %s\n want %s", want.File, got, expected)
+		}
 	}
 }
 
@@ -250,7 +303,7 @@ func TestVALID001ARealSMCBUnderTheRealList(t *testing.T) {
 	}
 	for _, want := range corpus.Real {
 		validator := LookupProfile(want.Profile).Validator(store, certType, RevocationHardFail)
-		result, err := validator.Validate(context.Background(), []*x509.Certificate{leaf}, tslCaptured, scripted("good"))
+		result, err := validator.Validate(context.Background(), []*x509.Certificate{leaf}, tslCaptured, newScripted("good"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -282,7 +335,7 @@ func TestVALID006ACAUnderTheRealList(t *testing.T) {
 		{"the signer", ProfileTslSig.Validator(store, CertTslSig, RevocationHardFail), fixture("tsl-signing-unit-12-test-only.pem"), corpus.Signer},
 		{"its OCSP responder", NewValidator(&TrustStore{Roots: store.Roots, CATypes: store.CATypes}), fixture("tsl-ca-ocsp-signer-10-test-only.pem"), corpus.Unlisted},
 	} {
-		result, err := c.validator.Validate(context.Background(), []*x509.Certificate{c.leaf, ca}, tslCaptured, scripted("good"))
+		result, err := c.validator.Validate(context.Background(), []*x509.Certificate{c.leaf, ca}, tslCaptured, newScripted("good"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -325,7 +378,7 @@ func TestVALID007TheRealListDecidesWhatACAMayIssue(t *testing.T) {
 		}
 		validator := NewValidator(store)
 		validator.CertType = certType
-		result, err := validator.Validate(context.Background(), []*x509.Certificate{leaf}, tslCaptured, scripted("good"))
+		result, err := validator.Validate(context.Background(), []*x509.Certificate{leaf}, tslCaptured, newScripted("good"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -344,7 +397,7 @@ func TestVALID007TheTypesTheListStates(t *testing.T) {
 	base := func(types map[string][]x509.OID) *ValidationResult {
 		store := &TrustStore{Roots: []*x509.Certificate{pkiCert(t, "rca7.pem")}, Intermediates: []Intermediate{{Certificate: issuer}}, CATypes: types}
 		validator := NewValidator(store)
-		result, err := validator.Validate(context.Background(), []*x509.Certificate{leaf}, time.Unix(validateNow, 0), scripted("good"))
+		result, err := validator.Validate(context.Background(), []*x509.Certificate{leaf}, time.Unix(validateNow, 0), newScripted("good"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -396,7 +449,7 @@ func TestVALID004NoResponderIsAskedForACertificateThatFailed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Valid || len(checker.asked) != 2 {
+	if !result.Valid || len(checker.asked) != 1 {
 		t.Errorf("valid %v, asked about %v", result.Valid, checker.asked)
 	}
 }
@@ -460,7 +513,7 @@ func TestVALID006ACATheVerifiedListDoesNotNameGivesNoStanding(t *testing.T) {
 }
 
 func TestVALIDNoCertificateIsAnError(t *testing.T) {
-	if _, err := NewValidator(&TrustStore{}).Validate(context.Background(), nil, time.Now(), scripted("good")); err == nil {
+	if _, err := NewValidator(&TrustStore{}).Validate(context.Background(), nil, time.Now(), newScripted("good")); err == nil {
 		t.Error("no certificate")
 	}
 }

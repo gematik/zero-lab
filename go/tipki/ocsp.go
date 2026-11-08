@@ -86,13 +86,13 @@ const (
 	RevocationUnknown RevocationStatus = "unknown"
 )
 
-// ResponderAuthorization says why the signer of a response could answer.
+// ResponderAuthorization says why the signer of a response could answer (OCSP-001).
 type ResponderAuthorization struct {
-	// Kind is issuer, delegate, tsl_listed or same_tsp_delegate; the last is no RFC 6960 conformance.
+	// Kind is issuer or delegate (RFC 6960 §4.2.2.2), or tsl_listed: a responder only the verified list
+	// names as an OCSP service (TUC_PKI_006 step 5), which the [Validator] reports as
+	// ocsp_responder_not_rfc6960.
 	Kind string
-	// CA is the common name of the CA that certified the responder, for the last two kinds.
-	CA string
-	// TSP is the provider the TSL lists both under, for the last two kinds.
+	// TSP is the provider the list names the responder under, for tsl_listed.
 	TSP string
 }
 
@@ -150,8 +150,8 @@ type ResponseCheck struct {
 	ClockTolerance time.Duration
 	// AllowMissingCertHash accepts a response without the extension. One present is checked anyway.
 	AllowMissingCertHash bool
-	// Store may authorize a delegate of another CA of the issuing CA's provider. Without it, only
-	// RFC 6960 applies.
+	// Store is the trust store whose verified list may authorize a responder by naming it as an OCSP
+	// service (TUC_PKI_006 step 5). Without it, only RFC 6960 applies.
 	Store *TrustStore
 	// Stapled says the response came with the object: it must be valid at Now, without tolerance or
 	// maximum age, and an eGK certificate needs no certHash (A_30046 (7)).
@@ -634,39 +634,52 @@ func pickResponder(id asn1.RawValue, embedded []*x509.Certificate) *x509.Certifi
 	return nil
 }
 
+// authorizeResponder is OCSP-001: the issuing CA, or a delegate it certified directly with id-kp-OCSPSigning
+// that is valid now (RFC 6960 §4.2.2.2); otherwise a responder the verified list names as an OCSP service, since
+// gemSpec_PKI looks the responder certificate up there and nowhere else (TUC_PKI_006 step 5). The list binds a
+// service to no CA, so the identical certificate is the whole authorization; it must still carry
+// id-kp-OCSPSigning and be valid now, as a delegate must (the maintainer's decision, TASK-270).
 func authorizeResponder(responder, issuer *x509.Certificate, check ResponseCheck) (*ResponderAuthorization, error) {
 	responderKey, _ := subjectPublicKeyBits(responder)
 	issuerKey, _ := subjectPublicKeyBits(issuer)
 	if bytes.Equal(responder.RawSubject, issuer.RawSubject) && bytes.Equal(responderKey, issuerKey) {
 		return &ResponderAuthorization{Kind: "issuer"}, nil
 	}
-	name, ca := responder.Subject.CommonName, issuer.Subject.CommonName
-	if bytes.Equal(responder.RawIssuer, issuer.RawSubject) {
-		if err := verifySignedBy(responder, issuer); err != nil {
-			return nil, fmt.Errorf("OCSP responder %q names the issuing CA %q as its issuer, but its certificate does not verify under the CA's key: %w", name, ca, err)
-		}
-		if reason := delegateUnusable(responder, check); reason != "" {
-			return nil, fmt.Errorf("OCSP responder %q, certified by the issuing CA %q, %s", name, ca, reason)
-		}
+	notRFC6960 := rfc6960Delegate(responder, issuer, check)
+	if notRFC6960 == "" {
 		return &ResponderAuthorization{Kind: "delegate"}, nil
 	}
-	notRFC6960 := fmt.Sprintf("OCSP responder %q was certified by %q, but the certificate was issued by %q; RFC 6960 accepts only the issuing CA or a responder it certified directly", name, responder.Issuer.CommonName, ca)
 	if check.Store == nil {
-		return nil, fmt.Errorf("%s, and no trust store is at hand to accept a delegate of the same TSP", notRFC6960)
+		return nil, fmt.Errorf("%s, and no trust store is at hand whose TSL could list it", notRFC6960)
 	}
-	responderCA, tsp, reason := sameTSPDelegate(responder, issuer, check)
-	if reason != "" {
-		return nil, fmt.Errorf("%s; nor is it a delegate of the same TSP: %s", notRFC6960, reason)
+	index := slices.IndexFunc(check.Store.ListedResponders, func(listed ListedResponder) bool {
+		return listed.Certificate.Equal(responder)
+	})
+	if index < 0 {
+		return nil, fmt.Errorf("%s, and the verified TSL does not list it as an OCSP service", notRFC6960)
 	}
-	kind := "same_tsp_delegate"
-	if slices.ContainsFunc(check.Store.ListedResponders, func(listed ListedResponder) bool {
-		return listed.TSP == tsp && listed.Certificate.Equal(responder)
-	}) {
-		kind = "tsl_listed"
+	if reason := delegateUnusable(responder, check); reason != "" {
+		return nil, fmt.Errorf("%s; the verified TSL lists it, but it %s", notRFC6960, reason)
 	}
-	return &ResponderAuthorization{Kind: kind, CA: responderCA, TSP: tsp}, nil
+	return &ResponderAuthorization{Kind: "tsl_listed", TSP: check.Store.ListedResponders[index].TSP}, nil
 }
 
+// rfc6960Delegate says why responder is no delegate of issuer in the sense of RFC 6960 §4.2.2.2, or nothing.
+func rfc6960Delegate(responder, issuer *x509.Certificate, check ResponseCheck) string {
+	name, ca := responder.Subject.CommonName, issuer.Subject.CommonName
+	if !bytes.Equal(responder.RawIssuer, issuer.RawSubject) {
+		return fmt.Sprintf("OCSP responder %q was certified by %q, but the certificate was issued by %q; RFC 6960 accepts only the issuing CA or a responder it certified directly", name, responder.Issuer.CommonName, ca)
+	}
+	if err := verifySignedBy(responder, issuer); err != nil {
+		return fmt.Sprintf("OCSP responder %q names the issuing CA %q as its issuer, but its certificate does not verify under the CA's key: %v", name, ca, err)
+	}
+	if reason := delegateUnusable(responder, check); reason != "" {
+		return fmt.Sprintf("OCSP responder %q, certified by the issuing CA %q, %s", name, ca, reason)
+	}
+	return ""
+}
+
+// delegateUnusable is what a delegate and a listed responder must both show: id-kp-OCSPSigning, and validity now.
 func delegateUnusable(responder *x509.Certificate, check ResponseCheck) string {
 	if !slices.ContainsFunc(extKeyUsages(responder), oidOCSPSigning.EqualASN1OID) {
 		return "lacks id-kp-OCSPSigning"
@@ -677,32 +690,6 @@ func delegateUnusable(responder *x509.Certificate, check ResponseCheck) string {
 		return fmt.Sprintf("is not valid at %s (valid %s to %s)", check.Now.UTC().Format(time.RFC3339), responder.NotBefore.UTC().Format(time.RFC3339), responder.NotAfter.UTC().Format(time.RFC3339))
 	}
 	return ""
-}
-
-func sameTSPDelegate(responder, issuer *x509.Certificate, check ResponseCheck) (string, string, string) {
-	if reason := delegateUnusable(responder, check); reason != "" {
-		return "", "", "it " + reason
-	}
-	store := check.Store
-	var responderCA *Intermediate
-	for i := range store.Intermediates {
-		ca := &store.Intermediates[i]
-		if bytes.Equal(ca.Certificate.RawSubject, responder.RawIssuer) && verifySignedBy(responder, ca.Certificate) == nil {
-			responderCA = ca
-			break
-		}
-	}
-	if responderCA == nil {
-		return "", "", fmt.Sprintf("%q is not a TSL CA under the trusted roots whose signature on it verifies", responder.Issuer.CommonName)
-	}
-	issuerTSP, ok := store.providerOf(issuer)
-	if !ok {
-		return "", "", fmt.Sprintf("the issuing CA %q is not a TSL CA", issuer.Subject.CommonName)
-	}
-	if responderCA.Provider != issuerTSP {
-		return "", "", fmt.Sprintf("%q belongs to TSP %q, the issuing CA to %q", responderCA.Certificate.Subject.CommonName, responderCA.Provider, issuerTSP)
-	}
-	return responderCA.Certificate.Subject.CommonName, issuerTSP, ""
 }
 
 func verifyCertHash(extensions []asn1.RawValue, cert *x509.Certificate, allowMissing bool) *OCSPError {

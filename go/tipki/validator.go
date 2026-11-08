@@ -109,8 +109,6 @@ type Validator struct {
 	Store *TrustStore
 	// Revocation decides what an outcome means; see [ApplyRevocation].
 	Revocation RevocationMode
-	// SkipSubCARevocation asks only about the end entity.
-	SkipSubCARevocation bool
 	// AllowExpired turns validity errors into warnings.
 	AllowExpired bool
 	// MaxClockSkew is the tolerance of validity checks.
@@ -397,34 +395,29 @@ func (v *Validator) checkRevocation(ctx context.Context, chain []*x509.Certifica
 	if v.Revocation == RevocationDisabled {
 		return
 	}
-	links := len(chain) - 1
-	if v.SkipSubCARevocation {
-		links = 1
+	// VALID-008: the end entity alone; the verified list has spoken for its CAs (TUC_PKI_018 steps 5 and 7).
+	cert, issuer := chain[0], chain[1]
+	var outcome *RevocationResult
+	failure := error(errors.New("no revocation checker configured"))
+	if checker != nil {
+		outcome, failure = checker.Check(ctx, cert, issuer, v.Store)
 	}
-	for i := range links {
-		cert, issuer := chain[i], chain[i+1]
-		var outcome *RevocationResult
-		failure := error(errors.New("no revocation checker configured"))
-		if checker != nil {
-			outcome, failure = checker.Check(ctx, cert, issuer, v.Store)
+	if failure == nil {
+		if outcome.Authorization != nil && outcome.Authorization.Kind == "tsl_listed" {
+			result.Warnings = append(result.Warnings, Finding{
+				CodeOCSPResponderNotRFC6960, cert.Subject.CommonName,
+				fmt.Sprintf("OCSP responder %q is not RFC 6960 conform for the issuing CA %q; accepted as the verified TSL lists it as an OCSP service of %q (TUC_PKI_006)",
+					outcome.ResponderName, issuer.Subject.CommonName, outcome.Authorization.TSP),
+			})
 		}
-		if failure == nil {
-			if outcome.Authorization != nil && outcome.Authorization.Kind == "same_tsp_delegate" {
-				result.Warnings = append(result.Warnings, Finding{
-					CodeOCSPResponderNotRFC6960, cert.Subject.CommonName,
-					fmt.Sprintf("OCSP responder %q is not RFC 6960 conform: certified by %q, not by the issuing CA %q; accepted as a delegate of the same TSP %q",
-						outcome.ResponderName, outcome.Authorization.CA, issuer.Subject.CommonName, outcome.Authorization.TSP),
-				})
-			}
-			result.CertResults[i].Revocation = outcome
-		}
-		finding := ApplyRevocation(v.Revocation, cert.Subject.CommonName, outcome, failure, now)
-		switch {
-		case finding == nil:
-		case finding.Warning:
-			result.Warnings = append(result.Warnings, finding.Finding)
-		default:
-			result.Errors = append(result.Errors, finding.Finding)
-		}
+		result.CertResults[0].Revocation = outcome
+	}
+	finding := ApplyRevocation(v.Revocation, cert.Subject.CommonName, outcome, failure, now)
+	switch {
+	case finding == nil:
+	case finding.Warning:
+		result.Warnings = append(result.Warnings, finding.Finding)
+	default:
+		result.Errors = append(result.Errors, finding.Finding)
 	}
 }
