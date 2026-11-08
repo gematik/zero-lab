@@ -50,20 +50,20 @@ A test is listed when it is named after the reference or a subsection of it, or,
 | RFC 7517 §5 | `src/jwk.rs:508`, `src/jwk.rs:516`, `src/jwk.rs:524` | `rfc_7517_5_a_jwk_set_resolves_the_keys_of_a_jws`, `rfc_7517_5_a_set_ignores_keys_it_cannot_read_but_not_a_broken_document` |
 | RFC 7518 | `src/jwa/mod.rs:30`, `src/jwa/names.rs:24`, `src/jwa/registry.rs:536` | whole document: traced by its sections |
 | RFC 7518 §3.1 | `src/jwa/names.rs:140`, `src/jwa/registry.rs:181` | `rfc_7518_3_1_jws_algorithms_with_their_keys_and_hashes` |
-| RFC 7518 §3.2 | `src/keys/software.rs:270`, `src/keys/software.rs:500`, `src/profile/mod.rs:503` | `rfc_7518_3_2_hmac_key_shorter_than_the_hash_is_refused`, `rfc_8725_3_5_a_password_is_no_hmac_key` *(cited)* |
-| RFC 7518 §3.4 | `src/crypto/mod.rs:36`, `src/crypto/mod.rs:143`, `src/crypto/rustcrypto.rs:205`, `src/crypto/rustcrypto.rs:234`, `src/keys/mod.rs:96`, `src/profile/mod.rs:202`, `src/profile/mod.rs:477` | `rfc_7518_3_4_es256_signature_is_r_and_s_of_32_bytes_each`, `rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves` *(cited)*, `rfc_8725_3_1_a_key_on_a_curve_the_profile_does_not_list_is_refused` *(cited)* |
+| RFC 7518 §3.2 | `src/keys/software.rs:270`, `src/keys/software.rs:500`, `src/profile/mod.rs:504` | `rfc_7518_3_2_hmac_key_shorter_than_the_hash_is_refused`, `rfc_8725_3_5_a_password_is_no_hmac_key` *(cited)* |
+| RFC 7518 §3.4 | `src/crypto/mod.rs:36`, `src/crypto/mod.rs:143`, `src/crypto/rustcrypto.rs:205`, `src/crypto/rustcrypto.rs:234`, `src/keys/mod.rs:96`, `src/profile/mod.rs:202`, `src/profile/mod.rs:478` | `rfc_7518_3_4_es256_signature_is_r_and_s_of_32_bytes_each`, `rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves` *(cited)*, `rfc_8725_3_1_a_key_on_a_curve_the_profile_does_not_list_is_refused` *(cited)* |
 | RFC 7518 §3.6 | `src/jwa/registry.rs:656`, `src/profile/mod.rs:188` | `rfc_7518_3_6_none_is_unrepresentable_in_any_casing`, `rfc_7518_3_6_none_is_refused_in_every_casing` |
 | RFC 7518 §4.1 | `src/jwa/names.rs:185`, `src/jwa/registry.rs:311` | `rfc_7518_4_1_jwe_algorithms_with_their_key_management_modes` |
-| RFC 7518 §4.4 | `src/jwe/mod.rs:325`, `src/keys/software.rs:282`, `src/profile/mod.rs:535` | `rfc_7520_5_8_a128kw_a128gcm` *(cited)* |
-| RFC 7518 §4.5 | `src/jwe/mod.rs:320`, `src/profile/mod.rs:545` | `rfc_7520_5_6_dir_a128gcm` *(cited)* |
-| RFC 7518 §4.6 | `src/crypto/rustcrypto.rs:205`, `src/jwe/ecdh.rs:24`, `src/jwe/mod.rs:303`, `src/keys/software.rs:355`, `src/profile/mod.rs:515` | `rfc_7518_4_6_2_more_than_one_round_and_zero_length`, `rfc_7518_4_6_1_1_epk_negatives`, `rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings`, `rfc_7518_4_6_the_recipient_curve_binds_key_agreement_only` |
+| RFC 7518 §4.4 | `src/jwe/mod.rs:325`, `src/keys/software.rs:282`, `src/profile/mod.rs:536` | `rfc_7520_5_8_a128kw_a128gcm` *(cited)* |
+| RFC 7518 §4.5 | `src/jwe/mod.rs:320`, `src/profile/mod.rs:546` | `rfc_7520_5_6_dir_a128gcm` *(cited)* |
+| RFC 7518 §4.6 | `src/crypto/rustcrypto.rs:205`, `src/jwe/ecdh.rs:24`, `src/jwe/mod.rs:303`, `src/keys/software.rs:355`, `src/profile/mod.rs:516` | `rfc_7518_4_6_2_more_than_one_round_and_zero_length`, `rfc_7518_4_6_1_1_epk_negatives`, `rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings`, `rfc_7518_4_6_the_recipient_curve_binds_key_agreement_only` |
 | RFC 7518 §4.6.1 | `src/header.rs:39`, `src/jwe/mod.rs:468` | `rfc_7518_4_6_1_1_epk_negatives`, `rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings` |
 | RFC 7518 §4.6.1.1 | `src/header.rs:164`, `src/jwe/mod.rs:473` | `rfc_7518_4_6_1_1_epk_negatives` |
 | RFC 7518 §4.6.1.2 | `src/jwe/mod.rs:494` | `rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings` |
-| RFC 7518 §4.6.2 | `src/crypto/mod.rs:39`, `src/jwe/ecdh.rs:38`, `src/jwe/ecdh.rs:60`, `src/jwe/ecdh.rs:138`, `src/jwe/mod.rs:334`, `src/jwe/mod.rs:342`, `src/profile/mod.rs:527` | `rfc_7518_4_6_2_more_than_one_round_and_zero_length` |
+| RFC 7518 §4.6.2 | `src/crypto/mod.rs:39`, `src/jwe/ecdh.rs:38`, `src/jwe/ecdh.rs:60`, `src/jwe/ecdh.rs:138`, `src/jwe/mod.rs:334`, `src/jwe/mod.rs:342`, `src/profile/mod.rs:528` | `rfc_7518_4_6_2_more_than_one_round_and_zero_length` |
 | RFC 7518 §5.1 | `src/jwa/names.rs:230`, `src/jwa/registry.rs:415` | `rfc_7518_5_1_content_encryption_algorithms_with_their_lengths` |
 | RFC 7518 §5.2 | `src/jwa/registry.rs:107` | `rfc_7518_5_1_content_encryption_algorithms_with_their_lengths` *(cited)* |
-| RFC 7518 §5.3 | `src/crypto/mod.rs:217`, `src/crypto/rustcrypto.rs:314`, `src/jwa/registry.rs:441`, `src/jwe/mod.rs:214`, `src/profile/mod.rs:551`, `src/profile/mod.rs:561`, `src/profile/mod.rs:567` | `rfc_7518_5_3_the_iv_is_96_bits_and_the_tag_128_bits` |
+| RFC 7518 §5.3 | `src/crypto/mod.rs:217`, `src/crypto/rustcrypto.rs:314`, `src/jwa/registry.rs:441`, `src/jwe/mod.rs:214`, `src/profile/mod.rs:552`, `src/profile/mod.rs:562`, `src/profile/mod.rs:568` | `rfc_7518_5_3_the_iv_is_96_bits_and_the_tag_128_bits` |
 | RFC 7518 §6.1 | `src/jwa/names.rs:265` | `rfc_7518_6_1_ec_rsa_and_oct_are_the_key_types` |
 | RFC 7518 §6.2 | `src/jwk.rs:69` | `rfc_7518_6_2_1_1_curves_with_their_coordinate_lengths`, `rfc_7518_6_2_1_2_coordinates_have_the_full_length` |
 | RFC 7518 §6.2.1 | `src/jwk.rs:29` | `rfc_7518_6_2_1_1_curves_with_their_coordinate_lengths`, `rfc_7518_6_2_1_2_coordinates_have_the_full_length` |
@@ -74,7 +74,7 @@ A test is listed when it is named after the reference or a subsection of it, or,
 | RFC 7518 §6.4 | `src/jwk.rs:117` | `rfc_7518_6_4_a_symmetric_key_has_a_non_empty_k` |
 | RFC 7519 | `src/jwt.rs:24` | whole document: traced by its sections |
 | RFC 7519 §2 | `src/jwt.rs:191` | `rfc_7519_2_numeric_date_is_a_non_negative_number_of_seconds` |
-| RFC 7519 §4.1 | `src/jwt.rs:212`, `src/profile/mod.rs:430` | `rfc_7519_4_1_4_exp_with_leeway`, `rfc_7519_4_1_5_nbf_and_iat`, `rfc_7519_4_1_1_and_4_1_3_issuer_and_audience`, `rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings`, `rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function` |
+| RFC 7519 §4.1 | `src/jwt.rs:212`, `src/profile/mod.rs:431` | `rfc_7519_4_1_4_exp_with_leeway`, `rfc_7519_4_1_5_nbf_and_iat`, `rfc_7519_4_1_1_and_4_1_3_issuer_and_audience`, `rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings`, `rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function` |
 | RFC 7519 §4.1.1 | `src/jwt.rs:223`, `src/jwt.rs:257` | `rfc_7519_4_1_1_and_4_1_3_issuer_and_audience` |
 | RFC 7519 §4.1.3 | `src/jwt.rs:142`, `src/jwt.rs:264` | `rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings` |
 | RFC 7519 §4.1.4 | `src/jwt.rs:229` | `rfc_7519_4_1_4_exp_with_leeway`, `rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function` |
@@ -89,21 +89,21 @@ A test is listed when it is named after the reference or a subsection of it, or,
 | RFC 8032 §5.2 | `src/jwa/names.rs:174` | – |
 | RFC 8037 | `src/jwa/mod.rs:31`, `src/jwa/registry.rs:536` | `rfc_9864_2_2_ed25519_signs_and_verifies_under_its_own_name` *(cited)* |
 | RFC 8037 §2 | `src/jwa/names.rs:135`, `src/jwa/names.rs:254`, `src/jwa/names.rs:265`, `src/jwa/registry.rs:468`, `src/jwk.rs:29`, `src/jwk.rs:106`, `src/jwk.rs:334`, `src/jwk.rs:366` | `rfc_8037_2_okp_keys_have_the_raw_length_of_their_curve`, `rfc_7518_6_2_1_1_curves_with_their_coordinate_lengths` *(cited)*, `rfc_7518_6_1_ec_rsa_and_oct_are_the_key_types` *(cited)* |
-| RFC 8037 §3.1 | `src/crypto/rustcrypto.rs:274`, `src/jwa/names.rs:166`, `src/jwa/registry.rs:57`, `src/jwa/registry.rs:181`, `src/keys/software.rs:474`, `src/profile/mod.rs:154`, `src/profile/mod.rs:494` | `rfc_8037_3_1_an_eddsa_key_that_states_no_curve_is_refused`, `rfc_8037_3_1_eddsa_takes_the_curve_from_the_key`, `rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves` *(cited)* |
+| RFC 8037 §3.1 | `src/crypto/rustcrypto.rs:274`, `src/jwa/names.rs:166`, `src/jwa/registry.rs:57`, `src/jwa/registry.rs:181`, `src/keys/software.rs:474`, `src/profile/mod.rs:154`, `src/profile/mod.rs:495` | `rfc_8037_3_1_an_eddsa_key_that_states_no_curve_is_refused`, `rfc_8037_3_1_eddsa_takes_the_curve_from_the_key`, `rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves` *(cited)* |
 | RFC 8725 §3.1 | `src/jwe/mod.rs:450`, `src/jws/mod.rs:242`, `src/profile/mod.rs:200`, `src/profile/mod.rs:227` | `rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves`, `rfc_8725_3_1_encryption_is_bound_to_the_profiles_lists`, `rfc_8725_3_1_encryption_refuses_what_the_profile_does_not_list`, `rfc_8725_3_1_signing_refuses_an_algorithm_the_profile_does_not_list`, `rfc_8725_3_1_a_key_on_a_curve_the_profile_does_not_list_is_refused`, `rfc_8725_3_1_a_key_is_used_only_with_its_one_algorithm`, `rfc_7517_4_4_a_set_offers_no_key_bound_to_another_algorithm` *(cited)* |
 | RFC 8725 §3.10 | `src/jwk.rs:588`, `src/profile/mod.rs:69` | `rfc_8725_3_10_key_references_are_refused_and_kid_is_only_compared` |
 | RFC 8725 §3.11 | `src/profile/mod.rs:121` | `rfc_8725_3_11_a_profile_requires_the_explicit_type` |
-| RFC 8725 §3.12 | `src/profile/mod.rs:575` | `rfc_8725_3_12_each_kind_of_token_is_refused_by_the_others_profile` |
-| RFC 8725 §3.2 | `src/crypto/rustcrypto.rs:224`, `src/jwa/registry.rs:657`, `src/profile/mod.rs:629` | `rfc_8725_3_2_none_is_neither_consumed_nor_produced`, `rfc_8725_3_2_strict_allows_only_current_algorithms`, `rfc_6979_3_2_es256_signs_deterministically` *(cited)* |
+| RFC 8725 §3.12 | `src/profile/mod.rs:576` | `rfc_8725_3_12_each_kind_of_token_is_refused_by_the_others_profile` |
+| RFC 8725 §3.2 | `src/crypto/rustcrypto.rs:224`, `src/jwa/registry.rs:657`, `src/profile/mod.rs:630` | `rfc_8725_3_2_none_is_neither_consumed_nor_produced`, `rfc_8725_3_2_strict_allows_only_current_algorithms`, `rfc_6979_3_2_es256_signs_deterministically` *(cited)* |
 | RFC 8725 §3.3 | `src/jwe/mod.rs:377`, `src/jws/mod.rs:162` | `rfc_8725_3_3_every_layer_of_a_nested_jwt_is_validated` |
 | RFC 8725 §3.4 | `src/crypto/rustcrypto.rs:267`, `src/jwe/mod.rs:303` | `rfc_8725_3_4_an_epk_off_the_curve_is_refused`, `sp_800_56a_5_6_2_3_a_peer_point_off_the_curve_is_refused` *(cited)* |
 | RFC 8725 §3.5 | `src/keys/software.rs:501` | `rfc_8725_3_5_a_password_is_no_hmac_key` |
 | RFC 8725 §3.6 | `src/header.rs:247`, `src/profile/mod.rs:289` | `rfc_8725_3_6_compression_is_neither_produced_nor_accepted`, `rfc_7520_5_9_zip_and_5_12_unprotected_enc_are_refused` *(cited)* |
 | RFC 8725 §3.7 | `src/json.rs:44` | `rfc_8725_3_7_headers_and_claims_are_utf_8_only` |
-| RFC 8725 §3.8 | `src/jwk.rs:585`, `src/jwt.rs:257`, `src/profile/mod.rs:435` | `rfc_8725_3_8_the_issuer_is_held_to_the_one_whose_keys_verified` |
-| RFC 8725 §3.9 | `src/jwt.rs:265`, `src/profile/mod.rs:438` | `rfc_8725_3_9_a_token_without_or_for_another_audience_is_refused` |
-| RFC 9864 | `src/profile/mod.rs:495`, `src/profile/mod.rs:628` | whole document: traced by its sections |
-| RFC 9864 §2.2 | `src/jwa/names.rs:171`, `src/keys/software.rs:131`, `src/keys/software.rs:475`, `src/profile/mod.rs:486` | `rfc_9864_2_2_ed25519_signs_and_verifies_under_its_own_name`, `rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves` *(cited)* |
+| RFC 8725 §3.8 | `src/jwk.rs:585`, `src/jwt.rs:257`, `src/profile/mod.rs:436` | `rfc_8725_3_8_the_issuer_is_held_to_the_one_whose_keys_verified` |
+| RFC 8725 §3.9 | `src/jwt.rs:265`, `src/profile/mod.rs:439` | `rfc_8725_3_9_a_token_without_or_for_another_audience_is_refused` |
+| RFC 9864 | `src/profile/mod.rs:496`, `src/profile/mod.rs:629` | whole document: traced by its sections |
+| RFC 9864 §2.2 | `src/jwa/names.rs:171`, `src/keys/software.rs:131`, `src/keys/software.rs:475`, `src/profile/mod.rs:487` | `rfc_9864_2_2_ed25519_signs_and_verifies_under_its_own_name`, `rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves` *(cited)* |
 | RFC 9864 §4.1.2 | `src/jwa/names.rs:168` | `rfc_9864_4_1_2_strict_neither_accepts_nor_signs_the_deprecated_eddsa` |
 | RFC 9864 §5 | `src/keys/software.rs:87` | `rfc_9864_5_a_jwks_alg_binds_it_to_ed25519_or_eddsa` |
 

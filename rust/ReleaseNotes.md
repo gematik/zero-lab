@@ -1054,6 +1054,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - **Breaking:** `Policy::with` and `ClaimsPolicy::with` (unions of policies): compose
   algorithm lists with `Profile::with`, and set the other fields directly.
 
+#### fixed
+- A `typ` with the prefix `application/` and a further `/` no longer equals the type without
+  the prefix (RFC 7515 §4.1.9, TASK-278): `application/a/b` is not `a/b`.
+
 ## Release jwz 0.1.0, 2026-11-06
 
 ### added

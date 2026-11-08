@@ -410,10 +410,11 @@ pub(crate) fn same_media_type(a: &str, b: &str) -> bool {
         let lower_prefix = t
             .get(..12)
             .is_some_and(|p| p.eq_ignore_ascii_case("application/"));
-        if lower_prefix {
-            t.get(12..).unwrap_or(t)
-        } else {
-            t
+        // Only the short form of a media type has no other `/`: `application/a/b` is not
+        // the long form of `a/b`, and stays as it is.
+        match t.get(12..) {
+            Some(rest) if lower_prefix && !rest.contains('/') => rest,
+            _ => t,
         }
     }
     normal(a).eq_ignore_ascii_case(normal(b))
@@ -837,6 +838,13 @@ mod tests {
             ("application/dpop+jwt", true),
             ("JWT", false),
         ] {
+            let h = header(json!({"alg": "ES256", "typ": typ}));
+            assert_eq!(policy.check_jws(&h, &registry).is_ok(), ok, "{typ}");
+        }
+        // The prefix may be left out only where no other `/` follows: `application/a/b`
+        // and `a/b` are different types.
+        policy.typ = Some("a/b".into());
+        for (typ, ok) in [("a/b", true), ("A/B", true), ("application/a/b", false)] {
             let h = header(json!({"alg": "ES256", "typ": typ}));
             assert_eq!(policy.check_jws(&h, &registry).is_ok(), ok, "{typ}");
         }
