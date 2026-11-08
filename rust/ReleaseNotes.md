@@ -276,6 +276,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `model` (TASK-250): the read-only projections of a completed flow the front ends show,
   `IdpInfo`, `CertificateInfo` (a certificate by subject and SHA-256 fingerprint) and
   `ChallengeInfo`; the feature `serde` derives `Serialize` for them.
+- `probe` (TASK-266): the path a connectivity probe asks (`PATH`) and what a discovery
+  document there says (`answer`, `Answer`), read without verifying it: it tells the
+  IDP-Dienst from a gateway and trusts nothing.
 
 #### removed
 - The `ureq` feature and `ureq::UreqTransport` (decision-15, TASK-249): the crate has no HTTP
@@ -323,6 +326,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (decision-15).
 
 ### ti-directory-client
+
+#### added
+- `probe` (TASK-266): the path a connectivity probe asks (`PATH`, `/owner-authenticate`)
+  and what its answer says (`answer`, `Answer`): a redirect to an IDP-Dienst's
+  authorization URL is the directory.
 
 #### changed
 - Renamed from `ti-directory`, as `ti-idpd-client` (decision-15): the package and crate are
