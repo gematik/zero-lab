@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
-use rustls::{ClientConnection, DigitallySignedStruct};
+use rustls::{ClientConnection, DigitallySignedStruct, ProtocolVersion};
 use rustls_pki_types::{CertificateDer, ServerName, UnixTime};
 use ti_connector_client::check::{
     self, Report, TcpFailure, TcpObservation, TlsObservation, host_port,
@@ -215,6 +215,9 @@ fn handshake(
             let _ = stream.set_read_timeout(Some(timeout));
             let _ = stream.set_write_timeout(Some(timeout));
             conn.complete_io(&mut stream).map_err(|e| e.to_string())?;
+            if conn.protocol_version() == Some(ProtocolVersion::TLSv1_3) {
+                verdict(&mut conn, &mut stream, timeout.min(VERDICT_WAIT))?;
+            }
             Ok(())
         });
     let seen = std::mem::take(&mut *seen.lock().unwrap_or_else(PoisonError::into_inner));
@@ -222,6 +225,39 @@ fn handshake(
         chain: seen.chain,
         verified: seen.verified,
         handshake: result,
+    }
+}
+
+/// How long a TLS 1.3 probe waits for the server's first record after the handshake.
+const VERDICT_WAIT: Duration = Duration::from_millis(500);
+
+/// The server's verdict on the client after a TLS 1.3 handshake. The client's side of the
+/// handshake ends before the server judges the client certificate (RFC 8446 §4.4.2.4), so
+/// a refusal is the first record that follows: an alert. A session ticket instead means
+/// the server took the client; silence within `wait` counts as taking it too, since a
+/// server need not send tickets. Reading it here, before any request, keeps the refusal
+/// from being lost to a reset when the request crosses the server's close.
+fn verdict(
+    conn: &mut ClientConnection,
+    stream: &mut TcpStream,
+    wait: Duration,
+) -> Result<(), String> {
+    let _ = stream.set_read_timeout(Some(wait));
+    match conn.read_tls(stream) {
+        Ok(0) => Err("the server closed the connection after the handshake".to_owned()),
+        Ok(_) => conn
+            .process_new_packets()
+            .map(drop)
+            .map_err(|e| e.to_string()),
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ) =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(e.to_string()),
     }
 }
 

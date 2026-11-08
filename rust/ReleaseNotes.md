@@ -82,6 +82,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   && brew install gematik/tap/ti` switches.
 
 #### fixed
+- `connector config test` reports a Konnektor that requires a client certificate as
+  refusing basic credentials every time (TASK-262): under TLS 1.3 the refusal follows the
+  handshake and was now and then lost to a reset, which passed the auth step.
 - `ti probe` puts the Bestandsnetze on one line, the names grouped by result (TASK-235):
   production lists 17, and a row each pushed the TI VPN and Internet off the screen and the
   redrawn table into the scrollback. `--format json` keeps each one's detail.

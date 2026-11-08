@@ -1939,6 +1939,24 @@ fn tls_konnektor() -> u16 {
                     .set_read_timeout(Some(std::time::Duration::from_secs(5)))
                     .ok()?;
                 conn.complete_io(&mut socket).ok()?;
+                // Take the whole request before closing: a close with the request still
+                // unread is a reset, and whether the client saw the reset or the close
+                // would depend on timing.
+                let (mut request, mut chunk) = (Vec::new(), [0u8; 4096]);
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match std::io::Read::read(&mut conn.reader(), &mut chunk) {
+                        Ok(0) => return None,
+                        Ok(n) => request.extend_from_slice(&chunk[..n]),
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            if conn.complete_io(&mut socket).ok()?.0 == 0 {
+                                return None;
+                            }
+                        }
+                        Err(_) => return None,
+                    }
+                }
+                conn.send_close_notify();
+                conn.complete_io(&mut socket).ok()?;
                 Some(())
             });
         }
