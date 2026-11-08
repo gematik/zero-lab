@@ -390,8 +390,9 @@ dependent's version requirement raised.
 just changed                       # what changed since each crate's last tag
 git add -A && git commit -m "ti-pki: release 0.1.1"
 
-#    A crate's mutation score must belong to its code as released and reach its threshold
-#    (mutation-scores.toml); `just release` checks it with `just mutants-gate`. Code is what
+#    A crate with a threshold (mutation-scores.toml: the crates that make a security decision)
+#    needs a score that belongs to its code as released and reaches the threshold; `just release`
+#    checks it with `just mutants-gate`, which passes a crate without a threshold. Code is what
 #    a test compiles or runs: a change to the README, the licence, a document no
 #    include_str! compiles in, the stamps, the fuzz targets or the [package] version line
 #    needs no new score (`python3 -I scripts/mutation.py affecting <crate> <rev>` lists the rest)
@@ -530,7 +531,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `vet-suggest` | Dependencies still awaiting a cargo vet audit |
 | `miri`, `mutants <crate> [jobs]` | On demand: Miri (nightly), mutation testing (`jobs` as for `mutants-record`) |
 | `mutants-record <crate> [jobs]` | Measure a crate's mutation score on the committed tree into `mutation-scores.toml`; `jobs` mutants at once (default 4), each in a copy of `rust/` beside a link to `spec/`; `1` mutates the tree in place |
-| `mutants-gate <crate>…` | The recorded scores of crates about to be released: present, current, at least the threshold |
+| `mutants-gate <crate>…` | The recorded scores of crates about to be released that have a threshold: present, current, at least the threshold; a crate without one is not gated |
 | `coverage [<crate>…]` | Line coverage per crate (HTML in `target/coverage/html`) and the cited requirements whose code no test runs |
 | `versions` | Show the latest tag for every crate |
 | `changed` | List crates with commits since their last tag |
