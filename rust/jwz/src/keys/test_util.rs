@@ -40,7 +40,7 @@ use super::{AsyncSigner, JwsKey, Signature, SoftwareKey, to_signature_error};
 use crate::crypto::asynchronous::BoxFuture;
 use crate::crypto::{Backend, CryptoError, Rng};
 use crate::error::{Error, ErrorCode};
-use crate::jwa::{Registry, SignatureAlgorithm};
+use crate::jwa::{Curve, Registry, SignatureAlgorithm};
 use crate::jwk::Jwk;
 
 /// A deterministic random source (xorshift64*) for reproducible tests. Not random.
@@ -104,6 +104,7 @@ impl<B: Backend> MockHsm<B> {
         registry: &Registry,
     ) -> Result<MockHsmSigner<B>, Error> {
         let key = SoftwareKey::generate(alg, registry, Arc::clone(&self.backend))?;
+        let key_curve = key.curve();
         let mut keys = self.keys.borrow_mut();
         let handle = keys.len();
         keys.push(key);
@@ -111,6 +112,7 @@ impl<B: Backend> MockHsm<B> {
             hsm: Rc::clone(self),
             handle,
             alg,
+            curve: key_curve,
         })
     }
 
@@ -132,6 +134,7 @@ pub struct MockHsmSigner<B: Backend> {
     hsm: Rc<MockHsm<B>>,
     handle: usize,
     alg: SignatureAlgorithm,
+    curve: Option<Curve>,
 }
 
 impl<B: Backend> MockHsmSigner<B> {
@@ -149,6 +152,10 @@ impl<B: Backend> MockHsmSigner<B> {
 impl<B: Backend> JwsKey for MockHsmSigner<B> {
     fn algorithm(&self) -> SignatureAlgorithm {
         self.alg
+    }
+
+    fn curve(&self) -> Option<Curve> {
+        self.curve
     }
 }
 
@@ -184,6 +191,7 @@ impl<B: Backend> TestKms<B> {
         let signer = TestKmsSigner {
             queue: Rc::clone(&queue),
             alg: key.algorithm(),
+            curve: key.curve(),
         };
         (TestKms { key, queue }, signer)
     }
@@ -213,11 +221,16 @@ impl<B: Backend> TestKms<B> {
 pub struct TestKmsSigner {
     queue: Rc<RefCell<VecDeque<Request>>>,
     alg: SignatureAlgorithm,
+    curve: Option<Curve>,
 }
 
 impl JwsKey for TestKmsSigner {
     fn algorithm(&self) -> SignatureAlgorithm {
         self.alg
+    }
+
+    fn curve(&self) -> Option<Curve> {
+        self.curve
     }
 }
 

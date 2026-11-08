@@ -32,11 +32,13 @@ use jwz::ErrorCode;
 use jwz::crypto::Backend;
 use jwz::crypto::rustcrypto::RustCrypto;
 use jwz::header::HeaderParams;
-use jwz::jwa::{HashAlgorithm, Registry, SignatureAlgorithm};
+use jwz::jwa::{Curve, HashAlgorithm, Registry, SignatureAlgorithm};
 use jwz::jwk::Jwk;
 use jwz::jws::{self, Jws};
-use jwz::keys::SoftwareKey;
-use jwz::profile::{Policy, Profile};
+use jwz::keys::{JwsKey, Signature, SoftwareKey};
+#[cfg(feature = "hmac")]
+use jwz::profile::HMAC;
+use jwz::profile::{ECDSA_NIST, Policy, Profile};
 
 fn backend() -> Arc<RustCrypto> {
     Arc::new(RustCrypto::new())
@@ -131,7 +133,14 @@ fn sign_and_verify_round_trip_with_kid_and_typ() {
     let key = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend())
         .unwrap()
         .with_kid("key-1");
-    let token = jws::sign(b"{}", HeaderParams::new().typ("JWT"), &key).unwrap();
+    let token = jws::sign(
+        b"{}",
+        HeaderParams::new().typ("JWT"),
+        &key,
+        &strict(),
+        &registry,
+    )
+    .unwrap();
     let parsed = Jws::parse(&token, &strict(), &registry).unwrap();
     assert_eq!(parsed.header().kid(), Some("key-1"));
     assert_eq!(parsed.header().typ(), Some("JWT"));
@@ -213,7 +222,7 @@ fn invariant_header_never_selects_the_algorithm() {
     // signature bytes were right: the key's own algorithm decides.
     let registry = Registry::standard();
     let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
-    let token = jws::sign(b"x", HeaderParams::new(), &ed).unwrap();
+    let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
     let parsed = Jws::parse(&token, &strict(), &registry).unwrap();
     assert_eq!(
         code(parsed.verify(&es256_key())).err(),
@@ -244,7 +253,14 @@ fn negative_kid_mismatch() {
     let key = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend())
         .unwrap()
         .with_kid("a");
-    let token = jws::sign(b"x", HeaderParams::new().kid("b"), &key).unwrap();
+    let token = jws::sign(
+        b"x",
+        HeaderParams::new().kid("b"),
+        &key,
+        &strict(),
+        &registry,
+    )
+    .unwrap();
     let parsed = Jws::parse(&token, &strict(), &registry).unwrap();
     assert_eq!(
         code(parsed.verify(&key)).err(),
@@ -281,6 +297,8 @@ fn negative_key_reference_without_opt_in() {
         b"x",
         HeaderParams::new().jwk(&key.public_jwk()).unwrap(),
         &key,
+        &strict(),
+        &registry,
     )
     .unwrap();
     assert_eq!(
@@ -327,7 +345,7 @@ fn understood_critical_extension_round_trip() {
     let params = HeaderParams::new()
         .critical("urn:example:ext", serde_json::json!(true))
         .unwrap();
-    let token = jws::sign(b"x", params, &key).unwrap();
+    let token = jws::sign(b"x", params, &key, &strict(), &registry).unwrap();
     assert_eq!(
         code(Jws::parse(&token, &strict(), &registry)).err(),
         Some(ErrorCode::Critical)
@@ -383,6 +401,8 @@ fn rfc_7515_7_2_1_general_json_with_two_signers() {
     let text = jws::json::sign(
         b"both",
         &[(&es, HeaderParams::new()), (&ed, HeaderParams::new())],
+        &strict(),
+        &registry,
     )
     .unwrap();
     let mut parsed = jws::json::parse(&text, &strict(), &registry).unwrap();
@@ -402,7 +422,14 @@ fn sign_async_through_the_kms_double_verifies_synchronously() {
     let registry = Registry::standard();
     let key = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend()).unwrap();
     let (kms, signer) = TestKms::new(key);
-    let mut signing = Box::pin(jws::sign_async(b"remote", HeaderParams::new(), &signer));
+    let policy = strict();
+    let mut signing = Box::pin(jws::sign_async(
+        b"remote",
+        HeaderParams::new(),
+        &signer,
+        &policy,
+        &registry,
+    ));
     assert!(
         future::block_on(future::poll_once(&mut signing)).is_none(),
         "waits for the KMS"
@@ -441,7 +468,7 @@ fn rfc_7515_4_1_8_x5t_s256_binds_the_leaf() {
             .x5c(&[leaf, b"ca"])
             .param("x5t#S256", serde_json::json!(x5t))
             .unwrap();
-        let token = jws::sign(b"x", params, &key).unwrap();
+        let token = jws::sign(b"x", params, &key, &strict(), &registry).unwrap();
         let parsed = Jws::parse(&token, &policy, &registry).unwrap();
         let chain = jwz::x5c::chain(parsed.header(), sha256);
         assert_eq!(chain.is_ok(), ok, "{x5t}");
@@ -487,7 +514,14 @@ fn rfc_7515_4_1_6_x5c_is_padded_standard_base64() {
             .unwrap(),
         vec![der.to_vec(), vec![1]]
     );
-    let token = jws::sign(b"x", HeaderParams::new().x5c(&[der]), &es256_key()).unwrap();
+    let token = jws::sign(
+        b"x",
+        HeaderParams::new().x5c(&[der]),
+        &es256_key(),
+        &strict(),
+        &Registry::standard(),
+    )
+    .unwrap();
     let mut policy = strict();
     policy.key_references.x5c = true;
     let parsed = Jws::parse(&token, &policy, &Registry::standard()).unwrap();
@@ -515,7 +549,14 @@ fn rfc_7515_4_1_6_x5c_is_padded_standard_base64() {
 fn rfc_7515_5_1_the_signing_input_is_header_dot_payload() {
     use jwz::keys::{Signature, Verifier};
     let key = es256_key();
-    let token = jws::sign(b"{\"a\":1}", HeaderParams::new().kid("k"), &key).unwrap();
+    let token = jws::sign(
+        b"{\"a\":1}",
+        HeaderParams::new().kid("k"),
+        &key,
+        &strict(),
+        &Registry::standard(),
+    )
+    .unwrap();
     let [h, p, s]: [&str; 3] = token.split('.').collect::<Vec<_>>().try_into().unwrap();
     assert_eq!(p, jwz::b64::encode(b"{\"a\":1}"));
     let signature = Signature::from(jwz::b64::decode(s, "signature").unwrap());
@@ -570,7 +611,7 @@ fn rfc_7797_3_b64_is_refused() {
             understood,
         ),
     ] {
-        let token = jws::sign(b"x", params, &key).unwrap();
+        let token = jws::sign(b"x", params, &key, &strict(), &registry).unwrap();
         assert_eq!(
             code(Jws::parse(&token, &policy, &registry)).err(),
             Some(ErrorCode::PolicyViolation)
@@ -616,7 +657,7 @@ fn generated(kid: &str) -> SoftwareKey<RustCrypto> {
 fn rfc_7515_5_2_step_8_resolved_keys_are_candidates_the_signature_decides() {
     let registry = Registry::standard();
     let (signer, other) = (generated("k1"), generated("k2"));
-    let token = jws::sign(b"hello", HeaderParams::new(), &signer).unwrap();
+    let token = jws::sign(b"hello", HeaderParams::new(), &signer, &strict(), &registry).unwrap();
     let verify = |offered: Offered| {
         code(
             Jws::parse(&token, &strict(), &registry)
@@ -670,7 +711,7 @@ fn rfc_7515_5_2_step_8_resolved_keys_are_candidates_the_signature_decides() {
 fn rfc_7517_5_a_jwk_set_resolves_the_keys_of_a_jws() {
     let registry = Registry::standard();
     let (signer, other) = (generated("k1"), generated("k2"));
-    let token = jws::sign(b"hello", HeaderParams::new(), &signer).unwrap();
+    let token = jws::sign(b"hello", HeaderParams::new(), &signer, &strict(), &registry).unwrap();
     let set = jwz::jwk::JwkSet {
         keys: vec![other.public_jwk(), signer.public_jwk()],
     };
@@ -700,4 +741,263 @@ fn rfc_7517_5_a_jwk_set_resolves_the_keys_of_a_jws() {
         ),
         Err(ErrorCode::VerificationFailed)
     );
+}
+
+// ---- the profile binds signing and keys (RFC 8725 §3.1) ----
+
+/// A key that states the algorithm and curve a test needs, whatever key signs and
+/// verifies behind it: an HSM handle that reports what it was told.
+struct Stated<'k> {
+    key: &'k SoftwareKey<RustCrypto>,
+    alg: SignatureAlgorithm,
+    curve: Option<Curve>,
+}
+
+impl JwsKey for Stated<'_> {
+    fn algorithm(&self) -> SignatureAlgorithm {
+        self.alg
+    }
+
+    fn curve(&self) -> Option<Curve> {
+        self.curve
+    }
+}
+
+impl signature::Signer<Signature> for Stated<'_> {
+    fn try_sign(&self, msg: &[u8]) -> Result<Signature, signature::Error> {
+        signature::Signer::try_sign(self.key, msg)
+    }
+}
+
+impl signature::Verifier<Signature> for Stated<'_> {
+    fn verify(&self, msg: &[u8], sig: &Signature) -> Result<(), signature::Error> {
+        signature::Verifier::verify(self.key, msg, sig)
+    }
+}
+
+/// A profile that signs ES256 on P-256 and nothing else.
+fn es256_only() -> Policy {
+    Profile::new("es256", 1).with(&ECDSA_NIST).policy
+}
+
+/// RFC 8725 §3.1: the profile decides the algorithms, so jwz signs only what the
+/// profile it is given would verify: EdDSA under a profile of ES256 alone, HS256
+/// under one without HMAC, RS256 (reserved, not implemented) under any, are refused
+/// before the key is asked, by every signing entry point.
+#[test]
+fn rfc_8725_3_1_signing_refuses_an_algorithm_the_profile_does_not_list() {
+    let registry = Registry::standard();
+    let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
+    let es = es256_key();
+    let policy = es256_only();
+    assert_eq!(
+        code(jws::sign(
+            b"x",
+            HeaderParams::new(),
+            &ed,
+            &policy,
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    assert_eq!(
+        code(futures_lite::future::block_on(jws::sign_async(
+            b"x",
+            HeaderParams::new(),
+            &ed,
+            &policy,
+            &registry
+        )))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    assert_eq!(
+        code(jws::json::sign(
+            b"x",
+            &[(&es, HeaderParams::new()), (&ed, HeaderParams::new())],
+            &policy,
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    assert!(jws::sign(b"x", HeaderParams::new(), &es, &policy, &registry).is_ok());
+
+    let rsa = Stated {
+        key: &es,
+        alg: SignatureAlgorithm::RS256,
+        curve: None,
+    };
+    let interop = Profile::rfc7518_interop(&registry).policy;
+    for policy in [strict(), interop] {
+        assert_eq!(
+            code(jws::sign(
+                b"x",
+                HeaderParams::new(),
+                &rsa,
+                &policy,
+                &registry
+            ))
+            .err(),
+            Some(ErrorCode::UnsupportedAlgorithm)
+        );
+    }
+    let token = format!("{}.e30.AAAA", jwz::b64::encode(br#"{"alg":"RS256"}"#));
+    assert_eq!(
+        code(Jws::parse(&token, &strict(), &registry)).err(),
+        Some(ErrorCode::UnsupportedAlgorithm)
+    );
+
+    #[cfg(feature = "hmac")]
+    {
+        let hs = SoftwareKey::generate(SignatureAlgorithm::HS256, &registry, backend()).unwrap();
+        assert_eq!(
+            code(jws::sign(
+                b"x",
+                HeaderParams::new(),
+                &hs,
+                &strict(),
+                &registry
+            ))
+            .err(),
+            Some(ErrorCode::PolicyViolation)
+        );
+        let with_hmac = Profile::strict().with(&HMAC).policy;
+        let token = jws::sign(b"x", HeaderParams::new(), &hs, &with_hmac, &registry).unwrap();
+        Jws::parse(&token, &with_hmac, &registry)
+            .unwrap()
+            .verify(&hs)
+            .unwrap();
+    }
+}
+
+/// RFC 8725 §3.1 for keys, with RFC 7518 §3.4 (ES256 is P-256): a key on a curve the
+/// profile does not list is refused, for signing and for verifying, whatever its
+/// algorithm; a resolved one is passed over.
+#[test]
+fn rfc_8725_3_1_a_key_on_a_curve_the_profile_does_not_list_is_refused() {
+    let registry = Registry::standard();
+    let es = es256_key();
+    let elsewhere = Stated {
+        key: &es,
+        alg: SignatureAlgorithm::ES256,
+        curve: Some(Curve::new("X-OTHER-256")),
+    };
+    assert_eq!(
+        code(jws::sign(
+            b"x",
+            HeaderParams::new(),
+            &elsewhere,
+            &strict(),
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    let token = jws::sign(b"x", HeaderParams::new(), &es, &strict(), &registry).unwrap();
+    let parsed = || Jws::parse(&token, &strict(), &registry).unwrap();
+    assert_eq!(
+        code(parsed().verify(&elsewhere)).err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    assert_eq!(
+        code(futures_lite::future::block_on(
+            parsed().verify_async(&elsewhere)
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    parsed().verify(&es).unwrap();
+
+    // EdDSA listed, Ed25519 not: the key's curve decides, by every path.
+    let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
+    let mut eddsa_on_p256 = es256_only();
+    eddsa_on_p256
+        .signature_algorithms
+        .push(SignatureAlgorithm::EDDSA);
+    assert_eq!(
+        code(jws::sign(
+            b"x",
+            HeaderParams::new(),
+            &ed,
+            &eddsa_on_p256,
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
+    let parsed = || Jws::parse(&token, &eddsa_on_p256, &registry).unwrap();
+    assert_eq!(
+        code(parsed().verify(&ed)).err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    let set = jwz::jwk::JwkSet {
+        keys: vec![ed.public_jwk()],
+    };
+    assert_eq!(
+        code(parsed().verify_with(&set, &registry, &backend())).err(),
+        Some(ErrorCode::VerificationFailed)
+    );
+    assert_eq!(
+        code(futures_lite::future::block_on(parsed().verify_with_async(
+            &set,
+            &registry,
+            &backend()
+        )))
+        .err(),
+        Some(ErrorCode::VerificationFailed)
+    );
+    // The same token and set under strict, which lists Ed25519, verify.
+    Jws::parse(&token, &strict(), &registry)
+        .unwrap()
+        .verify_with(&set, &registry, &backend())
+        .unwrap();
+}
+
+/// RFC 8037 §3.1: EdDSA's curve is the key's, and its algorithm registers none; a key
+/// that does not state its curve could be on any, and is refused.
+#[test]
+fn rfc_8037_3_1_an_eddsa_key_that_states_no_curve_is_refused() {
+    let registry = Registry::standard();
+    let ed = SoftwareKey::generate(SignatureAlgorithm::EDDSA, &registry, backend()).unwrap();
+    let silent = Stated {
+        key: &ed,
+        alg: SignatureAlgorithm::EDDSA,
+        curve: None,
+    };
+    assert_eq!(
+        code(jws::sign(
+            b"x",
+            HeaderParams::new(),
+            &silent,
+            &strict(),
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
+    assert_eq!(
+        code(
+            Jws::parse(&token, &strict(), &registry)
+                .unwrap()
+                .verify(&silent)
+        )
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    // An ES256 key that states none is on ES256's registered curve, P-256.
+    let es = es256_key();
+    let quiet = Stated {
+        key: &es,
+        alg: SignatureAlgorithm::ES256,
+        curve: None,
+    };
+    let token = jws::sign(b"x", HeaderParams::new(), &quiet, &strict(), &registry).unwrap();
+    Jws::parse(&token, &strict(), &registry)
+        .unwrap()
+        .verify(&quiet)
+        .unwrap();
 }

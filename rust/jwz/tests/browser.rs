@@ -122,7 +122,14 @@ fn generated_keys_sign_and_verify() {
         let other = SoftwareKey::generate(alg, &registry, backend()).unwrap();
         // Two keys from Crypto.getRandomValues: a stuck random source would repeat.
         assert_ne!(key.public_jwk(), other.public_jwk(), "{alg:?}");
-        let token = jws::sign(b"{}", HeaderParams::new().typ("JWT"), &key).unwrap();
+        let token = jws::sign(
+            b"{}",
+            HeaderParams::new().typ("JWT"),
+            &key,
+            &Profile::strict().policy,
+            &registry,
+        )
+        .unwrap();
         let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
         assert_eq!(jws.verify(&key).unwrap().payload(), b"{}", "{alg:?}");
         let jws = Jws::parse(&token, &Profile::strict().policy, &registry).unwrap();
@@ -161,6 +168,7 @@ fn ecdh_es_and_key_wrap_round_trip() {
             Enc::A256GCM,
             encryption,
             HeaderParams::new(),
+            &policy,
             &registry,
             backend.as_ref(),
         )

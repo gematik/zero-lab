@@ -40,9 +40,7 @@ stated sizes.
 | --- | --- | --- |
 | `base64url_round_trip_1/2/3` | RFC 7515 §2: `decode(encode(b)) == b` | every input of 1, 2 and 3 bytes (each padding case) |
 | `compact_split_is_exact` | RFC 7515/7516 §7.1: size cap first; exactly N parts iff N-1 dots; the parts are the text between the dots | every token of up to 6 bytes over `a` and `.`, every cap up to 7 |
-| `policy_union_keeps_both_and_adds_nothing` | `Policy::with` keeps every element of both lists, adds none, no duplicates | a list and any 2 values, equal or not |
-| `key_reference_union_is_the_or` | an opted-in key reference stays opted in, and only those | all 256 combinations |
-| `claims_policy_union_only_widens` | larger skew and age, `exp` required only if both require it, issuer and audience only if both agree | all values |
+| `policy_union_keeps_both_and_adds_nothing` | `Profile::with` keeps every element of the list and of what it appends, adds none, no duplicates | a list and any 2 values, equal or not |
 | `media_type_comparison_is_symmetric_and_case_insensitive` | RFC 7515 §4.1.9 `typ` comparison | every pair of ASCII strings of up to 3 bytes |
 | `concat_kdf_refuses_unrepresentable_lengths` | a key length of 0 or above 2^32/8 bytes is refused before anything is hashed | every `usize` |
 

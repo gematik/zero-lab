@@ -109,14 +109,14 @@ fn one_signature(
         }
     }
     let header = Header::from_members(merged);
-    let alg = policy.check_jws(&header, registry)?;
+    let accepted = policy.accept_jws(&header, registry)?;
     let signature = entry
         .get("signature")
         .and_then(Value::as_str)
         .ok_or(malformed)?;
     Ok(Jws::from_parts(
         header,
-        alg,
+        accepted,
         protected.to_string(),
         encoded_payload.to_string(),
         payload.to_vec(),
@@ -125,12 +125,22 @@ fn one_signature(
 }
 
 /// Signs `payload` once per signer into the general JSON serialization (RFC 7515
-/// §7.2.1); each signer's header parameters are protected.
+/// §7.2.1); each signer's header parameters are protected. Every signer must be one
+/// `policy` accepts, as for [`super::sign`].
 ///
 /// # Errors
 ///
-/// A signer's error.
-pub fn sign(payload: &[u8], signers: &[(&dyn Signer, HeaderParams)]) -> Result<String, Error> {
+/// The errors of [`Policy::check_signing_key`] for any signer, before anything is
+/// signed; a signer's error.
+pub fn sign(
+    payload: &[u8],
+    signers: &[(&dyn Signer, HeaderParams)],
+    policy: &Policy,
+    registry: &Registry,
+) -> Result<String, Error> {
+    for (signer, _) in signers {
+        policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
+    }
     let encoded_payload = b64::encode(payload);
     let mut signatures = Vec::with_capacity(signers.len());
     for (signer, params) in signers {

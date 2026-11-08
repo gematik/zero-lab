@@ -43,8 +43,10 @@
 //! let backend = Arc::new(RustCrypto::new());
 //! let key = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend)?;
 //!
-//! let token = jws::sign(b"hello", HeaderParams::new().typ("JWT"), &key)?;
-//! let unverified = Jws::parse(&token, &Profile::strict().policy, &registry)?;
+//! let profile = Profile::strict();
+//! let params = HeaderParams::new().typ("JWT");
+//! let token = jws::sign(b"hello", params, &key, &profile.policy, &registry)?;
+//! let unverified = Jws::parse(&token, &profile.policy, &registry)?;
 //! let verified = unverified.verify(&key)?;
 //! assert_eq!(verified.payload(), b"hello");
 //! # }
@@ -74,7 +76,7 @@ use crate::header::{Header, HeaderParams};
 use crate::jwa::{Registry, SignatureAlgorithm};
 use crate::jwk::{AsyncKeyResolver, Jwk, KeyResolver};
 use crate::keys::{AsyncSigner, AsyncVerifier, JwsKey, Signature, Signer, SoftwareKey, Verifier};
-use crate::profile::Policy;
+use crate::profile::{Policy, SigningKeyRule};
 
 /// A JWS whose signature has not been checked: header only.
 #[derive(Debug)]
@@ -88,6 +90,8 @@ pub enum Verified {}
 pub struct Jws<S> {
     header: Header,
     alg: SignatureAlgorithm,
+    /// What the verifying key must be under the policy the header was accepted by.
+    key_rule: SigningKeyRule,
     /// The encoded protected header exactly as received: part of the signing input.
     protected: String,
     /// The encoded payload exactly as received: part of the signing input.
@@ -112,10 +116,11 @@ impl Jws<Unverified> {
         // RFC 7515 §5.2 steps 2-4: the header is a base64url JSON object.
         let header = Header::decode(protected)?;
         // RFC 7515 §5.2 step 5: the header is understood and acceptable.
-        let alg = policy.check_jws(&header, registry)?;
+        let (alg, key_rule) = policy.accept_jws(&header, registry)?;
         Ok(Jws {
             header,
             alg,
+            key_rule,
             protected: protected.into(),
             encoded_payload: encoded_payload.into(),
             // RFC 7515 §5.2 steps 6-7.
@@ -127,7 +132,7 @@ impl Jws<Unverified> {
 
     pub(crate) fn from_parts(
         header: Header,
-        alg: SignatureAlgorithm,
+        (alg, key_rule): (SignatureAlgorithm, SigningKeyRule),
         protected: String,
         encoded_payload: String,
         payload: Vec<u8>,
@@ -136,6 +141,7 @@ impl Jws<Unverified> {
         Jws {
             header,
             alg,
+            key_rule,
             protected,
             encoded_payload,
             payload,
@@ -149,8 +155,9 @@ impl Jws<Unverified> {
     /// # Errors
     ///
     /// [`ErrorCode::KeyMismatch`] if `key` is for another algorithm or names another
-    /// `kid` than the header; [`ErrorCode::VerificationFailed`] if the signature does not
-    /// verify.
+    /// `kid` than the header; [`ErrorCode::PolicyViolation`] if it is on a curve the
+    /// policy does not list ([`Policy::check_signing_key`]);
+    /// [`ErrorCode::VerificationFailed`] if the signature does not verify.
     pub fn verify(self, key: &dyn Verifier) -> Result<Jws<Verified>, Error> {
         self.check_key(key)?;
         key.verify(self.signing_input().as_bytes(), &self.signature)?;
@@ -171,7 +178,8 @@ impl Jws<Unverified> {
 
     /// Checks the signature with the keys `resolver` offers for this header, each made a
     /// verifier for the accepted algorithm with `backend` and tried in turn; a key that
-    /// does not fit the algorithm is passed over.
+    /// does not fit the algorithm, or is on a curve the policy does not list, is passed
+    /// over.
     ///
     /// # Errors
     ///
@@ -226,7 +234,8 @@ impl Jws<Unverified> {
     }
 
     /// The key must be for the header's algorithm (a key is bound to one; the header
-    /// never chooses another for it) and, where both name one, the same `kid`.
+    /// never chooses another for it), on a curve the policy lists and, where both name
+    /// one, have the same `kid`.
     fn check_key(&self, key: &(impl JwsKey + ?Sized)) -> Result<(), Error> {
         if key.algorithm() != self.alg {
             return Err(Error::new(
@@ -234,6 +243,7 @@ impl Jws<Unverified> {
                 "key for another algorithm",
             ));
         }
+        self.key_rule.check(key.curve())?;
         if let (Some(expected), Some(actual)) = (self.header.kid(), key.key_id())
             && expected != actual
         {
@@ -246,6 +256,7 @@ impl Jws<Unverified> {
         Jws {
             header: self.header,
             alg: self.alg,
+            key_rule: self.key_rule,
             protected: self.protected,
             encoded_payload: self.encoded_payload,
             payload: self.payload,
@@ -306,12 +317,22 @@ fn protected_header(params: HeaderParams, key: &(impl JwsKey + ?Sized)) -> Resul
 }
 
 /// Signs `payload` with `signer` into a compact JWS (RFC 7515 §5.1): `alg` from the
-/// signer, `kid` from the signer unless `params` sets one.
+/// signer, `kid` from the signer unless `params` sets one. The signer's algorithm and
+/// curve must be ones `policy` lists, so nothing is signed that the profile would
+/// refuse to verify.
 ///
 /// # Errors
 ///
-/// The signer's error, or [`ErrorCode::Json`] if the header cannot be serialized.
-pub fn sign(payload: &[u8], params: HeaderParams, signer: &dyn Signer) -> Result<String, Error> {
+/// The errors of [`Policy::check_signing_key`], before anything is signed; the signer's
+/// error, or [`ErrorCode::Json`] if the header cannot be serialized.
+pub fn sign(
+    payload: &[u8],
+    params: HeaderParams,
+    signer: &dyn Signer,
+    policy: &Policy,
+    registry: &Registry,
+) -> Result<String, Error> {
+    policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
     let protected = protected_header(params, signer)?;
     let encoded_payload = b64::encode(payload);
     let input = signing_input(&protected, &encoded_payload);
@@ -328,7 +349,10 @@ pub async fn sign_async(
     payload: &[u8],
     params: HeaderParams,
     signer: &dyn AsyncSigner,
+    policy: &Policy,
+    registry: &Registry,
 ) -> Result<String, Error> {
+    policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
     let protected = protected_header(params, signer)?;
     let encoded_payload = b64::encode(payload);
     let input = signing_input(&protected, &encoded_payload);

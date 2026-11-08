@@ -727,6 +727,7 @@ fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
                 ContentEncryptionAlgorithm::A256GCM,
                 EncryptionKey::Public(&jwk.public()),
                 HeaderParams::new(),
+                &jwz::profile::Profile::strict().policy,
                 &registry,
                 backend().as_ref(),
             )

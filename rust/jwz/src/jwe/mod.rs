@@ -46,16 +46,18 @@
 //! let backend = Arc::new(RustCrypto::new());
 //! let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone())?;
 //!
+//! let profile = Profile::strict();
 //! let token = jwe::encrypt(
 //!     b"hello",
 //!     KeyEncryptionAlgorithm::ECDH_ES,
 //!     ContentEncryptionAlgorithm::A256GCM,
 //!     EncryptionKey::Public(&recipient.public_jwk()),
 //!     HeaderParams::new(),
+//!     &profile.policy,
 //!     &registry,
 //!     backend.as_ref(),
 //! )?;
-//! let encrypted = Jwe::parse(&token, &Profile::strict().policy, &registry)?;
+//! let encrypted = Jwe::parse(&token, &profile.policy, &registry)?;
 //! let decrypted = encrypted.decrypt(DecryptionKey::Agreement(&recipient), backend.as_ref())?;
 //! assert_eq!(decrypted.plaintext(), b"hello");
 //! # }
@@ -504,6 +506,25 @@ fn entries(
     Ok((*kek, *cee))
 }
 
+/// What a producer is bound by: `policy` lists `alg`, `enc` and, for ECDH-ES, the
+/// recipient key's curve ([`Policy::check_encryption`]). A recipient key whose `crv` the
+/// registry does not know is left to [`manage`], which refuses it as such.
+fn check_producible(
+    policy: &Policy,
+    kek: &KeyEncryptionEntry,
+    cee: &ContentEncryptionEntry,
+    key: EncryptionKey<'_>,
+    registry: &Registry,
+) -> Result<(), Error> {
+    let curve = match key {
+        EncryptionKey::Public(jwk) if uses_agreement(kek.mode) => {
+            jwk.crv().and_then(|crv| registry.curve(crv)).map(|e| e.crv)
+        }
+        _ => None,
+    };
+    policy.check_encryption(kek.alg, cee.enc, curve)
+}
+
 /// The sender's key management for one recipient (RFC 7516 §5.1 steps 1-5). `cek` is
 /// the CEK shared by several recipients, which the direct modes cannot use.
 fn manage(
@@ -632,22 +653,33 @@ fn party_from(members: &Map<String, Value>) -> Result<(Vec<u8>, Vec<u8>), Error>
 }
 
 /// Encrypts `plaintext` into a compact JWE (RFC 7516 §5.1): `alg` and `enc` as given,
-/// `kid` from the key unless `params` sets one, `apu`/`apv` from `params`.
+/// `kid` from the key unless `params` sets one, `apu`/`apv` from `params`. `alg`, `enc`
+/// and, for ECDH-ES, the recipient key's curve must be ones `policy` lists, so nothing
+/// is encrypted that the profile would refuse to decrypt.
 ///
 /// # Errors
 ///
 /// [`ErrorCode::UnsupportedAlgorithm`] for an algorithm not available or a primitive the
-/// backend lacks; [`ErrorCode::KeyMismatch`] for a key that does not fit `alg`.
+/// backend lacks; [`ErrorCode::PolicyViolation`] for an algorithm or recipient curve
+/// `policy` does not list, before any key is used; [`ErrorCode::KeyMismatch`] for a key
+/// that does not fit `alg`.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "RFC 7516's inputs (alg, enc, key, header) and the three every producer is \
+              bound by (policy, registry, backend); a struct would only rename them"
+)]
 pub fn encrypt(
     plaintext: &[u8],
     alg: KeyEncryptionAlgorithm,
     enc: ContentEncryptionAlgorithm,
     key: EncryptionKey<'_>,
     params: HeaderParams,
+    policy: &Policy,
     registry: &Registry,
     backend: &dyn Backend,
 ) -> Result<String, Error> {
     let (kek, cee) = entries(alg, enc, registry)?;
+    check_producible(policy, &kek, &cee, key, registry)?;
     let kid = key_id(key).filter(|_| !params.has("kid"));
     let mut set = vec![("alg", alg.as_str()), ("enc", enc.as_str())];
     if let Some(kid) = kid {

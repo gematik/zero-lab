@@ -203,6 +203,13 @@ impl<B: Backend> JwsKey for SoftwareKey<B> {
         self.alg
     }
 
+    fn curve(&self) -> Option<Curve> {
+        match &self.kind {
+            Kind::Ecdsa { curve, .. } | Kind::EdDsa { curve, .. } => Some(*curve),
+            Kind::Hmac { .. } => None,
+        }
+    }
+
     fn key_id(&self) -> Option<&str> {
         self.kid.as_deref()
     }

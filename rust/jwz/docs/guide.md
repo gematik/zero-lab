@@ -28,6 +28,8 @@ use jwz::profile::Profile;
 #     br#"{"iss":"https://idp.example","aud":"app","exp":1900000000}"#,
 #     HeaderParams::new().typ("JWT"),
 #     &issuer,
+#     &Profile::strict().policy,
+#     &Registry::standard(),
 # )?;
 
 let registry = Registry::standard();
@@ -55,8 +57,8 @@ assert_eq!(claims.iss(), Some("https://idp.example"));
 
 The header helps find the key (`kid`), but never chooses its algorithm: the profile
 accepted one, and a key is made a verifier for that algorithm only. A JWK whose `alg`
-says otherwise, whose `use` or `key_ops` is not for signatures, or whose type or curve
-does not fit, is passed over. To verify with one key you chose, make it with
+says otherwise, whose `use` or `key_ops` is not for signatures, whose type or curve
+does not fit, or whose curve the profile does not list, is passed over. To verify with one key you chose, make it with
 `SoftwareKey::from_jwk` and call `Jws::verify`.
 
 ### Why jwz never fetches keys
@@ -84,35 +86,58 @@ common cases; `SystemClock` does not exist where std has no clock (see below).
 
 A [`Profile`](crate::profile::Profile) says what a token may use (`policy`) and what a
 JWT must claim (`claims`). Parsing takes the policy, and it is the only place a header is
-accepted.
+accepted. Signing and encryption take it too: `jws::sign` and `jwe::encrypt` refuse an
+algorithm, a content encryption or a key curve the policy does not list, so a program
+never produces a token its own profile would refuse.
 
-- `Profile::strict()` is the default: ES256 and EdDSA; ECDH-ES on P-256 with AES-GCM; no
-  key references (`jku`, `jwk`, `x5u`, `x5c`) in tokens; no `crit` extensions; a JWT
-  needs `exp`.
+- `Profile::strict()` is the default: ES256 on P-256 and EdDSA on Ed25519; ECDH-ES on
+  P-256 with A128GCM and A256GCM; no key references (`jku`, `jwk`, `x5u`, `x5c`) in
+  tokens; no `crit` extensions; a JWT needs `exp`.
 - `Profile::rfc7518_interop(&registry)` allows everything the registry implements. It
   exists for interoperability tests, never for production.
 - `ti_jwz::ti()` and `ti_jwz::ti_legacy()` are the gematik TI profiles (crate `ti-jwz`).
 
-Profiles are data. Widen one with another, or narrow one by changing its fields:
+A profile is the explicit lists its construction results in. `Profile::new` starts with
+no algorithm and strict defaults for everything else; `with` appends the lists of an
+[`Algorithms`](crate::profile::Algorithms) bundle. jwz's bundles are constants, each one
+RFC 7518 or RFC 8037 construction:
+
+| Constant | Adds |
+| --- | --- |
+| `ECDSA_NIST` | `ES256`, signing keys on P-256 |
+| `EDDSA` | `EdDSA`, signing keys on Ed25519 |
+| `HMAC` | `HS256`, `HS384`, `HS512` (available with the feature `hmac`) |
+| `ECDH_ES_P256` | `ECDH-ES`, `ECDH-ES+A128KW`, `ECDH-ES+A256KW`, key agreement on P-256 |
+| `ECDH_ES_DIRECT_P256` | `ECDH-ES`, key agreement on P-256 |
+| `AES_KW` | `A128KW`, `A192KW`, `A256KW` |
+| `DIRECT` | `dir` |
+| `AES_GCM`, `AES_128_GCM`, `AES_256_GCM` | `A128GCM`, `A192GCM`, `A256GCM`; or one of them |
+
+The curves are lists of their own: a signing key is accepted only on a curve the profile
+lists (`signing_curves`), whatever its algorithm, and an ECDH-ES key only on one of the
+`key_agreement_curves`. A key states its curve through `JwsKey::curve`; one that states
+none is taken to be on its algorithm's registered curve (P-256 for ES256).
 
 ```rust
-use jwz::jwa::{KeyEncryptionAlgorithm, Registry};
-use jwz::profile::Profile;
+use jwz::jwa::{KeyEncryptionAlgorithm, SignatureAlgorithm};
+use jwz::profile::{AES_256_GCM, AES_KW, ECDSA_NIST, Profile};
 
-let registry = Registry::standard();
-let mut mine = Profile::strict();
-// Narrower: only tokens that say they are access tokens (RFC 9068).
+// Only ES256 on P-256, AES key wrap and A256GCM, and only tokens that say they are
+// access tokens (RFC 9068).
+let mut mine = Profile::new("access-tokens", 1)
+    .with(&ECDSA_NIST)
+    .with(&AES_KW)
+    .with(&AES_256_GCM);
 mine.policy.typ = Some("at+jwt".into());
-// Wider: also accept what another profile accepts, such as AES key wrap, which strict
-// leaves out.
-let both = mine.clone().with(&Profile::rfc7518_interop(&registry));
-let a128kw = KeyEncryptionAlgorithm::A128KW;
-assert!(!mine.policy.key_encryption_algorithms.contains(&a128kw));
-assert!(both.policy.key_encryption_algorithms.contains(&a128kw));
+assert_eq!(mine.policy.signature_algorithms, [SignatureAlgorithm::ES256]);
+
+// strict with AES key wrap added: everything strict accepts, and A128KW.
+let wider = Profile::strict().with(&AES_KW);
+assert!(wider.policy.key_encryption_algorithms.contains(&KeyEncryptionAlgorithm::A128KW));
 ```
 
-`with` is a union: a token one profile accepts is accepted by every combination
-containing it.
+`with` only appends: a token one profile accepts is accepted by every profile built
+from it. A narrower profile is another construction, not a removal.
 
 ## Encrypt to a recipient's public key
 
@@ -125,6 +150,7 @@ use jwz::header::HeaderParams;
 use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm, Registry};
 use jwz::jwe::{self, EncryptionKey};
 use jwz::jwk::Jwk;
+use jwz::profile::Profile;
 
 let recipient = Jwk::parse(r#"{"kty":"EC","crv":"P-256",
   "x":"weNJy2HscCSM6AEDTDg04biOvhFhyyWvOHQfeF_PxMQ",
@@ -135,6 +161,7 @@ let token = jwe::encrypt(
     ContentEncryptionAlgorithm::A256GCM,
     EncryptionKey::Public(&recipient),
     HeaderParams::new().cty("JWT"),
+    &Profile::strict().policy,
     &Registry::standard(),
     &RustCrypto::new(),
 )?;

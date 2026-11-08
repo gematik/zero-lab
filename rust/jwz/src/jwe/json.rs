@@ -36,8 +36,8 @@ use alloc::vec::Vec;
 use serde_json::{Map, Value};
 
 use super::{
-    Encrypted, EncryptionKey, Jwe, UNSUPPORTED, encode_header, entries, key_id, manage, party_from,
-    random,
+    Encrypted, EncryptionKey, Jwe, UNSUPPORTED, check_producible, encode_header, entries, key_id,
+    manage, party_from, random,
 };
 use crate::b64;
 use crate::crypto::Backend;
@@ -151,13 +151,21 @@ pub struct Recipient<'a> {
 ///
 /// [`ErrorCode::InvalidMember`] without recipients, for a direct mode (`dir`, `ECDH-ES`)
 /// among several recipients, or for a parameter both in the protected and a recipient's
-/// header; otherwise as [`super::encrypt`].
+/// header; otherwise as [`super::encrypt`], every recipient checked against `policy`
+/// before any key is used.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "RFC 7516's inputs (enc, header, recipients, aad) and the three every \
+              producer is bound by (policy, registry, backend); a struct would only \
+              rename them"
+)]
 pub fn encrypt(
     plaintext: &[u8],
     enc: ContentEncryptionAlgorithm,
     protected: HeaderParams,
     recipients: &[Recipient<'_>],
     aad: Option<&[u8]>,
+    policy: &Policy,
     registry: &Registry,
     backend: &dyn Backend,
 ) -> Result<String, Error> {
@@ -165,6 +173,10 @@ pub fn encrypt(
     let first = recipients
         .first()
         .ok_or(Error::new(ErrorCode::InvalidMember, "no recipients"))?;
+    for recipient in recipients {
+        let (kek, cee) = entries(recipient.alg, enc, registry)?;
+        check_producible(policy, &kek, &cee, recipient.key, registry)?;
+    }
     let (_, cee) = entries(first.alg, enc, registry)?;
     // One recipient may use a direct mode, which determines the CEK itself.
     let shared_cek = if recipients.len() > 1 {

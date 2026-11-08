@@ -28,7 +28,9 @@
 //! point 4).
 //!
 //! A key is bound to one algorithm ([`JwsKey::algorithm`]): it signs and verifies only
-//! with that algorithm, so the token header can never choose another one for it.
+//! with that algorithm, so the token header can never choose another one for it. Its
+//! curve ([`JwsKey::curve`]) is bound to the profile: signing and verification refuse a
+//! key on a curve the profile does not list.
 //!
 //! The synchronous traits come from RustCrypto's `signature` crate: anything that
 //! implements `signature::Signer<Signature>` and [`JwsKey`] is a jwz [`Signer`], and
@@ -126,10 +128,17 @@ impl signature::SignatureEncoding for Signature {
     type Repr = Vec<u8>;
 }
 
-/// What a JWS key is for: its algorithm and, if it has one, its key ID.
+/// What a JWS key is for: its algorithm and, if it has them, its curve and key ID.
 pub trait JwsKey {
     /// The one algorithm this key signs or verifies with.
     fn algorithm(&self) -> SignatureAlgorithm;
+    /// The curve the key is on, for `EC` and `OKP` keys. A profile accepts a key only
+    /// on a curve it lists ([`Policy::check_signing_key`](crate::profile::Policy::check_signing_key));
+    /// a key that states none is taken to be on its algorithm's registered curve (P-256
+    /// for ES256), and an EdDSA key, whose algorithm has none, is refused.
+    fn curve(&self) -> Option<Curve> {
+        None
+    }
     /// The `kid` to put in or match against a header.
     fn key_id(&self) -> Option<&str> {
         None

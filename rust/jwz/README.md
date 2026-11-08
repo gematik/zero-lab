@@ -38,14 +38,19 @@ Every requirement jwz implements is traced to the tests that prove it:
   `dir`, A128/192/256KW, A128/192/256GCM; `Jwe<Encrypted>` → `Jwe<Decrypted>`, async key
   agreement; further curves through `crypto::Extended`;
 - `jwz::jwt`: claims, `ClaimsPolicy`, `Clock`;
-- `jwz::profile`: `Policy` (the single acceptance check) and the `strict` and
-  `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the `ChainValidator` seam.
+- `jwz::profile`: `Policy` (the single acceptance check, for what jwz parses, verifies,
+  signs and encrypts), profiles as explicit lists built from constants (`ECDSA_NIST`,
+  `EDDSA`, `ECDH_ES_P256`, `AES_GCM`, ...) with `Profile::new` and `Profile::with`, and
+  the `strict` and `rfc7518-interop` profiles; `jwz::x5c`: chain decoding and the
+  `ChainValidator` seam.
 
 ## Design principles
 
-- **Strict by default.** Every parse takes a policy; the default accepts only modern
-  algorithms, and anything permissive is an explicit choice. `none` cannot be expressed,
-  and the token header never picks the algorithm: the key does.
+- **Strict by default.** Every parse, signature and encryption takes a policy; the
+  default accepts only modern algorithms, and anything permissive is an explicit choice.
+  A profile lists its algorithms and the curves its keys may be on, and jwz produces
+  nothing its profile would refuse. `none` cannot be expressed, and the token header
+  never picks the algorithm: the key does.
 - **Trust in the types.** A `Jws<Unverified>` has no payload and a `Jwe<Encrypted>` no
   plaintext; they appear only after verification or decryption.
 - **Keys as functions.** Signing and key agreement go through traits, sync and async, so

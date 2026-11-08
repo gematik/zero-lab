@@ -27,11 +27,30 @@
 //! [`Policy::check_jws`] and [`Policy::check_jwe`] are the one place where a header is
 //! accepted: its algorithms, its `crit` list, its key-reference parameters, its `kid`
 //! and its `typ`. Parsing calls them before any cryptography runs; nothing else in jwz decides
-//! whether an algorithm is acceptable.
+//! whether an algorithm is acceptable. The same policy binds what jwz produces:
+//! [`Policy::check_signing_key`] and [`Policy::check_encryption`] are where signing and
+//! encryption are accepted, so jwz never produces a token its own profile refuses.
 //!
-//! Profiles are data and compose: [`Profile::with`] widens one profile by another (the
-//! union of what either allows), so a token accepted under a profile is accepted under
-//! every composition containing it. Restricting is done by writing a narrower profile.
+//! A profile is the explicit lists its construction results in. [`Profile::new`] starts
+//! with none; [`Profile::with`] appends the lists of an [`Algorithms`] bundle, and the
+//! constants of this module ([`ECDSA_NIST`], [`EDDSA`], [`ECDH_ES_P256`], ...) are the
+//! bundles jwz offers; an extension crate offers its own beside them. What a profile
+//! accepts is read off its construction:
+//!
+//! ```
+//! use jwz::jwa::{Curve, SignatureAlgorithm};
+//! use jwz::profile::{AES_256_GCM, ECDH_ES_DIRECT_P256, ECDSA_NIST, Profile};
+//!
+//! let mine = Profile::new("mine", 1)
+//!     .with(&ECDSA_NIST)
+//!     .with(&ECDH_ES_DIRECT_P256)
+//!     .with(&AES_256_GCM);
+//! assert_eq!(mine.policy.signature_algorithms, [SignatureAlgorithm::ES256]);
+//! assert_eq!(mine.policy.signing_curves, [Curve::P256]);
+//! ```
+//!
+//! Composition only appends, so a token accepted under a profile is accepted under every
+//! profile built from it. A narrower profile is another construction, not a removal.
 
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -41,7 +60,7 @@ use crate::header::{Header, REGISTERED};
 use crate::jwa::{
     ContentEncryptionAlgorithm, ContentEncryptionEntry, ContentEncryptionKind, Curve,
     KeyEncryptionAlgorithm, KeyEncryptionEntry, KeyManagementMode, KeyType, Registry,
-    SignatureAlgorithm, Support,
+    SignatureAlgorithm, SignatureEntry, Support,
 };
 
 /// Header parameters that point at or carry a key; each must be opted into, because a
@@ -70,27 +89,22 @@ impl KeyReferences {
         x5u: true,
         x5c: true,
     };
-
-    pub(crate) fn union(self, other: KeyReferences) -> KeyReferences {
-        KeyReferences {
-            jwk: self.jwk || other.jwk,
-            jku: self.jku || other.jku,
-            x5u: self.x5u || other.x5u,
-            x5c: self.x5c || other.x5c,
-        }
-    }
 }
 
-/// What a token may use.
+/// What a token may use, and what jwz may produce under it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Policy {
     /// JWS `alg` values accepted.
     pub signature_algorithms: Vec<SignatureAlgorithm>,
+    /// Curves a signing key may be on, for the algorithms whose key type has curves
+    /// (`EC`, `OKP`).
+    pub signing_curves: Vec<Curve>,
     /// JWE `alg` values accepted.
     pub key_encryption_algorithms: Vec<KeyEncryptionAlgorithm>,
     /// JWE `enc` values accepted.
     pub content_encryption_algorithms: Vec<ContentEncryptionAlgorithm>,
-    /// Curves the `epk` of an ECDH-ES JWE may be on.
+    /// Curves an ECDH-ES key may be on: the `epk` of a JWE received, the recipient's key
+    /// of a JWE produced.
     pub key_agreement_curves: Vec<Curve>,
     /// Largest token accepted, in bytes; checked before anything is decoded.
     pub max_token_len: usize,
@@ -108,6 +122,41 @@ pub struct Policy {
 /// that parsing an attacker's token stays cheap.
 pub const DEFAULT_MAX_TOKEN_LEN: usize = 256 * 1024;
 
+/// What a JWS key must be for one accepted algorithm under a policy, recorded when the
+/// header is accepted so that verification needs neither the policy nor the registry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SigningKeyRule {
+    /// Whether the algorithm's key type has curves (`EC`, `OKP`). HMAC's `oct` keys have
+    /// none and are bound by their algorithm alone.
+    curved: bool,
+    /// The algorithm's registered curve: the curve of a key that states none.
+    registered: Option<Curve>,
+    /// The policy's signing curves.
+    allowed: Vec<Curve>,
+}
+
+impl SigningKeyRule {
+    /// Accepts a key that states `curve` (or none).
+    pub(crate) fn check(&self, curve: Option<Curve>) -> Result<(), Error> {
+        if !self.curved {
+            return Ok(());
+        }
+        match curve.or(self.registered) {
+            Some(curve) if self.allowed.contains(&curve) => Ok(()),
+            Some(_) => Err(Error::new(
+                ErrorCode::PolicyViolation,
+                "key curve not allowed",
+            )),
+            // EdDSA's curve is the key's (RFC 8037 §3.1): a key that does not say which
+            // could be on any, and the curve is what the profile decides on.
+            None => Err(Error::new(
+                ErrorCode::PolicyViolation,
+                "key states no curve",
+            )),
+        }
+    }
+}
+
 impl Policy {
     /// Accepts the JWS header `header` and returns its algorithm.
     ///
@@ -123,10 +172,54 @@ impl Policy {
         header: &Header,
         registry: &Registry,
     ) -> Result<SignatureAlgorithm, Error> {
+        self.accept_jws(header, registry).map(|(alg, _)| alg)
+    }
+
+    /// [`check_jws`](Self::check_jws), and the rule the verifying key must meet.
+    pub(crate) fn accept_jws(
+        &self,
+        header: &Header,
+        registry: &Registry,
+    ) -> Result<(SignatureAlgorithm, SigningKeyRule), Error> {
         // RFC 7515 §4.1.1: alg is required; RFC 7518 §3.6: `none` is never registered.
         let name = header
             .alg()
             .ok_or(Error::new(ErrorCode::MissingMember, "alg"))?;
+        let entry = self.allowed_signature(name, registry)?;
+        self.check_common(header)?;
+        Ok((entry.alg, self.signing_key_rule(entry)))
+    }
+
+    /// Accepts signing with a key for `alg` that states `curve` (or none): what
+    /// `jws::sign` checks before it signs, and verification before it verifies.
+    ///
+    /// RFC 8725 §3.1: the profile, not the key, decides which algorithms are used. A key's
+    /// curve is the one it states ([`JwsKey::curve`](crate::keys::JwsKey::curve)) or
+    /// else the algorithm's registered one (P-256 for ES256, RFC 7518 §3.4); for an
+    /// algorithm whose key type has curves (`EC`, `OKP`) it must be one of the policy's
+    /// `signing_curves`. HMAC keys have no curve and are bound by their algorithm alone.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::UnsupportedAlgorithm`] for an algorithm `registry` does not know as
+    /// available; [`ErrorCode::PolicyViolation`] for one the policy does not allow, a
+    /// curve it does not list, or no curve where the algorithm needs one.
+    pub fn check_signing_key(
+        &self,
+        alg: SignatureAlgorithm,
+        curve: Option<Curve>,
+        registry: &Registry,
+    ) -> Result<(), Error> {
+        let entry = self.allowed_signature(alg.as_str(), registry)?;
+        self.signing_key_rule(entry).check(curve)
+    }
+
+    /// The registry's entry for `name`, if it is available and the policy allows it.
+    fn allowed_signature<'r>(
+        &self,
+        name: &str,
+        registry: &'r Registry,
+    ) -> Result<&'r SignatureEntry, Error> {
         let entry = registry
             .signature(name)
             .filter(|e| e.support == Support::Available)
@@ -134,8 +227,15 @@ impl Policy {
         if !self.signature_algorithms.contains(&entry.alg) {
             return Err(Error::new(ErrorCode::PolicyViolation, "alg not allowed"));
         }
-        self.check_common(header)?;
-        Ok(entry.alg)
+        Ok(entry)
+    }
+
+    fn signing_key_rule(&self, entry: &SignatureEntry) -> SigningKeyRule {
+        SigningKeyRule {
+            curved: entry.key_type == KeyType::EC || entry.key_type == KeyType::OKP,
+            registered: entry.curve,
+            allowed: self.signing_curves.clone(),
+        }
     }
 
     /// Accepts the JWE header `header` and returns its key management and content
@@ -147,8 +247,9 @@ impl Policy {
     /// [`ErrorCode::UnsupportedAlgorithm`] for an algorithm `registry` does not know as
     /// available, a key management mode or content cipher jwz does not implement
     /// (RSA, PBES2, CBC-HMAC); [`ErrorCode::PolicyViolation`] for one the policy does
-    /// not allow, `zip`, and the checks [`check_jws`](Self::check_jws) shares;
-    /// [`ErrorCode::Critical`] for a `crit` it cannot honour.
+    /// not allow, an `epk` on a curve it does not list, `zip`, and the checks
+    /// [`check_jws`](Self::check_jws) shares; [`ErrorCode::Critical`] for a `crit` it
+    /// cannot honour.
     pub fn check_jwe(
         &self,
         header: &Header,
@@ -178,20 +279,7 @@ impl Policy {
             .content_encryption(enc)
             .filter(|e| e.support == Support::Available && e.kind == ContentEncryptionKind::Aead)
             .ok_or(Error::new(ErrorCode::UnsupportedAlgorithm, "enc"))?;
-        if !self.key_encryption_algorithms.contains(&kek.alg) {
-            return Err(Error::new(ErrorCode::PolicyViolation, "alg not allowed"));
-        }
-        if !self.content_encryption_algorithms.contains(&cee.enc) {
-            return Err(Error::new(ErrorCode::PolicyViolation, "enc not allowed"));
-        }
-        if let Some(curve) = epk_curve(header, registry)
-            && !self.key_agreement_curves.contains(&curve)
-        {
-            return Err(Error::new(
-                ErrorCode::PolicyViolation,
-                "epk curve not allowed",
-            ));
-        }
+        self.check_encryption(kek.alg, cee.enc, epk_curve(header, registry))?;
         // RFC 7516 §4.1.3: compression before encryption leaks the plaintext's
         // redundancy and makes decryption a decompression bomb; jwz does not implement it.
         if header.get("zip").is_some() {
@@ -199,6 +287,37 @@ impl Policy {
         }
         self.check_common(header)?;
         Ok((*kek, *cee))
+    }
+
+    /// Accepts JWE key management `alg` and content encryption `enc` with an ECDH-ES key
+    /// on `agreement_curve`, where there is one: the `epk` of a JWE received
+    /// ([`check_jwe`](Self::check_jwe)), the recipient's key of a JWE produced
+    /// (`jwe::encrypt`, which checks before it encrypts).
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::PolicyViolation`] for an algorithm or curve the policy does not list.
+    pub fn check_encryption(
+        &self,
+        alg: KeyEncryptionAlgorithm,
+        enc: ContentEncryptionAlgorithm,
+        agreement_curve: Option<Curve>,
+    ) -> Result<(), Error> {
+        if !self.key_encryption_algorithms.contains(&alg) {
+            return Err(Error::new(ErrorCode::PolicyViolation, "alg not allowed"));
+        }
+        if !self.content_encryption_algorithms.contains(&enc) {
+            return Err(Error::new(ErrorCode::PolicyViolation, "enc not allowed"));
+        }
+        if let Some(curve) = agreement_curve
+            && !self.key_agreement_curves.contains(&curve)
+        {
+            return Err(Error::new(
+                ErrorCode::PolicyViolation,
+                "key agreement curve not allowed",
+            ));
+        }
+        Ok(())
     }
 
     /// The checks every JOSE header gets, whatever its algorithm family.
@@ -268,31 +387,6 @@ impl Policy {
         }
         Ok(())
     }
-
-    /// The union of both policies: every algorithm and extension either allows, the
-    /// larger size limit, every key reference either opts into, and `kid` and `typ` only
-    /// where both require them (the same `typ`).
-    #[must_use]
-    pub fn with(mut self, other: &Policy) -> Policy {
-        union_into(&mut self.signature_algorithms, &other.signature_algorithms);
-        union_into(
-            &mut self.key_encryption_algorithms,
-            &other.key_encryption_algorithms,
-        );
-        union_into(
-            &mut self.content_encryption_algorithms,
-            &other.content_encryption_algorithms,
-        );
-        union_into(&mut self.key_agreement_curves, &other.key_agreement_curves);
-        union_into(&mut self.understood_critical, &other.understood_critical);
-        self.max_token_len = self.max_token_len.max(other.max_token_len);
-        self.key_references = self.key_references.union(other.key_references);
-        self.require_kid = self.require_kid && other.require_kid;
-        if self.typ != other.typ {
-            self.typ = None;
-        }
-        self
-    }
 }
 
 /// The registered curve `epk` names, if any; whether `epk` is otherwise well-formed is
@@ -344,28 +438,119 @@ pub struct ClaimsPolicy {
     pub required: Vec<String>,
 }
 
-impl ClaimsPolicy {
-    /// The union: either policy's tokens pass. Issuer and audience stay only where both
-    /// require the same, the larger leeway and age, `exp` required only if both require
-    /// it, the claims both require.
-    #[must_use]
-    pub fn with(mut self, other: &ClaimsPolicy) -> ClaimsPolicy {
-        if self.issuer != other.issuer {
-            self.issuer = None;
-        }
-        if self.audience != other.audience {
-            self.audience = None;
-        }
-        self.leeway = self.leeway.max(other.leeway);
-        self.require_exp = self.require_exp && other.require_exp;
-        self.max_age = match (self.max_age, other.max_age) {
-            (Some(a), Some(b)) => Some(a.max(b)),
-            _ => None,
-        };
-        self.required.retain(|name| other.required.contains(name));
-        self
-    }
+/// A bundle of algorithm lists a profile is extended by ([`Profile::with`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Algorithms<'a> {
+    /// JWS `alg` values.
+    pub signatures: &'a [SignatureAlgorithm],
+    /// Curves a signing key may be on ([`Policy::signing_curves`]).
+    pub signing_curves: &'a [Curve],
+    /// JWE `alg` values.
+    pub key_encryption: &'a [KeyEncryptionAlgorithm],
+    /// JWE `enc` values.
+    pub content_encryption: &'a [ContentEncryptionAlgorithm],
+    /// Curves an ECDH-ES key may be on ([`Policy::key_agreement_curves`]).
+    pub key_agreement_curves: &'a [Curve],
 }
+
+impl Algorithms<'_> {
+    /// No algorithm and no curve: [`Profile::with`] it changes nothing, and the other
+    /// constants are written as what they add to it.
+    pub const NONE: Algorithms<'static> = Algorithms {
+        signatures: &[],
+        signing_curves: &[],
+        key_encryption: &[],
+        content_encryption: &[],
+        key_agreement_curves: &[],
+    };
+}
+
+/// ECDSA on the NIST curves (RFC 7518 §3.4): `ES256` with keys on P-256. `ES384` on
+/// P-384 and `ES512` on P-521 are registered but reserved, not available, in jwz 0.2;
+/// they join this bundle when they are implemented.
+pub const ECDSA_NIST: Algorithms<'static> = Algorithms {
+    signatures: &[SignatureAlgorithm::ES256],
+    signing_curves: &[Curve::P256],
+    ..Algorithms::NONE
+};
+
+/// EdDSA (RFC 8037 §3.1) with keys on Ed25519, the one curve jwz implements; the key,
+/// not the algorithm, names the curve.
+pub const EDDSA: Algorithms<'static> = Algorithms {
+    signatures: &[SignatureAlgorithm::EDDSA],
+    signing_curves: &[Curve::ED25519],
+    ..Algorithms::NONE
+};
+
+/// HMAC with SHA-2 (RFC 7518 §3.2): `HS256`, `HS384`, `HS512`. Shared keys have no
+/// curve. They are available only with the `hmac` feature; without it the registry
+/// reports them as unsupported whatever a profile lists.
+pub const HMAC: Algorithms<'static> = Algorithms {
+    signatures: &[
+        SignatureAlgorithm::HS256,
+        SignatureAlgorithm::HS384,
+        SignatureAlgorithm::HS512,
+    ],
+    ..Algorithms::NONE
+};
+
+/// ECDH-ES on P-256 (RFC 7518 §4.6): direct key agreement and with AES Key Wrap of 128
+/// and 256 bits (`ECDH-ES`, `ECDH-ES+A128KW`, `ECDH-ES+A256KW`).
+pub const ECDH_ES_P256: Algorithms<'static> = Algorithms {
+    key_encryption: &[
+        KeyEncryptionAlgorithm::ECDH_ES,
+        KeyEncryptionAlgorithm::ECDH_ES_A128KW,
+        KeyEncryptionAlgorithm::ECDH_ES_A256KW,
+    ],
+    key_agreement_curves: &[Curve::P256],
+    ..Algorithms::NONE
+};
+
+/// ECDH-ES on P-256 as direct key agreement only (RFC 7518 §4.6.2: the agreed key is
+/// the CEK), without key wrapping.
+pub const ECDH_ES_DIRECT_P256: Algorithms<'static> = Algorithms {
+    key_encryption: &[KeyEncryptionAlgorithm::ECDH_ES],
+    key_agreement_curves: &[Curve::P256],
+    ..Algorithms::NONE
+};
+
+/// AES Key Wrap with a shared key (RFC 7518 §4.4): `A128KW`, `A192KW`, `A256KW`.
+pub const AES_KW: Algorithms<'static> = Algorithms {
+    key_encryption: &[
+        KeyEncryptionAlgorithm::A128KW,
+        KeyEncryptionAlgorithm::A192KW,
+        KeyEncryptionAlgorithm::A256KW,
+    ],
+    ..Algorithms::NONE
+};
+
+/// Direct encryption with a shared key (RFC 7518 §4.5): `dir`.
+pub const DIRECT: Algorithms<'static> = Algorithms {
+    key_encryption: &[KeyEncryptionAlgorithm::DIR],
+    ..Algorithms::NONE
+};
+
+/// AES-GCM content encryption (RFC 7518 §5.3): `A128GCM`, `A192GCM`, `A256GCM`.
+pub const AES_GCM: Algorithms<'static> = Algorithms {
+    content_encryption: &[
+        ContentEncryptionAlgorithm::A128GCM,
+        ContentEncryptionAlgorithm::A192GCM,
+        ContentEncryptionAlgorithm::A256GCM,
+    ],
+    ..Algorithms::NONE
+};
+
+/// AES-GCM with a 128-bit key (RFC 7518 §5.3): `A128GCM`.
+pub const AES_128_GCM: Algorithms<'static> = Algorithms {
+    content_encryption: &[ContentEncryptionAlgorithm::A128GCM],
+    ..Algorithms::NONE
+};
+
+/// AES-GCM with a 256-bit key (RFC 7518 §5.3): `A256GCM`.
+pub const AES_256_GCM: Algorithms<'static> = Algorithms {
+    content_encryption: &[ContentEncryptionAlgorithm::A256GCM],
+    ..Algorithms::NONE
+};
 
 /// A named, versioned validation profile.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -385,28 +570,20 @@ pub struct Profile {
 pub const RESERVED: &[&str] = &["oauth-dpop", "openid-federation", "eudi-wallet"];
 
 impl Profile {
-    /// The default: modern public-key algorithms only (ES256, EdDSA; ECDH-ES on P-256,
-    /// AES-GCM), no key references in tokens, no extensions, 256 KiB at most; a JWT
-    /// must have `exp`, with 60 seconds of clock skew.
-    pub fn strict() -> Profile {
+    /// A profile called `name` that allows no algorithm yet; [`with`](Self::with) adds
+    /// them. Everything else is strict: no key references in tokens, no extensions,
+    /// no `kid` or `typ` required, 256 KiB at most; a JWT must have `exp`, with 60
+    /// seconds of clock skew.
+    pub fn new(name: impl Into<String>, version: u32) -> Profile {
         Profile {
-            name: "strict".into(),
-            version: 1,
+            name: name.into(),
+            version,
             policy: Policy {
-                signature_algorithms: alloc::vec![
-                    SignatureAlgorithm::ES256,
-                    SignatureAlgorithm::EDDSA,
-                ],
-                key_encryption_algorithms: alloc::vec![
-                    KeyEncryptionAlgorithm::ECDH_ES,
-                    KeyEncryptionAlgorithm::ECDH_ES_A128KW,
-                    KeyEncryptionAlgorithm::ECDH_ES_A256KW,
-                ],
-                content_encryption_algorithms: alloc::vec![
-                    ContentEncryptionAlgorithm::A128GCM,
-                    ContentEncryptionAlgorithm::A256GCM,
-                ],
-                key_agreement_curves: alloc::vec![Curve::P256],
+                signature_algorithms: Vec::new(),
+                signing_curves: Vec::new(),
+                key_encryption_algorithms: Vec::new(),
+                content_encryption_algorithms: Vec::new(),
+                key_agreement_curves: Vec::new(),
                 max_token_len: DEFAULT_MAX_TOKEN_LEN,
                 understood_critical: Vec::new(),
                 key_references: KeyReferences::default(),
@@ -424,53 +601,66 @@ impl Profile {
         }
     }
 
-    /// Permissive, for interoperability tests: every algorithm `registry` knows as
-    /// available, every key reference, 1 MiB. Never for production verification.
+    /// The default: modern public-key algorithms only, ES256 on P-256 ([`ECDSA_NIST`])
+    /// and EdDSA on Ed25519 ([`EDDSA`]); ECDH-ES on P-256 ([`ECDH_ES_P256`]) with
+    /// A128GCM and A256GCM; otherwise as [`new`](Self::new).
+    pub fn strict() -> Profile {
+        Profile::new("strict", 2)
+            .with(&ECDSA_NIST)
+            .with(&EDDSA)
+            .with(&ECDH_ES_P256)
+            .with(&AES_128_GCM)
+            .with(&AES_256_GCM)
+    }
+
+    /// Permissive, for interoperability tests: every algorithm and curve `registry` knows
+    /// as available, every key reference, 1 MiB, no `exp` required. Never for production
+    /// verification. Its lists are the registry's, not constants, so that it follows what
+    /// a program registers (ti-jwz's brainpool names, for example).
     pub fn rfc7518_interop(registry: &Registry) -> Profile {
         let available = |s: Support| s == Support::Available;
-        Profile {
-            name: "rfc7518-interop".into(),
-            version: 1,
-            policy: Policy {
-                signature_algorithms: registry
-                    .signatures()
-                    .iter()
-                    .filter(|e| available(e.support))
-                    .map(|e| e.alg)
-                    .collect(),
-                key_encryption_algorithms: registry
-                    .key_encryptions()
-                    .iter()
-                    .filter(|e| available(e.support))
-                    .map(|e| e.alg)
-                    .collect(),
-                content_encryption_algorithms: registry
-                    .content_encryptions()
-                    .iter()
-                    .filter(|e| available(e.support))
-                    .map(|e| e.enc)
-                    .collect(),
-                key_agreement_curves: registry
-                    .curves()
-                    .iter()
-                    .filter(|e| available(e.support) && e.key_type == KeyType::EC)
-                    .map(|e| e.crv)
-                    .collect(),
-                max_token_len: 1024 * 1024,
-                understood_critical: Vec::new(),
-                key_references: KeyReferences::ALL,
-                require_kid: false,
-                typ: None,
-            },
-            claims: ClaimsPolicy {
-                issuer: None,
-                audience: None,
-                leeway: 60,
-                require_exp: false,
-                max_age: None,
-                required: Vec::new(),
-            },
-        }
+        let signatures: Vec<_> = registry
+            .signatures()
+            .iter()
+            .filter(|e| available(e.support))
+            .map(|e| e.alg)
+            .collect();
+        let signing_curves: Vec<_> = registry
+            .curves()
+            .iter()
+            .filter(|e| available(e.support))
+            .filter(|e| e.key_type == KeyType::EC || e.key_type == KeyType::OKP)
+            .map(|e| e.crv)
+            .collect();
+        let key_encryption: Vec<_> = registry
+            .key_encryptions()
+            .iter()
+            .filter(|e| available(e.support))
+            .map(|e| e.alg)
+            .collect();
+        let content_encryption: Vec<_> = registry
+            .content_encryptions()
+            .iter()
+            .filter(|e| available(e.support))
+            .map(|e| e.enc)
+            .collect();
+        let key_agreement_curves: Vec<_> = registry
+            .curves()
+            .iter()
+            .filter(|e| available(e.support) && e.key_type == KeyType::EC)
+            .map(|e| e.crv)
+            .collect();
+        let mut profile = Profile::new("rfc7518-interop", 2).with(&Algorithms {
+            signatures: &signatures,
+            signing_curves: &signing_curves,
+            key_encryption: &key_encryption,
+            content_encryption: &content_encryption,
+            key_agreement_curves: &key_agreement_curves,
+        });
+        profile.policy.max_token_len = 1024 * 1024;
+        profile.policy.key_references = KeyReferences::ALL;
+        profile.claims.require_exp = false;
+        profile
     }
 
     /// The shipped profile called `name`.
@@ -489,15 +679,26 @@ impl Profile {
         }
     }
 
-    /// This profile widened by `other` ([`Policy::with`]); the name records both.
+    /// This profile with the lists of `algorithms` appended, each value once; the name,
+    /// the version and everything but the lists stay as they are.
     #[must_use]
-    pub fn with(self, other: &Profile) -> Profile {
-        Profile {
-            name: alloc::format!("{}+{}", self.name, other.name),
-            version: self.version.max(other.version),
-            policy: self.policy.with(&other.policy),
-            claims: self.claims.with(&other.claims),
-        }
+    pub fn with(mut self, algorithms: &Algorithms<'_>) -> Profile {
+        let policy = &mut self.policy;
+        union_into(&mut policy.signature_algorithms, algorithms.signatures);
+        union_into(&mut policy.signing_curves, algorithms.signing_curves);
+        union_into(
+            &mut policy.key_encryption_algorithms,
+            algorithms.key_encryption,
+        );
+        union_into(
+            &mut policy.content_encryption_algorithms,
+            algorithms.content_encryption,
+        );
+        union_into(
+            &mut policy.key_agreement_curves,
+            algorithms.key_agreement_curves,
+        );
+        self
     }
 }
 
@@ -642,9 +843,6 @@ mod tests {
             json!({"alg": "ECDH-ES", "enc": "A256GCM", "kid": "k1"})
         ));
         assert!(!jwe(json!({"alg": "ECDH-ES", "enc": "A256GCM"})));
-        // Required only if both sides of a composition require it.
-        assert!(policy.clone().with(&policy).require_kid);
-        assert!(!policy.with(&Profile::strict().policy).require_kid);
     }
 
     #[test]
@@ -704,39 +902,284 @@ mod tests {
         }
     }
 
+    /// An internal invariant of composition (ADR 0001, profiles): `with` appends each
+    /// value once, in order, and leaves the name, the version and everything but the
+    /// lists as they were.
     #[test]
-    fn claims_policy_union() {
-        let a = Profile::strict().claims;
-        let b = ClaimsPolicy {
-            issuer: Some("https://idp".into()),
-            audience: None,
-            leeway: 5,
-            require_exp: false,
-            max_age: Some(300),
-            required: alloc::vec!["sub".into()],
+    fn with_appends_each_value_once_and_changes_nothing_else() {
+        let base = Profile::strict();
+        let extended = base.clone().with(&ECDSA_NIST).with(&HMAC).with(&AES_GCM);
+        assert_eq!(
+            extended.policy.signature_algorithms,
+            [
+                SignatureAlgorithm::ES256,
+                SignatureAlgorithm::EDDSA,
+                SignatureAlgorithm::HS256,
+                SignatureAlgorithm::HS384,
+                SignatureAlgorithm::HS512,
+            ]
+        );
+        assert_eq!(
+            extended.policy.signing_curves,
+            [Curve::P256, Curve::ED25519]
+        );
+        assert_eq!(
+            extended.policy.content_encryption_algorithms,
+            [
+                ContentEncryptionAlgorithm::A128GCM,
+                ContentEncryptionAlgorithm::A256GCM,
+                ContentEncryptionAlgorithm::A192GCM,
+            ]
+        );
+        let lists_put_back = Profile {
+            policy: Policy {
+                signature_algorithms: base.policy.signature_algorithms.clone(),
+                content_encryption_algorithms: base.policy.content_encryption_algorithms.clone(),
+                ..extended.policy.clone()
+            },
+            ..extended
         };
-        let union = a.clone().with(&b);
-        assert_eq!(union.issuer, None);
-        assert_eq!(union.leeway, 60);
-        assert!(!union.require_exp);
-        assert_eq!(union.max_age, None);
-        assert!(union.required.is_empty(), "{:?}", union.required);
-        assert_eq!(b.clone().with(&b), b);
+        assert_eq!(lists_put_back, base);
+
+        let twice = Profile::new("twice", 7).with(&Algorithms {
+            signatures: &[SignatureAlgorithm::ES256, SignatureAlgorithm::ES256],
+            signing_curves: &[Curve::P256],
+            key_encryption: &[KeyEncryptionAlgorithm::DIR, KeyEncryptionAlgorithm::DIR],
+            content_encryption: &[ContentEncryptionAlgorithm::A256GCM],
+            key_agreement_curves: &[Curve::P256, Curve::P256],
+        });
+        assert_eq!(twice.name, "twice");
+        assert_eq!(twice.version, 7);
+        assert_eq!(
+            twice.policy.signature_algorithms,
+            [SignatureAlgorithm::ES256]
+        );
+        assert_eq!(twice.policy.signing_curves, [Curve::P256]);
+        assert_eq!(
+            twice.policy.key_encryption_algorithms,
+            [KeyEncryptionAlgorithm::DIR]
+        );
+        assert_eq!(
+            twice.policy.content_encryption_algorithms,
+            [ContentEncryptionAlgorithm::A256GCM]
+        );
+        assert_eq!(twice.policy.key_agreement_curves, [Curve::P256]);
+    }
+
+    /// The same invariant at its edge: the empty bundle changes no profile.
+    #[test]
+    fn algorithms_none_changes_nothing() {
+        let registry = Registry::standard();
+        for profile in [
+            Profile::new("empty", 1),
+            Profile::strict(),
+            Profile::rfc7518_interop(&registry),
+        ] {
+            assert_eq!(profile.clone().with(&Algorithms::NONE), profile);
+        }
     }
 
     #[test]
-    fn composition_only_widens() {
-        let registry = Registry::standard();
+    fn strict_is_its_constants_on_the_strict_defaults() {
         let strict = Profile::strict();
-        let composed = strict.clone().with(&Profile::rfc7518_interop(&registry));
-        assert!(composed.name.contains("strict"));
-        for alg in &strict.policy.signature_algorithms {
-            assert!(composed.policy.signature_algorithms.contains(alg));
-        }
-        assert!(composed.policy.max_token_len >= strict.policy.max_token_len);
+        assert_eq!((strict.name.as_str(), strict.version), ("strict", 2));
         assert_eq!(
-            Profile::by_name("oauth-dpop", &registry).map_err(|e| e.code()),
+            strict.policy.signature_algorithms,
+            [SignatureAlgorithm::ES256, SignatureAlgorithm::EDDSA]
+        );
+        assert_eq!(strict.policy.signing_curves, [Curve::P256, Curve::ED25519]);
+        assert_eq!(
+            strict.policy.key_encryption_algorithms,
+            [
+                KeyEncryptionAlgorithm::ECDH_ES,
+                KeyEncryptionAlgorithm::ECDH_ES_A128KW,
+                KeyEncryptionAlgorithm::ECDH_ES_A256KW,
+            ]
+        );
+        assert_eq!(
+            strict.policy.content_encryption_algorithms,
+            [
+                ContentEncryptionAlgorithm::A128GCM,
+                ContentEncryptionAlgorithm::A256GCM
+            ]
+        );
+        assert_eq!(strict.policy.key_agreement_curves, [Curve::P256]);
+        let defaults = Profile::new("strict", 2);
+        assert_eq!(strict.claims, defaults.claims);
+        assert_eq!(
+            Policy {
+                signature_algorithms: Vec::new(),
+                signing_curves: Vec::new(),
+                key_encryption_algorithms: Vec::new(),
+                content_encryption_algorithms: Vec::new(),
+                key_agreement_curves: Vec::new(),
+                ..strict.policy
+            },
+            defaults.policy
+        );
+        assert_eq!(defaults.policy.max_token_len, DEFAULT_MAX_TOKEN_LEN);
+        assert_eq!(defaults.policy.key_references, KeyReferences::default());
+        assert!(defaults.claims.require_exp);
+        assert_eq!(defaults.claims.leeway, 60);
+    }
+
+    #[test]
+    fn rfc7518_interop_lists_what_the_registry_has_available() {
+        let interop = Profile::rfc7518_interop(&Registry::standard());
+        let policy = &interop.policy;
+        assert!(
+            policy
+                .signature_algorithms
+                .contains(&SignatureAlgorithm::ES256)
+        );
+        assert!(
+            policy
+                .signature_algorithms
+                .contains(&SignatureAlgorithm::EDDSA)
+        );
+        assert!(
+            !policy
+                .signature_algorithms
+                .contains(&SignatureAlgorithm::ES384)
+        );
+        assert_eq!(
+            policy
+                .signature_algorithms
+                .contains(&SignatureAlgorithm::HS256),
+            cfg!(feature = "hmac")
+        );
+        assert_eq!(policy.signing_curves, [Curve::P256, Curve::ED25519]);
+        assert_eq!(policy.key_agreement_curves, [Curve::P256]);
+        assert!(
+            policy
+                .key_encryption_algorithms
+                .contains(&KeyEncryptionAlgorithm::A192KW)
+        );
+        assert!(
+            !policy
+                .key_encryption_algorithms
+                .contains(&KeyEncryptionAlgorithm::RSA_OAEP)
+        );
+        assert_eq!(policy.content_encryption_algorithms.len(), 3);
+        assert_eq!(policy.max_token_len, 1024 * 1024);
+        assert_eq!(policy.key_references, KeyReferences::ALL);
+        assert!(!interop.claims.require_exp);
+        assert_eq!(
+            Profile::by_name("rfc7518-interop", &Registry::standard()),
+            Ok(interop)
+        );
+        assert_eq!(
+            Profile::by_name("strict", &Registry::standard()),
+            Ok(Profile::strict())
+        );
+        assert_eq!(
+            Profile::by_name("oauth-dpop", &Registry::standard()).map_err(|e| e.code()),
             Err(ErrorCode::UnsupportedAlgorithm)
         );
+    }
+
+    /// RFC 8725 §3.1: the profile decides the algorithms, for signing as for
+    /// verification; RFC 7518 §3.4: a key that states no curve is on its algorithm's
+    /// registered one; RFC 8037 §3.1: EdDSA's curve is the key's, so one that states none
+    /// is refused.
+    #[test]
+    fn rfc_8725_3_1_a_signing_key_is_bound_to_the_profiles_algorithms_and_curves() {
+        let registry = Registry::standard();
+        let strict = Profile::strict().policy;
+        let check = |alg, curve| {
+            strict
+                .check_signing_key(alg, curve, &registry)
+                .map_err(|e| e.code())
+        };
+        assert_eq!(check(SignatureAlgorithm::ES256, None), Ok(()));
+        assert_eq!(check(SignatureAlgorithm::ES256, Some(Curve::P256)), Ok(()));
+        assert_eq!(
+            check(SignatureAlgorithm::ES256, Some(Curve::new("BP-256"))),
+            Err(ErrorCode::PolicyViolation)
+        );
+        assert_eq!(
+            check(SignatureAlgorithm::EDDSA, Some(Curve::ED25519)),
+            Ok(())
+        );
+        assert_eq!(
+            check(SignatureAlgorithm::EDDSA, Some(Curve::ED448)),
+            Err(ErrorCode::PolicyViolation)
+        );
+        assert_eq!(
+            check(SignatureAlgorithm::EDDSA, None),
+            Err(ErrorCode::PolicyViolation)
+        );
+        assert_eq!(
+            check(SignatureAlgorithm::ES384, Some(Curve::P384)),
+            Err(ErrorCode::UnsupportedAlgorithm)
+        );
+        assert_eq!(
+            check(SignatureAlgorithm::PS256, None),
+            Err(ErrorCode::UnsupportedAlgorithm)
+        );
+
+        // No signing curve listed: the algorithm alone admits no key.
+        let no_curves = Profile::new("no curves", 1)
+            .with(&Algorithms {
+                signatures: &[SignatureAlgorithm::ES256],
+                ..Algorithms::NONE
+            })
+            .policy;
+        assert_eq!(
+            no_curves
+                .check_signing_key(SignatureAlgorithm::ES256, None, &registry)
+                .map_err(|e| e.code()),
+            Err(ErrorCode::PolicyViolation)
+        );
+
+        // HMAC keys have no curve: the algorithm alone binds them.
+        let hmac = Profile::new("hmac", 1).with(&HMAC).policy;
+        let expected = if cfg!(feature = "hmac") {
+            Ok(())
+        } else {
+            Err(ErrorCode::UnsupportedAlgorithm)
+        };
+        for curve in [None, Some(Curve::P256)] {
+            assert_eq!(
+                hmac.check_signing_key(SignatureAlgorithm::HS256, curve, &registry)
+                    .map_err(|e| e.code()),
+                expected
+            );
+        }
+        if cfg!(feature = "hmac") {
+            assert_eq!(
+                check(SignatureAlgorithm::HS256, None),
+                Err(ErrorCode::PolicyViolation)
+            );
+        }
+    }
+
+    /// RFC 8725 §3.1 for JWE: what is produced is held to the lists a received header
+    /// is held to, the recipient's curve to the key-agreement curves.
+    #[test]
+    fn rfc_8725_3_1_encryption_is_bound_to_the_profiles_lists() {
+        let strict = Profile::strict().policy;
+        let check = |alg, enc, curve| {
+            strict
+                .check_encryption(alg, enc, curve)
+                .map_err(|e| e.code())
+        };
+        let (es, a256) = (
+            KeyEncryptionAlgorithm::ECDH_ES,
+            ContentEncryptionAlgorithm::A256GCM,
+        );
+        assert_eq!(check(es, a256, Some(Curve::P256)), Ok(()));
+        assert_eq!(check(es, a256, None), Ok(()));
+        for (alg, enc, curve) in [
+            (KeyEncryptionAlgorithm::DIR, a256, None),
+            (es, ContentEncryptionAlgorithm::A192GCM, Some(Curve::P256)),
+            (es, a256, Some(Curve::new("BP-256"))),
+        ] {
+            assert_eq!(
+                check(alg, enc, curve),
+                Err(ErrorCode::PolicyViolation),
+                "{alg:?} {enc:?} {curve:?}"
+            );
+        }
     }
 }

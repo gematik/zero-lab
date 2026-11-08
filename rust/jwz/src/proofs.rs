@@ -23,7 +23,7 @@
 
 //! Kani proofs (`just verify-formal-jwz`) of the parsing-safety invariants whose
 //! correctness does not depend on serde: the base64url round trip, the compact splitter, the
-//! widening-only composition of policies, and the layout of the Concat KDF. Inputs are
+//! append-only composition of profiles, and the layout of the Concat KDF. Inputs are
 //! bounded; `docs/VERIFIED.md` lists every proof with its bounds.
 
 use alloc::vec;
@@ -35,7 +35,7 @@ use crate::compact;
 use crate::crypto::Hash;
 use crate::error::ErrorCode;
 use crate::jwa::HashAlgorithm;
-use crate::profile::{ClaimsPolicy, KeyReferences, same_media_type, union_into};
+use crate::profile::{same_media_type, union_into};
 
 /// RFC 7515 §2: what is encoded decodes to itself, for every input of `N` bytes.
 fn round_trip<const N: usize>() {
@@ -94,8 +94,9 @@ fn compact_split_is_exact() {
     }
 }
 
-/// Composition only widens: the union of a list and any 2 values (equal to it, to each
-/// other, or not) keeps every element of both, adds nothing else and no duplicates.
+/// Composition only appends (`Profile::with`): a list extended by any 2 values (equal to
+/// it, to each other, or not) keeps every element of both, adds nothing else and no
+/// duplicates.
 #[kani::proof]
 #[kani::unwind(4)]
 fn policy_union_keeps_both_and_adds_nothing() {
@@ -111,54 +112,6 @@ fn policy_union_keeps_both_and_adds_nothing() {
         assert!(*x == a || b.contains(x));
         assert!(!union[..i].contains(x));
     }
-}
-
-/// A key reference either side allows stays allowed in the union, and only those.
-#[kani::proof]
-fn key_reference_union_is_the_or() {
-    let a = KeyReferences {
-        jwk: kani::any(),
-        jku: kani::any(),
-        x5u: kani::any(),
-        x5c: kani::any(),
-    };
-    let b = KeyReferences {
-        jwk: kani::any(),
-        jku: kani::any(),
-        x5u: kani::any(),
-        x5c: kani::any(),
-    };
-    let u = a.union(b);
-    assert_eq!(u.jwk, a.jwk || b.jwk);
-    assert_eq!(u.jku, a.jku || b.jku);
-    assert_eq!(u.x5u, a.x5u || b.x5u);
-    assert_eq!(u.x5c, a.x5c || b.x5c);
-}
-
-/// Claims policies widen too: no larger skew or age is lost, `exp` is required only if
-/// both require it, an issuer or audience survives only if both demand the same.
-#[kani::proof]
-// `required` is empty: the bound only covers its (empty) retain loop.
-#[kani::unwind(2)]
-fn claims_policy_union_only_widens() {
-    let policy = |issuer: bool, audience: bool| ClaimsPolicy {
-        issuer: issuer.then(|| "i".into()),
-        audience: audience.then(|| "a".into()),
-        leeway: kani::any(),
-        require_exp: kani::any(),
-        max_age: if kani::any() { Some(kani::any()) } else { None },
-        required: Vec::new(),
-    };
-    let a = policy(kani::any(), kani::any());
-    let b = policy(kani::any(), kani::any());
-    let u = a.clone().with(&b);
-    assert!(u.leeway >= a.leeway && u.leeway >= b.leeway);
-    assert_eq!(u.require_exp, a.require_exp && b.require_exp);
-    if let Some(age) = u.max_age {
-        assert!(a.max_age.is_some_and(|x| age >= x) && b.max_age.is_some_and(|x| age >= x));
-    }
-    assert!(u.issuer.is_none() || (u.issuer == a.issuer && u.issuer == b.issuer));
-    assert!(u.audience.is_none() || (u.audience == a.audience && u.audience == b.audience));
 }
 
 /// RFC 7515 §4.1.9: `typ` comparison is symmetric and case-insensitive, for every pair
