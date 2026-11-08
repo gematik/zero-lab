@@ -1,10 +1,10 @@
 ---
 id: TASK-244
 title: 'Rust: time as a function, ti-types only plain types'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07T15:52:00Z'
-updated_date: '2026-11-07T19:14:00Z'
+updated_date: '2026-11-08T08:54:00Z'
 labels:
   - ti-types
   - architecture
@@ -36,3 +36,9 @@ Decision-15: time enters every TI crate as a generic `impl Fn() -> Timestamp` (a
 <!-- SECTION:NOTES:BEGIN -->
 Time is a function: ti-cache Cache<S, N: Fn() -> Timestamp> (Cache::clock became Cache::now), ti-pki HttpLoader, CachingLoader, Reloader, TrustStoreHandle and OcspChecker take N the same way; ti-connector-client and ti-jwks follow through Cache. ti_types::Clock/SystemClock removed; Timestamp::now (std, not on wasm32-unknown-unknown) is what hosts pass. ti-pki keeps FixedClock (test-util) as a settable time with an inherent now(), passed as || clock.now(). ti-tls verifiers unchanged: they take the now rustls passes. jwz untouched; ti-idpd/ti-cli keep passing jwz FixedClock/SystemClock values (now: u64 parameters, never a ti Clock). The clap feature of ti-types had no user (ti-cli parses --env with its own Environment ValueEnum and FromStr for probe targets), so it is removed with nothing to move. ti-cli's crate::now() duplicate replaced by Timestamp::now(). just core-deps fails if ti-types gains a normal dependency other than serde, or serde stops being optional.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Time enters every TI crate as impl Fn() -> Timestamp; ti_types::Clock and SystemClock are gone, Timestamp::now is the host's function (not on wasm32-unknown-unknown). ti-types holds Env, Tier and Timestamp with optional serde only; its clap integration lives in ti-cli; core-deps fails if ti-types gains another dependency. rustls verifiers keep the now rustls passes.
+<!-- SECTION:FINAL_SUMMARY:END -->

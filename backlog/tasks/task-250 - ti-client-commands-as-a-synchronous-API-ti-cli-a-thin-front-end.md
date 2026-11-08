@@ -1,10 +1,10 @@
 ---
 id: TASK-250
 title: 'ti-client: commands as a synchronous API, ti-cli a thin front end'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
-updated_date: '2026-11-07T23:39:00Z'
+updated_date: '2026-11-08T08:54:00Z'
 labels:
   - ti-client
   - ti-cli
@@ -46,3 +46,9 @@ Group idp (2026-11-07): the operations of idpd authenticate and directory login 
 
 Group rest (2026-11-08): R1: ti-client makes every transport from the Client's settings and tells a Watcher on the Client (ti_client::watch: Sending/Done with method, URL, SOAP operation, status, bodies, time; Konnektor bodies with the UserId masked by ti_connector_client::Request::redacted_body, never a credential) about each request to the Konnektor, the IDP-Dienst and the FHIR-Directory; Client::idp/connector return Watched transports, connector::setup::test takes the Client; ti-cli's Logged decorators are gone and its watcher writes the same -v/-vv lines. The operations stay generic over the transport for test doubles. R2: Identity::from_card reads the card's C.AUT through the connector operations. R4: ti_client::probe (endpoints, Agents per TLS profile, run with progress through a closure, available, Report); the judgements and the endpoint catalog stay in ti-client as the host's connectivity (no trust taken from what is read; the catalog spans every product). ti-cli no longer depends on ureq, ti-tls, rustls (dev only) or sha2 (dev only). profile list/delete (ti_client::profile) and pki profiles (ti_client::pki::profiles over ti_pki::model::{ValidationProfile, TypeRequirements, TslCas}); sweep: Loaded::sha256, store::remove_copy. Outputs compared before and after every commit: 361 offline files and 1085 fake-driven files (connector, idp, probe; -v/-vv, error orders) identical, apart from a TLS fake's random reset message. What remains in ti-cli is front-end work: argument parsing (cli, net, peer), configuration (which profile, bases and .kon are in effect: profile.rs, paths.rs, connector.rs), reading inputs (input.rs), prompting (prompt.rs, the connector config wizards and editor loop, R3), printing (output/, each command's report wrapper and views, output files, the probe's live table, the -v lines of http.rs), the mapping of ti_client::Error to kinds and exit codes (error.rs), and the CLI's self-description (version, agent, schema).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Every ti command's operation is a synchronous function of ti-client returning a product model or a typed result; ti-cli parses arguments, reads configuration, prompts and prints. ti-client builds the transports and reports requests to a hook on the Client; probe's network checks are in ti_client::probe with progress through a closure. Product views in the model modules of ti-pki, ti-connector-client, ti-idpd-client and ti-directory-client. ti-cli no longer depends on ureq or ti-tls. Output, exit codes and schemas unchanged (361 offline and 1085 fake-driven outputs compared). Findings: TASK-262 to 268.
+<!-- SECTION:FINAL_SUMMARY:END -->

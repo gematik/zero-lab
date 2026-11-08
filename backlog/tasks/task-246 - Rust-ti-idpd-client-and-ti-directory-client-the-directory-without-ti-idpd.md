@@ -1,10 +1,10 @@
 ---
 id: TASK-246
 title: 'Rust: ti-idpd-client and ti-directory-client, the directory without ti-idpd'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
-updated_date: '2026-11-07T19:36:00Z'
+updated_date: '2026-11-08T08:54:00Z'
 labels:
   - ti-idpd
   - ti-directory
@@ -41,3 +41,9 @@ ti-directory-client: own http module (async Transport, no Send), depends on ti-t
 
 Time and CertificateTrust (decisions 8-10): ti-idpd-client's authenticate, discovery::parse, challenge::parse take now: impl Fn() -> Timestamp; jwz gets it through a private clock::Now adapter implementing jwz::jwt::Clock (comment says it goes once jwz takes a function). ti-directory-client reads no time any more (its only use was passing now to ti-idpd). ti-cli passes Timestamp::now; jwz SystemClock reads in idpd.rs and directory.rs are gone. trust::CertificateTrust::check is async (no Send, reason noted, &T impl kept); discovery::parse became async because it asks the check; authenticate takes &C: CertificateTrust (async traits are not dyn-compatible). ti-cli's IdpTrust awaits the validator instead of block_on, loaded material in a OnceCell so no RefCell borrow is held across an await. New tests: an_asynchronous_trust_check_is_awaited, each_token_is_judged_at_the_time_it_arrives.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-idpd and ti-directory renamed to ti-idpd-client and ti-directory-client. The directory has its own transport and takes its tokens through tokens::Tokens, implemented by ti-client (OwnerTokens), with one retry after a refused token; time as a function; CertificateTrust async. Naming doc updated.
+<!-- SECTION:FINAL_SUMMARY:END -->
