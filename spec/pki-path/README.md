@@ -48,10 +48,21 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
 ## OCSP
 
 - **OCSP-001** A response counts only if a single response carries the certificate's CertID, an authorized
-  responder signed it (the issuing CA, a delegate it certified with id-kp-OCSPSigning, or a delegate of a CA of the
-  same provider, by a store), its certHash hashes this very certificate, and it lies within the TUC_PKI_006 window;
+  responder signed it, its certHash hashes this very certificate, and it lies within the TUC_PKI_006 window;
   outside that the status is `unknown`. The errors are `ocsp_unavailable`, `ocsp_response_invalid` and
-  `ocsp_responder_untrusted`.
+  `ocsp_responder_untrusted`. Authorized are, in this order:
+  1. the issuing CA, or a delegate it certified directly with id-kp-OCSPSigning that is valid now within the clock
+     tolerance (RFC 6960 §4.2.2.2): `issuer` or `delegate`;
+  2. otherwise, given a store, a responder whose certificate, byte for byte, the verified list names as an OCSP
+     service, under any provider, with id-kp-OCSPSigning and valid now as a delegate must be: `tsl_listed`, which the
+     verdict reports as the warning `ocsp_responder_not_rfc6960`. gemSpec_PKI looks a responder certificate up among
+     the list's OCSP services and nowhere else (TUC_PKI_006 step 5); the list binds a service to no CA, and RFC 6960
+     option 2 is a duty of the providers for new responder certificates (A_23142-01), not a check of the relying
+     party. That a listed responder must be valid now, although the list's status in accord also covers the OCSP
+     signers of expired HBA and SMC-B CAs (remark to Tab_PKI_271), is the maintainer's decision (TASK-270): a listing
+     never revives a responder certificate past its validity;
+  3. any other responder is `ocsp_responder_untrusted`. Without a store (the TSL signer's own status, TUC_PKI_001)
+     only the first route exists.
 - **OCSP-002** Bytes outside what a signature covers are read strictly: a response's signature algorithm is a SEQUENCE
   and its signature has no unused bits, or it could not be decoded (`ocsp_unavailable`). Implementations MUST accept and
   refuse the same responses. Where their DER parsers differ on a malformed embedded certificate, the code of the refusal
@@ -66,8 +77,8 @@ the caller's transport. Without a route to the responder there is no verificatio
 ## Verdict
 
 - **VALID-001** A certificate is judged in one order: chain, path and the end entity's requirements, the type its
-  profile accepts, key admissibility, the CAs the list names, the types it lets a CA issue, a CA it revoked, revocation,
-  and last the admission roles, only for a certificate valid otherwise (A_30046 (4)). Valid means no error, and a warning
+  profile accepts, key admissibility, the CAs the list names, the types it lets a CA issue, a CA it revoked, the end
+  entity's revocation (VALID-008), and last the admission roles, only for a certificate valid otherwise (A_30046 (4)). Valid means no error, and a warning
   never decides.
 - **VALID-002** Only the end entity's key is held to gemSpec_Krypt: P-256 and brainpoolP256r1 are admissible, RSA from
   3000 bits, RSA from 2048 bits a warning after 2025, and others are not.
@@ -81,6 +92,11 @@ the caller's transport. Without a route to the responder there is no verificatio
 - **VALID-006** With a verified list, every CA of a chain must be one it names in accord, or revoked with a time, under a
   root, or it is `ca_not_in_tsl`. A CA supplied with a certificate gets no standing from a root's signature alone. The
   list names its own signer's CA as well, so a TSL signer is no exception.
+- **VALID-008** A CA's standing is its status in the verified list: in accord, or revoked with a time (VALID-003,
+  VALID-006), which for HBA and SMC-B CAs also covers those expired under the Kompromissmodell (PATH-002). No responder
+  is asked about a CA; revocation is asked for the end entity alone (TUC_PKI_018 step 5 is the CA's check, step 7
+  queries OCSP for the certificate being checked). A responder that would refuse or not answer for a CA changes
+  nothing.
 - **VALID-007** With a verified list, a certificate's type must be among those the list states for its issuing CA, or it
   is `cert_type_ca_not_authorized` (TUC_PKI_007 step 9a). That is what makes a CA one for components, SMC-B, eGK or HBA:
   a certificate of a type its CA is not for fails, whatever its policies claim. A CA with no types stated may issue none.
@@ -141,10 +157,13 @@ time, as hashes of its services and CAs, and which CAs it keeps, and `go/tipki` 
 [`spec/tsl-detached`](../tsl-detached/CONFORMANCE.md) has its own corpus.
 
 [`testdata/validate.json`](testdata/validate.json) holds the verdicts of every fixture under every profile at three times,
-under scripted revocation outcomes in both modes, with CAs revoked in the list, and a real SMC-B under the real list.
+under scripted revocation outcomes in both modes, among them a responder only the list authorizes and one that refuses
+every CA, with CAs revoked in the list, a CA expired under the Kompromissmodell, and a real SMC-B under the real list.
+Every verdict records whom the responder was asked about.
 
 [`testdata/ocsp.json`](testdata/ocsp.json) holds every response fixture against four certificates, at eight times, online
-and stapled, with three stores; a good response with each byte flipped; requests; and two real responses.
+and stapled, with three stores: none, the list's CAs, and the same with three responders listed (one another CA
+certified, one without id-kp-OCSPSigning, one expired); a good response with each byte flipped; requests; and two real responses.
 
 [`testdata/roots.json`](testdata/roots.json) holds crafted documents, gematik's real roots.json files from their
 anchors, and every cross certificate against every root by the step that fails.
@@ -159,9 +178,10 @@ anchors, and every cross certificate against every root by the step that fails.
 | ROOTS-002 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS002TheRealFilesReachTheRootsOfTiPki`, `TestROOTS002RSAIsForTheWalkAlone` |
 | ROOTS-003 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS003TheStepThatFailsIsThatOfTiPki` |
 | ROOTS-004 | | `TestROOTS004ABundleForAnotherAnchorIsRefused` |
-| OCSP-001 to 003 | `ocsp_001_the_corpus_is_what_ti_pki_says`, `ocsp_002_what_no_signature_covers_is_read_strictly` | `TestOCSP001EveryResponseIsJudgedAsInTiPki`, `TestOCSP002AFlippedByteIsJudgedAsInTiPki`, `TestOCSP003ARequestIsThatOfTiPki`, `TestOCSP004RealResponsesAreJudgedAsInTiPki`, `FuzzVerifyResponse` |
+| OCSP-001 to 003 | `ocsp_001_the_corpus_is_what_ti_pki_says`, `ocsp_001_a_responder_the_tsl_lists_is_authorized_by_the_listing`, `ocsp_001_a_listed_responder_needs_ocsp_signing_and_validity`, `ocsp_002_what_no_signature_covers_is_read_strictly` | `TestOCSP001EveryResponseIsJudgedAsInTiPki`, `TestOCSP002AFlippedByteIsJudgedAsInTiPki`, `TestOCSP003ARequestIsThatOfTiPki`, `TestOCSP004RealResponsesAreJudgedAsInTiPki`, `FuzzVerifyResponse` |
 | OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds` |
 | VALID-001 to 003 | `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID001EveryVerdictIsThatOfTiPki` |
+| VALID-008 | `valid_001_the_corpus_is_what_ti_pki_says`, `valid_008_ocsp_for_the_end_entity_alone` | `TestVALID001EveryVerdictIsThatOfTiPki`, `TestVALID008ACAExpiredUnderTheKompromissmodellIsNotAsked` |
 | VALID-007 | `valid_007_the_tsl_states_the_types_a_ca_may_issue`, `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID007TheTypesTheListStates`, `TestVALID007TheRealListDecidesWhatACAMayIssue` |
 | IDPV-001 to 008 | | `go/idpd/trust_test.go`, `go/idpd/fetch_test.go`, `go/tipki/fetch/trust_test.go`, `TestIDPV<n>…` |
 | VALID-004 | `valid_004_no_responder_is_asked_for_a_certificate_that_failed` | `TestVALID004NoResponderIsAskedForACertificateThatFailed` |
