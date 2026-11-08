@@ -1,6 +1,6 @@
 [package]
 name = "jwz"
-version = "0.2.0"
+version = "0.2.1"
 description = "JOSE (JWS, JWE, JWK, JWT) with an open algorithm registry, pluggable keys and crypto backends, and validation profiles"
 keywords = ["jose", "jws", "jwe", "jwk", "jwt"]
 categories = ["cryptography", "authentication", "no-std", "wasm"]
