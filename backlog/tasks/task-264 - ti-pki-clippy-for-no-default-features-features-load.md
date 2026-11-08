@@ -1,10 +1,10 @@
 ---
 id: TASK-264
 title: 'ti-pki: clippy for --no-default-features --features load'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08T06:34:00Z'
-updated_date: '2026-11-08T09:27:00Z'
+updated_date: '2026-11-08T10:54:00Z'
 labels:
   - rust
 dependencies: []
@@ -28,3 +28,9 @@ cargo clippy -p ti-pki --all-targets --no-default-features --features load fails
 <!-- SECTION:NOTES:BEGIN -->
 Test helpers carry their users' gates (Detached, the ref set, checker::store_key used by path). just clippy and check-changed (when ti-pki changed) lint --no-default-features --features load.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-pki's test helpers carry their users' feature gates; just clippy and check-changed lint ti-pki with only the load feature.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -3,10 +3,10 @@ id: TASK-270
 title: >-
   ti-pki: CA standing from the TSL and OCSP responders per TUC_PKI_006, as the
   spec says
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08T09:52:00Z'
-updated_date: '2026-11-08T10:35:00Z'
+updated_date: '2026-11-08T10:54:00Z'
 labels:
   - rust
   - ti-pki
@@ -50,3 +50,9 @@ Maintainer's additions:
 - issued_before_ca_expiry is renamed ca_expired (Rust ErrorCode::CaExpired, Go CodeCAExpired, spec/pki-path, corpora regenerated, ti-cli schema; schema change noted in the release notes for ti-pki and ti-cli). The message says why the CA is still accepted: expired (notAfter=…); "<below>", which it issued, is accepted under the Kompromissmodell for HBA and SMC-B, as the CA was valid when it issued it.
 - ti-cli trust tree: ✗ for a certificate an error concerns, a yellow ! for one only warnings concern, ✓ otherwise. The Kompromissmodell CA row reads 'CA · expired <date>, accepted under the Kompromissmodell' and is not dimmed. The ! applies to any certificate with only warnings, so an end entity carrying ocsp_responder_not_rfc6960 shows ! too. Pinned by ca_expired_is_rendered_as_a_warning_not_a_failure.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Following gemSpec_PKI: OCSP for the end entity only (TUC_PKI_018 step 7), a CA's standing from the verified TSL (step 5, VALID-008); responders: the issuing CA or its RFC 6960 delegate silently, a responder the TSL lists (TUC_PKI_006 step 5) with the warning ocsp_responder_not_rfc6960, valid now and with id-kp-OCSPSigning, anything else untrusted. Rust and Go alike through spec/pki-path and its corpora. issued_before_ca_expiry renamed ca_expired; only a CA gets the yellow ! in the trust tree. The maintainer's ref SMC-B under GEM.SMCB-CA9 TEST-ONLY verifies.
+<!-- SECTION:FINAL_SUMMARY:END -->
