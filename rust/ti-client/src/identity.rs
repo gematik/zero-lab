@@ -358,11 +358,11 @@ impl Identity {
             &profile.policy,
             &registry,
         ))
-        .map_err(|error| self.signing_error(error))
+        .map_err(|error| self.signing_error(&error))
     }
 
     /// A Konnektor's refusal as such, anything else as a signing failure.
-    fn signing_error(&self, error: jwz::Error) -> Error {
+    fn signing_error(&self, error: &jwz::Error) -> Error {
         match &self.key {
             Key::Connector(key) => match key.take_error() {
                 Some(connector) => Error::Connector(connector),

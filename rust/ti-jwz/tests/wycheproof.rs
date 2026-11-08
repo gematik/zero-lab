@@ -101,16 +101,12 @@ fn wycheproof_ecdsa_bp256r1_sha256_p1363_as_bp256r1_and_as_es256() {
             let msg = hex(s(test, "msg"));
             let sig = Signature::from(hex(s(test, "sig")));
             let bp256r1 = SoftwareKey::from_jwk(&jwk, BP256R1, &registry, Arc::clone(&backend))
-                .map(|key| key.verify(&msg, &sig).is_ok());
-            let es256 = BrainpoolEs256Key::from_jwk(&jwk).map(|key| key.verify(&msg, &sig).is_ok());
+                .is_ok_and(|key| key.verify(&msg, &sig).is_ok());
+            let es256 =
+                BrainpoolEs256Key::from_jwk(&jwk).is_ok_and(|key| key.verify(&msg, &sig).is_ok());
             // Both keys run the same primitive: they must agree on every vector.
-            assert_eq!(
-                bp256r1.unwrap_or(false),
-                es256.unwrap_or(false),
-                "tcId {}",
-                test["tcId"]
-            );
-            Some(bp256r1.unwrap_or(false))
+            assert_eq!(bp256r1, es256, "tcId {}", test["tcId"]);
+            Some(bp256r1)
         },
     );
     assert!(checked > 200, "{checked}");

@@ -264,7 +264,7 @@ fn signature_error(e: &signature::Error) -> Error {
     use core::error::Error as _;
     e.source()
         .and_then(|source| source.downcast_ref::<Error>())
-        .copied()
+        .cloned()
         .unwrap_or(Error::new(
             crate::ErrorCode::VerificationFailed,
             "signature",

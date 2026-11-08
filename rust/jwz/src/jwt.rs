@@ -145,15 +145,15 @@ impl Claims {
     ///
     /// [`ErrorCode::InvalidClaim`] for any other form.
     pub fn aud(&self) -> Result<Vec<&str>, Error> {
-        let invalid = Error::new(ErrorCode::InvalidClaim, "aud");
+        const INVALID: Error = Error::new(ErrorCode::InvalidClaim, "aud");
         match self.members.get("aud") {
             None => Ok(Vec::new()),
             Some(Value::String(one)) => Ok(alloc::vec![one.as_str()]),
             Some(Value::Array(items)) => items
                 .iter()
-                .map(|item| item.as_str().ok_or(invalid))
+                .map(|item| item.as_str().ok_or(INVALID))
                 .collect(),
-            Some(_) => Err(invalid),
+            Some(_) => Err(INVALID),
         }
     }
 
@@ -194,14 +194,13 @@ impl Claims {
         let Some(value) = self.members.get(name) else {
             return Ok(None);
         };
-        let invalid = Error::new(ErrorCode::InvalidClaim, name);
         if let Some(seconds) = value.as_u64() {
             return Ok(Some(seconds));
         }
         let seconds = value
             .as_f64()
             .filter(|s| s.is_finite() && *s >= 0.0 && *s < 18_446_744_073_709_551_616.0)
-            .ok_or(invalid)?;
+            .ok_or(Error::new(ErrorCode::InvalidClaim, name))?;
         #[allow(
             clippy::cast_possible_truncation,
             clippy::cast_sign_loss,

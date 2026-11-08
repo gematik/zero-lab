@@ -650,10 +650,10 @@ fn optional_str(m: &Map<String, Value>, name: &'static str) -> Result<Option<Str
 /// consistent. Only the pairs the RFC defines are judged; another `use` or operation is
 /// left to [`Jwk::allows`], which allows it nothing.
 fn check_key_ops(key_use: Option<&str>, ops: &[String]) -> Result<(), Error> {
-    let invalid = Error::new(ErrorCode::InvalidMember, "key_ops");
+    const INVALID: Error = Error::new(ErrorCode::InvalidMember, "key_ops");
     for (i, op) in ops.iter().enumerate() {
         if ops.iter().skip(i + 1).any(|other| other == op) {
-            return Err(invalid);
+            return Err(INVALID);
         }
     }
     let defined = match key_use {
@@ -663,7 +663,7 @@ fn check_key_ops(key_use: Option<&str>, ops: &[String]) -> Result<(), Error> {
     };
     let other = if defined == SIG_OPS { ENC_OPS } else { SIG_OPS };
     if ops.iter().any(|op| other.contains(&op.as_str())) {
-        return Err(invalid);
+        return Err(INVALID);
     }
     Ok(())
 }
@@ -675,11 +675,11 @@ fn optional_str_array(
     let Some(value) = m.get(name) else {
         return Ok(None);
     };
-    let invalid = Error::new(ErrorCode::InvalidMember, name);
-    let items = value.as_array().ok_or(invalid)?;
+    let invalid = || Error::new(ErrorCode::InvalidMember, name);
+    let items = value.as_array().ok_or_else(invalid)?;
     items
         .iter()
-        .map(|item| item.as_str().map(ToString::to_string).ok_or(invalid))
+        .map(|item| item.as_str().map(ToString::to_string).ok_or_else(invalid))
         .collect::<Result<Vec<_>, _>>()
         .map(Some)
 }

@@ -1,9 +1,10 @@
 ---
 id: TASK-273
 title: 'jwz: errors carry the host''s cause; a public Header constructor'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-08T13:47:00Z'
+updated_date: '2026-11-08T14:01:00Z'
 labels:
   - jwz
   - api
@@ -22,7 +23,13 @@ Found by TASK-251 (RemoteJwks, the first fetching KeyResolver). jwz::Error holds
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 jwz::Error::with_source attaches a host cause (Send + Sync + 'static); source() returns it; Display, code() and context() are unchanged; equality compares code and context
-- [ ] #2 Header has a public constructor from JSON that refuses what Header::decode refuses (duplicate members, not an object)
-- [ ] #3 ti-client's RemoteJwks passes its cause through the error and drops last_error(); tests prove the cause reaches the caller of verify_with
+- [x] #1 jwz::Error::with_source attaches a host cause (Send + Sync + 'static); source() returns it; Display, code() and context() are unchanged; equality compares code and context
+- [x] #2 Header has a public constructor from JSON that refuses what Header::decode refuses (duplicate members, not an object)
+- [x] #3 ti-client's RemoteJwks passes its cause through the error and drops last_error(); tests prove the cause reaches the caller of verify_with
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Error holds an optional Arc<dyn Error + Send + Sync> cause (with_source); source() returns it, Display/code/context unchanged, PartialEq compares code and context. Error is no longer Copy: local errors reused within a function became function-local consts (Error::new is const fn), two with a runtime name became closures; signature_error clones. Header::parse builds a header from JSON (duplicates and non-objects refused). RemoteJwks passes FetchError as the source and drops last_error(); its test reads the cause from verify_with's error. ti-client's identity card signer still keeps the Konnektor's error beside the jwz error (take_error), which could use with_source too: not changed here.
+<!-- SECTION:NOTES:END -->

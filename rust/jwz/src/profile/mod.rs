@@ -345,19 +345,19 @@ impl Policy {
     /// extension (not a registered parameter), each present in the header, each
     /// understood by the recipient.
     fn check_critical(&self, header: &Header) -> Result<(), Error> {
+        const MALFORMED: Error = Error::new(ErrorCode::Critical, "crit");
         let Some(crit) = header.get("crit") else {
             return Ok(());
         };
-        let malformed = Error::new(ErrorCode::Critical, "crit");
-        let names = crit.as_array().ok_or(malformed)?;
+        let names = crit.as_array().ok_or(MALFORMED)?;
         if names.is_empty() {
-            return Err(malformed);
+            return Err(MALFORMED);
         }
         let mut seen: Vec<&str> = Vec::with_capacity(names.len());
         for name in names {
-            let name = name.as_str().ok_or(malformed)?;
+            let name = name.as_str().ok_or(MALFORMED)?;
             if seen.contains(&name) || REGISTERED.contains(&name) || header.get(name).is_none() {
-                return Err(malformed);
+                return Err(MALFORMED);
             }
             if !self.understood_critical.iter().any(|u| u == name) {
                 return Err(Error::new(

@@ -239,7 +239,10 @@ impl AsyncKeyResolver for Issuer {
             // gloo_net or web_sys::Request: the browser's fetch, its cache and CORS rules.
             let text = fetch_text(&self.jwks_uri)
                 .await
-                .map_err(|_| jwz::Error::new(jwz::ErrorCode::KeyUnavailable, "jwks_uri"))?;
+                // The fetch's own error travels as the source, for the page's log.
+                .map_err(|e| {
+                    jwz::Error::new(jwz::ErrorCode::KeyUnavailable, "jwks_uri").with_source(e)
+                })?;
             let set = JwkSet::parse(&text)?;
             Ok(set.signing_keys(header.kid(), alg).cloned().collect())
         })

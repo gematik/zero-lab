@@ -19,12 +19,12 @@ A test is listed when it is named after the reference or a subsection of it, or,
 | RFC 7515 §2 | `src/b64.rs:24`, `src/b64.rs:46`, `src/proofs.rs:40` | `rfc_7515_2_round_trip`, `rfc_7515_2_padding_alphabet_and_trailing_bits_are_refused` |
 | RFC 7515 §4.1 | `src/header.rs:39` | `rfc_7515_4_1_11_crit`, `rfc_7515_4_1_9_typ_comparison`, `rfc_7515_4_1_8_x5t_s256_binds_the_leaf`, `rfc_7515_4_1_1_alg_is_required_and_case_sensitive`, `rfc_7515_4_1_6_x5c_is_padded_standard_base64`, `rfc_7517_4_5_a_set_offers_the_keys_with_the_headers_kid_or_all` *(cited)* |
 | RFC 7515 §4.1.1 | `src/jwa/names.rs:40`, `src/jwa/names.rs:129`, `src/profile/mod.rs:184` | `rfc_7515_4_1_1_alg_is_required_and_case_sensitive` |
-| RFC 7515 §4.1.11 | `src/error.rs:68`, `src/header.rs:40`, `src/header.rs:248`, `src/jws/json.rs:28`, `src/profile/mod.rs:344` | `rfc_7515_4_1_11_crit` |
-| RFC 7515 §4.1.6 | `src/header.rs:117`, `src/x5c.rs:24` | `rfc_7515_4_1_6_x5c_is_padded_standard_base64` |
+| RFC 7515 §4.1.11 | `src/error.rs:69`, `src/header.rs:40`, `src/header.rs:260`, `src/jws/json.rs:28`, `src/profile/mod.rs:344` | `rfc_7515_4_1_11_crit` |
+| RFC 7515 §4.1.6 | `src/header.rs:129`, `src/x5c.rs:24` | `rfc_7515_4_1_6_x5c_is_padded_standard_base64` |
 | RFC 7515 §4.1.8 | `src/x5c.rs:25`, `src/x5c.rs:66` | `rfc_7515_4_1_8_x5t_s256_binds_the_leaf` |
 | RFC 7515 §4.1.9 | `src/profile/mod.rs:117`, `src/profile/mod.rs:399`, `src/proofs.rs:117` | `rfc_7515_4_1_9_typ_comparison` |
 | RFC 7515 §5.1 | `src/jws/mod.rs:280`, `src/jws/mod.rs:319` | `rfc_7515_5_1_the_signing_input_is_header_dot_payload` |
-| RFC 7515 §5.2 | `src/json.rs:27`, `src/json.rs:140`, `src/jws/mod.rs:113`, `src/jws/mod.rs:116`, `src/jws/mod.rs:118`, `src/jws/mod.rs:126`, `src/jws/mod.rs:153` | `rfc_7515_5_2_step_4_duplicate_members_are_refused_at_every_depth`, `rfc_7515_5_2_step_8_resolved_keys_are_candidates_the_signature_decides` |
+| RFC 7515 §5.2 | `src/json.rs:27`, `src/json.rs:140`, `src/jws/mod.rs:113`, `src/jws/mod.rs:116`, `src/jws/mod.rs:118`, `src/jws/mod.rs:126`, `src/jws/mod.rs:153` | `rfc_7515_5_2_step_4_duplicate_members_are_refused_at_every_depth`, `rfc_7515_5_2_step_8_resolved_keys_are_candidates_the_signature_decides`, `rfc_7515_4_a_host_builds_a_header_from_json_as_a_token_has_it` *(cited)* |
 | RFC 7515 §7.1 | `src/compact.rs:25`, `src/proofs.rs:67` | `rfc_7515_7_1_exactly_three_parts` |
 | RFC 7515 §7.2 | `src/jws/json.rs:24` | `rfc_7515_7_2_1_alg_protected_and_headers_disjoint`, `rfc_7515_7_2_1_general_json_with_two_signers` |
 | RFC 7515 §7.2.1 | `src/jws/json.rs:68`, `src/jws/json.rs:103` | `rfc_7515_7_2_1_alg_protected_and_headers_disjoint`, `rfc_7515_7_2_1_general_json_with_two_signers` |
@@ -58,7 +58,7 @@ A test is listed when it is named after the reference or a subsection of it, or,
 | RFC 7518 §4.5 | `src/jwe/mod.rs:319`, `src/profile/mod.rs:527` | `rfc_7520_5_6_dir_a128gcm` *(cited)* |
 | RFC 7518 §4.6 | `src/crypto/rustcrypto.rs:205`, `src/jwe/ecdh.rs:24`, `src/jwe/mod.rs:303`, `src/keys/software.rs:353`, `src/profile/mod.rs:497` | `rfc_7518_4_6_2_more_than_one_round_and_zero_length`, `rfc_7518_4_6_1_1_epk_negatives`, `rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings`, `rfc_7518_4_6_the_recipient_curve_binds_key_agreement_only` |
 | RFC 7518 §4.6.1 | `src/header.rs:39`, `src/jwe/mod.rs:466` | `rfc_7518_4_6_1_1_epk_negatives`, `rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings` |
-| RFC 7518 §4.6.1.1 | `src/header.rs:152`, `src/jwe/mod.rs:471` | `rfc_7518_4_6_1_1_epk_negatives` |
+| RFC 7518 §4.6.1.1 | `src/header.rs:164`, `src/jwe/mod.rs:471` | `rfc_7518_4_6_1_1_epk_negatives` |
 | RFC 7518 §4.6.1.2 | `src/jwe/mod.rs:492` | `rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings` |
 | RFC 7518 §4.6.2 | `src/crypto/mod.rs:39`, `src/jwe/ecdh.rs:38`, `src/jwe/ecdh.rs:60`, `src/jwe/ecdh.rs:138`, `src/jwe/mod.rs:333`, `src/jwe/mod.rs:341`, `src/profile/mod.rs:509` | `rfc_7518_4_6_2_more_than_one_round_and_zero_length` |
 | RFC 7518 §5.1 | `src/jwa/names.rs:223`, `src/jwa/registry.rs:401` | `rfc_7518_5_1_content_encryption_algorithms_with_their_lengths` |
@@ -74,11 +74,11 @@ A test is listed when it is named after the reference or a subsection of it, or,
 | RFC 7518 §6.4 | `src/jwk.rs:117` | `rfc_7518_6_4_a_symmetric_key_has_a_non_empty_k` |
 | RFC 7519 | `src/jwt.rs:24` | whole document: traced by its sections |
 | RFC 7519 §2 | `src/jwt.rs:191` | `rfc_7519_2_numeric_date_is_a_non_negative_number_of_seconds` |
-| RFC 7519 §4.1 | `src/jwt.rs:213`, `src/profile/mod.rs:423` | `rfc_7519_4_1_4_exp_with_leeway`, `rfc_7519_4_1_5_nbf_and_iat`, `rfc_7519_4_1_1_and_4_1_3_issuer_and_audience`, `rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings`, `rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function` |
-| RFC 7519 §4.1.1 | `src/jwt.rs:224`, `src/jwt.rs:258` | `rfc_7519_4_1_1_and_4_1_3_issuer_and_audience` |
-| RFC 7519 §4.1.3 | `src/jwt.rs:142`, `src/jwt.rs:264` | `rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings` |
-| RFC 7519 §4.1.4 | `src/jwt.rs:230` | `rfc_7519_4_1_4_exp_with_leeway`, `rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function` |
-| RFC 7519 §4.1.5 | `src/jwt.rs:240` | `rfc_7519_4_1_5_nbf_and_iat` |
+| RFC 7519 §4.1 | `src/jwt.rs:212`, `src/profile/mod.rs:423` | `rfc_7519_4_1_4_exp_with_leeway`, `rfc_7519_4_1_5_nbf_and_iat`, `rfc_7519_4_1_1_and_4_1_3_issuer_and_audience`, `rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings`, `rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function` |
+| RFC 7519 §4.1.1 | `src/jwt.rs:223`, `src/jwt.rs:257` | `rfc_7519_4_1_1_and_4_1_3_issuer_and_audience` |
+| RFC 7519 §4.1.3 | `src/jwt.rs:142`, `src/jwt.rs:263` | `rfc_7519_4_1_3_aud_is_a_string_or_an_array_of_strings` |
+| RFC 7519 §4.1.4 | `src/jwt.rs:229` | `rfc_7519_4_1_4_exp_with_leeway`, `rfc_7519_4_1_4_exp_is_judged_by_a_clock_that_is_a_function` |
+| RFC 7519 §4.1.5 | `src/jwt.rs:239` | `rfc_7519_4_1_5_nbf_and_iat` |
 | RFC 7519 §7.2 | `src/jwt.rs:106` | `rfc_7519_7_2_step_10_the_claims_set_is_a_json_object` |
 | RFC 7520 §5.6 | `src/jwe/mod.rs:449` | `rfc_7520_5_6_dir_a128gcm` |
 | RFC 7638 | `src/jwk.rs:24`, `src/jwk.rs:469` | whole document: traced by its sections |

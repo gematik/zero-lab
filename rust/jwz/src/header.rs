@@ -62,6 +62,18 @@ impl Header {
         })
     }
 
+    /// The header in the JSON object `json`, as a host builds one to ask a
+    /// [`KeyResolver`](crate::jwk::KeyResolver) without a token at hand.
+    ///
+    /// # Errors
+    ///
+    /// [`ErrorCode::DuplicateMember`] or [`ErrorCode::Json`], as [`decode`](Self::decode).
+    pub fn parse(json: &str) -> Result<Header, Error> {
+        Ok(Header {
+            members: json::parse_object(json.as_bytes(), "header")?,
+        })
+    }
+
     /// A header from members already parsed (the unprotected part of a JSON
     /// serialization).
     #[cfg(any(feature = "jws", feature = "jwe", test))]
@@ -122,17 +134,17 @@ impl Header {
     /// [`ErrorCode::InvalidMember`] if it is not an array of strings,
     /// [`ErrorCode::Base64`] for an entry that is not canonical base64.
     pub fn x5c(&self) -> Result<Option<Vec<Vec<u8>>>, Error> {
+        const INVALID: Error = Error::new(ErrorCode::InvalidMember, "x5c");
         let Some(value) = self.members.get("x5c") else {
             return Ok(None);
         };
-        let invalid = Error::new(ErrorCode::InvalidMember, "x5c");
-        let entries = value.as_array().ok_or(invalid)?;
+        let entries = value.as_array().ok_or(INVALID)?;
         if entries.is_empty() {
-            return Err(invalid);
+            return Err(INVALID);
         }
         let mut chain = Vec::with_capacity(entries.len());
         for entry in entries {
-            let text = entry.as_str().ok_or(invalid)?;
+            let text = entry.as_str().ok_or(INVALID)?;
             let der = Base64::decode_vec(text).map_err(|_| Error::new(ErrorCode::Base64, "x5c"))?;
             chain.push(der);
         }

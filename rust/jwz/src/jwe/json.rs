@@ -59,18 +59,18 @@ pub fn parse(
     policy: &Policy,
     registry: &Registry,
 ) -> Result<Vec<Jwe<Encrypted>>, Error> {
+    const MALFORMED: Error = Error::new(ErrorCode::Malformed, "jwe json");
     if text.len() > policy.max_token_len {
         return Err(Error::new(ErrorCode::TokenTooLarge, "jwe json"));
     }
-    let malformed = Error::new(ErrorCode::Malformed, "jwe json");
     let object = json::parse_object(text.as_bytes(), "jwe json")?;
-    let string = |name: &str| object.get(name).and_then(Value::as_str).ok_or(malformed);
+    let string = |name: &str| object.get(name).and_then(Value::as_str).ok_or(MALFORMED);
     let protected = string("protected")?;
     let protected_header = Header::decode(protected)?;
     // RFC 7516 §5.1 step 14: ASCII(protected), and '.' and the encoded aad if present.
     let mut aad = protected.as_bytes().to_vec();
     if let Some(extra) = object.get("aad") {
-        let extra = extra.as_str().ok_or(malformed)?;
+        let extra = extra.as_str().ok_or(MALFORMED)?;
         b64::decode(extra, "aad")?;
         aad.push(b'.');
         aad.extend_from_slice(extra.as_bytes());
@@ -91,11 +91,11 @@ pub fn parse(
         {
             items
                 .iter()
-                .map(|item| item.as_object().ok_or(malformed))
+                .map(|item| item.as_object().ok_or(MALFORMED))
                 .collect::<Result<_, _>>()?
         }
         None => vec![&object],
-        Some(_) => return Err(malformed),
+        Some(_) => return Err(MALFORMED),
     };
     recipients
         .into_iter()
@@ -106,7 +106,7 @@ pub fn parse(
             }
             let encrypted_key = match recipient.get("encrypted_key") {
                 None => "",
-                Some(value) => value.as_str().ok_or(malformed)?,
+                Some(value) => value.as_str().ok_or(MALFORMED)?,
             };
             Jwe::accept(
                 Header::from_members(merged),
@@ -122,10 +122,10 @@ pub fn parse(
 /// RFC 7516 §7.2.1: the protected, shared unprotected and per-recipient headers MUST be
 /// disjoint. jwz: `enc`, `crit` and `zip` only count when protected.
 fn merge(into: &mut Map<String, Value>, unprotected: &Value) -> Result<(), Error> {
-    let malformed = Error::new(ErrorCode::Malformed, "jwe json header");
-    for (name, value) in unprotected.as_object().ok_or(malformed)? {
+    const MALFORMED: Error = Error::new(ErrorCode::Malformed, "jwe json header");
+    for (name, value) in unprotected.as_object().ok_or(MALFORMED)? {
         if into.contains_key(name) || matches!(name.as_str(), "enc" | "crit" | "zip") {
-            return Err(malformed);
+            return Err(MALFORMED);
         }
         into.insert(name.clone(), value.clone());
     }

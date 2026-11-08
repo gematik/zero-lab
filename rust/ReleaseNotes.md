@@ -256,7 +256,7 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `https` `jwks_uri` over the IDP-Dienst's agent, no redirect followed, 64 KiB and 100 keys
   at most, kept in a ti-cache store fresh for the origin's `Cache-Control` within
   5 min–24 h (1 h without), revalidated with `ETag`/`Last-Modified`, no stale set when the
-  origin fails (`KeyUnavailable`, the cause in `last_error`), an unknown `kid` refetching
+  origin fails (`KeyUnavailable`, the cause as its source), an unknown `kid` refetching
   the set at most once a minute. The candidates are jwz's `JwkSet::signing_keys`.
   `with_transport` takes another `jwks::Transport`, such as a test's.
 
@@ -1002,6 +1002,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   the ti crates; `SystemClock` and `FixedClock` stay.
 - `ErrorCode::KeyUnavailable` and a public `Error::new`, for the host's implementations of
   jwz's traits (a resolver whose origin failed).
+- `Error::with_source` (TASK-273): a host's implementation of a jwz trait attaches its own
+  error, which reaches the caller through `source()` and never appears in `Display`; code,
+  context and equality are unchanged. **Breaking:** `Error` is no longer `Copy`.
+- `Header::parse`: a header from JSON, read as a token's is, so a host can ask a
+  `KeyResolver` without a token at hand.
 - `docs/guide.md`: verifying from a JWK Set with `verify_with`, why jwz never fetches keys,
   why time is a function, and an `AsyncKeyResolver` over the browser's `fetch`.
 - Profiles as explicit lists (TASK-271): `profile::Algorithms` bundles and the constants

@@ -43,7 +43,6 @@
 //!   having been fetched, the signature decides (RFC 7515 §5.2, in jwz).
 
 use core::fmt;
-use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use jwz::crypto::asynchronous::BoxFuture;
@@ -97,8 +96,9 @@ fn policy() -> CachePolicy {
     }
 }
 
-/// Why [`RemoteJwks`] has no set to offer. jwz's error carries static text only, so
-/// [`RemoteJwks::last_error`] keeps this one for a host that reports the cause.
+/// Why [`RemoteJwks`] has no set to offer: the source of the jwz error
+/// [`Jws::verify_with`](jwz::jws::Jws::verify_with) returns, for a host that reports the
+/// cause.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum FetchError {
@@ -138,8 +138,9 @@ impl fmt::Display for FetchError {
 impl std::error::Error for FetchError {}
 
 impl FetchError {
-    /// The error jwz passes on from [`Jws::verify_with`](jwz::jws::Jws::verify_with).
-    fn to_jwz(&self) -> JwzError {
+    /// The error jwz passes on from [`Jws::verify_with`](jwz::jws::Jws::verify_with), with
+    /// this one as its source.
+    fn into_jwz(self) -> JwzError {
         let context = match self {
             FetchError::Transport(_) => "JWK Set origin not reached",
             FetchError::Status(_) => "JWK Set origin answered other than 200 or 304",
@@ -149,7 +150,7 @@ impl FetchError {
             FetchError::UnexpectedNotModified => "JWK Set origin answered 304 unasked",
             FetchError::Store(_) => "JWK Set cache failed",
         };
-        JwzError::new(ErrorCode::KeyUnavailable, context)
+        JwzError::new(ErrorCode::KeyUnavailable, context).with_source(self)
     }
 }
 
@@ -268,7 +269,6 @@ pub struct RemoteJwks<S, N, T = UreqTransport> {
     cache: Cache<S, N>,
     transport: T,
     limits: Limits,
-    last_error: Mutex<Option<FetchError>>,
 }
 
 impl<S: fmt::Debug, N, T> fmt::Debug for RemoteJwks<S, N, T> {
@@ -310,7 +310,6 @@ impl<S: CacheStore, N: Fn() -> Timestamp, T: Transport> RemoteJwks<S, N, T> {
             cache: Cache::new(store, now, policy()),
             transport,
             limits: Limits::default(),
-            last_error: Mutex::new(None),
         })
     }
 
@@ -358,15 +357,6 @@ impl<S: CacheStore, N: Fn() -> Timestamp, T: Transport> RemoteJwks<S, N, T> {
             set = self.set()?;
         }
         Ok(set.signing_keys(kid, alg).cloned().collect())
-    }
-
-    /// Why the last resolution failed, for a host that reports more than jwz's
-    /// [`ErrorCode::KeyUnavailable`]; cleared by one that succeeds.
-    pub fn last_error(&self) -> Option<FetchError> {
-        self.last_error
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
     }
 
     fn fetch(&self, validators: Conditional<'_>) -> Result<OriginResponse, FetchError> {
@@ -418,22 +408,7 @@ impl<S: CacheStore, N: Fn() -> Timestamp, T: Transport> RemoteJwks<S, N, T> {
     }
 
     fn resolved(&self, header: &Header, alg: SignatureAlgorithm) -> Result<Vec<Jwk>, JwzError> {
-        let result = self.keys(header.kid(), alg);
-        let mut last = self
-            .last_error
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
-        match result {
-            Ok(keys) => {
-                *last = None;
-                Ok(keys)
-            }
-            Err(error) => {
-                let code = error.to_jwz();
-                *last = Some(error);
-                Err(code)
-            }
-        }
+        self.keys(header.kid(), alg).map_err(FetchError::into_jwz)
     }
 }
 
@@ -767,17 +742,21 @@ mod tests {
             .then(answer(503, &[], Vec::new()))
             .fails("down");
         assert_eq!(signer.verify(&remote), Ok(b"hello".to_vec()));
-        assert_eq!(remote.last_error(), None);
         clock.advance(Duration::from_hours(1));
+        // The cause reaches the caller of verify_with as the error's source.
+        let cause = |error: &JwzError| {
+            use std::error::Error as _;
+            error
+                .source()
+                .and_then(|source| source.downcast_ref::<FetchError>())
+                .cloned()
+        };
         let error = signer.verify(&remote).unwrap_err();
         assert_eq!(error.code(), ErrorCode::KeyUnavailable);
-        assert_eq!(remote.last_error(), Some(FetchError::Status(503)));
+        assert_eq!(cause(&error), Some(FetchError::Status(503)));
         let error = signer.verify(&remote).unwrap_err();
         assert_eq!(error.code(), ErrorCode::KeyUnavailable);
-        assert_eq!(
-            remote.last_error(),
-            Some(FetchError::Transport("down".into()))
-        );
+        assert_eq!(cause(&error), Some(FetchError::Transport("down".into())));
     }
 
     /// A `kid` the set lacks fetches it again, at most once a minute: made-up `kid`s cost the

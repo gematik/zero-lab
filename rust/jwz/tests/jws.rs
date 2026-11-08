@@ -1001,3 +1001,62 @@ fn rfc_8037_3_1_an_eddsa_key_that_states_no_curve_is_refused() {
         .verify(&quiet)
         .unwrap();
 }
+
+/// The host's own error behind a resolver's failure.
+#[derive(Debug)]
+struct OriginDown;
+
+impl std::fmt::Display for OriginDown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("origin down")
+    }
+}
+
+impl std::error::Error for OriginDown {}
+
+/// A host's cause travels with the error to the caller of `verify_with`, through
+/// `source()` only: jwz's own text, code and equality stay what jwz says.
+#[test]
+fn a_hosts_cause_reaches_the_caller_through_source_only() {
+    use std::error::Error as _;
+    let registry = Registry::standard();
+    let signer = generated("k1");
+    let token = jws::sign(b"hello", HeaderParams::new(), &signer, &strict(), &registry).unwrap();
+    let failing = Offered(Err(
+        jwz::Error::new(ErrorCode::KeyUnavailable, "origin").with_source(OriginDown)
+    ));
+    let error = Jws::parse(&token, &strict(), &registry)
+        .unwrap()
+        .verify_with(&failing, &registry, &backend())
+        .unwrap_err();
+    assert_eq!(error.code(), ErrorCode::KeyUnavailable);
+    assert!(
+        error
+            .source()
+            .is_some_and(|s| s.downcast_ref::<OriginDown>().is_some())
+    );
+    assert!(!error.to_string().contains("origin down"), "{error}");
+    assert_eq!(error, jwz::Error::new(ErrorCode::KeyUnavailable, "origin"));
+    assert!(
+        jwz::Error::new(ErrorCode::KeyUnavailable, "origin")
+            .source()
+            .is_none()
+    );
+}
+
+/// A host builds a header from JSON to ask a resolver without a token, under the rules a
+/// token's header is read by (RFC 7515 §4: a JSON object, RFC 7515 §5.2: no duplicate
+/// member).
+#[test]
+fn rfc_7515_4_a_host_builds_a_header_from_json_as_a_token_has_it() {
+    let header = jwz::header::Header::parse(r#"{"alg":"ES256","kid":"k1"}"#).unwrap();
+    assert_eq!(header.kid(), Some("k1"));
+    let set = jwz::jwk::JwkSet {
+        keys: vec![generated("k1").public_jwk(), generated("k2").public_jwk()],
+    };
+    let keys = jwz::jwk::KeyResolver::resolve(&set, &header, SignatureAlgorithm::ES256).unwrap();
+    assert_eq!(keys.len(), 1);
+    for text in [r#"{"kid":"a","kid":"b"}"#, "[]", "{"] {
+        assert!(jwz::header::Header::parse(text).is_err(), "{text}");
+    }
+}

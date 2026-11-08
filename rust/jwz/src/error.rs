@@ -25,6 +25,7 @@
 //! Neither ever contains key material or token contents (ADR 0001, auditability), so an
 //! error can be logged as is.
 
+use alloc::sync::Arc;
 use core::fmt;
 
 use crate::crypto::CryptoError;
@@ -83,11 +84,17 @@ pub enum ErrorCode {
     Crypto(CryptoError),
 }
 
-/// An error with its code and a fixed description of the step that failed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// The host's own error behind a jwz error: a resolver's unreachable origin, a chain
+/// validator's refusal.
+type Cause = Arc<dyn core::error::Error + Send + Sync>;
+
+/// An error with its code, a fixed description of the step that failed and, where a
+/// host's implementation of a jwz trait failed, that host's cause.
+#[derive(Clone, Debug)]
 pub struct Error {
     code: ErrorCode,
     context: &'static str,
+    cause: Option<Cause>,
 }
 
 impl Error {
@@ -96,7 +103,21 @@ impl Error {
     /// [`ChainValidator`](crate::x5c::ChainValidator), backends). The context is fixed
     /// text: never input data or key material.
     pub const fn new(code: ErrorCode, context: &'static str) -> Self {
-        Error { code, context }
+        Error {
+            code,
+            context,
+            cause: None,
+        }
+    }
+
+    /// This error with the host's `cause`, reachable through
+    /// [`source`](core::error::Error::source) for the caller that logs or reports it.
+    /// It is never part of [`Display`](fmt::Display): what jwz itself says stays free of
+    /// input data, and what the host's error says is the host's to decide.
+    #[must_use]
+    pub fn with_source(mut self, cause: impl core::error::Error + Send + Sync + 'static) -> Self {
+        self.cause = Some(Arc::new(cause));
+        self
     }
 
     /// The stable code.
@@ -116,7 +137,23 @@ impl fmt::Display for Error {
     }
 }
 
-impl core::error::Error for Error {}
+impl core::error::Error for Error {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        self.cause
+            .as_deref()
+            .map(|cause| cause as &(dyn core::error::Error + 'static))
+    }
+}
+
+/// Two errors are equal when code and context are: the cause is the host's detail, and
+/// host errors need not be comparable.
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.code == other.code && self.context == other.context
+    }
+}
+
+impl Eq for Error {}
 
 impl From<CryptoError> for Error {
     fn from(e: CryptoError) -> Self {
