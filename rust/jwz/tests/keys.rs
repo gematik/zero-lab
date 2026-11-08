@@ -968,3 +968,62 @@ mod seams {
         assert_eq!(make(), make());
     }
 }
+
+/// A verifier asks a set for the keys that may have signed a JWS: those with the header's
+/// `kid`, every key when the header names none (RFC 7517 §4.5, RFC 7515 §4.1.4).
+#[test]
+fn rfc_7517_4_5_a_set_offers_the_keys_with_the_headers_kid_or_all() {
+    let set = JwkSet::parse(
+        r#"{"keys":[
+            {"kty":"oct","k":"AQ","kid":"a"},
+            {"kty":"oct","k":"Ag","kid":"b"},
+            {"kty":"oct","k":"Aw"}]}"#,
+    )
+    .unwrap();
+    let kids = |kid| {
+        set.signing_keys(kid, SignatureAlgorithm::HS256)
+            .map(|k| k.kid.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(kids(Some("a")), [Some("a".to_owned())]);
+    // A key without a kid cannot match a header that names one.
+    assert_eq!(kids(Some("c")), Vec::<Option<String>>::new());
+    assert_eq!(kids(None).len(), 3);
+}
+
+/// A set offers for a signature only keys whose `use` is `sig` and whose `key_ops` allow
+/// signing or verifying, or that state neither (RFC 7517 §4.2, §4.3).
+#[test]
+fn rfc_7517_4_2_a_set_offers_only_keys_its_use_and_key_ops_allow_for_signatures() {
+    let set = JwkSet::parse(
+        r#"{"keys":[
+            {"kty":"oct","k":"AQ","kid":"enc","use":"enc"},
+            {"kty":"oct","k":"AQ","kid":"wrap","key_ops":["wrapKey"]},
+            {"kty":"oct","k":"AQ","kid":"sig","use":"sig"},
+            {"kty":"oct","k":"AQ","kid":"verify","key_ops":["verify"]},
+            {"kty":"oct","k":"AQ","kid":"any"}]}"#,
+    )
+    .unwrap();
+    let kids: Vec<_> = set
+        .signing_keys(None, SignatureAlgorithm::HS256)
+        .filter_map(|k| k.kid.as_deref())
+        .collect();
+    assert_eq!(kids, ["sig", "verify", "any"]);
+}
+
+/// A key that names its algorithm is offered only for that algorithm (RFC 7517 §4.4).
+#[test]
+fn rfc_7517_4_4_a_set_offers_no_key_bound_to_another_algorithm() {
+    let set = JwkSet::parse(
+        r#"{"keys":[
+            {"kty":"oct","k":"AQ","kid":"384","alg":"HS384"},
+            {"kty":"oct","k":"AQ","kid":"256","alg":"HS256"},
+            {"kty":"oct","k":"AQ","kid":"free"}]}"#,
+    )
+    .unwrap();
+    let kids: Vec<_> = set
+        .signing_keys(None, SignatureAlgorithm::HS256)
+        .filter_map(|k| k.kid.as_deref())
+        .collect();
+    assert_eq!(kids, ["256", "free"]);
+}

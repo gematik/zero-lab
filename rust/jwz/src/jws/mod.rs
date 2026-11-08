@@ -62,15 +62,18 @@
 pub mod json;
 
 use alloc::string::String;
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use crate::b64;
 use crate::compact;
+use crate::crypto::Backend;
 use crate::error::{Error, ErrorCode};
 use crate::header::{Header, HeaderParams};
 use crate::jwa::{Registry, SignatureAlgorithm};
-use crate::keys::{AsyncSigner, AsyncVerifier, JwsKey, Signature, Signer, Verifier};
+use crate::jwk::{AsyncKeyResolver, Jwk, KeyResolver};
+use crate::keys::{AsyncSigner, AsyncVerifier, JwsKey, Signature, Signer, SoftwareKey, Verifier};
 use crate::profile::Policy;
 
 /// A JWS whose signature has not been checked: header only.
@@ -164,6 +167,62 @@ impl Jws<Unverified> {
         key.verify_async(self.signing_input().as_bytes(), &self.signature)
             .await?;
         Ok(self.into_verified())
+    }
+
+    /// Checks the signature with the keys `resolver` offers for this header, each made a
+    /// verifier for the accepted algorithm with `backend` and tried in turn; a key that
+    /// does not fit the algorithm is passed over.
+    ///
+    /// # Errors
+    ///
+    /// The resolver's error; [`ErrorCode::VerificationFailed`] if no resolved key
+    /// verifies the signature, none resolved included.
+    pub fn verify_with<B: Backend>(
+        self,
+        resolver: &dyn KeyResolver,
+        registry: &Registry,
+        backend: &Arc<B>,
+    ) -> Result<Jws<Verified>, Error> {
+        let keys = resolver.resolve(&self.header, self.alg)?;
+        self.verify_with_any(&keys, registry, backend)
+    }
+
+    /// [`verify_with`](Self::verify_with) with a resolver that answers asynchronously.
+    ///
+    /// # Errors
+    ///
+    /// As [`verify_with`](Self::verify_with).
+    pub async fn verify_with_async<B: Backend>(
+        self,
+        resolver: &dyn AsyncKeyResolver,
+        registry: &Registry,
+        backend: &Arc<B>,
+    ) -> Result<Jws<Verified>, Error> {
+        let keys = resolver.resolve_async(&self.header, self.alg).await?;
+        self.verify_with_any(&keys, registry, backend)
+    }
+
+    fn verify_with_any<B: Backend>(
+        self,
+        keys: &[Jwk],
+        registry: &Registry,
+        backend: &Arc<B>,
+    ) -> Result<Jws<Verified>, Error> {
+        let input = self.signing_input();
+        let verifies = |jwk: &Jwk| {
+            SoftwareKey::from_jwk(jwk, self.alg, registry, Arc::clone(backend)).is_ok_and(|key| {
+                self.check_key(&key).is_ok()
+                    && Verifier::verify(&key, input.as_bytes(), &self.signature).is_ok()
+            })
+        };
+        if keys.iter().any(verifies) {
+            Ok(self.into_verified())
+        } else {
+            Err(Error::new(
+                ErrorCode::VerificationFailed,
+                "no resolved key verifies the signature",
+            ))
+        }
     }
 
     /// The key must be for the header's algorithm (a key is bound to one; the header

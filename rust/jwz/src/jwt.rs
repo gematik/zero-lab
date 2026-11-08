@@ -78,6 +78,14 @@ impl Clock for SystemClock {
     }
 }
 
+/// Any function returning the seconds since the epoch is a clock, as the host passes
+/// time everywhere else (`|| now`, a test's fixed value).
+impl<F: Fn() -> u64> Clock for F {
+    fn now(&self) -> u64 {
+        self()
+    }
+}
+
 /// A clock that always says the same time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FixedClock(pub u64);

@@ -977,6 +977,26 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
   `Timestamp::now` and tests a closure (decision-15).
 
+### jwz
+
+#### added
+- `jwk::KeyResolver` and `jwk::AsyncKeyResolver` (TASK-243): where a verifier gets the keys
+  that may have signed a JWS, implemented by the host over its own fetching and cache;
+  jwz never fetches. `JwkSet` implements both.
+- `JwkSet::signing_keys(kid, alg)`: the keys with the header's `kid` (all when it names
+  none) whose `use` and `key_ops` allow signatures and whose `alg`, if stated, is the
+  accepted one (RFC 7517 §4.2–4.5).
+- `Jws::verify_with` and `Jws::verify_with_async`: each resolved key is made a verifier for
+  the accepted algorithm and tried; a key that does not fit is passed over, and
+  `VerificationFailed` follows when none verifies. A resolved key is a candidate, never
+  trusted for having been fetched.
+- Every `Fn() -> u64` is a `jwt::Clock`, so a host passes time as a function, as it does to
+  the ti crates; `SystemClock` and `FixedClock` stay.
+- `ErrorCode::KeyUnavailable` and a public `Error::new`, for the host's implementations of
+  jwz's traits (a resolver whose origin failed).
+- `docs/guide.md`: verifying from a JWK Set with `verify_with`, why jwz never fetches keys,
+  why time is a function, and an `AsyncKeyResolver` over the browser's `fetch`.
+
 ## Release jwz 0.1.0, 2026-11-06
 
 ### added

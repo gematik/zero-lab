@@ -6,21 +6,20 @@ Every example here is compiled and run by `cargo test --doc`.
 ## Verify a JWT from an issuer's JWK Set
 
 Three steps, in this order: parse under a profile (the header is checked before any
-cryptography), verify with a key you chose, then check the claims. The token's header
-helps you find the key (`kid`), but the key decides the algorithm: a key is bound to one
-algorithm when you make it, so a header cannot switch it to another.
+cryptography), verify with the keys the issuer publishes, then check the claims.
 
 ```rust
 use std::sync::Arc;
 
 use jwz::crypto::rustcrypto::RustCrypto;
-use jwz::jwa::{Registry, SignatureAlgorithm};
+use jwz::jwa::Registry;
 use jwz::jwk::JwkSet;
 use jwz::jws::Jws;
-use jwz::jwt::{Claims, FixedClock};
-use jwz::keys::SoftwareKey;
+use jwz::jwt::Claims;
 use jwz::profile::Profile;
 # use jwz::header::HeaderParams;
+# use jwz::jwa::SignatureAlgorithm;
+# use jwz::keys::SoftwareKey;
 # let issuer = SoftwareKey::generate(
 #     SignatureAlgorithm::ES256, &Registry::standard(), Arc::new(RustCrypto::new()),
 # )?.with_kid("2026-1");
@@ -35,27 +34,51 @@ let registry = Registry::standard();
 let backend = Arc::new(RustCrypto::new());
 let profile = Profile::strict();
 
-// From the issuer's jwks_uri; how it is fetched is up to you.
+// From the issuer's jwks_uri; how it is fetched, cached and refreshed is up to you.
 let keys = JwkSet::parse(&jwks)?;
 
 let jws = Jws::parse(&token, &profile.policy, &registry)?;
-let kid = jws.header().kid().ok_or("token names no key")?;
-let jwk = keys.by_kid(kid).next().ok_or("no key with that kid")?;
-let key = SoftwareKey::from_jwk(jwk, SignatureAlgorithm::ES256, &registry, backend)?;
-let verified = jws.verify(&key)?;
+// The set offers the keys with the header's kid that allow signatures and fit the
+// accepted algorithm; the signature decides which, if any, signed.
+let verified = jws.verify_with(&keys, &registry, &backend)?;
 
 let claims = Claims::parse(verified.payload())?;
 let mut rules = profile.claims.clone();
 rules.issuer = Some("https://idp.example".into());
 rules.audience = Some("app".into());
-// SystemClock in a real program (see "In the browser" below).
-claims.validate(&rules, &FixedClock(1_800_000_000))?;
+// The time as the host passes it: any function returning seconds since the epoch.
+let now = || 1_800_000_000;
+claims.validate(&rules, &now)?;
 assert_eq!(claims.iss(), Some("https://idp.example"));
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-`SoftwareKey::from_jwk` takes the algorithm from you, not from the JWK: a JWK whose
-`alg` says otherwise, or whose curve does not fit, is refused.
+The header helps find the key (`kid`), but never chooses its algorithm: the profile
+accepted one, and a key is made a verifier for that algorithm only. A JWK whose `alg`
+says otherwise, whose `use` or `key_ops` is not for signatures, or whose type or curve
+does not fit, is passed over. To verify with one key you chose, make it with
+`SoftwareKey::from_jwk` and call `Jws::verify`.
+
+### Why jwz never fetches keys
+
+jwz decides which keys may have signed a token and whether one did; where the keys come
+from is the host's [`KeyResolver`](crate::jwk::KeyResolver). A server keeps a JWK Set in
+memory and refreshes it on its own schedule, a CLI caches it on disk, a browser fetches it
+with `fetch` and keeps it in IndexedDB. Each has its own transport, proxy, TLS, cache and
+retry rules, and none of that belongs in a token library: it would tie jwz to one HTTP
+client and one runtime, and fail the browser. A [`JwkSet`](crate::jwk::JwkSet) is the simplest resolver; a
+fetching one implements the trait over the host's cache. Whatever a resolver returns is a
+candidate, not trust: a key is never trusted for having been fetched, only its signature
+check counts.
+
+### Why time is a function
+
+Time enters jwz only through [`Clock`](crate::jwt::Clock), and every `Fn() -> u64` is
+one. The host passes time the same way to every component: `|| now` in a test, its own
+clock in a program, `Date.now()` in the browser. A function rather than a value, because a
+long-lived component asks again for every token; a function rather than a global, because
+a test or a replay must be able to fix it. `SystemClock` and `FixedClock` remain for the
+common cases; `SystemClock` does not exist where std has no clock (see below).
 
 ## Choose a profile
 
@@ -153,18 +176,46 @@ Every jwz crate builds for `wasm32-unknown-unknown`. The RustCrypto backend gets
 random numbers from `Crypto.getRandomValues` without further setup. `just jwz-browser`
 runs the round trips and the RFC known answers in headless Chrome.
 
-The browser has no system clock that std can read, so jwz offers no `SystemClock` there.
-Implement [`Clock`](crate::jwt::Clock) over `Date.now()` in your crate:
+The browser has no system clock that std can read, so jwz offers no `SystemClock` there
+(std would panic on every call). Pass `Date.now()` as the clock:
 
 ```rust,ignore
-struct BrowserClock;
+// js_sys::Date::now() is milliseconds since the epoch, as an f64.
+let now = || (js_sys::Date::now() / 1000.0) as u64;
+claims.validate(&rules, &now)?;
+```
 
-impl jwz::jwt::Clock for BrowserClock {
-    fn now(&self) -> u64 {
-        // js_sys::Date::now() is milliseconds since the epoch, as an f64.
-        (js_sys::Date::now() / 1000.0) as u64
+Keys come from the issuer's `jwks_uri` through `fetch`, which answers with a JavaScript
+promise. jwz's asynchronous traits return futures without a `Send` bound for this reason:
+a promise lives on the browser's one thread and its future is not `Send`, so a bound would
+shut the browser out. A resolver over `fetch`:
+
+```rust,ignore
+use jwz::crypto::asynchronous::BoxFuture;
+use jwz::jwk::{AsyncKeyResolver, Jwk, JwkSet};
+
+struct Issuer {
+    jwks_uri: String,
+}
+
+impl AsyncKeyResolver for Issuer {
+    fn resolve_async<'a>(
+        &'a self,
+        header: &'a jwz::header::Header,
+        alg: jwz::jwa::SignatureAlgorithm,
+    ) -> BoxFuture<'a, Result<Vec<Jwk>, jwz::Error>> {
+        Box::pin(async move {
+            // gloo_net or web_sys::Request: the browser's fetch, its cache and CORS rules.
+            let text = fetch_text(&self.jwks_uri)
+                .await
+                .map_err(|_| jwz::Error::new(jwz::ErrorCode::KeyUnavailable, "jwks_uri"))?;
+            let set = JwkSet::parse(&text)?;
+            Ok(set.signing_keys(header.kid(), alg).cloned().collect())
+        })
     }
 }
+
+let verified = jws.verify_with_async(&issuer, &registry, &backend).await?;
 ```
 
 ## Errors

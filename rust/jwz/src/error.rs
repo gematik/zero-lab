@@ -73,6 +73,12 @@ pub enum ErrorCode {
     NotYetValid,
     /// A JWT claim has the wrong type or a value the policy does not accept.
     InvalidClaim,
+    /// The host could not offer keys or a verdict: a [`KeyResolver`] whose origin failed,
+    /// a [`ChainValidator`] that could not decide.
+    ///
+    /// [`KeyResolver`]: crate::jwk::KeyResolver
+    /// [`ChainValidator`]: crate::x5c::ChainValidator
+    KeyUnavailable,
     /// A cryptographic primitive failed.
     Crypto(CryptoError),
 }
@@ -85,7 +91,11 @@ pub struct Error {
 }
 
 impl Error {
-    pub(crate) const fn new(code: ErrorCode, context: &'static str) -> Self {
+    /// An error with `code` and the static `context`, for the host's implementations of
+    /// jwz's traits ([`KeyResolver`](crate::jwk::KeyResolver),
+    /// [`ChainValidator`](crate::x5c::ChainValidator), backends). The context is fixed
+    /// text: never input data or key material.
+    pub const fn new(code: ErrorCode, context: &'static str) -> Self {
         Error { code, context }
     }
 

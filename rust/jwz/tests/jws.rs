@@ -577,3 +577,127 @@ fn rfc_7797_3_b64_is_refused() {
         );
     }
 }
+
+/// A resolver that offers fixed keys, or fails.
+struct Offered(Result<Vec<Jwk>, jwz::Error>);
+
+impl jwz::jwk::KeyResolver for Offered {
+    fn resolve(
+        &self,
+        _header: &jwz::header::Header,
+        _alg: SignatureAlgorithm,
+    ) -> Result<Vec<Jwk>, jwz::Error> {
+        self.0.clone()
+    }
+}
+
+impl jwz::jwk::AsyncKeyResolver for Offered {
+    fn resolve_async<'a>(
+        &'a self,
+        header: &'a jwz::header::Header,
+        alg: SignatureAlgorithm,
+    ) -> jwz::crypto::asynchronous::BoxFuture<'a, Result<Vec<Jwk>, jwz::Error>> {
+        let keys = jwz::jwk::KeyResolver::resolve(self, header, alg);
+        Box::pin(async move { keys })
+    }
+}
+
+fn generated(kid: &str) -> SoftwareKey<RustCrypto> {
+    SoftwareKey::generate(SignatureAlgorithm::ES256, &Registry::standard(), backend())
+        .unwrap()
+        .with_kid(kid)
+}
+
+/// RFC 7515 §5.2 step 8 with resolved keys: each candidate the resolver offers is tried,
+/// one that does not fit the algorithm is passed over, and the JWS verifies only if a
+/// candidate's signature check succeeds. Being offered is no trust: a resolver that offers
+/// the wrong keys, or none, gets `VerificationFailed`, and its own failure is passed on.
+#[test]
+fn rfc_7515_5_2_step_8_resolved_keys_are_candidates_the_signature_decides() {
+    let registry = Registry::standard();
+    let (signer, other) = (generated("k1"), generated("k2"));
+    let token = jws::sign(b"hello", HeaderParams::new(), &signer).unwrap();
+    let verify = |offered: Offered| {
+        code(
+            Jws::parse(&token, &strict(), &registry)
+                .unwrap()
+                .verify_with(&offered, &registry, &backend())
+                .map(Jws::into_payload),
+        )
+    };
+    let okp = Jwk::parse(
+        r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
+    )
+    .unwrap();
+    // The signer's key among others, after one of another type, verifies.
+    assert_eq!(
+        verify(Offered(Ok(vec![
+            okp.clone(),
+            other.public_jwk(),
+            signer.public_jwk()
+        ]))),
+        Ok(b"hello".to_vec())
+    );
+    // Only keys that do not verify, or none: refused.
+    assert_eq!(
+        verify(Offered(Ok(vec![okp, other.public_jwk()]))),
+        Err(ErrorCode::VerificationFailed)
+    );
+    assert_eq!(
+        verify(Offered(Ok(Vec::new()))),
+        Err(ErrorCode::VerificationFailed)
+    );
+    // The signer's key under another kid than the header's does not count.
+    let mut renamed = signer.public_jwk();
+    renamed.kid = Some("k2".into());
+    assert_eq!(
+        verify(Offered(Ok(vec![renamed]))),
+        Err(ErrorCode::VerificationFailed)
+    );
+    // The resolver's failure is the result.
+    assert_eq!(
+        verify(Offered(Err(jwz::Error::new(
+            ErrorCode::KeyUnavailable,
+            "origin"
+        )))),
+        Err(ErrorCode::KeyUnavailable)
+    );
+}
+
+/// A JWK Set is a resolver: it offers the key with the header's kid, and the asynchronous
+/// path decides as the synchronous one.
+#[test]
+fn rfc_7517_5_a_jwk_set_resolves_the_keys_of_a_jws() {
+    let registry = Registry::standard();
+    let (signer, other) = (generated("k1"), generated("k2"));
+    let token = jws::sign(b"hello", HeaderParams::new(), &signer).unwrap();
+    let set = jwz::jwk::JwkSet {
+        keys: vec![other.public_jwk(), signer.public_jwk()],
+    };
+    let parsed = || Jws::parse(&token, &strict(), &registry).unwrap();
+    assert_eq!(
+        parsed()
+            .verify_with(&set, &registry, &backend())
+            .unwrap()
+            .payload(),
+        b"hello"
+    );
+    let verified =
+        futures_lite::future::block_on(parsed().verify_with_async(&set, &registry, &backend()))
+            .unwrap();
+    assert_eq!(verified.payload(), b"hello");
+    let without_signer = jwz::jwk::JwkSet {
+        keys: vec![other.public_jwk()],
+    };
+    assert_eq!(
+        code(
+            futures_lite::future::block_on(parsed().verify_with_async(
+                &Offered(Ok(without_signer.keys)),
+                &registry,
+                &backend()
+            ))
+            .map(|_| ())
+        ),
+        Err(ErrorCode::VerificationFailed)
+    );
+}
