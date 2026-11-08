@@ -198,12 +198,16 @@ fn expiry(not_after: Timestamp, validity: &str) -> Line {
     }
 }
 
-/// ` · expired 2025-08-28, valid when it issued` in yellow: a CA the Kompromissmodell
-/// still accepts for what it issued before (gemKPT_PKI_TIP 2.4.2).
+/// ` · expired 2025-08-28, accepted under the Kompromissmodell` in yellow: a CA the
+/// Kompromissmodell still accepts for what it issued before (gemKPT_PKI_TIP 2.4.2), a
+/// warning (`ca_expired`) and no failure, so nothing of it is dimmed.
 fn expiry_after_issuing(not_after: Timestamp) -> Line {
-    Line::dim(" · ").and_status(
+    Line::text(" · ").and_status(
         Tone::Warn,
-        format!("expired {}, valid when it issued", date(not_after)),
+        format!(
+            "expired {}, accepted under the Kompromissmodell",
+            date(not_after)
+        ),
     )
 }
 
@@ -246,14 +250,14 @@ fn chain_tree(
                 && i.checked_sub(1)
                     .and_then(|below| chain.get(below))
                     .is_some_and(|below| validity(cert, below.not_before()) == "valid");
-            let expiry = if issued_while_valid {
-                expiry_after_issuing(cert.not_after())
+            let detail = if issued_while_valid {
+                Line::text(place).and_line(expiry_after_issuing(cert.not_after()))
             } else {
-                expiry(cert.not_after(), status)
+                Line::dim(place).and_line(expiry(cert.not_after(), status))
             };
             TreeRow {
                 name: mark(i).and_line(name),
-                detail: Line::dim(place).and_line(expiry).and_line(extra(i)),
+                detail: detail.and_line(extra(i)),
             }
         })
         .collect();
@@ -430,14 +434,15 @@ mod tests {
                 .detail
                 .plain()
         };
+        let accepted = "accepted under the Kompromissmodell";
         for ee in ["ee-short-hci-aut", "ee-short-hp-aut"] {
-            assert!(ca(ee).contains("valid when it issued"), "{ee}: {}", ca(ee));
+            assert!(ca(ee).contains(accepted), "{ee}: {}", ca(ee));
         }
         let component = ca("ee-short-fd-tls-s");
         assert!(component.contains("expired"), "{component}");
-        assert!(!component.contains("valid when it issued"), "{component}");
+        assert!(!component.contains(accepted), "{component}");
         let late = ca("ee-after-short");
-        assert!(!late.contains("valid when it issued"), "{late}");
+        assert!(!late.contains(accepted), "{late}");
     }
 
     fn global(env_from_variable: bool) -> GlobalArgs {

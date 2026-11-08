@@ -33,7 +33,7 @@ use ti_client::pki::verify::{
 };
 use ti_pki::profile;
 use ti_pki::revocation::{RevocationMode, RevocationStatus};
-use ti_pki::{Certificate, ErrorCode};
+use ti_pki::{Certificate, ErrorCode, ValidationResult};
 
 use crate::cli::{GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
@@ -167,25 +167,15 @@ fn chain_to_verify(
     }
 }
 
-/// The chain as a tree: each certificate marked by whether an error concerns it, with
+/// The chain as a tree: each certificate marked by the findings that concern it, with
 /// what OCSP said of it.
 fn tree(v: &Verification) -> Vec<TreeRow> {
     let result = &v.result;
-    let failed = |i: usize| {
-        let cn = result.chain[i].subject_cn();
-        result.errors.iter().any(|e| e.subject == cn)
-    };
     super::chain_tree(
         &result.chain,
         v.complete(),
         v.at_ts,
-        |i| {
-            if failed(i) {
-                Line::status(Tone::Bad, "✗ ")
-            } else {
-                Line::status(Tone::Good, "✓ ")
-            }
-        },
+        |i| mark(result, result.chain[i].subject_cn()),
         |i| {
             v.chain
                 .get(i)
@@ -194,6 +184,18 @@ fn tree(v: &Verification) -> Vec<TreeRow> {
                 .unwrap_or_default()
         },
     )
+}
+
+/// ✗ for a certificate an error concerns, a yellow `!` for one only warnings concern (an
+/// expired CA the Kompromissmodell accepts, `ca_expired`), ✓ otherwise.
+fn mark(result: &ValidationResult, subject: &str) -> Line {
+    if result.errors.iter().any(|e| e.subject == subject) {
+        Line::status(Tone::Bad, "✗ ")
+    } else if result.warnings.iter().any(|w| w.subject == subject) {
+        Line::status(Tone::Warn, "! ")
+    } else {
+        Line::status(Tone::Good, "✓ ")
+    }
 }
 
 /// The terminal view: the end entity as `pki inspect` shows it, then the result, the
@@ -458,4 +460,83 @@ fn finding(tone: Tone, f: &Finding) -> Line {
 /// `2 errors`, `1 warning`.
 fn count(n: usize, what: &str) -> String {
     format!("{n} {what}{}", if n == 1 { "" } else { "s" })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use ti_pki::tsl::Intermediate;
+    use ti_pki::{Timestamp, TrustConfig, TrustStore, Validator};
+
+    use super::*;
+    use crate::output::document::Span;
+
+    fn pki_fixture(name: &str) -> Certificate {
+        let path = format!(
+            "{}/../ti-pki/tests/pki/{name}.pem",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        ti_pki::parse_pem_certificates(&std::fs::read(path).unwrap())
+            .unwrap()
+            .remove(0)
+    }
+
+    /// The trust tree of an end entity under GEM.SubCA-Short TEST-ONLY in 2028, when the CA
+    /// has expired, validated offline.
+    fn trust_tree(ee: &str) -> Vec<TreeRow> {
+        let at = Timestamp(1_830_297_600);
+        let store = TrustStore::new([pki_fixture("rca1")]).with_intermediates(vec![Intermediate {
+            certificate: pki_fixture("sub-ca-short"),
+            provider: "TSP".into(),
+            revoked_since: None,
+        }]);
+        let config = TrustConfig {
+            revocation: RevocationMode::Disabled,
+            ..TrustConfig::for_anchor(Vec::new())
+        };
+        let validator = Validator::new(&config, Arc::new(store));
+        let result = ti_client::block_on(validator.validate(
+            &[pki_fixture(ee)],
+            at,
+            &ti_pki::revocation::Unchecked,
+        ))
+        .unwrap();
+        super::super::chain_tree(
+            &result.chain,
+            true,
+            at,
+            |i| mark(&result, result.chain[i].subject_cn()),
+            |_| Line::default(),
+        )
+    }
+
+    /// `ca_expired`: an expired CA the Kompromissmodell accepts is a warning in the trust
+    /// tree, a yellow `!` and nothing dimmed, not a failure; under the shell model the same
+    /// CA fails with ✗.
+    #[test]
+    fn ca_expired_is_rendered_as_a_warning_not_a_failure() {
+        let rows = trust_tree("ee-short-hci-aut");
+        let ca = &rows[1];
+        assert_eq!(ca.name.plain(), "! GEM.SubCA-Short TEST-ONLY");
+        assert_eq!(ca.name.0[0], Span::Status(Tone::Warn, "! ".into()));
+        assert_eq!(
+            ca.detail.plain(),
+            "CA · expired 2027-01-01, accepted under the Kompromissmodell"
+        );
+        assert!(
+            !ca.detail.0.iter().any(|s| matches!(s, Span::Dim(_))),
+            "{:?}",
+            ca.detail
+        );
+        assert_eq!(rows[0].name.0[0], Span::Status(Tone::Good, "✓ ".into()));
+
+        let component = &trust_tree("ee-short-fd-tls-s")[1];
+        assert_eq!(component.name.0[0], Span::Status(Tone::Bad, "✗ ".into()));
+        assert!(
+            !component.detail.plain().contains("Kompromissmodell"),
+            "{:?}",
+            component.detail
+        );
+    }
 }
