@@ -157,10 +157,12 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
     for alg in [Alg::ECDH_ES, Alg::ECDH_ES_A256KW] {
         let token = jwe::encrypt(
             b"KEY_VERIFIER",
-            alg,
             Enc::A256GCM,
-            EncryptionKey::Public(&idp_enc),
-            HeaderParams::new().cty("JSON"),
+            &jwe::Recipient {
+                alg,
+                key: EncryptionKey::Public(&idp_enc),
+                header: HeaderParams::new().cty("JSON"),
+            },
             &interop(),
             &registry,
             backend.as_ref(),
@@ -185,10 +187,12 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
     let p256 = SoftwareAgreementKey::generate(Curve::P256, Arc::clone(&backend)).unwrap();
     let token = jwe::encrypt(
         b"x",
-        Alg::ECDH_ES,
         Enc::A256GCM,
-        EncryptionKey::Public(&p256.public_jwk()),
-        HeaderParams::new(),
+        &jwe::Recipient {
+            alg: Alg::ECDH_ES,
+            key: EncryptionKey::Public(&p256.public_jwk()),
+            header: HeaderParams::new(),
+        },
         &interop(),
         &registry,
         backend.as_ref(),
@@ -201,10 +205,12 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
     // under strict (a known curve the policy does not allow).
     let token = jwe::encrypt(
         b"x",
-        Alg::ECDH_ES,
         Enc::A256GCM,
-        EncryptionKey::Public(&idp_enc),
-        HeaderParams::new(),
+        &jwe::Recipient {
+            alg: Alg::ECDH_ES,
+            key: EncryptionKey::Public(&idp_enc),
+            header: HeaderParams::new(),
+        },
         &interop(),
         &registry,
         backend.as_ref(),

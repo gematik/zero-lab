@@ -164,10 +164,12 @@ fn ecdh_es_and_key_wrap_round_trip() {
     ] {
         let token = jwe::encrypt(
             b"in the browser",
-            alg,
             Enc::A256GCM,
-            encryption,
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key: encryption,
+                header: HeaderParams::new(),
+            },
             &policy,
             &registry,
             backend.as_ref(),

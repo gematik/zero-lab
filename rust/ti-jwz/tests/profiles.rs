@@ -135,10 +135,12 @@ fn brainpool_jwe_is_encryption_only() {
     let encrypt = |policy: &jwz::profile::Policy| {
         jwe::encrypt(
             b"challenge",
-            Alg::ECDH_ES,
             Enc::A256GCM,
-            EncryptionKey::Public(&idp_enc.public_jwk()),
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg: Alg::ECDH_ES,
+                key: EncryptionKey::Public(&idp_enc.public_jwk()),
+                header: HeaderParams::new(),
+            },
             policy,
             &registry,
             backend.as_ref(),
@@ -224,10 +226,12 @@ fn ti_allows_only_what_gematik_specifies() {
     let encrypt = |alg: Alg, enc: Enc, key: EncryptionKey<'_>, policy: &jwz::profile::Policy| {
         jwe::encrypt(
             b"x",
-            alg,
             enc,
-            key,
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key,
+                header: HeaderParams::new(),
+            },
             policy,
             &registry,
             backend.as_ref(),

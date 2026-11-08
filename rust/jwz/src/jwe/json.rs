@@ -36,15 +36,15 @@ use alloc::vec::Vec;
 use serde_json::{Map, Value};
 
 use super::{
-    Encrypted, EncryptionKey, Jwe, UNSUPPORTED, check_producible, encode_header, entries, key_id,
-    manage, party_from, random,
+    Encrypted, Jwe, UNSUPPORTED, check_producible, encode_header, entries, key_id, manage,
+    party_from, random,
 };
 use crate::b64;
 use crate::crypto::Backend;
 use crate::error::{Error, ErrorCode};
 use crate::header::{Header, HeaderParams};
 use crate::json;
-use crate::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm, Registry};
+use crate::jwa::{ContentEncryptionAlgorithm, Registry};
 use crate::profile::Policy;
 
 /// Every recipient of a JWE in JSON serialization, each accepted under `policy`.
@@ -132,15 +132,18 @@ fn merge(into: &mut Map<String, Value>, unprotected: &Value) -> Result<(), Error
     Ok(())
 }
 
-/// One recipient of [`encrypt`].
+pub use super::Recipient;
+
+/// What all recipients of [`encrypt`] share (RFC 7516 §7.2.1): the content encryption,
+/// the protected header parameters and the additional authenticated data.
 #[derive(Clone, Debug)]
-pub struct Recipient<'a> {
-    /// Its key management algorithm.
-    pub alg: KeyEncryptionAlgorithm,
-    /// Its key.
-    pub key: EncryptionKey<'a>,
-    /// Its unprotected header parameters (`kid` defaults to the key's).
-    pub header: HeaderParams,
+pub struct Shared<'a> {
+    /// The content encryption algorithm, in the protected header.
+    pub enc: ContentEncryptionAlgorithm,
+    /// The protected header parameters.
+    pub protected: HeaderParams,
+    /// Authenticated but not encrypted (`aad`), if any.
+    pub aad: Option<&'a [u8]>,
 }
 
 /// Encrypts `plaintext` once for all `recipients` into the general JSON serialization
@@ -153,23 +156,19 @@ pub struct Recipient<'a> {
 /// among several recipients, or for a parameter both in the protected and a recipient's
 /// header; otherwise as [`super::encrypt`], every recipient checked against `policy`
 /// before any key is used.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "RFC 7516's inputs (enc, header, recipients, aad) and the three every \
-              producer is bound by (policy, registry, backend); a struct would only \
-              rename them"
-)]
 pub fn encrypt(
     plaintext: &[u8],
-    enc: ContentEncryptionAlgorithm,
-    protected: HeaderParams,
+    shared: &Shared<'_>,
     recipients: &[Recipient<'_>],
-    aad: Option<&[u8]>,
     policy: &Policy,
     registry: &Registry,
     backend: &dyn Backend,
 ) -> Result<String, Error> {
-    let protected = protected.into_members(&[("enc", enc.as_str())]);
+    let (enc, aad) = (shared.enc, shared.aad);
+    let protected = shared
+        .protected
+        .clone()
+        .into_members(&[("enc", enc.as_str())]);
     let first = recipients
         .first()
         .ok_or(Error::new(ErrorCode::InvalidMember, "no recipients"))?;

@@ -365,10 +365,12 @@ fn jwe_cases(
         let id = format!("jwe-compact-{}-A256GCM", alg.as_str());
         let token = jwe::encrypt(
             payload(&id).as_bytes(),
-            alg,
             Enc::A256GCM,
-            EncryptionKey::Public(&idp_enc),
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key: EncryptionKey::Public(&idp_enc),
+                header: HeaderParams::new(),
+            },
             &Profile::rfc7518_interop(registry).policy,
             registry,
             backend.as_ref(),
@@ -407,10 +409,12 @@ fn jwe_cases(
             .collect();
         let general = jwe::json::encrypt(
             payload(id).as_bytes(),
-            Enc::A256GCM,
-            HeaderParams::new(),
+            &jwe::json::Shared {
+                enc: Enc::A256GCM,
+                protected: HeaderParams::new(),
+                aad: None,
+            },
             &recipients,
-            None,
             &Profile::rfc7518_interop(registry).policy,
             registry,
             backend.as_ref(),

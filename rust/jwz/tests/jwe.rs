@@ -525,10 +525,12 @@ fn rfc_7516_5_1_step_14_the_aad_is_the_encoded_protected_header() {
 
     let token = jwe::encrypt(
         b"compact",
-        Alg::DIR,
         Enc::A128GCM,
-        EncryptionKey::Symmetric(&cek),
-        HeaderParams::new(),
+        &jwe::Recipient {
+            alg: Alg::DIR,
+            key: EncryptionKey::Symmetric(&cek),
+            header: HeaderParams::new(),
+        },
         &interop(),
         &registry,
         backend.as_ref(),
@@ -548,10 +550,12 @@ fn rfc_7516_5_1_step_14_the_aad_is_the_encoded_protected_header() {
     };
     let text = jwe::json::encrypt(
         b"json",
-        Enc::A128GCM,
-        HeaderParams::new(),
+        &jwe::json::Shared {
+            enc: Enc::A128GCM,
+            protected: HeaderParams::new(),
+            aad: Some(b"context"),
+        },
         &[recipient],
-        Some(b"context"),
         &interop(),
         &registry,
         backend.as_ref(),
@@ -675,13 +679,15 @@ fn round_trip_every_alg_and_enc() {
                 let plaintext: Vec<u8> = (0..=u8::MAX).cycle().step_by(7).take(size).collect();
                 let token = jwe::encrypt(
                     &plaintext,
-                    alg,
                     enc,
-                    encryption,
-                    HeaderParams::new()
-                        .cty("x")
-                        .param("apu", json!(b64(b"me")))
-                        .unwrap(),
+                    &jwe::Recipient {
+                        alg,
+                        key: encryption,
+                        header: HeaderParams::new()
+                            .cty("x")
+                            .param("apu", json!(b64(b"me")))
+                            .unwrap(),
+                    },
                     &interop(),
                     &registry,
                     backend.as_ref(),
@@ -710,10 +716,12 @@ fn encryption_key_must_fit_the_algorithm() {
     let encrypt = |alg: Alg, key: EncryptionKey<'_>| {
         code(jwe::encrypt(
             b"x",
-            alg,
             Enc::A128GCM,
-            key,
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key,
+                header: HeaderParams::new(),
+            },
             &interop(),
             &registry,
             backend.as_ref(),
@@ -751,13 +759,15 @@ fn encryption_key_must_fit_the_algorithm() {
     assert_eq!(
         code(jwe::encrypt(
             b"x",
-            Alg::ECDH_ES,
             Enc::A128CBC_HS256,
-            EncryptionKey::Public(&recipient.public_jwk()),
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg: Alg::ECDH_ES,
+                key: EncryptionKey::Public(&recipient.public_jwk()),
+                header: HeaderParams::new()
+            },
             &interop(),
             &registry,
-            backend.as_ref(),
+            backend.as_ref()
         ))
         .map(|_| ()),
         Err(ErrorCode::UnsupportedAlgorithm)
@@ -796,10 +806,12 @@ fn rfc_7516_7_2_1_general_json_with_several_recipients() {
     ];
     let text = jwe::json::encrypt(
         b"to all",
-        Enc::A256GCM,
-        HeaderParams::new().typ("JWT"),
+        &jwe::json::Shared {
+            enc: Enc::A256GCM,
+            protected: HeaderParams::new().typ("JWT"),
+            aad: Some(b"context"),
+        },
         &recipients,
-        Some(b"context"),
         &interop(),
         &registry,
         backend.as_ref(),
@@ -843,13 +855,15 @@ fn rfc_7516_7_2_1_general_json_with_several_recipients() {
     assert_eq!(
         code(jwe::json::encrypt(
             b"x",
-            Enc::A256GCM,
-            HeaderParams::new(),
+            &jwe::json::Shared {
+                enc: Enc::A256GCM,
+                protected: HeaderParams::new(),
+                aad: None
+            },
             &direct,
-            None,
             &interop(),
             &registry,
-            backend.as_ref(),
+            backend.as_ref()
         ))
         .map(|_| ()),
         Err(ErrorCode::InvalidMember)
@@ -889,10 +903,12 @@ fn decrypt_async_with_a_key_agreement() {
     let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
     let token = jwe::encrypt(
         b"async",
-        Alg::ECDH_ES_A128KW,
         Enc::A128GCM,
-        EncryptionKey::Public(&recipient.public_jwk()),
-        HeaderParams::new(),
+        &jwe::Recipient {
+            alg: Alg::ECDH_ES_A128KW,
+            key: EncryptionKey::Public(&recipient.public_jwk()),
+            header: HeaderParams::new(),
+        },
         &interop(),
         &registry,
         backend.as_ref(),
@@ -951,10 +967,12 @@ fn a_curve_added_through_the_extended_backend_works_end_to_end() {
     let encrypt = |policy: &Policy| {
         jwe::encrypt(
             b"extended",
-            Alg::ECDH_ES,
             Enc::A128GCM,
-            EncryptionKey::Public(&recipient.public_jwk()),
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg: Alg::ECDH_ES,
+                key: EncryptionKey::Public(&recipient.public_jwk()),
+                header: HeaderParams::new(),
+            },
             policy,
             &registry,
             backend.as_ref(),
@@ -1001,10 +1019,12 @@ fn rfc_8725_3_1_encryption_refuses_what_the_profile_does_not_list() {
     let encrypt = |alg, enc, key, policy: &Policy| {
         code(jwe::encrypt(
             b"x",
-            alg,
             enc,
-            key,
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key,
+                header: HeaderParams::new(),
+            },
             policy,
             &registry,
             backend.as_ref(),
@@ -1065,10 +1085,12 @@ fn rfc_8725_3_1_encryption_refuses_what_the_profile_does_not_list() {
     let json = |policy: &Policy| {
         code(jwe::json::encrypt(
             b"x",
-            Enc::A256GCM,
-            HeaderParams::new(),
+            &jwe::json::Shared {
+                enc: Enc::A256GCM,
+                protected: HeaderParams::new(),
+                aad: None,
+            },
             &recipients,
-            None,
             policy,
             &registry,
             backend.as_ref(),
@@ -1095,10 +1117,12 @@ fn rfc_7518_4_6_the_recipient_curve_binds_key_agreement_only() {
     let encrypt = |alg, key, policy: &Policy| {
         code(jwe::encrypt(
             b"x",
-            alg,
             Enc::A256GCM,
-            key,
-            HeaderParams::new(),
+            &jwe::Recipient {
+                alg,
+                key,
+                header: HeaderParams::new(),
+            },
             policy,
             &registry,
             backend.as_ref(),

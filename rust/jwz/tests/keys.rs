@@ -710,9 +710,6 @@ fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
 
     #[cfg(feature = "jwe")]
     {
-        use jwz::header::HeaderParams;
-        use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm};
-        use jwz::jwe::{self, EncryptionKey};
         use jwz::keys::SymmetricKey;
 
         let agrees = |jwk: &Jwk| {
@@ -720,20 +717,7 @@ fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
                 .map(|_| ())
                 .map_err(|e| e.code())
         };
-        let encrypts_to = |jwk: &Jwk| {
-            jwe::encrypt(
-                b"x",
-                KeyEncryptionAlgorithm::ECDH_ES,
-                ContentEncryptionAlgorithm::A256GCM,
-                EncryptionKey::Public(&jwk.public()),
-                HeaderParams::new(),
-                &jwz::profile::Profile::strict().policy,
-                &registry,
-                backend().as_ref(),
-            )
-            .map(|_| ())
-            .map_err(|e| e.code())
-        };
+        let encrypts_to = |jwk: &Jwk| encrypt_ecdh_es(jwk, &registry);
         for allowed in ["", r#""use":"enc""#, r#""key_ops":["deriveKey"]"#] {
             assert_eq!(agrees(&with(allowed)), Ok(()), "{allowed}");
             assert_eq!(encrypts_to(&with(allowed)), Ok(()), "{allowed}");
@@ -1027,4 +1011,29 @@ fn rfc_7517_4_4_a_set_offers_no_key_bound_to_another_algorithm() {
         .filter_map(|k| k.kid.as_deref())
         .collect();
     assert_eq!(kids, ["256", "free"]);
+}
+
+/// ECDH-ES with A256GCM to `jwk`'s public key under `strict`, for the key-use tests.
+#[cfg(feature = "jwe")]
+fn encrypt_ecdh_es(jwk: &Jwk, registry: &Registry) -> Result<(), ErrorCode> {
+    use jwz::header::HeaderParams;
+    use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm};
+    use jwz::jwe::{self, EncryptionKey, Recipient};
+
+    let public = jwk.public();
+    let recipient = Recipient {
+        alg: KeyEncryptionAlgorithm::ECDH_ES,
+        key: EncryptionKey::Public(&public),
+        header: HeaderParams::new(),
+    };
+    jwe::encrypt(
+        b"x",
+        ContentEncryptionAlgorithm::A256GCM,
+        &recipient,
+        &jwz::profile::Profile::strict().policy,
+        registry,
+        backend().as_ref(),
+    )
+    .map(|_| ())
+    .map_err(|e| e.code())
 }

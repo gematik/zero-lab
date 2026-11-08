@@ -148,19 +148,23 @@ the ephemeral key is made and dropped inside `encrypt`.
 use jwz::crypto::rustcrypto::RustCrypto;
 use jwz::header::HeaderParams;
 use jwz::jwa::{ContentEncryptionAlgorithm, KeyEncryptionAlgorithm, Registry};
-use jwz::jwe::{self, EncryptionKey};
+use jwz::jwe::{self, EncryptionKey, Recipient};
 use jwz::jwk::Jwk;
 use jwz::profile::Profile;
 
-let recipient = Jwk::parse(r#"{"kty":"EC","crv":"P-256",
+let public = Jwk::parse(r#"{"kty":"EC","crv":"P-256",
   "x":"weNJy2HscCSM6AEDTDg04biOvhFhyyWvOHQfeF_PxMQ",
   "y":"e8lnCO-AlStT-NJVX-crhB7QRYhiix03illJOVAOyck"}"#)?;
+// What is per recipient: its algorithm, its key, its header parameters.
+let recipient = Recipient {
+    alg: KeyEncryptionAlgorithm::ECDH_ES,
+    key: EncryptionKey::Public(&public),
+    header: HeaderParams::new().cty("JWT"),
+};
 let token = jwe::encrypt(
     b"for the recipient only",
-    KeyEncryptionAlgorithm::ECDH_ES,
     ContentEncryptionAlgorithm::A256GCM,
-    EncryptionKey::Public(&recipient),
-    HeaderParams::new().cty("JWT"),
+    &recipient,
     &Profile::strict().policy,
     &Registry::standard(),
     &RustCrypto::new(),

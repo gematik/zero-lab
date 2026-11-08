@@ -176,10 +176,12 @@ pub async fn respond(
         .map_err(Error::jose("signed challenge header"))?;
     let encrypted = jwe::encrypt(
         plaintext.as_bytes(),
-        KeyEncryptionAlgorithm::ECDH_ES,
         ContentEncryptionAlgorithm::A256GCM,
-        EncryptionKey::Public(puk_idp_enc),
-        params,
+        &jwe::Recipient {
+            alg: KeyEncryptionAlgorithm::ECDH_ES,
+            key: EncryptionKey::Public(puk_idp_enc),
+            header: params,
+        },
         &profile.policy,
         &registry,
         backend.as_ref(),

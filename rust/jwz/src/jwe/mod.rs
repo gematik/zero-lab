@@ -38,7 +38,7 @@
 //! use jwz::crypto::rustcrypto::RustCrypto;
 //! use jwz::header::HeaderParams;
 //! use jwz::jwa::{ContentEncryptionAlgorithm, Curve, KeyEncryptionAlgorithm, Registry};
-//! use jwz::jwe::{self, DecryptionKey, EncryptionKey, Jwe};
+//! use jwz::jwe::{self, DecryptionKey, EncryptionKey, Jwe, Recipient};
 //! use jwz::keys::SoftwareAgreementKey;
 //! use jwz::profile::Profile;
 //!
@@ -47,12 +47,16 @@
 //! let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone())?;
 //!
 //! let profile = Profile::strict();
+//! let public = recipient.public_jwk();
+//! let to = Recipient {
+//!     alg: KeyEncryptionAlgorithm::ECDH_ES,
+//!     key: EncryptionKey::Public(&public),
+//!     header: HeaderParams::new(),
+//! };
 //! let token = jwe::encrypt(
 //!     b"hello",
-//!     KeyEncryptionAlgorithm::ECDH_ES,
 //!     ContentEncryptionAlgorithm::A256GCM,
-//!     EncryptionKey::Public(&recipient.public_jwk()),
-//!     HeaderParams::new(),
+//!     &to,
 //!     &profile.policy,
 //!     &registry,
 //!     backend.as_ref(),
@@ -119,6 +123,19 @@ pub enum EncryptionKey<'a> {
     Public(&'a Jwk),
     /// The shared key, for `dir` and `A*KW`.
     Symmetric(&'a SymmetricKey),
+}
+
+/// One recipient of a JWE: its key management algorithm, its key and its header
+/// parameters (RFC 7516 §7.2.1 keeps what is per recipient apart from what all share).
+#[derive(Clone, Debug)]
+pub struct Recipient<'a> {
+    /// Its key management algorithm.
+    pub alg: KeyEncryptionAlgorithm,
+    /// Its key.
+    pub key: EncryptionKey<'a>,
+    /// Its header parameters: protected in the compact serialization, unprotected in the
+    /// JSON one (`kid` defaults to the key's).
+    pub header: HeaderParams,
 }
 
 /// The ECDH-ES inputs of a header, decoded at parse time.
@@ -652,10 +669,11 @@ fn party_from(members: &Map<String, Value>) -> Result<(Vec<u8>, Vec<u8>), Error>
     Ok((party_info(&header, "apu")?, party_info(&header, "apv")?))
 }
 
-/// Encrypts `plaintext` into a compact JWE (RFC 7516 §5.1): `alg` and `enc` as given,
-/// `kid` from the key unless `params` sets one, `apu`/`apv` from `params`. `alg`, `enc`
-/// and, for ECDH-ES, the recipient key's curve must be ones `policy` lists, so nothing
-/// is encrypted that the profile would refuse to decrypt.
+/// Encrypts `plaintext` with `enc` to `recipient` into a compact JWE (RFC 7516 §5.1):
+/// `alg` and the key from the recipient, its header parameters protected, `kid` from the
+/// key unless they set one, `apu`/`apv` from them. `alg`, `enc` and, for ECDH-ES, the
+/// recipient key's curve must be ones `policy` lists, so nothing is encrypted that the
+/// profile would refuse to decrypt.
 ///
 /// # Errors
 ///
@@ -663,21 +681,16 @@ fn party_from(members: &Map<String, Value>) -> Result<(Vec<u8>, Vec<u8>), Error>
 /// backend lacks; [`ErrorCode::PolicyViolation`] for an algorithm or recipient curve
 /// `policy` does not list, before any key is used; [`ErrorCode::KeyMismatch`] for a key
 /// that does not fit `alg`.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "RFC 7516's inputs (alg, enc, key, header) and the three every producer is \
-              bound by (policy, registry, backend); a struct would only rename them"
-)]
 pub fn encrypt(
     plaintext: &[u8],
-    alg: KeyEncryptionAlgorithm,
     enc: ContentEncryptionAlgorithm,
-    key: EncryptionKey<'_>,
-    params: HeaderParams,
+    recipient: &Recipient<'_>,
     policy: &Policy,
     registry: &Registry,
     backend: &dyn Backend,
 ) -> Result<String, Error> {
+    let Recipient { alg, key, header } = recipient;
+    let (alg, key, params) = (*alg, *key, header.clone());
     let (kek, cee) = entries(alg, enc, registry)?;
     check_producible(policy, &kek, &cee, key, registry)?;
     let kid = key_id(key).filter(|_| !params.has("kid"));

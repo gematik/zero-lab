@@ -1017,10 +1017,17 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 #### changed
 - **Breaking:** `jws::sign`, `jws::sign_async` and `jws::json::sign` take `policy` and
-  `registry` after the signer(s); `jwe::encrypt` and `jwe::json::encrypt` take `policy`
-  before `registry`. They refuse an algorithm, a content encryption, a signing key's curve
-  or an ECDH-ES recipient's curve the policy does not list (`PolicyViolation`), so jwz no
-  longer produces tokens its profile would refuse.
+  `registry` after the signer(s). They and the encrypt functions below refuse an
+  algorithm, a content encryption, a signing key's curve or an ECDH-ES recipient's curve
+  the policy does not list (`PolicyViolation`), so jwz no longer produces tokens its
+  profile would refuse.
+- **Breaking:** encryption follows RFC 7516's split of what is per recipient from what
+  all share. `jwe::Recipient` (formerly `jwe::json::Recipient`, still re-exported there)
+  holds a recipient's `alg`, key and header parameters, protected in the compact
+  serialization and unprotected in the JSON one. `jwe::encrypt(plaintext, enc,
+  &recipient, policy, registry, backend)`; `jwe::json::encrypt(plaintext, &shared,
+  recipients, policy, registry, backend)`, where `jwe::json::Shared` holds `enc`, the
+  protected header parameters and `aad`.
 - **Breaking:** `Profile::with` takes `&Algorithms` and appends its lists without
   duplicates, changing nothing else; it took another profile and formed a union.
 - **Breaking:** verification (`verify`, `verify_async`, `verify_with`,
