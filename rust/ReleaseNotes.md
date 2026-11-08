@@ -66,8 +66,8 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - **Schema change:** the warning `issued_before_ca_expiry` of 0.6.0-rc.1 is `ca_expired` in
   `pki verify`'s JSON (TASK-270): every certificate is issued before its CA expires, and what
   it reports is a CA that has expired while its certificate is still accepted under the
-  Kompromissmodell. The trust tree marks a certificate that carries only warnings with a
-  yellow `!` instead of ✓ or ✗.
+  Kompromissmodell. The trust tree marks a CA that carries only warnings with a yellow `!`
+  instead of ✓ or ✗; the end entity keeps ✓ or ✗, its warnings are in the findings.
 - `ti connector config set` takes its configuration from `-c` or the selection, like the other
   connector commands, no longer as an argument.
 - State and cache are plain files below `~/.local/state/telematik/ti` and

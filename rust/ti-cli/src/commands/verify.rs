@@ -175,7 +175,7 @@ fn tree(v: &Verification) -> Vec<TreeRow> {
         &result.chain,
         v.complete(),
         v.at_ts,
-        |i| mark(result, result.chain[i].subject_cn()),
+        |i| mark(result, i),
         |i| {
             v.chain
                 .get(i)
@@ -186,12 +186,15 @@ fn tree(v: &Verification) -> Vec<TreeRow> {
     )
 }
 
-/// ✗ for a certificate an error concerns, a yellow `!` for one only warnings concern (an
-/// expired CA the Kompromissmodell accepts, `ca_expired`), ✓ otherwise.
-fn mark(result: &ValidationResult, subject: &str) -> Line {
+/// ✗ for the certificate at `index` of the chain if an error concerns it; for a CA only
+/// warnings concern (an expired CA the Kompromissmodell accepts, `ca_expired`) a yellow
+/// `!`; ✓ otherwise. The end entity's warnings stay in the findings: its mark says whether
+/// it holds.
+fn mark(result: &ValidationResult, index: usize) -> Line {
+    let subject = result.chain[index].subject_cn();
     if result.errors.iter().any(|e| e.subject == subject) {
         Line::status(Tone::Bad, "✗ ")
-    } else if result.warnings.iter().any(|w| w.subject == subject) {
+    } else if index > 0 && result.warnings.iter().any(|w| w.subject == subject) {
         Line::status(Tone::Warn, "! ")
     } else {
         Line::status(Tone::Good, "✓ ")
@@ -467,7 +470,7 @@ mod tests {
     use std::sync::Arc;
 
     use ti_pki::tsl::Intermediate;
-    use ti_pki::{Timestamp, TrustConfig, TrustStore, Validator};
+    use ti_pki::{Timestamp, TrustConfig, TrustStore, ValidationWarning, Validator};
 
     use super::*;
     use crate::output::document::Span;
@@ -485,7 +488,22 @@ mod tests {
     /// The trust tree of an end entity under GEM.SubCA-Short TEST-ONLY in 2028, when the CA
     /// has expired, validated offline.
     fn trust_tree(ee: &str) -> Vec<TreeRow> {
-        let at = Timestamp(1_830_297_600);
+        let result = validated(ee);
+        super::super::chain_tree(
+            &result.chain,
+            true,
+            Timestamp(AT),
+            |i| mark(&result, i),
+            |_| Line::default(),
+        )
+    }
+
+    /// 2028-01-01, when GEM.SubCA-Short TEST-ONLY has expired.
+    const AT: u64 = 1_830_297_600;
+
+    /// `ee` under GEM.SubCA-Short TEST-ONLY, validated offline at [`AT`].
+    fn validated(ee: &str) -> ValidationResult {
+        let at = Timestamp(AT);
         let store = TrustStore::new([pki_fixture("rca1")]).with_intermediates(vec![Intermediate {
             certificate: pki_fixture("sub-ca-short"),
             provider: "TSP".into(),
@@ -496,19 +514,25 @@ mod tests {
             ..TrustConfig::for_anchor(Vec::new())
         };
         let validator = Validator::new(&config, Arc::new(store));
-        let result = ti_client::block_on(validator.validate(
+        ti_client::block_on(validator.validate(
             &[pki_fixture(ee)],
             at,
             &ti_pki::revocation::Unchecked,
         ))
-        .unwrap();
-        super::super::chain_tree(
-            &result.chain,
-            true,
-            at,
-            |i| mark(&result, result.chain[i].subject_cn()),
-            |_| Line::default(),
-        )
+        .unwrap()
+    }
+
+    /// Only a CA gets the `!`: an end entity a warning concerns (here a responder outside
+    /// RFC 6960 that the TSL lists) keeps its ✓, the warning stays in the findings.
+    #[test]
+    fn only_a_ca_is_marked_by_its_warnings() {
+        let mut result = validated("ee-short-hci-aut");
+        let ee = result.chain[0].subject_cn().to_owned();
+        result.warnings.push(
+            ValidationWarning::new(ErrorCode::OcspResponderNotRfc6960, "listed").with_subject(ee),
+        );
+        assert_eq!(mark(&result, 0).0[0], Span::Status(Tone::Good, "✓ ".into()));
+        assert_eq!(mark(&result, 1).0[0], Span::Status(Tone::Warn, "! ".into()));
     }
 
     /// `ca_expired`: an expired CA the Kompromissmodell accepts is a warning in the trust
