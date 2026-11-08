@@ -33,7 +33,7 @@ use ti_client::pki::verify::{
 };
 use ti_pki::profile;
 use ti_pki::revocation::{RevocationMode, RevocationStatus};
-use ti_pki::{Certificate, ChainPosition, ErrorCode};
+use ti_pki::{Certificate, ErrorCode};
 
 use crate::cli::{GlobalArgs, VerifyArgs};
 use crate::error::{CliError, Exit};
@@ -368,22 +368,9 @@ fn revocation_line(report: &Report) -> Line {
     } else if has(RevocationStatus::Unknown) {
         Line::status(Tone::Warn, "unknown").and_dim(" (no usable OCSP answer, see chain)")
     } else {
-        // The root has no issuer to ask; every other certificate needs an answer.
-        let needed = report
-            .chain
-            .iter()
-            .filter(|entry| entry.position != ChainPosition::Root.as_str())
-            .count();
-        let n = answers.len();
-        if n < needed {
-            Line::status(Tone::Warn, "incomplete")
-                .and_dim(format!(" (OCSP answered for {n} of {needed} certificates)"))
-        } else {
-            Line::status(Tone::Good, "not revoked").and_dim(format!(
-                " (OCSP for {n} certificate{})",
-                if n == 1 { "" } else { "s" }
-            ))
-        }
+        // Only the end entity is asked; the CAs' standing is the TSL's (TUC_PKI_018).
+        Line::status(Tone::Good, "not revoked")
+            .and_dim(" (OCSP for the end entity, the CAs by the TSL)")
     };
     // A responder answers for the time it is asked; the status is judged at --at.
     let line = if report.reference == Reference::Given {

@@ -133,9 +133,11 @@ impl ValidationResult {
 /// the supplied and the store's intermediates, RFC 5280 path validation with the
 /// end-entity requirements below, the gemSpec_Krypt key check and revocation.
 ///
-/// Revocation is checked for the end entity at its CA and, unless
-/// `skip_sub_ca_revocation`, for every CA at its issuer: a CA's standing comes from OCSP
-/// rather than from its TSL listing. The root has no issuer to ask.
+/// Revocation is checked for the end entity alone, at its CA's responder (TUC_PKI_018
+/// step 7). A CA's standing is its status in the verified TSL (step 5, VALID-008): in
+/// accord, or revoked after the end entity was issued (VALID-003, VALID-006), which for
+/// HBA and SMC-B CAs also covers those expired under the Kompromissmodell. No responder is
+/// asked about a CA.
 ///
 /// Built from a [`TrustConfig`] with [`Validator::new`] and adjusted by struct update;
 /// a [`Profile`](crate::profile::Profile) fills in the end-entity requirements.
@@ -147,8 +149,6 @@ pub struct Validator {
     pub algorithms: Cow<'static, AlgorithmSet>,
     /// How a non-Good revocation outcome affects the verdict.
     pub revocation: RevocationMode,
-    /// Check revocation for the end entity only, not for its CAs.
-    pub skip_sub_ca_revocation: bool,
     /// Report certificates outside their validity window as warnings, not errors.
     pub allow_expired: bool,
     /// Clock skew tolerated at the edges of validity windows.
@@ -175,14 +175,12 @@ pub struct Validator {
 
 impl Validator {
     /// A validator with `config`'s algorithms, revocation mode, expiry relaxation and
-    /// clock skew, checking every CA's revocation and requiring nothing of the end
-    /// entity beyond RFC 5280.
+    /// clock skew, requiring nothing of the end entity beyond RFC 5280.
     pub fn new(config: &TrustConfig, store: Arc<TrustStore>) -> Self {
         Validator {
             store,
             algorithms: config.algorithms.clone(),
             revocation: config.revocation,
-            skip_sub_ca_revocation: false,
             allow_expired: config.allow_expired,
             max_clock_skew: config.max_clock_skew,
             required_key_usage: Vec::new(),
@@ -337,25 +335,19 @@ impl Validator {
         if self.revocation == RevocationMode::Disabled {
             return;
         }
-        let links = if self.skip_sub_ca_revocation {
-            1
-        } else {
-            chain.len() - 1
-        };
-        for (i, link) in chain.windows(2).take(links).enumerate() {
-            let (cert, issuer) = (&link[0], &link[1]);
-            let outcome = checker.check(cert, issuer, &self.store).await;
-            if let Ok(revocation) = &outcome {
-                if let Some(warning) = not_rfc6960(revocation, cert, issuer) {
-                    result.warnings.push(warning);
-                }
-                result.cert_results[i].revocation = Some(revocation.clone());
+        // VALID-008: the end entity alone; the TSL has spoken for its CAs.
+        let (cert, issuer) = (&chain[0], &chain[1]);
+        let outcome = checker.check(cert, issuer, &self.store).await;
+        if let Ok(revocation) = &outcome {
+            if let Some(warning) = not_rfc6960(revocation, cert, issuer) {
+                result.warnings.push(warning);
             }
-            match apply_revocation(self.revocation, cert.subject_cn(), &outcome, now) {
-                Some(RevocationFinding::Error(e)) => result.add_error(e),
-                Some(RevocationFinding::Warning(w)) => result.warnings.push(w),
-                None => {}
-            }
+            result.cert_results[0].revocation = Some(revocation.clone());
+        }
+        match apply_revocation(self.revocation, cert.subject_cn(), &outcome, now) {
+            Some(RevocationFinding::Error(e)) => result.add_error(e),
+            Some(RevocationFinding::Warning(w)) => result.warnings.push(w),
+            None => {}
         }
     }
 }
@@ -477,23 +469,22 @@ impl Validator {
     }
 }
 
-/// The warning for a response whose signer only the same-TSP rule authorized, so the
+/// The warning for a response whose signer only its TSL listing authorized, so the
 /// deviation from RFC 6960 is visible in every result that relied on it.
 fn not_rfc6960(
     revocation: &RevocationResult,
     cert: &Certificate,
     issuer: &Certificate,
 ) -> Option<ValidationWarning> {
-    let Some(ResponderAuthorization::SameTspDelegate { ca, tsp }) = &revocation.authorization
-    else {
+    let Some(ResponderAuthorization::TslListed { tsp }) = &revocation.authorization else {
         return None;
     };
     Some(
         ValidationWarning::new(
             ErrorCode::OcspResponderNotRfc6960,
             format!(
-                "OCSP responder {:?} is not RFC 6960 conform: certified by {ca:?}, not by the \
-                 issuing CA {:?}; accepted as a delegate of the same TSP {tsp:?}",
+                "OCSP responder {:?} is not RFC 6960 conform for the issuing CA {:?}; accepted \
+                 as the verified TSL lists it as an OCSP service of {tsp:?} (TUC_PKI_006)",
                 revocation.responder_name,
                 issuer.subject_cn()
             ),
@@ -686,10 +677,7 @@ mod tests {
         fn tuc_pki_006_revocation_is_judged_at_the_reference_time() {
             let pki = TestPki::new();
             let chain = [pki.ee_arzt.clone(), pki.sub_ca_hba.clone()];
-            let v = Validator {
-                skip_sub_ca_revocation: true,
-                ..validator(&pki, RevocationMode::HardFail)
-            };
+            let v = validator(&pki, RevocationMode::HardFail);
             let at = TestPki::NOW;
             let check =
                 |revoked: Timestamp| block_on(v.validate(&chain, at, &RevokedAt(revoked))).unwrap();
@@ -777,20 +765,11 @@ mod tests {
             let hard = offline(&validator(&pki, RevocationMode::HardFail), &chain);
             assert_eq!(
                 codes(&hard),
-                [
-                    (ErrorCode::OcspUnavailable, "Dr. Arzt TEST-ONLY"),
-                    (ErrorCode::OcspUnavailable, "GEM.SubCA-HBA TEST-ONLY"),
-                ]
+                [(ErrorCode::OcspUnavailable, "Dr. Arzt TEST-ONLY")]
             );
             let soft = offline(&validator(&pki, RevocationMode::SoftFail), &chain);
             assert!(soft.valid);
-            assert_eq!(soft.warnings.len(), 2);
-
-            let ee_only = Validator {
-                skip_sub_ca_revocation: true,
-                ..validator(&pki, RevocationMode::HardFail)
-            };
-            assert_eq!(offline(&ee_only, &chain).errors.len(), 1);
+            assert_eq!(soft.warnings.len(), 1);
         }
 
         /// A_30046 (5): a host named in the commonName must be the expected one.
@@ -898,7 +877,7 @@ mod tests {
                 ))
                 .unwrap();
             assert!(valid.valid, "{:?}", valid.errors);
-            assert_eq!(noting.0.lock().unwrap().len(), 2);
+            assert_eq!(noting.0.lock().unwrap().len(), 1);
         }
 
         /// A CA supplied with the certificate, signed by a root, that a verified TSL does not name.
@@ -1029,9 +1008,12 @@ mod tests {
             assert!(result.valid, "{:?}", result.errors);
         }
 
+        /// VALID-008 through the checker: only the end entity's responder is asked, the
+        /// CA's standing is the TSL's; OCSP-001: a responder only the TSL lists is accepted
+        /// with a warning.
         #[cfg(feature = "load")]
         #[test]
-        fn ocsp_for_the_end_entity_and_its_ca() {
+        fn valid_008_ocsp_for_the_end_entity_alone() {
             use crate::load::MockTransport;
             use crate::ocsp::OcspChecker;
             use crate::revocation::RevocationStatus;
@@ -1040,7 +1022,6 @@ mod tests {
             let config = TrustConfig::for_anchor(pki.rca1.der().to_vec());
             let good = include_bytes!("../tests/pki/ocsp/good.der").to_vec();
             let revoked = include_bytes!("../tests/pki/ocsp/revoked.der").to_vec();
-            let ca_good = include_bytes!("../tests/pki/ocsp/issuer-signed.der").to_vec();
             let check = |ee: &Certificate, script: Vec<Vec<u8>>| {
                 let transport = MockTransport::posting(script.into_iter().map(Ok));
                 let checker = OcspChecker::new(&config, &transport, || TestPki::NOW)
@@ -1048,63 +1029,70 @@ mod tests {
                 let v = validator(&pki, RevocationMode::HardFail);
                 let certs = [ee.clone(), pki.sub_ca_hba.clone()];
                 let result = block_on(v.validate(&certs, TestPki::NOW, &checker)).unwrap();
-                (result, transport.posts().len())
+                let posts: Vec<Vec<u8>> = transport.posts().into_iter().map(|p| p.1).collect();
+                (result, posts)
             };
 
-            let (result, posts) = check(&pki.ee_arzt, vec![good, ca_good.clone()]);
+            let (result, posts) = check(&pki.ee_arzt, vec![good]);
             assert!(result.valid, "{:?}", result.errors);
-            assert_eq!(posts, 2);
+            assert_eq!(posts, [crate::ocsp::request(&pki.ee_arzt, &pki.sub_ca_hba)]);
             let statuses: Vec<_> = result
                 .cert_results
                 .iter()
                 .map(|c| c.revocation.as_ref().map(|r| r.status))
                 .collect();
-            assert_eq!(
-                statuses,
-                [
-                    Some(RevocationStatus::Good),
-                    Some(RevocationStatus::Good),
-                    None
-                ]
-            );
+            assert_eq!(statuses, [Some(RevocationStatus::Good), None, None]);
+            assert!(result.warnings.is_empty(), "{:?}", result.warnings);
 
-            let (result, _) = check(&pki.ee_revoked, vec![revoked, ca_good.clone()]);
+            let (result, _) = check(&pki.ee_revoked, vec![revoked]);
             assert_eq!(
                 codes(&result),
                 [(ErrorCode::Revoked, "EE-Revoked TEST-ONLY")]
             );
 
-            // A delegate of another CA of the same TSP: accepted, with a warning.
             let foreign = include_bytes!("../tests/pki/ocsp/foreign-responder.der").to_vec();
-            let transport = MockTransport::posting([Ok(foreign), Ok(ca_good)]);
-            let checker = OcspChecker::new(&config, &transport, || TestPki::NOW)
-                .with_responder_url("http://ocsp.test/");
+            let responder = crate::parse_pem_certificates(
+                include_str!("../tests/pki/ocsp-signer-komp.pem").as_bytes(),
+            )
+            .unwrap()
+            .remove(0);
             let intermediate = |ca: &Certificate| crate::tsl::Intermediate {
                 certificate: ca.clone(),
                 provider: "TSP A".into(),
                 revoked_since: None,
             };
-            let v = Validator {
-                store: Arc::new(
-                    TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]).with_intermediates(vec![
-                        intermediate(&pki.sub_ca_hba),
-                        intermediate(&pki.sub_ca_komp),
-                    ]),
-                ),
-                ..validator(&pki, RevocationMode::HardFail)
-            };
-            let result =
+            let store =
+                TrustStore::new([pki.rca1.clone(), pki.rca7.clone()]).with_intermediates(vec![
+                    intermediate(&pki.sub_ca_hba),
+                    intermediate(&pki.sub_ca_komp),
+                ]);
+            let validate = |store: TrustStore| {
+                let transport = MockTransport::posting([Ok(foreign.clone())]);
+                let checker = OcspChecker::new(&config, &transport, || TestPki::NOW)
+                    .with_responder_url("http://ocsp.test/");
+                let v = Validator {
+                    store: Arc::new(store),
+                    ..validator(&pki, RevocationMode::HardFail)
+                };
                 block_on(v.validate(std::slice::from_ref(&pki.ee_arzt), TestPki::NOW, &checker))
-                    .unwrap();
-            assert!(result.valid, "{:?}", result.errors);
-            let warnings: Vec<String> = result.warnings.iter().map(ToString::to_string).collect();
+                    .unwrap()
+            };
+            let unlisted = validate(store.clone());
+            assert_eq!(
+                codes(&unlisted),
+                [(ErrorCode::OcspResponderUntrusted, "Dr. Arzt TEST-ONLY")]
+            );
+            let listed =
+                validate(store.with_listed_responders(vec![(responder, "TSP B".to_owned())]));
+            assert!(listed.valid, "{:?}", listed.errors);
+            let warnings: Vec<String> = listed.warnings.iter().map(ToString::to_string).collect();
             assert_eq!(
                 warnings,
                 [
                     "ti-pki[ocsp_responder_not_rfc6960] warning: OCSP responder \
-                     \"SubCA-Komp OCSP-Signer TEST-ONLY\" is not RFC 6960 conform: certified by \
-                     \"GEM.SubCA-Komp TEST-ONLY\", not by the issuing CA \"GEM.SubCA-HBA \
-                     TEST-ONLY\"; accepted as a delegate of the same TSP \"TSP A\": \
+                     \"SubCA-Komp OCSP-Signer TEST-ONLY\" is not RFC 6960 conform for the \
+                     issuing CA \"GEM.SubCA-HBA TEST-ONLY\"; accepted as the verified TSL \
+                     lists it as an OCSP service of \"TSP B\" (TUC_PKI_006): \
                      \"Dr. Arzt TEST-ONLY\""
                 ]
             );
@@ -1163,10 +1151,10 @@ mod tests {
 
             let pki = TestPki::new();
             let config = TrustConfig::for_anchor(pki.rca1.der().to_vec());
-            let transport = Rc::new(MockTransport::posting([
-                Ok(include_bytes!("../tests/pki/ocsp/good.der").to_vec()),
-                Ok(include_bytes!("../tests/pki/ocsp/issuer-signed.der").to_vec()),
-            ]));
+            let transport = Rc::new(MockTransport::posting([Ok(include_bytes!(
+                "../tests/pki/ocsp/good.der"
+            )
+            .to_vec())]));
             let store = Rc::new(MemoryCacheStore::new());
             let checker = |transport: &Rc<MockTransport>| {
                 OcspChecker::new(&config, Local(Rc::clone(transport)), || TestPki::NOW)
@@ -1177,7 +1165,7 @@ mod tests {
             let v = validator(&pki, RevocationMode::HardFail);
             let result = block_on(v.validate(&certs, TestPki::NOW, &checker(&transport))).unwrap();
             assert!(result.valid, "{:?}", result.errors);
-            assert_eq!(transport.posts().len(), 2);
+            assert_eq!(transport.posts().len(), 1);
 
             // Another checker over the same store: the responses come from the store.
             let silent = Rc::new(MockTransport::posting([]));

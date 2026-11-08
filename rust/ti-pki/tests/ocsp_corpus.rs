@@ -25,7 +25,12 @@
 //! held to. Every response fixture against the certificates it may be about, at several times, online
 //! and stapled, with and without a store, and copies of a good response with a byte flipped, which is
 //! where two parsers part. Set `TI_PKI_BLESS=1` to write it again after a deliberate change to a rule.
-#![cfg(all(feature = "brainpool", feature = "rsa", feature = "dangerous-nonprod"))]
+#![cfg(all(
+    feature = "brainpool",
+    feature = "rsa",
+    feature = "dangerous-nonprod",
+    feature = "test-util"
+))]
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -51,26 +56,41 @@ fn cert(name: &str) -> Certificate {
     ti_pki::parse_pem_certificates(&pem).unwrap().remove(0)
 }
 
+/// No store; the TSL's CAs without a listed responder; and the same with three responders
+/// listed, under a TSP neither CA is listed under, since a listing binds a responder to no
+/// CA (OCSP-001).
 fn stores() -> [(&'static str, Option<Arc<TrustStore>>); 3] {
-    let with = |hba: &str, komp: &str| {
-        let intermediate = |file: &str, provider: &str| Intermediate {
+    let unlisted = || {
+        let intermediate = |file: &str| Intermediate {
             certificate: cert(file),
-            provider: provider.to_owned(),
+            provider: "TSP A".to_owned(),
             revoked_since: None,
         };
-        Some(Arc::new(
-            TrustStore::new([cert("rca1.pem"), cert("rca7.pem")]).with_intermediates(vec![
-                intermediate("sub-ca-hba.pem", hba),
-                intermediate("sub-ca-komp.pem", komp),
-            ]),
-        ))
+        TrustStore::new([cert("rca1.pem"), cert("rca7.pem")]).with_intermediates(vec![
+            intermediate("sub-ca-hba.pem"),
+            intermediate("sub-ca-komp.pem"),
+        ])
     };
+    let listed = unlisted().with_listed_responders_for_tests(
+        LISTED
+            .iter()
+            .map(|file| (cert(file), "TSP B".to_owned()))
+            .collect(),
+    );
     [
         ("none", None),
-        ("same_tsp", with("TSP A", "TSP A")),
-        ("other_tsp", with("TSP A", "TSP B")),
+        ("unlisted", Some(Arc::new(unlisted()))),
+        ("listed", Some(Arc::new(listed))),
     ]
 }
+
+/// The responders the `listed` store lists: one another CA certified, one without
+/// id-kp-OCSPSigning, one expired.
+const LISTED: [&str; 3] = [
+    "ocsp-signer-komp.pem",
+    "ocsp-signer-no-eku.pem",
+    "ocsp-signer-expired.pem",
+];
 
 /// The outcome in words both sides can state: the code, or the verdict with what it rests on.
 fn outcome(
@@ -89,8 +109,7 @@ fn outcome(
             "authorization": r.authorization.as_ref().map(|a| match a {
                 ResponderAuthorization::Issuer => "issuer".to_owned(),
                 ResponderAuthorization::Delegate => "delegate".to_owned(),
-                ResponderAuthorization::TslListed { ca, tsp } => format!("tsl_listed|{ca}|{tsp}"),
-                ResponderAuthorization::SameTspDelegate { ca, tsp } => format!("same_tsp_delegate|{ca}|{tsp}"),
+                ResponderAuthorization::TslListed { tsp } => format!("tsl_listed|{tsp}"),
                 _ => "other".to_owned(),
             }),
             "produced_at": r.produced_at.map(|t| t.0),
@@ -258,11 +277,45 @@ fn path_007_a_compressed_key_does_not_parse() {
     assert!(ti_pki::parse_pem_certificates(&pem).is_err());
 }
 
-/// OCSP-001, OCSP-002 and OCSP-003: the corpus is what this crate says.
+/// OCSP-001, OCSP-002 and OCSP-003: the corpus is what this crate says, a responder the TSL
+/// lists included.
 #[test]
 fn ocsp_001_the_corpus_is_what_ti_pki_says() {
+    let matrix = matrix();
+    let at_now = |response: &str, store: &str| {
+        matrix
+            .iter()
+            .find(|c| {
+                c["response"] == response
+                    && c["cert"] == "ee-arzt.pem"
+                    && c["now"] == NOW
+                    && c["stapled"] == false
+                    && c["store"] == store
+            })
+            .unwrap()["outcome"]
+            .clone()
+    };
+    // Another CA's responder: authorized by its listing alone, untrusted without it.
+    assert_eq!(
+        at_now("foreign-responder", "listed")["authorization"],
+        "tsl_listed|TSP B"
+    );
+    assert_eq!(
+        at_now("foreign-responder", "unlisted")["error"],
+        "ocsp_responder_untrusted"
+    );
+    // The CA's own delegate needs no listing.
+    assert_eq!(at_now("good", "unlisted")["authorization"], "delegate");
+    // A listing waives neither validity nor id-kp-OCSPSigning.
+    for response in ["expired-responder", "no-eku"] {
+        assert_eq!(
+            at_now(response, "listed")["error"],
+            "ocsp_responder_untrusted",
+            "{response}"
+        );
+    }
     let corpus =
-        json!({ "matrix": matrix(), "mutated": mutated(), "requests": requests(), "real": real() });
+        json!({ "matrix": matrix, "mutated": mutated(), "requests": requests(), "real": real() });
     let written = serde_json::to_string(&corpus).unwrap() + "\n";
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/pki-path/testdata/ocsp.json");
     if std::env::var_os("TI_PKI_BLESS").is_some() {

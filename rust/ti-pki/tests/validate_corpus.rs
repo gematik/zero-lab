@@ -23,7 +23,12 @@
 
 //! `spec/pki-path/testdata/validate.json`: the verdicts of this crate's `Validator`, the corpus `go/tipki` is
 //! held to. Set `TI_PKI_BLESS=1` to write it again after a deliberate change to a rule.
-#![cfg(all(feature = "brainpool", feature = "rsa", feature = "dangerous-nonprod"))]
+#![cfg(all(
+    feature = "brainpool",
+    feature = "rsa",
+    feature = "dangerous-nonprod",
+    feature = "test-util"
+))]
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -55,8 +60,16 @@ fn cert(name: &str) -> Certificate {
     ti_pki::parse_pem_certificates(&pem).unwrap().remove(0)
 }
 
-/// Answers every question with one scripted outcome.
-struct Scripted(&'static str);
+/// Answers with one scripted outcome, and records whom it was asked about. The `ca_*`
+/// scripts answer good for the end entity and fail for a CA, which no validator may ask
+/// about (VALID-008).
+struct Scripted(&'static str, std::sync::Mutex<Vec<String>>);
+
+impl Scripted {
+    fn new(script: &'static str) -> Self {
+        Scripted(script, std::sync::Mutex::new(Vec::new()))
+    }
+}
 
 impl RevocationChecker for Scripted {
     async fn check(
@@ -65,20 +78,26 @@ impl RevocationChecker for Scripted {
         _: &Certificate,
         _: &TrustStore,
     ) -> Result<RevocationResult, ValidationError> {
+        self.1.lock().unwrap().push(cert.subject_cn().to_owned());
         let mut result = RevocationResult::unknown(Timestamp(NOW), "scripted");
         "scripted responder".clone_into(&mut result.responder_name);
-        match self.0 {
+        let script = match self.0 {
+            "ca_untrusted" | "ca_unavailable" if !cert.is_ca() => "good",
+            "ca_untrusted" => "untrusted",
+            "ca_unavailable" => "unavailable",
+            other => other,
+        };
+        match script {
             "good" => result.status = RevocationStatus::Good,
-            "same_tsp" => {
+            "tsl_listed" => {
                 result.status = RevocationStatus::Good;
-                result.authorization = Some(ResponderAuthorization::SameTspDelegate {
-                    ca: "some CA".to_owned(),
+                result.authorization = Some(ResponderAuthorization::TslListed {
                     tsp: "some TSP".to_owned(),
                 });
             }
             "revoked" | "revoked_later" => {
                 result.status = RevocationStatus::Revoked;
-                let at = if self.0 == "revoked" {
+                let at = if script == "revoked" {
                     REVOKED_AT
                 } else {
                     NOW + 3600
@@ -88,7 +107,7 @@ impl RevocationChecker for Scripted {
             "revoked_no_time" => result.status = RevocationStatus::Revoked,
             "unknown" => {}
             "unavailable" | "invalid" | "untrusted" => {
-                let code = match self.0 {
+                let code = match script {
                     "unavailable" => ErrorCode::OcspUnavailable,
                     "invalid" => ErrorCode::OcspResponseInvalid,
                     _ => ErrorCode::OcspResponderUntrusted,
@@ -155,7 +174,7 @@ fn config(mode: RevocationMode) -> TrustConfig {
     }
 }
 
-fn verdict(result: &ValidationResult) -> Value {
+fn verdict(result: &ValidationResult, asked: &[String]) -> Value {
     let pair = |code: String, subject: &str| json!([code, subject]);
     json!({
         "valid": result.valid,
@@ -164,11 +183,14 @@ fn verdict(result: &ValidationResult) -> Value {
         "revocation": result.cert_results.iter().map(|r| r.revocation.as_ref().map(|x| x.status.as_str())).collect::<Vec<_>>(),
         "errors": result.errors.iter().map(|e| pair(e.code.to_string(), &e.subject)).collect::<Vec<_>>(),
         "warnings": result.warnings.iter().map(|w| pair(w.code.to_string(), &w.subject)).collect::<Vec<_>>(),
+        "asked": asked,
     })
 }
 
 fn run(validator: &Validator, certs: &[Certificate], now: u64, script: &'static str) -> Value {
-    verdict(&block_on(validator.validate(certs, Timestamp(now), &Scripted(script))).unwrap())
+    let checker = Scripted::new(script);
+    let result = block_on(validator.validate(certs, Timestamp(now), &checker)).unwrap();
+    verdict(&result, &checker.1.into_inner().unwrap())
 }
 
 fn mode_name(mode: RevocationMode) -> &'static str {
@@ -253,9 +275,11 @@ impl Recorder<'_> {
 
     /// Every outcome, in every mode.
     fn outcomes(&mut self, plain: &Arc<TrustStore>) {
-        const SCRIPTS: [&str; 9] = [
+        const SCRIPTS: [&str; 11] = [
             "good",
-            "same_tsp",
+            "tsl_listed",
+            "ca_untrusted",
+            "ca_unavailable",
             "revoked",
             "revoked_later",
             "revoked_no_time",
@@ -275,13 +299,6 @@ impl Recorder<'_> {
                     &Case::chain(NOW, mode, script),
                     &Validator::new(&base, Arc::clone(plain)),
                 );
-                let mut sub_ca_skipped = Validator::new(&base, Arc::clone(plain));
-                sub_ca_skipped.skip_sub_ca_revocation = true;
-                let case = Case {
-                    kind: "skip_sub_ca",
-                    ..Case::chain(NOW, mode, script)
-                };
-                self.push(&case, &sub_ca_skipped);
             }
         }
     }
@@ -356,6 +373,47 @@ fn matrix() -> Vec<Value> {
         cases.append(&mut recorder.cases);
     }
     cases
+}
+
+/// When gemSpec_PKI's 2026 CA sub-ca-short has expired, in 2028 (`TestPki::AFTER_SHORT`).
+const AFTER_SHORT: u64 = 1_830_297_600;
+
+/// VALID-008 with the Kompromissmodell: sub-ca-short, expired, stays in accord in a list that
+/// lets it issue SMC-B and HBA certificates, so its SMC-B's and HBA's certificates validate with
+/// `issued_before_ca_expiry`, and a responder that would refuse any CA is never asked about it.
+/// A component's certificate under it is under the shell model and expired.
+fn compromise() -> Vec<Value> {
+    let ca = cert("sub-ca-short.pem");
+    let types = [
+        CertificateType::HciAut,
+        CertificateType::HpAut,
+        CertificateType::FdTlsS,
+    ];
+    let store = Arc::new(
+        TrustStore::new([cert("rca1.pem")])
+            .with_intermediates(vec![Intermediate {
+                certificate: ca.clone(),
+                provider: "TSP".to_owned(),
+                revoked_since: None,
+            }])
+            .with_tsl_ca_types_for_tests(vec![(ca, types.iter().map(|t| t.oid()).collect())]),
+    );
+    let validator = Validator::new(&config(RevocationMode::HardFail), store);
+    [
+        "ee-short-hci-aut.pem",
+        "ee-short-hp-aut.pem",
+        "ee-short-fd-tls-s.pem",
+    ]
+    .into_iter()
+    .map(|file| {
+        json!({
+            "file": file,
+            "now": AFTER_SHORT,
+            "script": "ca_untrusted",
+            "verdict": run(&validator, &[cert(file)], AFTER_SHORT, "ca_untrusted"),
+        })
+    })
+    .collect()
 }
 
 /// A real SMC-B under the real reference list, whose stated CA types come into play.
@@ -493,7 +551,7 @@ fn assert_real_families(ca_types: &Value) {
     }
 }
 
-/// VALID-001, VALID-002, VALID-003 and VALID-007: the corpus is what this crate says.
+/// VALID-001, VALID-002, VALID-003, VALID-007 and VALID-008: the corpus is what this crate says.
 #[test]
 fn valid_001_the_corpus_is_what_ti_pki_says() {
     let (real, signer, unlisted, ca_types, authorized) = real();
@@ -512,7 +570,30 @@ fn valid_001_the_corpus_is_what_ti_pki_says() {
             .contains(&json!(["ca_not_in_tsl", "GEM.TSL-CA28 TEST-ONLY"])),
         "{unlisted}"
     );
-    let corpus = json!({ "matrix": matrix(), "real": real, "signer": signer, "unlisted": unlisted, "ca_types": ca_types, "authorized": authorized });
+    let compromise = compromise();
+    for case in &compromise[..2] {
+        let verdict = &case["verdict"];
+        assert_eq!(verdict["valid"], true, "{case}");
+        assert_eq!(verdict["asked"].as_array().unwrap().len(), 1, "{case}");
+        assert!(
+            verdict["warnings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|w| w[0] == "issued_before_ca_expiry"),
+            "{case}"
+        );
+    }
+    let matrix = matrix();
+    for case in &matrix {
+        let asked = case["verdict"]["asked"].as_array().unwrap();
+        assert!(asked.len() <= 1, "{case}");
+        assert!(
+            asked.iter().all(|a| *a == case["verdict"]["chain"][0]),
+            "{case}"
+        );
+    }
+    let corpus = json!({ "matrix": matrix, "compromise": compromise, "real": real, "signer": signer, "unlisted": unlisted, "ca_types": ca_types, "authorized": authorized });
     let written = serde_json::to_string(&corpus).unwrap() + "\n";
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../spec/pki-path/testdata/validate.json");

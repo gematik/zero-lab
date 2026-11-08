@@ -192,7 +192,6 @@
                       "issuer",
                       "delegate",
                       "tsl_listed",
-                      "same_tsp_delegate",
                       "other",
                       null
                     ]
