@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-08T09:52:00Z'
-updated_date: '2026-11-08T10:17:00Z'
+updated_date: '2026-11-08T10:35:00Z'
 labels:
   - rust
   - ti-pki
@@ -45,4 +45,8 @@ Decisions:
 - Go release notes: the convention adds a section per module when tagged, so none was written now.
 
 Sanity: ti pki verify of the maintainer's test SMC-B (GEM.SMCB-CA9 TEST-ONLY) is valid with issued_before_ca_expiry and ocsp_responder_not_rfc6960 (ehca OCSP Signer 51, tsl_listed).
+
+Maintainer's additions:
+- issued_before_ca_expiry is renamed ca_expired (Rust ErrorCode::CaExpired, Go CodeCAExpired, spec/pki-path, corpora regenerated, ti-cli schema; schema change noted in the release notes for ti-pki and ti-cli). The message says why the CA is still accepted: expired (notAfter=…); "<below>", which it issued, is accepted under the Kompromissmodell for HBA and SMC-B, as the CA was valid when it issued it.
+- ti-cli trust tree: ✗ for a certificate an error concerns, a yellow ! for one only warnings concern, ✓ otherwise. The Kompromissmodell CA row reads 'CA · expired <date>, accepted under the Kompromissmodell' and is not dimmed. The ! applies to any certificate with only warnings, so an end entity carrying ocsp_responder_not_rfc6960 shows ! too. Pinned by ca_expired_is_rendered_as_a_warning_not_a_failure.
 <!-- SECTION:NOTES:END -->
