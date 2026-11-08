@@ -200,6 +200,10 @@ release +releases:
             s/\n+\z/\n/' ReleaseNotes.md
     done
     cargo update -q --workspace --offline
+    # The fuzz targets are workspaces of their own; their lock files name the bumped crates too.
+    for lock in */fuzz/Cargo.lock; do
+        (cd "${lock%/Cargo.lock}" && cargo update -q --workspace --offline)
+    done
     echo "==> just semver ${crates[*]}"; just semver "${crates[@]}"
     # Cargo.toml changed, so jwz's design-time stamps are stale until rechecked.
     echo "==> just jwz-recheck"; just jwz-recheck
@@ -213,7 +217,7 @@ release +releases:
 
     summary=$(for i in "${!crates[@]}"; do printf '%s %s, ' "${crates[$i]}" "${versions[$i]}"; done)
     summary="${summary%, }"
-    git add -A Cargo.toml Cargo.lock ReleaseNotes.md jwz/verification/stamps "${crates[@]/%//Cargo.toml}"
+    git add -A Cargo.toml Cargo.lock */fuzz/Cargo.lock ReleaseNotes.md jwz/verification/stamps "${crates[@]/%//Cargo.toml}"
     git commit -q -m "release: $summary"
     for i in "${!crates[@]}"; do just tag "${crates[$i]}" "${versions[$i]}"; done
     echo

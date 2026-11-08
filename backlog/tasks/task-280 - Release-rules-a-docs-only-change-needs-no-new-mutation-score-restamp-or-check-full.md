@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-08T18:31:00Z'
-updated_date: '2026-11-08T18:43:00Z'
+updated_date: '2026-11-08T18:56:00Z'
 labels:
   - rust
   - release
@@ -33,4 +33,6 @@ jwz 0.2.1 only fixes its README (crates.io keeps a version's README), yet the ru
 
 <!-- SECTION:NOTES:BEGIN -->
 Gate: scripts/mutation.py affecting <crate> <rev> lists the changed files that can change the score (everything under the crate except README, LICENSE, docs/ not compiled in by include_str!, verification/, fuzz/; Cargo.toml only beyond its [package] version line); the gate and the release use it; tested in scripts/test_mutation.py. Release: a crate with no such change and an unchanged workspace Cargo.toml and Cargo.lock since its last tag is docs-only: check-full and msrv are skipped, the gate, advisories, vet and semver run. Dropped (maintainer's goal, my call): hashing stamps' Cargo.toml without the version line. It needed jwz/tests/stamps.rs to change, which under the new gate is code and would have forced a new mutation score, and it saves only the browser restamp (~3 min): Kani and hax hash no manifest.
+
+Found while merging: just release updated only the workspace's Cargo.lock; the fuzz workspaces' own lock files still named jwz 0.1.0. The release now updates every */fuzz/Cargo.lock offline and commits them with the bump; the three stale ones are committed.
 <!-- SECTION:NOTES:END -->
