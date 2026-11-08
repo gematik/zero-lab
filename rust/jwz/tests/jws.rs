@@ -299,21 +299,20 @@ fn negative_structure() {
 fn negative_key_reference_without_opt_in() {
     let registry = Registry::standard();
     let key = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend()).unwrap();
-    let token = jws::sign(
-        b"x",
-        HeaderParams::new().jwk(&key.public_jwk()).unwrap(),
-        &key,
-        &strict(),
-        &registry,
-    )
-    .unwrap();
+    // Opting in lets the header key be written and read; trusting it is the application's
+    // decision.
+    let mut policy = strict();
+    policy.key_references.jwk = true;
+    let params = || HeaderParams::new().jwk(&key.public_jwk()).unwrap();
+    assert_eq!(
+        code(jws::sign(b"x", params(), &key, &strict(), &registry)).err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    let token = jws::sign(b"x", params(), &key, &policy, &registry).unwrap();
     assert_eq!(
         code(Jws::parse(&token, &strict(), &registry)).err(),
         Some(ErrorCode::PolicyViolation)
     );
-    // Opting in lets the header key be read; trusting it is the application's decision.
-    let mut policy = strict();
-    policy.key_references.jwk = true;
     let parsed = Jws::parse(&token, &policy, &registry).unwrap();
     let embedded = parsed.header().jwk().unwrap().unwrap();
     let verifier =
@@ -351,13 +350,18 @@ fn understood_critical_extension_round_trip() {
     let params = HeaderParams::new()
         .critical("urn:example:ext", serde_json::json!(true))
         .unwrap();
-    let token = jws::sign(b"x", params, &key, &strict(), &registry).unwrap();
+    let mut policy = strict();
+    policy.understood_critical.push("urn:example:ext".into());
+    // A producer is bound like a recipient: it writes no extension it does not understand.
+    assert_eq!(
+        code(jws::sign(b"x", params.clone(), &key, &strict(), &registry)).err(),
+        Some(ErrorCode::Critical)
+    );
+    let token = jws::sign(b"x", params, &key, &policy, &registry).unwrap();
     assert_eq!(
         code(Jws::parse(&token, &strict(), &registry)).err(),
         Some(ErrorCode::Critical)
     );
-    let mut policy = strict();
-    policy.understood_critical.push("urn:example:ext".into());
     Jws::parse(&token, &policy, &registry)
         .unwrap()
         .verify(&key)
@@ -474,7 +478,7 @@ fn rfc_7515_4_1_8_x5t_s256_binds_the_leaf() {
             .x5c(&[leaf, b"ca"])
             .param("x5t#S256", serde_json::json!(x5t))
             .unwrap();
-        let token = jws::sign(b"x", params, &key, &strict(), &registry).unwrap();
+        let token = jws::sign(b"x", params, &key, &policy, &registry).unwrap();
         let parsed = Jws::parse(&token, &policy, &registry).unwrap();
         let chain = jwz::x5c::chain(parsed.header(), sha256);
         assert_eq!(chain.is_ok(), ok, "{x5t}");
@@ -520,16 +524,16 @@ fn rfc_7515_4_1_6_x5c_is_padded_standard_base64() {
             .unwrap(),
         vec![der.to_vec(), vec![1]]
     );
+    let mut policy = strict();
+    policy.key_references.x5c = true;
     let token = jws::sign(
         b"x",
         HeaderParams::new().x5c(&[der]),
         &es256_key(),
-        &strict(),
+        &policy,
         &Registry::standard(),
     )
     .unwrap();
-    let mut policy = strict();
-    policy.key_references.x5c = true;
     let parsed = Jws::parse(&token, &policy, &Registry::standard()).unwrap();
     assert_eq!(
         parsed.header().get("x5c"),
@@ -594,35 +598,44 @@ fn rfc_4648_5_base64url_alphabet() {
 #[test]
 fn rfc_7797_3_b64_is_refused() {
     let registry = Registry::standard();
-    let key = es256_key();
     let mut understood = strict();
     understood.understood_critical.push("b64".into());
-    for (params, policy) in [
+    // jwz produces no b64 token under any profile, so the tokens are written by hand; the
+    // header is refused before any signature is looked at.
+    let token = |header: serde_json::Value| {
+        format!("{}.eA.AA", jwz::b64::encode(header.to_string().as_bytes()))
+    };
+    for (header, policy) in [
+        (serde_json::json!({"alg": "ES256", "b64": false}), strict()),
         (
-            HeaderParams::new()
-                .param("b64", serde_json::json!(false))
-                .unwrap(),
-            strict(),
-        ),
-        (
-            HeaderParams::new()
-                .critical("b64", serde_json::json!(false))
-                .unwrap(),
+            serde_json::json!({"alg": "ES256", "b64": false, "crit": ["b64"]}),
             understood.clone(),
         ),
         (
-            HeaderParams::new()
-                .critical("b64", serde_json::json!(true))
-                .unwrap(),
-            understood,
+            serde_json::json!({"alg": "ES256", "b64": true, "crit": ["b64"]}),
+            understood.clone(),
         ),
     ] {
-        let token = jws::sign(b"x", params, &key, &strict(), &registry).unwrap();
         assert_eq!(
-            code(Jws::parse(&token, &policy, &registry)).err(),
-            Some(ErrorCode::PolicyViolation)
+            code(Jws::parse(&token(header.clone()), &policy, &registry)).err(),
+            Some(ErrorCode::PolicyViolation),
+            "{header}"
         );
     }
+    let params = HeaderParams::new()
+        .critical("b64", serde_json::json!(false))
+        .unwrap();
+    assert_eq!(
+        code(jws::sign(
+            b"x",
+            params,
+            &es256_key(),
+            &understood,
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
 }
 
 /// A resolver that offers fixed keys, or fails.

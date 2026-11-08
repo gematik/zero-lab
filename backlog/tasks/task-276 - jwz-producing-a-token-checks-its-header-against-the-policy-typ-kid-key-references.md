@@ -3,10 +3,10 @@ id: TASK-276
 title: >-
   jwz: producing a token checks its header against the policy (typ, kid, key
   references)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-08T15:20:00Z'
-updated_date: '2026-11-08T15:26:00Z'
+updated_date: '2026-11-08T15:42:00Z'
 labels:
   - jwz
   - security
@@ -24,6 +24,12 @@ Found by TASK-258 (RFC 8725 §3.11, producer side). jws::sign, sign_async, jws::
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 sign and encrypt (compact and JSON) run the policy's header checks (typ, require_kid, key references, crit) on the header they produce, before signing or encrypting, and refuse with PolicyViolation
-- [ ] #2 tests named after RFC 8725 §3.11 prove that a profile with a typ neither produces nor accepts a token without it
+- [x] #1 sign and encrypt (compact and JSON) run the policy's header checks (typ, require_kid, key references, crit) on the header they produce, before signing or encrypting, and refuse with PolicyViolation
+- [x] #2 tests named after RFC 8725 §3.11 prove that a profile with a typ neither produces nor accepts a token without it
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Policy::check_produced_jws/_jwe run check_common (typ, require_kid, key references, crit, b64; zip for JWE) on the header jwz is about to sign or encrypt under: compact before signing, JWE before key agreement, JSON per signature or per recipient's visible header. Five tests that built tokens with headers strict refuses (x5c, jwk, crit) now produce under a profile that allows them and still test strict's refusal; the b64 test builds its tokens by hand, since jwz produces no b64 token. New test rfc_8725_3_11_a_producer_writes_no_header_its_profile_refuses. Docs: guide (profile section, RFC 8725 table), README, ADR 0001, release notes (breaking), encrypt docs.
+<!-- SECTION:NOTES:END -->

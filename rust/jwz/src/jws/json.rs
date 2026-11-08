@@ -144,7 +144,7 @@ pub fn sign(
     let encoded_payload = b64::encode(payload);
     let mut signatures = Vec::with_capacity(signers.len());
     for (signer, params) in signers {
-        let protected = protected_header(params.clone(), *signer)?;
+        let protected = protected_header(params.clone(), *signer, policy)?;
         let input = signing_input(&protected, &encoded_payload);
         let signature = signer.try_sign(input.as_bytes())?;
         let mut entry = Map::new();

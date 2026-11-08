@@ -307,13 +307,18 @@ fn signing_input(protected: &str, encoded_payload: &str) -> String {
 }
 
 /// The protected header for `key`: `params` plus `alg` and, unless set, `kid`.
-fn protected_header(params: HeaderParams, key: &(impl JwsKey + ?Sized)) -> Result<String, Error> {
+fn protected_header(
+    params: HeaderParams,
+    key: &(impl JwsKey + ?Sized),
+    policy: &Policy,
+) -> Result<String, Error> {
     let kid = key.key_id().filter(|_| !params.has("kid"));
     let mut set = alloc::vec![("alg", key.algorithm().as_str())];
     if let Some(kid) = kid {
         set.push(("kid", kid));
     }
     let members = params.into_members(&set);
+    policy.check_produced_jws(&Header::from_members(members.clone()))?;
     let json =
         serde_json::to_string(&members).map_err(|_| Error::new(ErrorCode::Json, "header"))?;
     Ok(b64::encode(json.as_bytes()))
@@ -326,8 +331,10 @@ fn protected_header(params: HeaderParams, key: &(impl JwsKey + ?Sized)) -> Resul
 ///
 /// # Errors
 ///
-/// The errors of [`Policy::check_signing_key`], before anything is signed; the signer's
-/// error, or [`ErrorCode::Json`] if the header cannot be serialized.
+/// The errors of [`Policy::check_signing_key`], and [`ErrorCode::PolicyViolation`] or
+/// [`ErrorCode::Critical`] for a header the policy would refuse (`typ`, a required `kid`,
+/// a key reference, `crit`), before anything is signed; the signer's error, or
+/// [`ErrorCode::Json`] if the header cannot be serialized.
 pub fn sign(
     payload: &[u8],
     params: HeaderParams,
@@ -336,7 +343,7 @@ pub fn sign(
     registry: &Registry,
 ) -> Result<String, Error> {
     policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
-    let protected = protected_header(params, signer)?;
+    let protected = protected_header(params, signer, policy)?;
     let encoded_payload = b64::encode(payload);
     let input = signing_input(&protected, &encoded_payload);
     let signature = signer.try_sign(input.as_bytes())?;
@@ -356,7 +363,7 @@ pub async fn sign_async(
     registry: &Registry,
 ) -> Result<String, Error> {
     policy.check_signing_key(signer.algorithm(), signer.curve(), registry)?;
-    let protected = protected_header(params, signer)?;
+    let protected = protected_header(params, signer, policy)?;
     let encoded_payload = b64::encode(payload);
     let input = signing_input(&protected, &encoded_payload);
     let signature = signer.sign_async(input.as_bytes()).await?;

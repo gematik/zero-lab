@@ -1010,6 +1010,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `Ed25519` and `Ed448` (RFC 9864, TASK-241): fully specified EdDSA names. `Ed25519` signs
   and verifies, with a key on Ed25519 only; `Ed448` is reserved. A JWK whose `alg` says
   `Ed25519` is no key for `EdDSA`, nor the reverse. The constant `profile::ED25519`.
+- **Breaking:** signing and encryption check the header they produce against the policy
+  (RFC 8725 §3.11, TASK-276): a missing `typ` or `kid` the policy requires, a key
+  reference it does not opt into, a `crit` it does not understand, `b64` and, for JWE,
+  `zip` are refused with `PolicyViolation` or `Critical` before anything is signed or
+  encrypted. A profile with a `typ` no longer signs a token without it.
 - **Breaking:** `Profile::strict()` lists `Ed25519` instead of the polymorphic `EdDSA`,
   which RFC 9864 deprecates: an `EdDSA` token is refused under `strict`, and a key for
   `EdDSA` signs under it no more. A profile that must talk to an older peer adds

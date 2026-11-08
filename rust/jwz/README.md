@@ -51,7 +51,8 @@ Every requirement jwz implements is traced to the tests that prove it:
 - **Strict by default.** Every parse, signature and encryption takes a policy; the
   default accepts only modern algorithms, and anything permissive is an explicit choice.
   A profile lists its algorithms and the curves its keys may be on, and jwz produces
-  nothing its profile would refuse. `none` cannot be expressed, and the token header
+  nothing its profile would refuse: not an algorithm, a key curve or a header (`typ`,
+  `kid`, key references) it does not allow. `none` cannot be expressed, and the token header
   never picks the algorithm: the key does.
 - **Trust in the types.** A `Jws<Unverified>` has no payload and a `Jwe<Encrypted>` no
   plaintext; they appear only after verification or decryption.

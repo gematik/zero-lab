@@ -327,6 +327,24 @@ impl Policy {
         Ok(())
     }
 
+    /// The header checks of [`check_jws`](Self::check_jws) on a header jwz is about to
+    /// sign (RFC 8725 §3.11): a profile that requires a `typ`, a `kid` or refuses a key
+    /// reference produces no token it would refuse.
+    #[cfg(feature = "jws")]
+    pub(crate) fn check_produced_jws(&self, header: &Header) -> Result<(), Error> {
+        self.check_common(header)
+    }
+
+    /// The header checks of [`check_jwe`](Self::check_jwe) on a header jwz is about to
+    /// encrypt under, as [`check_produced_jws`](Self::check_produced_jws) does for JWS.
+    #[cfg(feature = "jwe")]
+    pub(crate) fn check_produced_jwe(&self, header: &Header) -> Result<(), Error> {
+        if header.get("zip").is_some() {
+            return Err(Error::new(ErrorCode::PolicyViolation, "zip unsupported"));
+        }
+        self.check_common(header)
+    }
+
     /// The checks every JOSE header gets, whatever its algorithm family.
     fn check_common(&self, header: &Header) -> Result<(), Error> {
         self.check_critical(header)?;

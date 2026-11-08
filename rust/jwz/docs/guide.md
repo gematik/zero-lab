@@ -87,8 +87,10 @@ common cases; `SystemClock` does not exist where std has no clock (see below).
 A [`Profile`](crate::profile::Profile) says what a token may use (`policy`) and what a
 JWT must claim (`claims`). Parsing takes the policy, and it is the only place a header is
 accepted. Signing and encryption take it too: `jws::sign` and `jwe::encrypt` refuse an
-algorithm, a content encryption or a key curve the policy does not list, so a program
-never produces a token its own profile would refuse.
+algorithm, a content encryption or a key curve the policy does not list, and a header
+the policy would refuse (a missing `typ` or `kid` it requires, a key reference it does
+not opt into, a `crit` it does not understand), so a program never produces a token its
+own profile would refuse.
 
 - `Profile::strict()` is the default: ES256 on P-256 and Ed25519 (RFC 9864); ECDH-ES on
   P-256 with A128GCM and A256GCM; no key references (`jku`, `jwk`, `x5u`, `x5c`) in
@@ -287,7 +289,7 @@ both.
 | 3.8 | The keys belong to `iss`; `sub` is valid | `verify_with` takes the keys your resolver offers, never keys the token points at; `ClaimsPolicy::issuer` holds `iss` to one issuer | Resolve the keys of the issuer you expect (its `jwks_uri`) and set `issuer` to it; check `sub` (`Claims::sub`) against your subjects |
 | 3.9 | `aud` present and checked | `ClaimsPolicy::audience` refuses a token without `aud` or whose `aud` does not contain it | Set `audience` whenever an issuer serves more than one recipient |
 | 3.10 | `kid`, `jku` and `x5u` are untrusted input | Key references in a token are refused unless the profile opts in; jwz fetches nothing; a `JwkSet` only compares `kid` | A resolver that looks `kid` up in a database or directory escapes it; one that fetches holds the URL to an allowlist and sends no cookies |
-| 3.11 | Explicit typing | `Policy::typ` requires the `typ`, compared as a media type (`application/` optional, case ignored); `HeaderParams::typ` sets it | Name a new kind `example+jwt`; set `HeaderParams::typ` when you sign, since signing does not take it from the policy; in a Nested JWT the inner JWS carries it |
+| 3.11 | Explicit typing | `Policy::typ` requires the `typ`, compared as a media type (`application/` optional, case ignored) on parsing and on signing and encrypting; `HeaderParams::typ` sets it | Name a new kind `example+jwt`; set `HeaderParams::typ` when you sign: signing does not add it, but refuses a header without the type the policy requires; in a Nested JWT the inner JWS carries it |
 | 3.12 | Mutually exclusive rules for different kinds of JWT | A profile per kind, told apart by `typ`, `issuer`, `audience`, `required` claims or keys | Write the profiles so that each refuses the others' tokens |
 
 ### The revision: draft-ietf-oauth-rfc8725bis-10

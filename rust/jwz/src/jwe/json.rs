@@ -199,6 +199,7 @@ pub fn encrypt(
         }
         let mut visible = protected.clone();
         visible.extend(header.clone());
+        policy.check_produced_jwe(&Header::from_members(visible.clone()))?;
         let (apu, apv) = party_from(&visible)?;
         let managed = manage(
             &kek,

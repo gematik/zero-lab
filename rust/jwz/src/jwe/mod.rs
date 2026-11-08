@@ -674,15 +674,16 @@ fn party_from(members: &Map<String, Value>) -> Result<(Vec<u8>, Vec<u8>), Error>
 /// Encrypts `plaintext` with `enc` to `recipient` into a compact JWE (RFC 7516 §5.1):
 /// `alg` and the key from the recipient, its header parameters protected, `kid` from the
 /// key unless they set one, `apu`/`apv` from them. `alg`, `enc` and, for ECDH-ES, the
-/// recipient key's curve must be ones `policy` lists, so nothing is encrypted that the
-/// profile would refuse to decrypt.
+/// recipient key's curve must be ones `policy` lists, and the header one it accepts
+/// (RFC 8725 §3.11), so nothing is encrypted that the profile would refuse to decrypt.
 ///
 /// # Errors
 ///
 /// [`ErrorCode::UnsupportedAlgorithm`] for an algorithm not available or a primitive the
 /// backend lacks; [`ErrorCode::PolicyViolation`] for an algorithm or recipient curve
-/// `policy` does not list, before any key is used; [`ErrorCode::KeyMismatch`] for a key
-/// that does not fit `alg`.
+/// `policy` does not list, or a header it would refuse (`typ`, a required `kid`, a key
+/// reference, `zip`), and [`ErrorCode::Critical`] for a `crit` it does not understand, all
+/// before any key is used; [`ErrorCode::KeyMismatch`] for a key that does not fit `alg`.
 pub fn encrypt(
     plaintext: &[u8],
     enc: ContentEncryptionAlgorithm,
@@ -701,6 +702,7 @@ pub fn encrypt(
         set.push(("kid", kid));
     }
     let mut members = params.into_members(&set);
+    policy.check_produced_jwe(&Header::from_members(members.clone()))?;
     let (apu, apv) = party_from(&members)?;
     let managed = manage(&kek, &cee, key, None, (&apu, &apv), registry, backend)?;
     for (name, value) in managed.members {

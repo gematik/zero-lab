@@ -784,3 +784,86 @@ fn draft_ietf_oauth_rfc8725bis_10_3_14_a_compact_token_is_base64url_and_dots_onl
         jws::json::sign(b"{}", &[(&key, HeaderParams::new())], &strict(), &registry).unwrap();
     assert!(Jws::parse(&json, &strict(), &registry).is_err());
 }
+
+/// RFC 8725 §3.11 on the producer's side: a profile that requires an explicit type, a
+/// `kid`, or refuses a key reference, signs and encrypts no token it would itself refuse.
+/// The header is checked before anything is signed or a key is agreed.
+#[test]
+fn rfc_8725_3_11_a_producer_writes_no_header_its_profile_refuses() {
+    let registry = Registry::standard();
+    let mut policy = strict();
+    policy.typ = Some("secevent+jwt".into());
+    policy.require_kid = true;
+    let key = es256();
+    let named = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend())
+        .unwrap()
+        .with_kid("k1");
+    let sign = |params: HeaderParams, key: &SoftwareKey<RustCrypto>| {
+        code(jws::sign(b"{}", params, key, &policy, &registry).map(|_| ()))
+    };
+    let typed = || HeaderParams::new().typ("secevent+jwt");
+    // Without the type, without a kid, with a key reference: refused.
+    assert_eq!(
+        sign(HeaderParams::new(), &named),
+        Err(ErrorCode::PolicyViolation)
+    );
+    assert_eq!(sign(typed(), &key), Err(ErrorCode::PolicyViolation));
+    assert_eq!(
+        sign(typed().x5c(&[b"leaf"]), &named),
+        Err(ErrorCode::PolicyViolation)
+    );
+    assert_eq!(sign(typed(), &named), Ok(()));
+    // The JSON serialization is bound alike.
+    assert_eq!(
+        code(jws::json::sign(
+            b"{}",
+            &[(&named, HeaderParams::new())],
+            &policy,
+            &registry
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    // And encryption: compact and JSON, with the recipient's header.
+    let recipient_key = SoftwareAgreementKey::generate(Curve::P256, backend()).unwrap();
+    let public = recipient_key.public_jwk();
+    let recipient = |header: HeaderParams| Recipient {
+        alg: KeyEncryptionAlgorithm::ECDH_ES,
+        key: EncryptionKey::Public(&public),
+        header,
+    };
+    let encrypt = |header: HeaderParams| {
+        code(jwe::encrypt(
+            b"{}",
+            ContentEncryptionAlgorithm::A256GCM,
+            &recipient(header),
+            &policy,
+            &registry,
+            backend().as_ref(),
+        ))
+    };
+    assert_eq!(
+        encrypt(HeaderParams::new().param("kid", json!("r1")).unwrap()).err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+    assert!(encrypt(typed().param("kid", json!("r1")).unwrap()).is_ok());
+    let shared = jwe::json::Shared {
+        enc: ContentEncryptionAlgorithm::A256GCM,
+        protected: HeaderParams::new(),
+        aad: None,
+    };
+    assert_eq!(
+        code(jwe::json::encrypt(
+            b"{}",
+            &shared,
+            &[recipient(
+                HeaderParams::new().param("kid", json!("r1")).unwrap()
+            )],
+            &policy,
+            &registry,
+            backend().as_ref(),
+        ))
+        .err(),
+        Some(ErrorCode::PolicyViolation)
+    );
+}
