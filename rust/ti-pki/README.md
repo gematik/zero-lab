@@ -11,7 +11,7 @@ use cases.
 Implemented: roots.json verified from the embedded anchor (the A_28419 cross-certificate
 walk), the TSL's CAs kept only when a verified root signed them, chain building, path
 validation, the gemSpec_Krypt key check, certificate types and profiles, OCSP for the end
-entity and every CA below the root, and loading with cache, bundle and reload. The TSL
+entity (a CA's standing is its status in the verified TSL), and loading with cache, bundle and reload. The TSL
 is verified by the detached signature gematik publishes next to it, with the signer's
 status from the published OCSP response (`spec/tsl-detached`), then the signer under the
 TSL signer CA, `NextUpdate` and the sequence (`spec/tsl-xmldsig` parts B to G). It stays a

@@ -82,6 +82,12 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   && brew install gematik/tap/ti` switches.
 
 #### fixed
+- `pki verify` accepts an SMC-B under an expired HBA/SMC-B CA whose responder answers for it
+  (TASK-270): a reference SMC-B under GEM.SMCB-CA9 TEST-ONLY, valid under the Kompromissmodell,
+  failed with `ocsp_responder_untrusted`, because the CA itself was asked at the production
+  root responder its AIA names. Only the end entity is asked now, as TUC_PKI_018 does; a CA's
+  standing is its status in the verified TSL. The revocation line says so (`OCSP for the end
+  entity, the CAs by the TSL`), and `chain[].revocation` is set for the end entity only.
 - `connector config test` reports a Konnektor that requires a client certificate as
   refusing basic credentials every time (TASK-262): under TLS 1.3 the refusal follows the
   handshake and was now and then lost to a reset, which passed the auth step.
@@ -574,6 +580,20 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   with the spec's result codes; `TrustStore::with_tsl_ca_types_for_tests` (`test-util`).
 
 #### changed
+- **Revocation is checked for the end entity only (TASK-270, VALID-008).** A CA's standing is its
+  status in the verified TSL (TUC_PKI_018 step 5, Tab_PKI_271: in accord, or revoked after the
+  end entity was issued, expired HBA/SMC-B CAs included), and no responder is asked about a CA
+  (step 7). The `Validator` sends one OCSP request per certificate instead of one per link.
+- **OCSP responders are authorized as TUC_PKI_006 step 5 does (OCSP-001).** The issuing CA or its
+  RFC 6960 delegate (id-kp-OCSPSigning, valid now) are accepted silently; otherwise a responder
+  whose certificate the verified TSL lists as an OCSP service, under any TSP, with
+  id-kp-OCSPSigning and valid now, is `ResponderAuthorization::TslListed { tsp }` and the
+  warning `ocsp_responder_not_rfc6960`, where a listed responder used to pass without one; any
+  other is `ocsp_responder_untrusted`. Whether the responder's CA is a TSL CA of the issuing
+  CA's TSP no longer matters, and an unlisted responder of another CA is refused. A listed
+  responder outside its validity is refused although the TSL's status covers the signers of
+  expired HBA/SMC-B CAs: the maintainer's decision.
+- `TrustStore::with_listed_responders_for_tests` (feature `test-util`).
 - The `hci-aut` profile checks revocation hard-fail, like every other profile: an SMC-B whose OCSP
   answer cannot be had is refused, also under a configured soft-fail.
 - The OID tables follow gemSpec_OID V3.26.0: `TECH_ROLE_ZETA_PRV_APPROV` (`oid_zeta-prv-approv`,
@@ -611,6 +631,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   process. Found by the new `ocsp_response` fuzz target (TASK-166).
 
 #### removed
+- `Validator::skip_sub_ca_revocation`: no CA is asked about any more, so there is nothing to
+  skip (TASK-270).
+- `ResponderAuthorization::SameTspDelegate`, the unlisted delegate of another CA of the same TSP
+  accepted with a warning, and `TslListed`'s field `ca`: the TSL authorizes a responder by
+  listing it and binds it to no CA (TASK-270).
 - **The XMLDSig path and `ti-xmldsig` are gone, with `roxmltree` and `proptest`.** A list
   without a fitting `.sig` no longer verifies, in every environment, and `.sig` exists only
   on the plain-HTTP CRL host of A_21182: a network that blocks it cannot take new lists,
