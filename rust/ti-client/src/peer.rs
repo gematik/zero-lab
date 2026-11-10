@@ -25,6 +25,10 @@
 //! makes no trust decision of its own, ti-pki makes it on the chain afterwards; but the
 //! server must prove that it holds the end entity's key, so its handshake signature is
 //! verified, with ti-pki's algorithms and so with brainpool keys too.
+//!
+//! A TLS server's verdict under a TLS profile of `spec/pki-validation` is reached in the
+//! handshake instead ([`web_server_verdict`] for `web`), as the transports of that profile
+//! reach it.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -36,10 +40,15 @@ use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{
     CertificateError, ClientConfig, ClientConnection, DigitallySignedStruct, SignatureScheme,
 };
+use ti_pki::Timestamp;
 use ti_pki::algorithms::{self, brainpool, rsa};
+use ti_tls::WebVerifier;
+pub use ti_tls::{StatusSource, Verdict};
 
 use crate::error::Error;
 use crate::net::{self, Net};
+use crate::probe::TlsProfile;
+use crate::tls::UreqFetch;
 
 /// TLS 1.3's `ecdsa_brainpoolP256r1tls13_sha256` and its P384 sibling (RFC 8734), which
 /// rustls does not know by name.
@@ -154,20 +163,7 @@ impl ServerCertVerifier for Capture {
 /// applies cannot tunnel.
 pub fn server_chain(net: &Net, host: &str, port: u16) -> Result<Vec<Vec<u8>>, Error> {
     let failed = |what: String| Error::ServerUnreachable(format!("{host}:{port}: {what}"));
-    let mut socket = connect(host, port, net).map_err(|error| match error {
-        Connect::Failed(what) => failed(what),
-        Connect::ProxyUnsupported(protocol) => Error::ProxyUnsupported {
-            server: format!("{host}:{port}"),
-            protocol,
-        },
-    })?;
-    socket
-        .set_read_timeout(Some(net.max_time))
-        .map_err(|e| failed(e.to_string()))?;
-    socket
-        .set_write_timeout(Some(net.max_time))
-        .map_err(|e| failed(e.to_string()))?;
-
+    let mut socket = open(net, host, port)?;
     let capture = Arc::new(Capture::default());
     let config =
         ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
@@ -191,6 +187,201 @@ pub fn server_chain(net: &Net, host: &str, port: u16) -> Result<Vec<Vec<u8>>, Er
         return Err(failed("the server presented no certificate".into()));
     }
     Ok(chain)
+}
+
+/// A connection to `host:port` within `net`'s timeouts, through its proxy if one applies.
+fn open(net: &Net, host: &str, port: u16) -> Result<TcpStream, Error> {
+    let failed = |what: String| Error::ServerUnreachable(format!("{host}:{port}: {what}"));
+    let socket = connect(host, port, net).map_err(|error| match error {
+        Connect::Failed(what) => failed(what),
+        Connect::ProxyUnsupported(protocol) => Error::ProxyUnsupported {
+            server: format!("{host}:{port}"),
+            protocol,
+        },
+    })?;
+    socket
+        .set_read_timeout(Some(net.max_time))
+        .map_err(|e| failed(e.to_string()))?;
+    socket
+        .set_write_timeout(Some(net.max_time))
+        .map_err(|e| failed(e.to_string()))?;
+    Ok(socket)
+}
+
+/// A TLS server's verdict under a TLS profile of `spec/pki-validation`, reached in a
+/// handshake.
+#[derive(Clone, Debug)]
+pub struct TlsServerVerdict {
+    /// `host:port`, as connected to.
+    pub server: String,
+    /// The TLS profile it was judged under.
+    pub profile: TlsProfile,
+    /// The name the certificate was checked against, and the one sent as SNI.
+    pub name: String,
+    /// The instant the server was judged at.
+    pub at: Timestamp,
+    /// How many roots the check trusted.
+    pub roots: usize,
+    /// Whether they are the operating system's, not `--cacert`/`--capath`.
+    pub system_roots: bool,
+    /// The chain the server presented, end entity first, DER.
+    pub chain: Vec<Vec<u8>>,
+    /// Whether the server stapled an OCSP response.
+    pub stapled: bool,
+    /// The profile's verdict: its TLSV result code, its warnings and the source of the
+    /// revocation status.
+    pub verdict: Verdict,
+}
+
+/// Connects to `host:port` and judges the server under the `web` TLS profile in the handshake,
+/// as the web transports do: the system's roots or `net`'s CA files ([`crate::http::web_check`]),
+/// the certificate checked against `name`, sent as SNI, at `at`, its revocation sources asked
+/// over plain HTTP. A refusal is a verdict, not an error.
+///
+/// # Errors
+///
+/// [`Error::ServerUnreachable`] when the server cannot be reached or the handshake fails for
+/// anything but its certificate's verdict (a protocol it does not speak, a handshake
+/// signature that does not verify); [`Error::ProxyUnsupported`], and [`Error::Setup`] for an
+/// unusable proxy or CA file.
+pub fn web_server_verdict(
+    net: &Net,
+    host: &str,
+    port: u16,
+    name: &str,
+    at: Timestamp,
+) -> Result<TlsServerVerdict, Error> {
+    let server = format!("{host}:{port}");
+    let failed = |what: String| Error::ServerUnreachable(format!("{server}: {what}"));
+    let (files, dir) = net.ca_sources();
+    let system_roots = files.is_empty() && dir.is_none();
+    let check = crate::http::web_check(net)?;
+    let roots = check.root_count();
+    let judge = Arc::new(Judge {
+        web: crate::http::web_verifier_over(net, check)?,
+        name: name.to_owned(),
+        at,
+        seen: Mutex::default(),
+    });
+    let sni = ServerName::try_from(name.to_owned()).map_err(|e| failed(e.to_string()))?;
+    let config = ti_tls::client_config(judge.clone());
+    let mut tls =
+        ClientConnection::new(Arc::new(config), sni).map_err(|e| failed(e.to_string()))?;
+    let mut socket = open(net, host, port)?;
+    let mut handshake = Ok(());
+    while tls.is_handshaking() && handshake.is_ok() {
+        handshake = tls.complete_io(&mut socket).map(|_| ());
+    }
+    if handshake.is_ok() {
+        tls.send_close_notify();
+        let _ = tls.complete_io(&mut socket);
+    }
+    let seen = judge
+        .seen
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take();
+    let report = |seen: Seen| TlsServerVerdict {
+        server: server.clone(),
+        profile: TlsProfile::Web,
+        name: name.to_owned(),
+        at,
+        roots,
+        system_roots,
+        chain: seen.chain,
+        stapled: seen.stapled,
+        verdict: seen.verdict,
+    };
+    match (seen, handshake) {
+        // Accepted, and the server proved it holds the key.
+        (Some(seen), Ok(())) => Ok(report(seen)),
+        // Refused by its verdict, which ended the handshake.
+        (Some(seen), Err(_)) if !seen.verdict.is_valid() => Ok(report(seen)),
+        (_, Err(e)) => Err(failed(format!("TLS handshake failed: {e}"))),
+        (None, Ok(())) => Err(failed("the server presented no certificate".into())),
+    }
+}
+
+/// What the handshake showed the `web` verifier.
+struct Seen {
+    chain: Vec<Vec<u8>>,
+    stapled: bool,
+    verdict: Verdict,
+}
+
+/// The `web` verifier at a fixed instant, keeping what it saw: rustls reports a refusal as
+/// an error, the verdict is wanted whole.
+struct Judge {
+    web: WebVerifier<UreqFetch>,
+    name: String,
+    at: Timestamp,
+    seen: Mutex<Option<Seen>>,
+}
+
+impl core::fmt::Debug for Judge {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Judge")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
+    }
+}
+
+impl ServerCertVerifier for Judge {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        // The instant is the caller's (`--at`), not the clock rustls passes.
+        let verdict = self.web.verify(
+            end_entity,
+            intermediates,
+            &self.name,
+            ocsp_response,
+            self.at,
+        );
+        let accepted = verdict.is_valid();
+        let refusal = (!accepted).then(|| verdict.clone());
+        *self.seen.lock().unwrap_or_else(PoisonError::into_inner) = Some(Seen {
+            chain: core::iter::once(end_entity)
+                .chain(intermediates)
+                .map(|cert| cert.to_vec())
+                .collect(),
+            stapled: !ocsp_response.is_empty(),
+            verdict,
+        });
+        match refusal {
+            None => Ok(ServerCertVerified::assertion()),
+            Some(verdict) => Err(rustls::Error::InvalidCertificate(CertificateError::Other(
+                rustls::OtherError(Arc::new(ti_tls::verifier::Refused(verdict))),
+            ))),
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.web.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.web.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.web.supported_verify_schemes()
+    }
 }
 
 /// Why [`connect`] failed.

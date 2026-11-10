@@ -15,6 +15,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-cli
 
+#### added
+- `ti pki verify --connect HOST` gives a TLS server's verdict under the `web` TLS profile of
+  `spec/pki-validation` for a server that is not the TI's (TASK-283): the chain judged in
+  the handshake against the system's roots (or `--cacert`), the name, the keys, the
+  validity period and the revocation status, with its source and the warnings
+  `key_phased_out` and `revocation_unavailable`; exit 0 valid, 1 refused.
+  `--validation-profile web` forces it (only with `--connect`); `auto` keeps a server with
+  a TI certificate type, or issued by a CA of the TSL at hand, with the TI's validation,
+  and says which and why. Its JSON has its own schema, `ti schema pki verify tls-server`.
+
 #### changed
 - `ti probe` shows a `web` server accepted with a warning (an RSA-2048 certificate, no
   revocation status from any source) as a yellow `!` with the warning, not as a failure
@@ -129,6 +139,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   end entity, no revocation status; TASK-282). `probe` reports such a server as a warning,
   the warnings in its detail (`TLS web: revocation_unavailable`), where it failed before.
   `http::web_verifier` and `http::web_check` build the profile as `web_config` does.
+- `peer::web_server_verdict`: a TLS server's verdict under the `web` TLS profile, reached
+  in a handshake at a given instant (`TlsServerVerdict`: the chain, the verdict with its
+  status source and warnings, the roots); `pki::verify::server_profile` picks `ti` or `web`
+  for a `--connect` server (TASK-283).
 
 ### ti-tls
 

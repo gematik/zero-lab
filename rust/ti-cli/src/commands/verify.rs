@@ -31,6 +31,7 @@ use ti_client::pki::verify::{
     self as engine, Finding, OcspSettings, ProfileChoice, ProfileInfo, Reference, RevocationEntry,
     Verification, mode_name,
 };
+use ti_client::probe::TlsProfile;
 use ti_pki::profile;
 use ti_pki::revocation::{RevocationMode, RevocationStatus};
 use ti_pki::{Certificate, ErrorCode, ValidationResult};
@@ -63,8 +64,29 @@ impl core::ops::Deref for Report {
 
 /// Runs the command; exit 0 when valid, 1 when not.
 pub fn run(args: &VerifyArgs, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
+    if args.validation_profile == super::verify_tls_server::WEB {
+        return super::verify_tls_server::run(args, global, out, "given".into());
+    }
     let p12_password = input::p12_password(&args.password)?;
     let (source, mut certificates) = chain_to_verify(args, &p12_password, global, out)?;
+    // A server reached with --connect is a TLS server: auto keeps it with the TI's
+    // validation only when it shows itself as one of the TI.
+    if args.connect.is_some() && args.validation_profile == profile::AUTO {
+        let client = crate::http::client(&global.net, out.verbosity());
+        let dirs = Profile::resolve(global)?.dirs();
+        let (tls, reason) = engine::server_profile(
+            &client,
+            &dirs,
+            args.env.concrete(),
+            &certificates,
+            args.at,
+            crate::trust::warn,
+        )?;
+        out.verbose(1, format_args!("TLS profile {}: {reason}", tls.as_str()));
+        if tls == TlsProfile::Web {
+            return super::verify_tls_server::run(args, global, out, reason);
+        }
+    }
     for path in args.issuer.iter().chain(&args.intermediates) {
         let source = input::read(path)?;
         certificates.extend(

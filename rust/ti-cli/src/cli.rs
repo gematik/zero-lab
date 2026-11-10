@@ -517,8 +517,14 @@ pub struct VerifyArgs {
     )]
     pub file: Option<PathBuf>,
     /// Fetch the chain from this TLS server instead of a file (port 443 by default); the
-    /// server must prove it holds the key, and --fqdn defaults to HOST
-    #[arg(long, value_name = "HOST[:PORT]", value_parser = crate::peer::target)]
+    /// server must prove it holds the key, and --fqdn defaults to HOST. A server without a
+    /// TI certificate gets its TLS server verdict under the web TLS profile
+    #[arg(
+        long,
+        value_name = "HOST[:PORT]",
+        value_parser = crate::peer::target,
+        required_if_eq("validation_profile", "web")
+    )]
     pub connect: Option<(String, u16)>,
     /// Password of PKCS#12 input (FILE, --issuer, --intermediates).
     #[command(flatten)]
@@ -532,7 +538,11 @@ pub struct VerifyArgs {
     /// Further candidate intermediates (PEM, DER or PKCS#12); repeatable
     #[arg(long, value_name = "FILE")]
     pub intermediates: Vec<PathBuf>,
-    /// Validation profile: auto picks it from the certificate, none checks the chain only
+    /// Validation profile: auto picks it from the certificate, none checks the chain only;
+    /// web gives the --connect server's TLS server verdict under the web TLS profile of
+    /// spec/pki-validation (the system's roots or --cacert, the name, revocation) instead
+    /// of the TI's validation. With --connect, auto takes web for a server whose
+    /// certificate is not the TI's
     #[arg(long, value_name = "PROFILE", default_value = "auto", value_parser = profile_selectors())]
     pub validation_profile: String,
     /// No network: cached trust material, else the embedded roots; revocation is not
@@ -938,7 +948,9 @@ struct ProfileSelector {
 impl ProfileSelector {
     fn values(self) -> Vec<&'static str> {
         if self.selectors {
-            ti_pki::profile::selector_values()
+            let mut values = ti_pki::profile::selector_values();
+            values.push(crate::commands::WEB_PROFILE);
+            values
         } else {
             ti_pki::profile::PROFILES.iter().map(|p| p.name).collect()
         }
