@@ -83,22 +83,48 @@ fn plain_agent(net: &Net) -> Result<Agent, Error> {
 ///
 /// [`Error::Setup`] for an unusable proxy or CA file or directory.
 pub fn web_config(net: &Net) -> Result<Arc<rustls::ClientConfig>, Error> {
+    Ok(Arc::new(ti_tls::client_config(Arc::new(web_verifier(
+        net,
+    )?))))
+}
+
+/// The `web` profile's verifier over [`web_check`]'s roots, its revocation sources reached
+/// over plain HTTP with `net`'s settings.
+///
+/// # Errors
+///
+/// [`Error::Setup`] for an unusable proxy or CA file or directory.
+pub fn web_verifier(net: &Net) -> Result<WebVerifier<UreqFetch>, Error> {
+    web_verifier_over(net, web_check(net)?)
+}
+
+/// The `web` verifier over `check`, its revocation sources reached with `net`'s settings.
+pub(crate) fn web_verifier_over(
+    net: &Net,
+    check: WebCheck,
+) -> Result<WebVerifier<UreqFetch>, Error> {
+    Ok(WebVerifier::new(check, UreqFetch::new(plain_agent(net)?)))
+}
+
+/// The `web` profile over the system's roots, or over `--cacert`/`--capath` in their place.
+///
+/// # Errors
+///
+/// [`Error::Setup`] for an unusable CA file or directory.
+pub fn web_check(net: &Net) -> Result<WebCheck, Error> {
     let (files, dir) = net.ca_sources();
-    let check = if files.is_empty() && dir.is_none() {
-        WebCheck::system()
-    } else {
-        let mut roots = Vec::new();
-        for path in files.iter().chain(ca_dir_files(dir.as_deref())?.iter()) {
-            roots.extend(
-                pem_certificates(path)?
-                    .iter()
-                    .map(|cert| CertificateDer::from(cert.der().to_vec())),
-            );
-        }
-        WebCheck::new(roots)
-    };
-    let verifier = WebVerifier::new(check, UreqFetch::new(plain_agent(net)?));
-    Ok(Arc::new(ti_tls::client_config(Arc::new(verifier))))
+    if files.is_empty() && dir.is_none() {
+        return Ok(WebCheck::system());
+    }
+    let mut roots = Vec::new();
+    for path in files.iter().chain(ca_dir_files(dir.as_deref())?.iter()) {
+        roots.extend(
+            pem_certificates(path)?
+                .iter()
+                .map(|cert| CertificateDer::from(cert.der().to_vec())),
+        );
+    }
+    Ok(WebCheck::new(roots))
 }
 
 /// The transport for downloads and OCSP, reporting to `observer`. `-k` skips the TLS check

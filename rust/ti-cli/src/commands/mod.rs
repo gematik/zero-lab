@@ -46,6 +46,7 @@ mod trust_export;
 mod tsl;
 mod verify;
 mod verify_signature;
+mod verify_tls_server;
 mod version;
 
 use ti_pki::{Certificate, Env, Timestamp};
@@ -59,6 +60,8 @@ use crate::error::{CliError, Exit};
 use crate::output::document::{TreeRow, date, when};
 use crate::output::{Line, Output, Tone};
 use ti_client::trust::TrustInfo;
+
+pub(crate) use verify_tls_server::WEB as WEB_PROFILE;
 
 /// Runs the parsed command line.
 pub fn run(cli: &Cli, out: &Output) -> Result<Exit, CliError> {

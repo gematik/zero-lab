@@ -40,7 +40,7 @@ use x509_cert::ext::pkix::{CrlDistributionPoints, KeyUsages};
 
 use crate::algorithms::WEB_CERTIFICATE_ALGORITHMS;
 use crate::fetch::Fetch;
-use crate::verdict::{Code, Verdict};
+use crate::verdict::{Code, KEY_PHASED_OUT, REVOCATION_UNAVAILABLE, StatusSource, Verdict};
 
 /// TLSV-045: the CA/Browser Forum's longest validity period.
 pub const MAX_VALIDITY: Duration = Duration::from_hours(398 * 24);
@@ -121,6 +121,10 @@ impl WebCheck {
                 format!("end entity key {}", leaf_info.key),
             );
         }
+        let mut warnings = Vec::new();
+        if leaf_info.key.phased_out() {
+            warnings.push(KEY_PHASED_OUT);
+        }
         for ca in path.intermediate_certificates() {
             match Info::parse(ca.der().as_ref()) {
                 Ok(info) if info.key.admissible_ca() => {}
@@ -144,10 +148,14 @@ impl WebCheck {
         let Some(issuer) = issuer else {
             return Verdict::refuse(Code::Invalid, "the issuer is not at hand");
         };
-        self.revocation(
-            &leaf, leaf_der, &issuer, sent, stapled, time, now, &leaf_info, fetch,
-        )
-        .await
+        let mut verdict = self
+            .revocation(
+                &leaf, leaf_der, &issuer, sent, stapled, time, now, &leaf_info, fetch,
+            )
+            .await;
+        warnings.append(&mut verdict.warnings);
+        verdict.warnings = warnings;
+        verdict
     }
 
     /// The root that issued `leaf` directly, for its OCSP CertID.
@@ -163,7 +171,7 @@ impl WebCheck {
     }
 
     /// TLSV-044: stapled OCSP, the responder, the CRL, in that order; the first status
-    /// decides, and without one the server is refused.
+    /// decides, and without one the server is accepted with [`REVOCATION_UNAVAILABLE`].
     #[allow(
         clippy::too_many_arguments,
         reason = "one call site, each a distinct input"
@@ -186,19 +194,19 @@ impl WebCheck {
         ) else {
             return Verdict::refuse(Code::Invalid, "the end entity or its issuer does not parse");
         };
-        let ocsp = |der: &[u8]| -> Option<Verdict> {
+        let ocsp = |der: &[u8], source: StatusSource| -> Option<Verdict> {
             let check = ResponseCheck {
                 allow_missing_cert_hash: true,
                 ..ResponseCheck::stapled(now, ti_pki::algorithms::DEFAULT)
             };
             let status = verify_response(der, &cert, &issuer, &check).ok()?;
             match status.status {
-                RevocationStatus::Good => Some(accepted(info, now, status.next_update)),
+                RevocationStatus::Good => Some(accepted(info, now, status.next_update, source)),
                 RevocationStatus::Revoked => Some(Verdict::refuse(Code::Revoked, "revoked (OCSP)")),
                 RevocationStatus::Unknown => None,
             }
         };
-        if let Some(verdict) = stapled.and_then(ocsp) {
+        if let Some(verdict) = stapled.and_then(|der| ocsp(der, StatusSource::Stapled)) {
             return verdict;
         }
         for url in cert.ocsp_urls() {
@@ -206,7 +214,7 @@ impl WebCheck {
                 .ocsp(url, &request(&cert, &issuer))
                 .await
                 .as_deref()
-                .and_then(ocsp)
+                .and_then(|der| ocsp(der, StatusSource::Responder))
             {
                 return verdict;
             }
@@ -236,17 +244,16 @@ impl WebCheck {
                 Some(options),
                 None,
             ) {
-                Ok(_) => return accepted(info, now, crl_next_update(&der)),
+                Ok(_) => {
+                    return accepted(info, now, crl_next_update(&der), StatusSource::Crl);
+                }
                 Err(webpki::Error::CertRevoked) => {
                     return Verdict::refuse(Code::Revoked, "revoked (CRL)");
                 }
                 Err(_) => {}
             }
         }
-        Verdict::refuse(
-            Code::RevocationUnavailable,
-            "no revocation source gave a status",
-        )
+        unavailable()
     }
 }
 
@@ -261,7 +268,12 @@ fn crl_next_update(der: &[u8]) -> Option<Timestamp> {
 
 /// An accepted verdict, reusable until the earliest of `notAfter`, the status's
 /// `nextUpdate` and a day (TLSV-050, TLSV-051).
-fn accepted(info: &Info, now: Timestamp, next_update: Option<Timestamp>) -> Verdict {
+fn accepted(
+    info: &Info,
+    now: Timestamp,
+    next_update: Option<Timestamp>,
+    source: StatusSource,
+) -> Verdict {
     let until = [
         Some(info.not_after),
         next_update.map(|t| t.0),
@@ -274,7 +286,20 @@ fn accepted(info: &Info, now: Timestamp, next_update: Option<Timestamp>) -> Verd
         code: Code::Valid,
         detail: "valid".into(),
         warnings: Vec::new(),
+        status_source: Some(source),
         reusable_until: until,
+    }
+}
+
+/// TLSV-044's deviation: accepted without a status. It rests on none, so it is not reused
+/// (TLSV-050) and the next connection asks the sources again.
+fn unavailable() -> Verdict {
+    Verdict {
+        code: Code::Valid,
+        detail: "valid without a revocation status: no source gave one".into(),
+        warnings: vec![REVOCATION_UNAVAILABLE],
+        status_source: None,
+        reusable_until: None,
     }
 }
 
@@ -320,9 +345,14 @@ enum Key {
 }
 
 impl Key {
-    /// TLSV-041.
+    /// TLSV-041: what an end entity may have, RSA from 2048 bits.
     fn admissible_end_entity(self) -> bool {
-        matches!(self, Key::P256 | Key::P384) || matches!(self, Key::Rsa(bits) if bits >= 3000)
+        matches!(self, Key::P256 | Key::P384) || matches!(self, Key::Rsa(bits) if bits >= 2048)
+    }
+
+    /// TLSV-041: below A_28976's 3000 bits, admitted with [`KEY_PHASED_OUT`].
+    fn phased_out(self) -> bool {
+        matches!(self, Key::Rsa(bits) if bits < 3000)
     }
 
     /// TLSV-042.
@@ -436,6 +466,34 @@ impl Info {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// TLSV-041: RSA from 3000 bits is admitted, 2048 to 2999 bits phased out, anything
+    /// smaller refused; TLSV-042's CA floor stays at 2048.
+    #[test]
+    fn tlsv_041_rsa_below_3000_is_phased_out_and_below_2048_refused() {
+        for (bits, admissible, phased_out) in [
+            (1024, false, false),
+            (2047, false, false),
+            (2048, true, true),
+            (2999, true, true),
+            (3000, true, false),
+            (4096, true, false),
+        ] {
+            let key = Key::Rsa(bits);
+            assert_eq!(key.admissible_end_entity(), admissible, "{bits}");
+            assert_eq!(
+                key.admissible_end_entity() && key.phased_out(),
+                phased_out,
+                "{bits}"
+            );
+        }
+        assert!(!Key::Rsa(2047).admissible_ca());
+        assert!(Key::Rsa(2048).admissible_ca());
+        for key in [Key::P256, Key::P384] {
+            assert!(key.admissible_end_entity() && !key.phased_out());
+        }
+        assert!(!Key::Other.admissible_end_entity());
+    }
 
     /// TLSV-050: a verdict that rests on a CRL is not reused past the list's `nextUpdate`.
     #[test]

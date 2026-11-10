@@ -26,14 +26,55 @@ The TSL rules derived from them are in
 [`spec/tsl-detached`](../../spec/tsl-detached/README.md) and
 [`spec/tsl-xmldsig`](../../spec/tsl-xmldsig/README.md).
 
-The reference implementation is the Go package
-[`gempki`](https://github.com/gematik/zero-lab/tree/go/gempki/v0.23.1/go/gempki) (archived); this crate ports it
-module by module and keeps its error codes, certificate-type names and revocation table.
+It started as a port of the Go package
+[`gempki`](https://github.com/gematik/zero-lab/tree/go/gempki/v0.23.1/go/gempki) (archived) and keeps its error
+codes, certificate-type names and revocation table. How it differs from gematik's reference
+implementation GemLibPki, and why: [`docs/gemlibpki-comparison.md`](../docs/gemlibpki-comparison.md).
+
+ti-pki is not published to crates.io; depend on the repository at a commit you have reviewed:
 
 ```toml
 [dependencies]
-ti-pki = { git = "https://github.com/gematik/zero-lab", tag = "rust/ti-pki/v0.1.0" }
+ti-pki = { git = "https://github.com/gematik/zero-lab", rev = "<commit>" }
 ```
+
+## Quick start: validate a certificate
+
+The example from the crate documentation, where it runs as a test: an SMC-B certificate of
+the reference environment, its profile picked from the certificate, revocation off.
+
+```rust
+use std::sync::Arc;
+
+use ti_pki::revocation::{RevocationMode, Unchecked};
+use ti_pki::{Env, Tier, Timestamp, TrustConfig, profile, roots};
+
+let config = TrustConfig {
+    revocation: RevocationMode::Disabled,
+    ..TrustConfig::preset(Env::Ref) // needs the `dangerous-nonprod` feature
+};
+config.validate(Tier::NonProd)?;
+let now = Timestamp::parse_rfc3339("2026-06-01T00:00:00Z").unwrap();
+let store = Arc::new(roots::load(&config, now)?.store());
+
+// The end entity first, then its CA; normally the CA comes from the TSL.
+let certs = ti_pki::parse_pem_certificates(pem.as_bytes())?;
+
+let selection = profile::select_for_cert(&certs[0]);
+let (Some(profile), Some(cert_type)) = (selection.profile, selection.cert_type) else {
+    return Err(format!("no profile: {}", selection.detail).into());
+};
+let validator = profile.validator(&config, store, cert_type);
+let result = validator.validate(&certs, now, &Unchecked).await?;
+assert!(result.valid, "{:?}", result.errors);
+```
+
+What a validation checks, in this order (`spec/pki-path` VALID-001): the chain to a root of
+the environment, RFC 5280 path validation, the profile's requirements on the end entity
+(type, roles, policies, key usage), the gemSpec_Krypt key check (VALID-002: RSA-2048 is a
+warning since 2026), the CAs the TSL names and the types it lets them issue, a CA it revoked,
+and the end entity's revocation by OCSP; a CA's standing is its status in the verified TSL
+(VALID-008), not an OCSP query. Valid means no error; warnings never decide.
 
 ## Configuration
 
@@ -47,15 +88,58 @@ let config = TrustConfig::preset_prod();
 config.validate(Tier::Prod)?;
 ```
 
-Presets for the non-production environments (`TrustConfig::preset(Env::Test)` and so on)
-carry TEST-ONLY anchors and exist only with the `dangerous-nonprod` feature; production
-builds leave it off.
+`preset_prod` checks revocation HardFail. Presets for the non-production environments
+(`TrustConfig::preset(Env::Test)` and so on) carry TEST-ONLY anchors and exist only with the
+`dangerous-nonprod` feature; production builds leave it off.
 
-## Loading and hot reload
+## In production
+
+Production validation needs three things the quick start leaves out:
+
+- **The TSL's intermediates.** The store above holds the roots only; the TSL publishes the
+  CAs below them ([`tsl`](src/tsl.rs)). Loading (below) verifies roots.json and the TSL and
+  builds the store from both.
+- **Revocation.** [`ocsp::OcspChecker`](src/ocsp.rs) (feature `load`) asks the end
+  entity's responder over the host's transport and caches the answer; pass it in place of
+  `Unchecked`.
+- **Current trust material.** The TSL changes; a long-running host reloads it (below).
+
+## Offline
+
+[`offline::Check`](src/offline.rs) judges certificates against a TSL and roots the caller
+already holds, with no network: what `ti pki verify --offline` decides, and what a browser
+does. `Check::new(env, config, roots, tsl_xml, tsl_signature, now)` verifies the trust
+material once; `check(&certs, now)` then judges any number of certificates against it.
+Revocation is not checked: OCSP needs a network.
+
+## TLS servers
+
+[`tls`](src/tls.rs) judges a TI TLS server under the `ti` profile of
+[`spec/pki-validation`](../../spec/pki-validation/README.md), independent of the TLS
+library; the adapter that plugs it into rustls, and the `web` profile for internet servers,
+are in [ti-tls](../ti-tls/README.md).
+
+## Loading trust material
 
 With the `load` feature, `ti_pki::load` loads roots.json and the TSL through pluggable,
-untrusted loaders, verifies them, and swaps them into a shared trust store. A production
-wiring with a cache, an offline fallback and a reloader:
+untrusted loaders, verifies them, and swaps them into a shared trust store. Air-gapped,
+never touching the network: serve a pre-populated store and fall back to a bundle.
+
+```rust
+let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.json")?, &cfg)?;
+let offline = CachingLoader::new(
+    bundle.clone(),
+    my_kv,
+    Timestamp::now,
+    CachePolicy { offline: true, ..CachePolicy::default() },
+);
+let loader = FallbackLoader::new(offline, bundle);
+```
+
+## Long-running hosts: hot reload
+
+A server keeps its trust material current without restarting: a cache, an offline fallback
+and a reloader the host ticks on its own runtime.
 
 ```rust
 use std::sync::Arc;
@@ -102,20 +186,6 @@ Why the loaders look like this:
   `just wasm32`, builds every loader over hosts that are neither. A native host that
   blocks implements the async methods by blocking inside them; ti-client does.
 
-Air-gapped, never touching the network: serve a pre-populated store and fall back to
-the bundle.
-
-```rust
-let bundle = StaticLoader::from_bundle(Bundle::read("/etc/ti-pki/bundle.json")?, &cfg)?;
-let offline = CachingLoader::new(
-    bundle.clone(),
-    my_kv,
-    Timestamp::now,
-    CachePolicy { offline: true, ..CachePolicy::default() },
-);
-let loader = FallbackLoader::new(offline, bundle);
-```
-
 ## Signature algorithms
 
 Signatures are verified through `rustls_pki_types::SignatureVerificationAlgorithm`
@@ -148,20 +218,4 @@ let config = TrustConfig {
 
 ## License
 
-Copyright 2026 gematik GmbH
-
-EUROPEAN UNION PUBLIC LICENCE v. 1.2
-
-EUPL © the European Union 2007, 2016
-
-See the [LICENSE](https://github.com/gematik/zero-lab/blob/main/rust/LICENSE) for the specific language governing permissions and limitations under the License
-
-## Additional Notes and Disclaimer from gematik GmbH
-
-1. Copyright notice: Each published work result is accompanied by an explicit statement of the license conditions for use. These are regularly typical conditions in connection with open source or free software. Programs described/provided/linked here are free software, unless otherwise stated.
-2. Permission notice: Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-   1. The copyright notice (Item 1) and the permission notice (Item 2) shall be included in all copies or substantial portions of the Software.
-   2. The software is provided "as is" without warranty of any kind, either express or implied, including, but not limited to, the warranties of fitness for a particular purpose, merchantability, and/or non-infringement. The authors or copyright holders shall not be liable in any manner whatsoever for any damages or other claims arising from, out of or in connection with the software or the use or other dealings with the software, whether in an action of contract, tort, or otherwise.
-   3. The software is the result of research and development activities, therefore not necessarily quality assured and without the character of a liable product. For this reason, gematik does not provide any support or other user assistance (unless otherwise stated in individual cases and without justification of a legal obligation). Furthermore, there is no claim to further development and adaptation of the results to a more current state of the art.
-3. Gematik may remove published results temporarily or permanently from the place of publication at any time without prior notice or justification.
-4. Please note: Parts of this code may have been generated using AI-supported technology. Please take this into account, especially when troubleshooting, for security analyses and possible adjustments.
+EUPL-1.2. Copyright, licence and gematik's notes: [repository README](https://github.com/gematik/zero-lab#license).

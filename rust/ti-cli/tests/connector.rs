@@ -2376,3 +2376,27 @@ fn config_pin_renews_the_pin_that_config_test_reports() {
     );
     assert_eq!(report["changed"], false);
 }
+
+/// A Konnektor that cannot be reached is named by its configuration in the error, so the
+/// user sees which .kon failed; its address and the calls are -v's.
+#[test]
+fn an_unreachable_konnektor_is_named_by_its_configuration() {
+    let fake = Fake::start("unreachable");
+    let closed = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let kon = std::fs::read_to_string(&fake.kon)
+        .unwrap()
+        .replace(&fake.url(), &format!("http://127.0.0.1:{closed}"));
+    std::fs::write(&fake.kon, kon).unwrap();
+    let out = fake.ti(&["connector", "-c", "praxis", "get", "cards"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_ne!(out.status.code(), Some(0), "{stderr}");
+    assert!(stderr.contains("Konnektor praxis: "), "{stderr}");
+    assert!(
+        !stderr.contains(&closed.to_string()),
+        "the address is -v's: {stderr}"
+    );
+}

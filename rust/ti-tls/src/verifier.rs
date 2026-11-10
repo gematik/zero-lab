@@ -100,11 +100,19 @@ pub fn provider() -> CryptoProvider {
 
 type VerdictKey = (Vec<u8>, String);
 
+/// A kept verdict: until when it may be reused, and its warnings, which a reuse reports
+/// as the first judgement did.
+#[derive(Clone, Debug)]
+struct Kept {
+    until: u64,
+    warnings: Vec<&'static str>,
+}
+
 /// Accepted verdicts by chain, host and profile, until they may no longer be reused
 /// (TLSV-050). Refusals are never stored.
 #[derive(Debug)]
 struct Verdicts {
-    until: Mutex<HashMap<VerdictKey, u64>>,
+    until: Mutex<HashMap<VerdictKey, Kept>>,
     capacity: usize,
 }
 
@@ -136,15 +144,16 @@ impl Verdicts {
         (hash.finalize().to_vec(), host.to_ascii_lowercase())
     }
 
-    fn reusable(&self, key: &VerdictKey, now: u64) -> bool {
+    /// The warnings of the verdict kept for `key`, if it may still be reused at `now`.
+    fn reusable(&self, key: &VerdictKey, now: u64) -> Option<Vec<&'static str>> {
         let mut map = self.until.lock().unwrap_or_else(PoisonError::into_inner);
         match map.get(key) {
-            Some(&until) if now < until => true,
+            Some(kept) if now < kept.until => Some(kept.warnings.clone()),
             Some(_) => {
                 map.remove(key);
-                false
+                None
             }
-            None => false,
+            None => None,
         }
     }
 
@@ -158,17 +167,23 @@ impl Verdicts {
             return;
         }
         let mut map = self.until.lock().unwrap_or_else(PoisonError::into_inner);
-        map.retain(|_, kept| now < *kept);
+        map.retain(|_, kept| now < kept.until);
         if map.len() >= self.capacity && !map.contains_key(&key) {
             let first = map
                 .iter()
-                .min_by_key(|(_, kept)| **kept)
+                .min_by_key(|(_, kept)| kept.until)
                 .map(|(first, _)| first.clone());
             if let Some(first) = first {
                 map.remove(&first);
             }
         }
-        map.insert(key, until);
+        map.insert(
+            key,
+            Kept {
+                until,
+                warnings: verdict.warnings.clone(),
+            },
+        );
     }
 
     #[cfg(test)]
@@ -344,6 +359,7 @@ impl<R: RevocationChecker> TiVerifier<R> {
             code: ti.code.into(),
             detail: ti.detail,
             warnings: ti.warnings,
+            status_source: None,
             reusable_until,
         }
     }
@@ -362,7 +378,7 @@ impl<R: RevocationChecker + Send + Sync> ServerCertVerifier for TiVerifier<R> {
         let key = Verdicts::key(end_entity, intermediates, &host);
         let now = seconds(now);
         let snapshot = self.snapshot();
-        if snapshot.verdicts.reusable(&key, now.0) {
+        if snapshot.verdicts.reusable(&key, now.0).is_some() {
             return Ok(ServerCertVerified::assertion());
         }
         let verdict = self.verify_with(
@@ -422,11 +438,16 @@ impl<R: RevocationChecker + Send + Sync> ServerCertVerifier for TiVerifier<R> {
     }
 }
 
+/// Told the host and the warnings, none or some, of every `web` server a handshake accepts,
+/// on the handshaking thread: rustls lets a verifier accept or refuse, nothing between.
+pub type WarningObserver = Arc<dyn Fn(&str, &[&'static str]) + Send + Sync>;
+
 /// The `web` profile as a rustls verifier, over one set of roots.
 pub struct WebVerifier<F> {
     check: WebCheck,
     fetch: F,
     verdicts: Verdicts,
+    observer: Option<WarningObserver>,
 }
 
 impl<F> fmt::Debug for WebVerifier<F> {
@@ -444,6 +465,21 @@ impl<F: Fetch> WebVerifier<F> {
             check,
             fetch,
             verdicts: Verdicts::default(),
+            observer: None,
+        }
+    }
+
+    /// Tells `observer` of every server a handshake accepts and its warnings (TLSV-041's
+    /// `key_phased_out`, TLSV-044's `revocation_unavailable`), a reused verdict's too.
+    #[must_use]
+    pub fn with_warning_observer(mut self, observer: WarningObserver) -> WebVerifier<F> {
+        self.observer = Some(observer);
+        self
+    }
+
+    fn observe(&self, host: &str, warnings: &[&'static str]) {
+        if let Some(observer) = &self.observer {
+            observer(host, warnings);
         }
     }
 
@@ -481,12 +517,14 @@ impl<F: Fetch + Send + Sync> ServerCertVerifier for WebVerifier<F> {
         let host = host(server_name);
         let key = Verdicts::key(end_entity, intermediates, &host);
         let now = seconds(now);
-        if self.verdicts.reusable(&key, now.0) {
+        if let Some(warnings) = self.verdicts.reusable(&key, now.0) {
+            self.observe(&host, &warnings);
             return Ok(ServerCertVerified::assertion());
         }
         let verdict = self.verify(end_entity, intermediates, &host, ocsp_response, now);
         self.verdicts.keep(key, &verdict, now.0);
         if verdict.is_valid() {
+            self.observe(&host, &verdict.warnings);
             Ok(ServerCertVerified::assertion())
         } else {
             Err(refusal(verdict))
@@ -544,14 +582,32 @@ mod tests {
         verdicts.keep(key(2), &accepted(100), 0);
         verdicts.keep(key(3), &accepted(200), 0);
         assert_eq!(verdicts.len(), 2);
-        assert!(!verdicts.reusable(&key(2), 0), "expires first: evicted");
-        assert!(verdicts.reusable(&key(1), 0));
-        assert!(verdicts.reusable(&key(3), 0));
+        assert!(
+            verdicts.reusable(&key(2), 0).is_none(),
+            "expires first: evicted"
+        );
+        assert!(verdicts.reusable(&key(1), 0).is_some());
+        assert!(verdicts.reusable(&key(3), 0).is_some());
 
         verdicts.keep(key(4), &accepted(400), 250);
         assert_eq!(verdicts.len(), 2, "the expired verdict went on insert");
-        assert!(verdicts.reusable(&key(1), 250));
-        assert!(verdicts.reusable(&key(4), 250));
+        assert!(verdicts.reusable(&key(1), 250).is_some());
+        assert!(verdicts.reusable(&key(4), 250).is_some());
+    }
+
+    /// TLSV-050: a reused verdict reports the warnings the first judgement gave.
+    #[test]
+    fn tlsv_050_a_reused_verdict_keeps_its_warnings() {
+        let verdicts = Verdicts::default();
+        let phased_out = Verdict {
+            warnings: vec![crate::verdict::KEY_PHASED_OUT],
+            ..accepted(100)
+        };
+        verdicts.keep(key(1), &phased_out, 0);
+        assert_eq!(
+            verdicts.reusable(&key(1), 0),
+            Some(vec![crate::verdict::KEY_PHASED_OUT])
+        );
     }
 
     /// TLSV-050: a verdict already past its reuse, or a refusal, is not kept.

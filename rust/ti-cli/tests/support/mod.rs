@@ -172,3 +172,19 @@ pub fn assert_conforms(name: &str, json: &[u8]) {
     let found = violations(&value, &schema, &schema, "$");
     assert!(found.is_empty(), "{name}:\n{}", found.join("\n"));
 }
+
+/// The schema of what `pki verify` wrote: a TLS server's verdict names its TLS profile,
+/// the TI's report does not.
+pub fn verify_schema(json: &[u8]) -> &'static str {
+    let value: Value = serde_json::from_slice(json).unwrap_or_default();
+    if value.get("tls_profile").is_some() {
+        "pki verify tls-server"
+    } else {
+        "pki verify"
+    }
+}
+
+/// [`assert_conforms`] with the schema of what `pki verify` wrote ([`verify_schema`]).
+pub fn assert_verify_conforms(json: &[u8]) {
+    assert_conforms(verify_schema(json), json);
+}

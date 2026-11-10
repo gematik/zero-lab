@@ -62,8 +62,10 @@ func TestTLSV040TheWebCasesAreJudgedAsTheCorpusSays(t *testing.T) {
 			if !slices.Equal(verdict.Warnings, c.Warnings) {
 				t.Errorf("warnings %q, expected %q", verdict.Warnings, c.Warnings)
 			}
-			if verdict.Valid() != verdict.ReusableUntil.After(when) {
-				t.Errorf("reusable until %s, valid %v", verdict.ReusableUntil, verdict.Valid())
+			// TLSV-050: an accepted verdict is reused unless it rests on no revocation status.
+			restsOnStatus := verdict.Valid() && !slices.Contains(verdict.Warnings, WarningRevocationUnavailable)
+			if restsOnStatus != verdict.ReusableUntil.After(when) {
+				t.Errorf("reusable until %s, valid %v, warnings %q", verdict.ReusableUntil, verdict.Valid(), verdict.Warnings)
 			}
 		})
 	}

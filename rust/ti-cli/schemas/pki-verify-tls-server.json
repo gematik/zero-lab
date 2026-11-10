@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pki verify (TLS server)",
+  "description": "The output of `pki verify --connect` under a TLS profile of spec/pki-validation, today `web` (--validation-profile web, or auto for a server without a TI certificate): a TLS server's verdict under a TLS profile of spec/pki-validation, reached in the handshake. Exit 0 when valid, warnings included, 1 when not.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "description": "The JSON contract version; fields are only added within it."
+    },
+    "server": {
+      "type": "string",
+      "description": "HOST:PORT connected to"
+    },
+    "tls_profile": {
+      "enum": [
+        "web"
+      ],
+      "description": "The TLS profile of spec/pki-validation the server was judged under; schema version 1 may add profiles"
+    },
+    "profile_reason": {
+      "type": "string",
+      "description": "Why this TLS profile: `given` for --validation-profile web, else auto's reason, e.g. `auto: not a TI certificate`"
+    },
+    "valid": {
+      "type": "boolean",
+      "description": "The server is accepted; warnings do not change it"
+    },
+    "host": {
+      "type": "string",
+      "description": "The name the certificate was checked against and sent as SNI: --fqdn, else HOST"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The instant judged at"
+    },
+    "revocation": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "stapled_ocsp",
+            "ocsp_responder",
+            "crl",
+            null
+          ],
+          "description": "Where the end entity's status came from; null without one (the warning revocation_unavailable, or refused before revocation)"
+        },
+        "stapled": {
+          "type": "boolean",
+          "description": "The server stapled an OCSP response, used or not"
+        }
+      },
+      "required": [
+        "source",
+        "stapled"
+      ],
+      "additionalProperties": false
+    },
+    "trust": {
+      "type": "object",
+      "properties": {
+        "roots": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "source": {
+          "enum": [
+            "system",
+            "cacert"
+          ],
+          "description": "The operating system's roots, or --cacert/--capath in their place"
+        }
+      },
+      "required": [
+        "roots",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "chain": {
+      "type": "array",
+      "description": "The certificates as the server sent them, end entity first",
+      "items": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "enum": [
+              "end_entity",
+              "sub_ca",
+              "root"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "common_name": {
+            "type": "string"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, UTC"
+          },
+          "pem": {
+            "type": "string",
+            "description": "The certificate as PEM"
+          }
+        },
+        "required": [
+          "position",
+          "subject",
+          "common_name",
+          "not_after",
+          "pem"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "The result code of spec/pki-validation that refused the server; empty when valid",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "enum": [
+              "chain_incomplete",
+              "not_yet_valid",
+              "expired",
+              "key_usage_mismatch",
+              "signature_algorithm_not_allowed",
+              "signature_invalid",
+              "name_mismatch",
+              "key_not_admissible",
+              "unrecognized_critical_extension",
+              "revoked",
+              "validity_too_long",
+              "invalid"
+            ],
+            "description": "A TLSV result code (TLSV-020 to 045); schema version 1 may add codes"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "enum": [
+              "key_phased_out",
+              "revocation_unavailable"
+            ],
+            "description": "The web profile's documented deviations: an RSA key of 2048 to 2999 bits (TLSV-041, A_28976), no revocation status (TLSV-044, A_27857-02)"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "server",
+    "tls_profile",
+    "profile_reason",
+    "valid",
+    "host",
+    "at",
+    "revocation",
+    "trust",
+    "chain",
+    "errors",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

@@ -426,6 +426,41 @@ mod tests {
         assert_eq!(unchecked_note("HTTP 200"), ("HTTP 200", None));
     }
 
+    /// TLSV-041, TLSV-044: a `web` server accepted with warnings is a yellow `!` with the
+    /// warnings in its detail, as ti-client's probe reports it.
+    #[test]
+    fn tlsv_044_a_web_server_accepted_with_warnings_shows_a_yellow_mark() {
+        let endpoint = probe::endpoints(None, Env::Ref)
+            .unwrap()
+            .into_iter()
+            .find(|e| e.name == "idpd-internet")
+            .unwrap();
+        let detail = "oidc discovery · TLS web: revocation_unavailable";
+        let row = Probe {
+            endpoint,
+            source: Source::Builtin,
+            outcome: Some(Outcome {
+                status: Status::Warn,
+                answered: true,
+                detail: detail.into(),
+                http_status: Some(200),
+                duration: Duration::ZERO,
+                discovered: Vec::new(),
+                verified: Some(true),
+            }),
+        };
+        let text = line(&row, &(14, 30), 0, false);
+        let (warn, plain) = (
+            style::WARN,
+            anstyle::Style::new().fg_color(style::WARN.get_fg_color()),
+        );
+        assert!(text.contains(&format!("{warn}!{warn:#}")), "{text:?}");
+        assert!(
+            text.contains(&format!("{plain}{detail}{plain:#}")),
+            "{text:?}"
+        );
+    }
+
     /// Production lists 17 Bestandsnetze: they take one line, running or done, grouped by
     /// result, so the table keeps the paths every practice needs on the screen.
     #[test]

@@ -1,12 +1,16 @@
-# 🤝🔐 Experimenting with Zero Trust
+# zero-lab: building blocks for the Telematikinfrastruktur
 
 ## About The Project
 
-> **Note:** This work is part of DSR PoC: https://dsr.gematik.solutions/.
+Libraries and tools for the German Telematikinfrastruktur (TI), in Rust and Go: TI PKI and
+TSL validation, JOSE with the TI's brainpool profiles, Konnektor, IDP-Dienst and
+FHIR-Directory clients, ePA, Zero Trust policy (PDP, PEP), and `ti`, the command-line tool on
+top. Security-critical: specified once, proven alike in both languages, verified, not only
+tested.
 
-> The Zero Trust model is a security concept based on the principle of maintaining strict access controls and not trusting anyone by default, even those already inside the network perimeter. It is a security framework that requires all users, both inside and outside the network perimeter, to be authenticated, authorized, and continuously validated for security configuration and posture before being granted or keeping access to applications and data.
+> **Note:** The work started as part of the DSR PoC: https://dsr.gematik.solutions/.
 
-zero-lab holds libraries and commands for experimenting with Zero Trust building blocks in the German Telematikinfrastruktur (TI), in two workspaces:
+The repository has two workspaces:
 
 - [`go/`](./go): Go modules, each versioned by its own git tag `go/<module>/vX.Y.Z`, licensed under EUPL-1.2.
 - [`rust/`](./rust): Rust crates, each versioned by its own git tag `rust/<crate>/vX.Y.Z`, licensed under EUPL-1.2.

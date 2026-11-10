@@ -13,6 +13,26 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
+### ti-cli
+
+#### added
+- `ti pki verify --connect HOST` gives a TLS server's verdict under the `web` TLS profile of
+  `spec/pki-validation` for a server that is not the TI's (TASK-283): the chain judged in
+  the handshake against the system's roots (or `--cacert`), the name, the keys, the
+  validity period and the revocation status, with its source and the warnings
+  `key_phased_out` and `revocation_unavailable`; exit 0 valid, 1 refused.
+  `--validation-profile web` forces it (only with `--connect`); `auto` keeps a server with
+  a TI certificate type, or issued by a CA of the TSL at hand, with the TI's validation,
+  and says which and why. Its JSON has its own schema, `ti schema pki verify tls-server`.
+
+#### changed
+- `ti probe` shows a `web` server accepted with a warning (an RSA-2048 certificate, no
+  revocation status from any source) as a yellow `!` with the warning, not as a failure
+  (TASK-282).
+- A Konnektor error names the `.kon` configuration it concerned (TASK-284):
+  `Konnektor praxis: transport: …` instead of `Konnektor: transport: …`; its address and
+  the calls stay with `-v`. Error kinds, exit codes and hints are unchanged.
+
 ### ti-cache
 
 #### added
@@ -118,7 +138,28 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### changed
 - ureq 3.5 (pinned `~3.5`, TASK-272): its 3.4 releases left connection reuse, transfer
   encoding and the TLS handshake's timeout unfixed.
+- The web transports accept a server the `web` profile accepts with a warning (an RSA-2048
+  end entity, no revocation status; TASK-282). `probe` reports such a server as a warning,
+  the warnings in its detail (`TLS web: revocation_unavailable`), where it failed before.
+  `http::web_verifier` and `http::web_check` build the profile as `web_config` does.
+- `peer::web_server_verdict`: a TLS server's verdict under the `web` TLS profile, reached
+  in a handshake at a given instant (`TlsServerVerdict`: the chain, the verdict with its
+  status source and warnings, the roots); `pki::verify::server_profile` picks `ti` or `web`
+  for a `--connect` server (TASK-283).
+
 ### ti-tls
+
+#### changed
+- The `web` profile's two deviations from gemSpec_Krypt (TASK-282, `spec/pki-validation`
+  Deviations): an end entity with RSA 2048 to 2999 bits is accepted with the warning
+  `key_phased_out` (A_28976 asks for 3000; below 2048 stays `key_not_admissible`), and a
+  server whose revocation status no source gives is accepted with `revocation_unavailable`
+  (A_27857-02), where both were refused. A revoked status still refuses. A verdict without a
+  status is not reused; a reused verdict keeps its warnings. `Verdict::status_source` names
+  the source of the status (`StatusSource`), `verdict::KEY_PHASED_OUT` and
+  `REVOCATION_UNAVAILABLE` the warnings, and `WebVerifier::with_warning_observer` tells the
+  host of each accepted server and its warnings. `Code::RevocationUnavailable` is no longer
+  returned.
 
 #### added
 - New crate (TASK-97): TLS server verification under `spec/pki-validation`. `TiVerifier` (the

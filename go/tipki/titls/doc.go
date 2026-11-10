@@ -33,6 +33,13 @@
 //     the path as well, and VerifyConnection adds the profile's keys, name, validity period and
 //     revocation (stapled OCSP, the OCSP responder, the CRL).
 //
+// Two web rules deviate from gemSpec_Krypt, as spec/pki-validation's Deviations record: an end entity with
+// RSA 2048 to 2999 bits is accepted with the warning [WarningKeyPhasedOut] (A_28976 asks for 3000), and a
+// server whose revocation status no source gives is accepted with [WarningRevocationUnavailable]
+// (A_27857-02 requires one); a revoked status still refuses. [Verdict.Warnings] carries them. The
+// configurations accept such a server; a host that needs the strict rules calls [WebVerifier.Verify] from
+// its own VerifyConnection and refuses a verdict with either warning.
+//
 // A ti host:
 //
 //	source := titls.NewTrustSource(store) // source.Swap(newStore) after each TSL reload
@@ -48,7 +55,8 @@
 //
 // Accepted verdicts are reused for the same chain, host and profile, under ti also the same trust snapshot,
 // until the earliest of notAfter, the status's nextUpdate and the profile's window (TLSV-050, TLSV-051): at
-// most [DefaultCacheSize] of them unless configured; refusals never.
+// most [DefaultCacheSize] of them unless configured, with their warnings; refusals never, nor a web verdict
+// that rests on no revocation status.
 //
 // Where crypto/tls cannot do what spec/pki-validation/testdata/handshake.json lists:
 //

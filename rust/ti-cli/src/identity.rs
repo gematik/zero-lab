@@ -86,8 +86,9 @@ fn from_connector(
     out: &Output,
 ) -> Result<Identity, CliError> {
     let args = ConnectorArgs::for_identity(name);
-    let session = connector::open(&args, global, out)?;
-    Ok(Identity::from_card(session, card)?)
+    let named = |error: CliError| error.for_connector(&connector::selected_name(&args));
+    let session = connector::open(&args, global, out).map_err(named)?;
+    Identity::from_card(session, card).map_err(|error| named(error.into()))
 }
 
 #[cfg(test)]

@@ -23,7 +23,8 @@
 
 //! Any bytes as the chain a server presents, up to four certificates each behind a two-byte
 //! big-endian length, under the web profile with the corpus's root and no revocation source: the check never
-//! panics, and nothing comes out valid. The seed is the corpus's valid chain.
+//! panics, and whatever comes out valid carries `revocation_unavailable`, rests on no status and is not
+//! reused (TLSV-044, TLSV-050). The seed is the corpus's valid chain.
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
@@ -52,6 +53,13 @@ fuzz_target!(|data: &[u8]| {
         Timestamp(1_767_225_600),
         &Offline,
     ));
-    // Offline: no revocation source answers, so nothing can be valid.
-    assert!(!verdict.is_valid(), "{verdict:?}");
+    // Offline: no revocation source answers, so nothing valid rests on a status.
+    if verdict.is_valid() {
+        assert!(
+            verdict.warnings.contains(&ti_tls::verdict::REVOCATION_UNAVAILABLE)
+                && verdict.status_source.is_none()
+                && verdict.reusable_until.is_none(),
+            "{verdict:?}"
+        );
+    }
 });

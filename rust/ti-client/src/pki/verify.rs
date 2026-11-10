@@ -45,6 +45,7 @@ use crate::client::Client;
 use crate::error::Error;
 use crate::files::Dirs;
 use crate::input::Loaded;
+use crate::probe::TlsProfile;
 use crate::trust::{Session, TrustInfo, Warning};
 
 /// The profile to validate under.
@@ -373,6 +374,69 @@ impl Verification {
     pub fn complete(&self) -> bool {
         self.result.positions.last() == Some(&ChainPosition::Root)
     }
+}
+
+/// The TLS profile `--validation-profile auto` judges a server reached with `--connect`
+/// under, and why. `ti` when its end entity has a TI certificate type, or when its issuer is
+/// a CA of the verified TSL of the environment (`env`, else detected from `certs`); `web`
+/// otherwise, a chain whose environment cannot be detected included. A file is never a TLS
+/// server: this is for `--connect` only.
+///
+/// The TSL is the one at hand, cached or none, never downloaded for the choice: a server
+/// on the internet need not wait for, or fail on, the TI's download points. A TI server
+/// this misses has a certificate without a TI type under a CA of a TSL not cached, and is
+/// then refused under `web`, whose roots hold no TI root.
+///
+/// # Errors
+///
+/// The errors of [`Session::new`].
+pub fn server_profile(
+    client: &Client,
+    dirs: &Dirs,
+    env: Option<Env>,
+    certs: &[Certificate],
+    at: Option<Timestamp>,
+    warn: impl Fn(Warning),
+) -> Result<(TlsProfile, String), Error> {
+    let Some(ee) = certs.first() else {
+        return Ok((TlsProfile::Web, "auto: no certificate".into()));
+    };
+    if let Some(cert_type) = profile::select_for_cert(ee).cert_type {
+        return Ok((
+            TlsProfile::Ti,
+            format!("auto: a TI certificate, {cert_type}"),
+        ));
+    }
+    let not_ti = "auto: not a TI certificate";
+    let env = match environment(env, certs, at.unwrap_or_else(Timestamp::now)) {
+        Ok((env, _)) => env,
+        Err(Error::EnvironmentUndetected(_)) => return Ok((TlsProfile::Web, not_ti.into())),
+        Err(e) => return Err(e),
+    };
+    let session = Session::new(client, dirs, true, warn)?;
+    let loaded = session.load_env(env, false, at).ok();
+    // Offline with nothing cached, the store holds the embedded roots and no TSL.
+    let Some((_, material)) = loaded.filter(|(_, m)| m.info.tsl.is_some()) else {
+        return Ok((
+            TlsProfile::Web,
+            format!("{not_ti}, and no {env} TSL at hand to check its issuer"),
+        ));
+    };
+    let issuer = material
+        .store
+        .intermediates()
+        .iter()
+        .find(|ca| ca.subject_der() == ee.issuer_der());
+    Ok(match issuer {
+        Some(ca) => (
+            TlsProfile::Ti,
+            format!("auto: issued by {}, a CA of the {env} TSL", ca.subject_cn()),
+        ),
+        None => (
+            TlsProfile::Web,
+            format!("{not_ti}, nor issued by a CA of the {env} TSL"),
+        ),
+    })
 }
 
 /// The environment to validate in; `None` asks the certificates. Non-production evidence

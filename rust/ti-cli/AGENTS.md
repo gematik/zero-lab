@@ -34,7 +34,8 @@ or stdin.
   document to stdout with `"schema": 1`. Within a schema version, fields are only ever
   added, so ignore unknown fields.
 - `{bin} schema COMMAND` prints the JSON Schema of a command's output, e.g.
-  `{bin} schema pki verify`. `{bin} schema` alone prints all of them, plus `error`.
+  `{bin} schema pki verify`. `{bin} schema` alone prints all of them, plus `error`;
+  `pki verify tls-server` is `pki verify --connect`'s TLS server verdict.
 - Without `--format json`, piped output is compact Markdown and terminal output is
   aligned text. Both are for reading, not for parsing.
 - Diagnostics (`-v`, `-vv`) and warnings go to stderr, never to stdout.
@@ -169,6 +170,7 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
 {bin} --format json pki verify card.pem --offline # no network, no OCSP
 {bin} --format json pki verify tls.pem --fqdn epa-as-1.ref.epa4all.de
 {bin} --format json pki verify --connect epa-as-1.ref.epa4all.de   # the server's chain; --fqdn is the host
+{bin} --format json pki verify --connect idp.app.ti-dienste.de   # not a TI server: its TLS server verdict under web
 {bin} --format json pki profiles list
 {bin} --format json pki profiles describe hci-aut
 {bin} --format json pki profiles describe hci-aut --env ref   # tsl.cas: CAs the TSL allows for its types
@@ -274,6 +276,25 @@ SM-B (SMC-B, HSM-B) `C.HCI.*`.
   CA with a yellow `!` when only warnings concern it; the end entity keeps ✓ or ✗. Every other type, components and the eGK, needs every
   certificate of the chain valid at the reference time (shell model). The end entity
   itself is always checked at the reference time.
+- `pki verify --connect HOST` gives a TLS server's verdict when the server is not a TI
+  one: its chain judged in the handshake under a TLS profile of spec/pki-validation,
+  today `web` (TLSV-040 to 045), as ti's own HTTPS clients judge the IDP-Dienst, the
+  FHIR-Directory and the TSL download points: the operating system's roots (or
+  `--cacert`/`--capath`), the name (`--fqdn`, default HOST), at most 398 days of
+  validity, the keys, and a revocation status from the stapled OCSP response, the
+  responder or the CRL. `--validation-profile auto` (the default) takes a server to the
+  TI's validation when its end entity has a TI certificate type or its issuer is a CA of
+  the verified TSL, to `web` otherwise; `--validation-profile web` forces it and needs
+  `--connect` (usage error, exit 2). A file is never a TLS server. `web` takes none of
+  `--offline`, `--issuer`, `--intermediates`, `--nist-only`, `--ocsp-*`. Its JSON has its
+  own schema, `{bin} schema pki verify tls-server`, told apart by `tls_profile`: `server`,
+  `profile_reason` (`given`, or auto's reason), `valid`, `revocation.source`
+  (`stapled_ocsp`, `ocsp_responder`, `crl`, or `null` without a status), `trust`,
+  `chain`, `errors` (the TLSV result code that refused it, e.g. `name_mismatch`,
+  `revoked`, `key_not_admissible`) and `warnings`: `key_phased_out` (an RSA key of 2048
+  to 2999 bits) and `revocation_unavailable` (no source gave a status) are accepted,
+  exit 0, as the profile's documented deviations; a client that needs the strict rule
+  treats them as refusals.
 - `pki verify --at T`: OCSP answers for the time of the query and its status is judged
   at T (gemSpec_PKI TUC_PKI_006 8a/8b). A certificate revoked after T is valid with the
   warning `revoked_after_reference_time`; `chain[].revocation` keeps `status: revoked`

@@ -24,6 +24,7 @@
 //! `ti connector …`: the Konnektor's cards, certificates and PINs, with the Go `ti`'s
 //! commands and `.kon` files. Listings are tables, single records fields.
 
+use std::cell::Cell;
 use std::path::Path;
 
 use serde::Serialize;
@@ -49,7 +50,28 @@ use crate::output::{Document, Line, Output, SCHEMA, Tone, Waiting};
 
 /// Runs `ti connector …`.
 pub fn run(cli: &ConnectorCli, global: &GlobalArgs, out: &Output) -> Result<Exit, CliError> {
-    let open = || connector::open(&cli.args, global, out);
+    // A command that talks to the Konnektor opens its session through `open`; its errors
+    // then name that configuration.
+    let opened = Cell::new(false);
+    let open = || {
+        opened.set(true);
+        connector::open(&cli.args, global, out)
+    };
+    let result = command(cli, global, out, &open);
+    if opened.get() {
+        let name = connector::selected_name(&cli.args);
+        result.map_err(|error| error.for_connector(&name))
+    } else {
+        result
+    }
+}
+
+fn command(
+    cli: &ConnectorCli,
+    global: &GlobalArgs,
+    out: &Output,
+    open: &dyn Fn() -> Result<Session, CliError>,
+) -> Result<Exit, CliError> {
     match &cli.command {
         ConnectorCommand::Configs
         | ConnectorCommand::Use { name: None }

@@ -119,17 +119,19 @@ take `web`.
 
 - **TLSV-040** The anchors are the host system's default root store as the host read it, and only those. A
   verifier adds none, removes none and keeps no list of its own. A test passes its own root in their place.
-- **TLSV-041** The end entity's key is ECDSA on P-256 or P-384, or RSA of at least 3000 bits
-  (`key_not_admissible`): the 120-bit level that gemSpec_Krypt requires of identities from an internet PKI
-  (A_28976, after TR-02102-2) and of non-TI RSA keys (A_16176-01).
+- **TLSV-041** The end entity's key is ECDSA on P-256 or P-384, or RSA of at least 3000 bits: the 120-bit
+  level that gemSpec_Krypt requires of identities from an internet PKI (A_28976, after TR-02102-2) and of
+  non-TI RSA keys (A_16176-01). An RSA key of 2048 to 2999 bits is accepted with the warning
+  `key_phased_out`, the code VALID-002 gives the same key in the TI ([Deviations](#deviations)); a smaller
+  RSA key and any other key are refused (`key_not_admissible`).
 - **TLSV-042** A CA's key is ECDSA on P-256 or P-384, or RSA of at least 2048 bits
   (`key_not_admissible`). The lower RSA floor is the Web-PKI's today, as the ZETA SDK accepts it.
 - **TLSV-043** The name matches a `dNSName` subject alternative name as TLSV-024 compares them
   (A_27856-02); the commonName is not read.
 - **TLSV-044** The end entity's revocation status is required (A_27857-02): from a stapled OCSP response,
   else a cached response, else its OCSP responder (AIA), else its CRL (CRL distribution point), as the ZETA
-  SDK asks them. `revoked` refuses (`revoked`); when no source gives a status, the server is refused
-  (`revocation_unavailable`). An OCSP response counts when its issuer or a delegate it certified signed it
+  SDK asks them. `revoked` refuses (`revoked`); when no source gives a status, the server is accepted with
+  the warning `revocation_unavailable` ([Deviations](#deviations)). An OCSP response counts when its issuer or a delegate it certified signed it
   and the reference time lies between `thisUpdate` and `nextUpdate`; a CRL counts when the issuer signed
   it, it is not past `nextUpdate`, and it covers the certificate's distribution point.
 - **TLSV-045** The end entity's validity period is at most 398 days (`validity_too_long`), as the CA/Browser
@@ -139,7 +141,8 @@ take `web`.
 
 - **TLSV-050** An accepted verdict may be reused for the same certificate bytes, host name and profile until
   the earliest of: the end entity's `notAfter`, the `nextUpdate` of the revocation status it rests on, and the
-  replacement of the trust material it was reached with. A refusal is never reused.
+  replacement of the trust material it was reached with. A refusal is never reused, nor a verdict that rests
+  on no revocation status (TLSV-044's `revocation_unavailable`): the next connection asks the sources again.
 - **TLSV-051** A revocation status is reused within its `nextUpdate` and for at most the window the profile
   allows: under `ti` the OCSP-005 hour, under `web` 24 hours.
 
@@ -156,12 +159,18 @@ take `web`.
 | `profile_type_mismatch` | TLSV-030, VALID-005 |
 | `key_not_admissible` | TLSV-030 (VALID-002), TLSV-041, TLSV-042 |
 | `ocsp_revoked`, `ocsp_unknown`, `ocsp_unavailable`, `ocsp_response_invalid` | TLSV-032, OCSP-001 |
-| `revoked`, `revocation_unavailable` | TLSV-044 |
+| `revoked` | TLSV-044 |
 | `validity_too_long` | TLSV-045 |
 | `trust_material_unavailable` | TLSV-033 |
 | `ca_not_in_tsl`, `cert_type_ca_not_authorized`, `ca_revoked_in_tsl` | TLSV-030, VALID-006, VALID-007, VALID-003 |
 
-The warning `provided_ocsp_response_not_valid` (TLSV-032) never decides.
+Warnings never decide; a verdict carries them in the order of the steps below.
+
+| Warning | Rules |
+|---|---|
+| `provided_ocsp_response_not_valid` | TLSV-032 |
+| `key_phased_out` | TLSV-041 |
+| `revocation_unavailable` | TLSV-044 |
 
 ## Algorithm
 
@@ -188,20 +197,38 @@ The first failing step's code is the result.
 | GS-A_5322 | TLSV-014 |
 | A_24913 | TLSV-032 |
 | A_27855-03 | TLSV-040 |
-| A_28976, A_16176-01 | TLSV-041 |
+| A_28976, A_16176-01 | TLSV-041 (deviation) |
 | A_27856-02 | TLSV-024, TLSV-043 |
-| A_27857-02 | TLSV-044 |
+| A_27857-02 | TLSV-044 (deviation) |
 
 ## Deviations
 
-None known: no implementation exists yet (TASK-97, TASK-98).
+Two rules of the `web` profile accept, with a warning, what gemSpec_Krypt has a client refuse. Both are the
+maintainer's decision of 2026-11-10 (TASK-282); the `ti` profile has neither.
+
+- **A_28976, RSA below 3000 bits (TLSV-041).** gemSpec_Krypt asks for the 120-bit level of an identity from an
+  internet PKI, RSA of 3000 bits or more. The Web-PKI's CAs issue RSA-2048 server certificates as their
+  default, and services the TI's clients must reach present them. An end entity with RSA 2048 to 2999 bits
+  is accepted with `key_phased_out`; below 2048 the key is still refused, and the CAs' floor (TLSV-042) is
+  unchanged.
+- **A_27857-02, revocation status required (TLSV-044).** A server whose status no source gives is accepted
+  with `revocation_unavailable`. Let's Encrypt ended its OCSP service in 2025, and responders fail now and
+  then: `idp-ref.app.ti-dienste.de` staples nothing and lists no CRL, so one failed answer from GlobalSign's
+  responder made the IDP-Dienst unreachable. A status that says revoked still refuses, from any source, and
+  a response that fails verification still counts as no status.
+
+A host that needs the strict rules judges the server with the profile's verification entry point, which
+returns the verdict with its warnings, and refuses a verdict that carries `key_phased_out` or
+`revocation_unavailable` in its own verifier. The verifiers here do not offer it as an option.
 
 ## Security considerations
 
 - `ti` trusts no public CA: a CA of the Web-PKI cannot vouch for a TI service, and a TI CA vouches only for
   the TI. `web` trusts what the host trusts; an operator who adds a root to the system adds it here.
-- Revocation fails closed under both profiles. A server is unreachable while its revocation status is, by
-  design.
+- Revocation fails closed under `ti`: a TI server is unreachable while its revocation status is, by design.
+  Under `web` it fails open with the warning `revocation_unavailable` ([Deviations](#deviations)): a revoked
+  certificate is refused once any source says so, but an attacker who holds a revoked certificate's key and
+  can block every source of its status is accepted. Such a verdict is not reused (TLSV-050).
 - The name check uses the host the client asked for, so a server cannot name itself into a match. A
   wildcard covers one label under one domain: a certificate for `*.example.com` is good for every service
   directly under it, which its holder must want, and for nothing deeper or beside it.

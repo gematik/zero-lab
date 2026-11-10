@@ -24,6 +24,7 @@ package titls
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -58,7 +59,14 @@ func keyFor(profile string, generation uint64, host string, chain [][]byte) verd
 type verdictCache struct {
 	mu      sync.Mutex
 	max     int
-	entries map[verdictKey]time.Time
+	entries map[verdictKey]kept
+}
+
+// kept is an accepted verdict's end of reuse and its warnings, which a reuse reports as the first
+// judgement did.
+type kept struct {
+	until    time.Time
+	warnings []string
 }
 
 // newVerdictCache keeps up to size verdicts; zero means [DefaultCacheSize], a negative size keeps none.
@@ -66,22 +74,23 @@ func newVerdictCache(size int) *verdictCache {
 	if size == 0 {
 		size = DefaultCacheSize
 	}
-	return &verdictCache{max: max(size, 0), entries: map[verdictKey]time.Time{}}
+	return &verdictCache{max: max(size, 0), entries: map[verdictKey]kept{}}
 }
 
-// reusable is the instant until which key's verdict may be reused at now, false if there is none.
-func (c *verdictCache) reusable(key verdictKey, now time.Time) (time.Time, bool) {
+// reusable is key's verdict as reused at now, with its warnings and the instant its reuse ends; false if
+// there is none.
+func (c *verdictCache) reusable(key verdictKey, now time.Time) (Verdict, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	until, ok := c.entries[key]
+	entry, ok := c.entries[key]
 	if !ok {
-		return time.Time{}, false
+		return Verdict{}, false
 	}
-	if !now.Before(until) {
+	if !now.Before(entry.until) {
 		delete(c.entries, key)
-		return time.Time{}, false
+		return Verdict{}, false
 	}
-	return until, true
+	return Verdict{Code: Valid, Detail: "reused", Warnings: slices.Clone(entry.warnings), ReusableUntil: entry.until}, true
 }
 
 // keep stores an accepted verdict reusable after now. When the cache is full, the verdicts no longer
@@ -95,20 +104,20 @@ func (c *verdictCache) keep(key verdictKey, verdict Verdict, now time.Time) {
 	if _, present := c.entries[key]; !present && len(c.entries) >= c.max {
 		var soonest verdictKey
 		var soonestUntil time.Time
-		for k, until := range c.entries {
-			if !now.Before(until) {
+		for k, entry := range c.entries {
+			if !now.Before(entry.until) {
 				delete(c.entries, k)
 				continue
 			}
-			if soonestUntil.IsZero() || until.Before(soonestUntil) {
-				soonest, soonestUntil = k, until
+			if soonestUntil.IsZero() || entry.until.Before(soonestUntil) {
+				soonest, soonestUntil = k, entry.until
 			}
 		}
 		if len(c.entries) >= c.max {
 			delete(c.entries, soonest)
 		}
 	}
-	c.entries[key] = verdict.ReusableUntil
+	c.entries[key] = kept{until: verdict.ReusableUntil, warnings: slices.Clone(verdict.Warnings)}
 }
 
 func (c *verdictCache) size() int {

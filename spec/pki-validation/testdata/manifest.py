@@ -70,7 +70,8 @@ case("ti-partial-path-weak-link", "ti", ["web-sha1.pem", "web-ca.pem"], "www.web
 web("web-p256", "web-p256", "www.web.test", "valid", ["TLSV-040", "TLSV-041", "TLSV-043", "TLSV-044"])
 web("web-p384", "web-p384", "www.web.test", "valid", ["TLSV-041"])
 web("web-rsa3072", "web-rsa3072", "www.web.test", "valid", ["TLSV-041", "TLSV-042"])
-web("web-rsa2048", "web-rsa2048", "www.web.test", "key_not_admissible", ["TLSV-041"])
+# TLSV-041's deviation from A_28976: RSA 2048 to 2999 bits is phased out, not refused.
+web("web-rsa2048", "web-rsa2048", "www.web.test", "valid", ["TLSV-041"], warnings=["key_phased_out"])
 web("web-p521", "web-p521", "www.web.test", "key_not_admissible", ["TLSV-041"])
 web("web-weak-ca", "web-under-weak-ca", "www.web.test", "key_not_admissible", ["TLSV-042"],
     stapled=None, ca="web-ca-1024.pem")
@@ -95,9 +96,19 @@ web("web-unknown-then-crl", "web-p256", "www.web.test", "valid", ["TLSV-044"], s
 web("web-crl-only", "web-crl-only", "www.web.test", "valid", ["TLSV-044"], stapled=None, crl="web-ca-empty")
 web("web-crl-revoked", "web-crl-revoked", "www.web.test", "revoked", ["TLSV-044"], stapled=None,
     crl="web-ca-revoked")
-web("web-no-status-source", "web-no-status", "www.web.test", "revocation_unavailable", ["TLSV-044"],
-    stapled=None)
-web("web-sources-down", "web-p256", "www.web.test", "revocation_unavailable", ["TLSV-044"], stapled=None)
+# TLSV-044's deviation from A_27857-02: no status is a warning, a revoked one still refuses.
+web("web-no-status-source", "web-no-status", "www.web.test", "valid", ["TLSV-044"], stapled=None,
+    warnings=["revocation_unavailable"])
+web("web-sources-down", "web-p256", "www.web.test", "valid", ["TLSV-044"], stapled=None,
+    warnings=["revocation_unavailable"])
+web("web-unknown-only", "web-p256", "www.web.test", "valid", ["TLSV-044"], stapled=None,
+    ocsp="web-p256-unknown", warnings=["revocation_unavailable"])
+web("web-revoked-by-responder", "web-revoked", "www.web.test", "revoked", ["TLSV-044"], stapled=None,
+    ocsp="web-revoked-revoked")
+web("web-revoked-staple-before-crl", "web-revoked", "www.web.test", "revoked", ["TLSV-044"],
+    stapled="web-revoked-revoked", crl="web-ca-empty")
+web("web-rsa2048-no-status", "web-rsa2048", "www.web.test", "valid", ["TLSV-041", "TLSV-044"], stapled=None,
+    warnings=["key_phased_out", "revocation_unavailable"])
 case("web-ti-certificate", "web", ["ti-good.pem", "ti-ca.pem", "ti-root.pem"], "svc.ti.test",
      "chain_incomplete", ["TLSV-001", "TLSV-020", "TLSV-040"], stapled="ti-good-good")
 case("web-partial-path-weak-link", "web", ["ti-sha1.pem", "ti-ca.pem"], "svc.ti.test",

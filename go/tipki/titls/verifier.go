@@ -157,8 +157,8 @@ func NewTiVerifier(source *TrustSource, responder tipki.RevocationChecker, opts 
 func (v *TiVerifier) Verify(ctx context.Context, chain [][]byte, host string, stapled []byte, now time.Time) Verdict {
 	snap := v.source.load()
 	key := keyFor("ti", snap.generation, host, chain)
-	if until, ok := v.verdicts.reusable(key, now); ok {
-		return Verdict{Code: Valid, Detail: "reused", ReusableUntil: until}
+	if reused, ok := v.verdicts.reusable(key, now); ok {
+		return reused
 	}
 	certs := make([]*x509.Certificate, len(chain))
 	for i, der := range chain {
@@ -237,8 +237,8 @@ func NewWebVerifier(check *WebCheck, fetch Fetcher, opts Options) *WebVerifier {
 // same chain and host is reused while it may be (TLSV-050, TLSV-051).
 func (v *WebVerifier) Verify(ctx context.Context, chain [][]byte, host string, stapled []byte, now time.Time) Verdict {
 	key := keyFor("web", 0, host, chain)
-	if until, ok := v.verdicts.reusable(key, now); ok {
-		return Verdict{Code: Valid, Detail: "reused", ReusableUntil: until}
+	if reused, ok := v.verdicts.reusable(key, now); ok {
+		return reused
 	}
 	verdict := v.check.Verify(ctx, chain, host, stapled, now, v.fetch)
 	v.verdicts.keep(key, verdict, now)
