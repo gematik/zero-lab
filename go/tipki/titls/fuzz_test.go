@@ -24,12 +24,14 @@ package titls
 import (
 	"crypto/x509"
 	"encoding/binary"
+	"slices"
 	"testing"
 )
 
 // FuzzWebCheck feeds any bytes as the chain a server presents, up to four certificates each behind a
 // two-byte big-endian length, to the web profile with the corpus's root and no revocation source.
-// Invariants: it never panics, and nothing comes out valid. The seeds are corpus chains.
+// Invariants: it never panics, and whatever comes out valid carries revocation_unavailable and is not
+// reused (TLSV-044, TLSV-050). The seeds are corpus chains.
 func FuzzWebCheck(f *testing.F) {
 	frame := func(certs ...[]byte) []byte {
 		var data []byte
@@ -52,8 +54,8 @@ func FuzzWebCheck(f *testing.F) {
 			data = data[2+length:]
 		}
 		verdict := check.Verify(t.Context(), chain, "www.web.test", nil, at, Offline{})
-		if verdict.Valid() {
-			t.Fatalf("valid without a revocation source: %+v", verdict)
+		if verdict.Valid() && (!slices.Contains(verdict.Warnings, WarningRevocationUnavailable) || !verdict.ReusableUntil.IsZero()) {
+			t.Fatalf("valid without a revocation source, as if it had one: %+v", verdict)
 		}
 		if verdict.Code == "" {
 			t.Fatal("a verdict without a code")

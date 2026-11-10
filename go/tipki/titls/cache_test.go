@@ -24,6 +24,7 @@ package titls
 import (
 	"crypto/x509"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -61,14 +62,34 @@ func TestTLSV050AWebVerdictIsReusedUntilItsStatusIsADayOld(t *testing.T) {
 	}
 }
 
-// TLSV-050: a refusal is never reused; every verification asks the responder and the CRL host again.
+// TLSV-050: a refusal is never reused; every verification asks the responder again.
 func TestTLSV050ARefusalIsJudgedAgainEveryTime(t *testing.T) {
+	fetch := &network{ocsp: corpusFile(t, "ocsp/web-revoked-revoked.der")}
+	verifier := NewWebVerifier(webCorpusCheck(t), fetch, Options{})
+	chain := [][]byte{corpusDER(t, "web-revoked.pem"), corpusDER(t, "web-ca.pem")}
+	for round := int64(1); round <= 3; round++ {
+		if v := verifier.Verify(t.Context(), chain, "www.web.test", nil, at); v.Code != Revoked {
+			t.Fatalf("round %d: %s", round, v.Code)
+		}
+		if fetch.asked.Load() != round {
+			t.Fatalf("round %d: asked %d times, expected the responder each round", round, fetch.asked.Load())
+		}
+	}
+	if verifier.verdicts.size() != 0 {
+		t.Fatalf("%d verdicts kept", verifier.verdicts.size())
+	}
+}
+
+// TLSV-044 and TLSV-050: a server no source gives a status for is accepted with revocation_unavailable; the
+// verdict rests on no status, so every verification asks the responder and the CRL host again.
+func TestTLSV044AServerWithoutStatusIsAcceptedWithAWarningAndNotReused(t *testing.T) {
 	fetch := &network{}
 	verifier := NewWebVerifier(webCorpusCheck(t), fetch, Options{})
 	chain := [][]byte{corpusDER(t, "web-p256.pem"), corpusDER(t, "web-ca.pem")}
-	for round := int64(1); round <= 3; round++ {
-		if v := verifier.Verify(t.Context(), chain, "www.web.test", nil, at); v.Code != RevocationUnavailable {
-			t.Fatalf("round %d: %s", round, v.Code)
+	for round := int64(1); round <= 2; round++ {
+		v := verifier.Verify(t.Context(), chain, "www.web.test", nil, at)
+		if !v.Valid() || !slices.Equal(v.Warnings, []string{WarningRevocationUnavailable}) {
+			t.Fatalf("round %d: %s %q", round, v.Code, v.Warnings)
 		}
 		if fetch.asked.Load() != 2*round {
 			t.Fatalf("round %d: asked %d times, expected OCSP and CRL each round", round, fetch.asked.Load())
@@ -76,6 +97,46 @@ func TestTLSV050ARefusalIsJudgedAgainEveryTime(t *testing.T) {
 	}
 	if verifier.verdicts.size() != 0 {
 		t.Fatalf("%d verdicts kept", verifier.verdicts.size())
+	}
+}
+
+// TLSV-041 and TLSV-050: an RSA-2048 server is accepted with key_phased_out, and a reused verdict reports
+// the warning too.
+func TestTLSV041AReusedVerdictKeepsItsWarning(t *testing.T) {
+	fetch := &network{}
+	verifier := NewWebVerifier(webCorpusCheck(t), fetch, Options{})
+	chain := [][]byte{corpusDER(t, "web-rsa2048.pem"), corpusDER(t, "web-ca.pem")}
+	stapled := corpusFile(t, "ocsp/web-rsa2048-good.der")
+	for _, detail := range []string{"valid", "reused"} {
+		v := verifier.Verify(t.Context(), chain, "www.web.test", stapled, at)
+		if !v.Valid() || v.Detail != detail || !slices.Equal(v.Warnings, []string{WarningKeyPhasedOut}) {
+			t.Fatalf("%s: %s %q %q", detail, v.Code, v.Detail, v.Warnings)
+		}
+	}
+}
+
+// TLSV-041: RSA from 3000 bits is admitted, 2048 to 2999 bits phased out, anything smaller refused;
+// TLSV-042's CA floor stays at 2048.
+func TestTLSV041RSABelow3000IsPhasedOutAndBelow2048Refused(t *testing.T) {
+	for _, c := range []struct {
+		bits                  int
+		admissible, phasedOut bool
+	}{{1024, false, false}, {2047, false, false}, {2048, true, true}, {2999, true, true}, {3000, true, false}, {4096, true, false}} {
+		k := key{bits: c.bits}
+		if k.admissibleEndEntity() != c.admissible || (k.admissibleEndEntity() && k.phasedOut()) != c.phasedOut {
+			t.Errorf("RSA %d: admissible %v, phased out %v", c.bits, k.admissibleEndEntity(), k.phasedOut())
+		}
+	}
+	if (key{bits: 2047}).admissibleCA() || !(key{bits: 2048}).admissibleCA() {
+		t.Error("the CA floor moved")
+	}
+	for _, curve := range []string{"P-256", "P-384"} {
+		if k := (key{curve: curve}); !k.admissibleEndEntity() || k.phasedOut() {
+			t.Errorf("%s", curve)
+		}
+	}
+	if (key{curve: "P-521"}).admissibleEndEntity() || (key{}).admissibleEndEntity() {
+		t.Error("another key is admitted")
 	}
 }
 
@@ -163,8 +224,8 @@ func TestTLSV050TheVerdictCacheIsBounded(t *testing.T) {
 	if _, ok := cache.reusable(key(2), later); !ok {
 		t.Fatal("a live verdict was evicted while an ended one could go")
 	}
-	if until, ok := cache.reusable(key(4), at.Add(4*time.Hour)); ok {
-		t.Fatalf("served at its end, until %s", until)
+	if reused, ok := cache.reusable(key(4), at.Add(4*time.Hour)); ok {
+		t.Fatalf("served at its end, until %s", reused.ReusableUntil)
 	}
 
 	cache.keep(key(6), Verdict{Code: NameMismatch, ReusableUntil: at.Add(time.Hour)}, at)

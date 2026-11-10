@@ -73,12 +73,23 @@ const (
 	OCSPResponseInvalid Code = "ocsp_response_invalid"
 	// Revoked (TLSV-044).
 	Revoked Code = "revoked"
-	// RevocationUnavailable (TLSV-044).
+	// RevocationUnavailable (TLSV-044) before its deviation; the web profile now accepts such a server with
+	// [WarningRevocationUnavailable] and returns this code no more.
 	RevocationUnavailable Code = "revocation_unavailable"
 	// ValidityTooLong (TLSV-045).
 	ValidityTooLong Code = "validity_too_long"
 	// Invalid: a finding the spec has no code of its own for.
 	Invalid Code = "invalid"
+)
+
+// The warnings of the web profile's deviations (spec/pki-validation, Deviations).
+const (
+	// WarningKeyPhasedOut (TLSV-041): an end-entity RSA key of 2048 to 2999 bits, accepted though below
+	// A_28976's 3000; tipki gives the same key the same code.
+	WarningKeyPhasedOut = "key_phased_out"
+	// WarningRevocationUnavailable (TLSV-044): no source gave the end entity's revocation status, and the
+	// server was accepted without one (A_27857-02).
+	WarningRevocationUnavailable = "revocation_unavailable"
 )
 
 // Verdict is what a check concluded about a server.
@@ -90,7 +101,8 @@ type Verdict struct {
 	// Warnings never decide.
 	Warnings []string
 	// ReusableUntil is the instant from which an accepted verdict may no longer be reused (TLSV-050,
-	// TLSV-051); zero for a refusal, which is never reused.
+	// TLSV-051); zero for a refusal, which is never reused, and for a verdict that rests on no revocation
+	// status.
 	ReusableUntil time.Time
 }
 

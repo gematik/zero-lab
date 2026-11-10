@@ -116,7 +116,8 @@ func (c *WebCheck) Verify(ctx context.Context, chain [][]byte, host string, stap
 	if !signs(leaf) {
 		return refuse(KeyUsageMismatch, "keyUsage without digitalSignature")
 	}
-	if key := keyOf(leaf); !key.admissibleEndEntity() {
+	key := keyOf(leaf)
+	if !key.admissibleEndEntity() {
 		return refuse(KeyNotAdmissible, "end entity key "+key.String())
 	}
 	index := slices.IndexFunc(paths, func(path []*x509.Certificate) bool { return inadmissibleCA(path) == nil })
@@ -134,7 +135,11 @@ func (c *WebCheck) Verify(ctx context.Context, chain [][]byte, host string, stap
 	if len(path) < 2 {
 		return refuse(Invalid, "the end entity is itself an anchor; no issuer vouches for its status")
 	}
-	return revocation(ctx, leaf, path[1], stapled, now, fetch)
+	verdict := revocation(ctx, leaf, path[1], stapled, now, fetch)
+	if key.phasedOut() {
+		verdict.Warnings = append([]string{WarningKeyPhasedOut}, verdict.Warnings...)
+	}
+	return verdict
 }
 
 // weakIn names the first weak signature below the anchor of path.
@@ -282,8 +287,11 @@ func keyOf(cert *x509.Certificate) key {
 
 func (k key) nistCurve() bool { return k.curve == "P-256" || k.curve == "P-384" }
 
-// admissibleEndEntity is TLSV-041.
-func (k key) admissibleEndEntity() bool { return k.nistCurve() || k.bits >= 3000 }
+// admissibleEndEntity is TLSV-041: what an end entity may have, RSA from 2048 bits.
+func (k key) admissibleEndEntity() bool { return k.nistCurve() || k.bits >= 2048 }
+
+// phasedOut is TLSV-041: an RSA key below A_28976's 3000 bits, admitted with [WarningKeyPhasedOut].
+func (k key) phasedOut() bool { return k.bits > 0 && k.bits < 3000 }
 
 // admissibleCA is TLSV-042.
 func (k key) admissibleCA() bool { return k.nistCurve() || k.bits >= 2048 }
@@ -299,7 +307,7 @@ func (k key) String() string {
 }
 
 // revocation is TLSV-044: the stapled OCSP response, the responder, the CRL, in that order; the first
-// status decides, and without one the server is refused.
+// status decides, and without one the server is accepted with [WarningRevocationUnavailable].
 func revocation(ctx context.Context, leaf, issuer *x509.Certificate, stapled []byte, now time.Time, fetch Fetcher) Verdict {
 	ocsp := func(der []byte) (Verdict, bool) {
 		check := tipki.NewResponseCheck(now)
@@ -345,7 +353,13 @@ func revocation(ctx context.Context, leaf, issuer *x509.Certificate, stapled []b
 			return accepted(leaf, now, nextUpdate)
 		}
 	}
-	return refuse(RevocationUnavailable, "no revocation source gave a status")
+	// TLSV-044's deviation: accepted without a status. It rests on none, so it is not reused (TLSV-050)
+	// and the next connection asks the sources again.
+	return Verdict{
+		Code:     Valid,
+		Detail:   "valid without a revocation status: no source gave one",
+		Warnings: []string{WarningRevocationUnavailable},
+	}
 }
 
 // accepted is a valid verdict, reusable until the earliest of notAfter, the status's nextUpdate and

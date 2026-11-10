@@ -111,17 +111,22 @@ func TestTLSV040AWebServerIsAcceptedOverAHandshake(t *testing.T) {
 		t.Fatal("a host the certificate does not name is accepted")
 	}
 
-	// Without the staple, and with every revocation source down, the same server is refused (TLSV-044).
+	// Without the staple, and with every revocation source down, the same server is accepted with a warning
+	// and its verdict not kept (TLSV-044, TLSV-050).
 	bare, _ := serve(t, []*issued{leaf, ca}, nil)
-	err = get(t, client(bare, NewWebVerifier(NewWebCheck([]*x509.Certificate{root.cert}), Offline{}, Options{}).ClientConfig()), "https://www.web.test/")
-	if refused, ok := errors.AsType[*RefusedError](err); !ok || refused.Verdict.Code != RevocationUnavailable {
+	offline := NewWebVerifier(NewWebCheck([]*x509.Certificate{root.cert}), Offline{}, Options{})
+	if err := get(t, client(bare, offline.ClientConfig()), "https://www.web.test/"); err != nil {
 		t.Fatalf("without a status: %v", err)
+	}
+	if offline.verdicts.size() != 0 {
+		t.Fatalf("without a status, %d verdicts kept", offline.verdicts.size())
 	}
 }
 
-// TLSV-040 and TLSV-041: httptest's default certificate is refused, by crypto/tls under roots that do not
-// hold it, and by the profile's rules under roots that do (an RSA 2048 key).
-func TestTLSV041HttptestsDefaultCertificateIsRefused(t *testing.T) {
+// TLSV-040 and TLSV-045: httptest's default certificate is refused, by crypto/tls under roots that do not
+// hold it, and by the profile's rules under roots that do: it is valid for decades. Its RSA 2048 key alone
+// would be accepted with a warning (TLSV-041).
+func TestTLSV045HttptestsDefaultCertificateIsRefused(t *testing.T) {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	server.Config.ErrorLog = log.New(io.Discard, "", 0)
 	server.StartTLS()
@@ -132,7 +137,7 @@ func TestTLSV041HttptestsDefaultCertificateIsRefused(t *testing.T) {
 	}
 	own := NewWebVerifier(NewWebCheck([]*x509.Certificate{server.Certificate()}), Offline{}, Options{}).ClientConfig()
 	err := get(t, client(server, own), "https://example.com/")
-	if refused, ok := errors.AsType[*RefusedError](err); !ok || refused.Verdict.Code != KeyNotAdmissible {
+	if refused, ok := errors.AsType[*RefusedError](err); !ok || refused.Verdict.Code != ValidityTooLong {
 		t.Fatalf("under its own root: %v", err)
 	}
 }
