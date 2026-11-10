@@ -13,6 +13,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
+### ti-cli
+
+#### changed
+- `ti probe` shows a `web` server accepted with a warning (an RSA-2048 certificate, no
+  revocation status from any source) as a yellow `!` with the warning, not as a failure
+  (TASK-282).
+
 ### ti-cache
 
 #### added
@@ -118,7 +125,24 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 #### changed
 - ureq 3.5 (pinned `~3.5`, TASK-272): its 3.4 releases left connection reuse, transfer
   encoding and the TLS handshake's timeout unfixed.
+- The web transports accept a server the `web` profile accepts with a warning (an RSA-2048
+  end entity, no revocation status; TASK-282). `probe` reports such a server as a warning,
+  the warnings in its detail (`TLS web: revocation_unavailable`), where it failed before.
+  `http::web_verifier` and `http::web_check` build the profile as `web_config` does.
+
 ### ti-tls
+
+#### changed
+- The `web` profile's two deviations from gemSpec_Krypt (TASK-282, `spec/pki-validation`
+  Deviations): an end entity with RSA 2048 to 2999 bits is accepted with the warning
+  `key_phased_out` (A_28976 asks for 3000; below 2048 stays `key_not_admissible`), and a
+  server whose revocation status no source gives is accepted with `revocation_unavailable`
+  (A_27857-02), where both were refused. A revoked status still refuses. A verdict without a
+  status is not reused; a reused verdict keeps its warnings. `Verdict::status_source` names
+  the source of the status (`StatusSource`), `verdict::KEY_PHASED_OUT` and
+  `REVOCATION_UNAVAILABLE` the warnings, and `WebVerifier::with_warning_observer` tells the
+  host of each accepted server and its warnings. `Code::RevocationUnavailable` is no longer
+  returned.
 
 #### added
 - New crate (TASK-97): TLS server verification under `spec/pki-validation`. `TiVerifier` (the
