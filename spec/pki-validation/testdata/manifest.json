@@ -547,8 +547,10 @@
    "stapled_ocsp": "ocsp/web-rsa2048-good.der",
    "responder_ocsp": null,
    "crl": null,
-   "expect": "key_not_admissible",
-   "warnings": [],
+   "expect": "valid",
+   "warnings": [
+    "key_phased_out"
+   ],
    "rules": [
     "TLSV-041"
    ]
@@ -926,8 +928,10 @@
    "stapled_ocsp": null,
    "responder_ocsp": null,
    "crl": null,
-   "expect": "revocation_unavailable",
-   "warnings": [],
+   "expect": "valid",
+   "warnings": [
+    "revocation_unavailable"
+   ],
    "rules": [
     "TLSV-044"
    ]
@@ -944,9 +948,89 @@
    "stapled_ocsp": null,
    "responder_ocsp": null,
    "crl": null,
-   "expect": "revocation_unavailable",
+   "expect": "valid",
+   "warnings": [
+    "revocation_unavailable"
+   ],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-unknown-only",
+   "trust": "web",
+   "chain": [
+    "web-p256.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": "ocsp/web-p256-unknown.der",
+   "crl": null,
+   "expect": "valid",
+   "warnings": [
+    "revocation_unavailable"
+   ],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-revoked-by-responder",
+   "trust": "web",
+   "chain": [
+    "web-revoked.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": "ocsp/web-revoked-revoked.der",
+   "crl": null,
+   "expect": "revoked",
    "warnings": [],
    "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-revoked-staple-before-crl",
+   "trust": "web",
+   "chain": [
+    "web-revoked.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": "ocsp/web-revoked-revoked.der",
+   "responder_ocsp": null,
+   "crl": "crl/web-ca-empty.der",
+   "expect": "revoked",
+   "warnings": [],
+   "rules": [
+    "TLSV-044"
+   ]
+  },
+  {
+   "name": "web-rsa2048-no-status",
+   "trust": "web",
+   "chain": [
+    "web-rsa2048.pem",
+    "web-ca.pem"
+   ],
+   "host": "www.web.test",
+   "at": "2026-01-01T00:00:00Z",
+   "stapled_ocsp": null,
+   "responder_ocsp": null,
+   "crl": null,
+   "expect": "valid",
+   "warnings": [
+    "key_phased_out",
+    "revocation_unavailable"
+   ],
+   "rules": [
+    "TLSV-041",
     "TLSV-044"
    ]
   },
