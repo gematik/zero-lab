@@ -22,14 +22,4 @@ just check-full   # before a release: check plus every feature combination
 
 ## License
 
-Copyright 2026 gematik GmbH
-
-EUROPEAN UNION PUBLIC LICENCE v. 1.2
-
-EUPL © the European Union 2007, 2016
-
-See the [LICENSE](./LICENSE) for the specific language governing permissions and limitations
-under the License.
-
-The [Additional Notes and Disclaimer from gematik GmbH](../README.md#additional-notes-and-disclaimer-from-gematik-gmbh)
-in the root README apply here too.
+EUPL-1.2. Copyright, licence and gematik's notes: [repository README](https://github.com/gematik/zero-lab#license).
