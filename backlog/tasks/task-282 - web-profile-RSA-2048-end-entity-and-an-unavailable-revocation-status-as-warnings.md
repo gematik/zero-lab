@@ -3,10 +3,10 @@ id: TASK-282
 title: >-
   web profile: RSA-2048 end entity and an unavailable revocation status as
   warnings
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-10T18:40:00Z'
-updated_date: '2026-11-10T19:20:00Z'
+updated_date: '2026-11-10T19:52:00Z'
 labels:
   - rust
   - go
@@ -35,3 +35,9 @@ ti 0.6.0 test feedback (2026-11-10). The web profile refuses an RSA-2048 server 
 <!-- SECTION:NOTES:BEGIN -->
 Decisions (implementation): a web verdict accepted without a revocation status is not reused (TLSV-050: it rests on no status; the next connection asks the sources again), so reusable_until is None for it; a reused verdict keeps its warnings (Rust Verdicts and Go verdictCache store them). Warnings carry in step order (key_phased_out before revocation_unavailable) and also on a refusal after the key check. Verdict::status_source (Rust only) names the source for ti pki verify. WebVerifier::with_warning_observer tells the host each accepted server's warnings, since rustls only accepts or refuses; the probe keeps them by host. The strict rule is not an option: a host judges with verify()/Verify and refuses on the warnings itself (documented). Code::RevocationUnavailable / RevocationUnavailable kept but no longer returned. Corpus: no new certificates (generate.sh not rerun, so no re-keying); manifest.py changed web-rsa2048, web-no-status-source, web-sources-down to valid + warning and added web-unknown-only, web-revoked-by-responder, web-revoked-staple-before-crl, web-rsa2048-no-status (both warnings). RSA below 2048 is proven by unit tests in both languages (no RSA-1024 leaf in the corpus). Go release notes: none, Go adds a section per module when tagged. Live: ti probe ref showed catalog (RSA-2048) as warn: key_phased_out.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The web TLS profile accepts an RSA-2048 server certificate with the warning key_phased_out and a server no source gives a revocation status for with revocation_unavailable; revoked still refuses. A documented deviation from gemSpec_Krypt A_28976 and A_27857-02 (Web-PKI CAs without OCSP, flaky responders) in spec/pki-validation, development.md, ti-tls and Go; the shared corpus pins it in Rust and Go; ti probe shows such a server as a yellow ! with the warning.
+<!-- SECTION:FINAL_SUMMARY:END -->
