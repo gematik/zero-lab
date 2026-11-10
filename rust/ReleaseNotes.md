@@ -13,26 +13,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
-### ti-cli
-
-#### added
-- `ti pki verify --connect HOST` gives a TLS server's verdict under the `web` TLS profile of
-  `spec/pki-validation` for a server that is not the TI's (TASK-283): the chain judged in
-  the handshake against the system's roots (or `--cacert`), the name, the keys, the
-  validity period and the revocation status, with its source and the warnings
-  `key_phased_out` and `revocation_unavailable`; exit 0 valid, 1 refused.
-  `--validation-profile web` forces it (only with `--connect`); `auto` keeps a server with
-  a TI certificate type, or issued by a CA of the TSL at hand, with the TI's validation,
-  and says which and why. Its JSON has its own schema, `ti schema pki verify tls-server`.
-
-#### changed
-- `ti probe` shows a `web` server accepted with a warning (an RSA-2048 certificate, no
-  revocation status from any source) as a yellow `!` with the warning, not as a failure
-  (TASK-282).
-- A Konnektor error names the `.kon` configuration it concerned (TASK-284):
-  `Konnektor praxis: transport: …` instead of `Konnektor: transport: …`; its address and
-  the calls stay with `-v`. Error kinds, exit codes and hints are unchanged.
-
 ### ti-cache
 
 #### added
@@ -883,6 +863,26 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   on wasm32-unknown-unknown, where std has no clock and every call would panic). Time
   enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
   `Timestamp::now` and tests a closure (decision-15).
+
+## Release ti-cli 0.6.1, 2026-11-10
+
+### added
+- `ti pki verify --connect HOST` gives a TLS server's verdict under the `web` TLS profile of
+  `spec/pki-validation` for a server that is not the TI's (TASK-283): the chain judged in
+  the handshake against the system's roots (or `--cacert`), the name, the keys, the
+  validity period and the revocation status, with its source and the warnings
+  `key_phased_out` and `revocation_unavailable`; exit 0 valid, 1 refused.
+  `--validation-profile web` forces it (only with `--connect`); `auto` keeps a server with
+  a TI certificate type, or issued by a CA of the TSL at hand, with the TI's validation,
+  and says which and why. Its JSON has its own schema, `ti schema pki verify tls-server`.
+
+### changed
+- `ti probe` shows a `web` server accepted with a warning (an RSA-2048 certificate, no
+  revocation status from any source) as a yellow `!` with the warning, not as a failure
+  (TASK-282).
+- A Konnektor error names the `.kon` configuration it concerned (TASK-284):
+  `Konnektor praxis: transport: …` instead of `Konnektor: transport: …`; its address and
+  the calls stay with `-v`. Error kinds, exit codes and hints are unchanged.
 
 ## Release ti-cli 0.6.0, 2026-11-08
 
