@@ -4,6 +4,7 @@ title: 'Root README: building blocks for the TI, not experiments'
 status: To Do
 assignee: []
 created_date: '2026-11-10T18:40:00Z'
+updated_date: '2026-11-10T18:42:00Z'
 labels:
   - docs
 dependencies: []
@@ -19,6 +20,12 @@ ti 0.6.0 test feedback: the repository is no longer only for experimenting. The 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the root README's title and introduction as chosen; the DSR PoC note kept as provenance
-- [ ] #2 no README or doc describes the repository as experimental
+- [x] #1 the root README's title and introduction as chosen; the DSR PoC note kept as provenance
+- [x] #2 no README or doc describes the repository as experimental
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Title and introduction as chosen; the long Zero Trust quote removed; the DSR PoC note kept as where the work started. A grep found no other README or doc calling the repository experimental. The GitHub description still says 'experimental': changing it with gh repo edit waits for the maintainer's go-ahead.
+<!-- SECTION:NOTES:END -->
