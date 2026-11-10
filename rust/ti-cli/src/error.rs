@@ -151,17 +151,19 @@ pub enum CliError {
     /// No usable `.kon` file, or one the transport cannot use.
     #[error("{0}")]
     ConnectorConfig(String),
-    /// A Konnektor call failed.
-    #[error("Konnektor: {0}")]
-    Connector(#[source] ti_connector_client::Error),
+    /// A Konnektor call failed; with the name of its `.kon` configuration once known.
+    #[error("Konnektor{name}: {0}", name = named(.1.as_deref()))]
+    Connector(#[source] ti_connector_client::Error, Option<Box<str>>),
     /// The Konnektor refused a call for a card it restricts on its SOAP API.
-    #[error("Konnektor, {card_type} card: {source}")]
+    #[error("Konnektor{name}, {card_type} card: {source}", name = named(.connector.as_deref()))]
     CardRestricted {
         /// The card type, e.g. `SMC-KT`.
         card_type: String,
         /// The Konnektor's answer.
         #[source]
         source: ti_connector_client::Error,
+        /// The name of the `.kon` configuration, once known.
+        connector: Option<Box<str>>,
     },
     /// A PIN type that does not fit the card, or none where the card has two.
     #[error("{0}")]
@@ -197,7 +199,32 @@ pub enum CliError {
     Output(#[from] io::Error),
 }
 
+/// ` <name>` for a message that names the `.kon` configuration, nothing without one.
+fn named(name: Option<&str>) -> String {
+    name.map(|name| format!(" {name}")).unwrap_or_default()
+}
+
 impl CliError {
+    /// This error with the name of the `.kon` configuration it concerned, for a Konnektor
+    /// error that does not name one yet: the user sees which Konnektor failed; its address
+    /// and the calls are `-v`'s.
+    #[must_use]
+    pub fn for_connector(self, name: &str) -> CliError {
+        match self {
+            CliError::Connector(source, None) => CliError::Connector(source, Some(name.into())),
+            CliError::CardRestricted {
+                card_type,
+                source,
+                connector: None,
+            } => CliError::CardRestricted {
+                card_type,
+                source,
+                connector: Some(name.into()),
+            },
+            other => other,
+        }
+    }
+
     /// A stable, machine-readable name for the failure.
     pub fn kind(&self) -> &'static str {
         match self {
@@ -221,15 +248,15 @@ impl CliError {
             CliError::Cache { .. } => "cache_failed",
             CliError::State { .. } => "state_file_failed",
             CliError::ConnectorConfig(_)
-            | CliError::Connector(ti_connector_client::Error::Config(_)) => "connector_config",
-            CliError::Connector(ti_connector_client::Error::Transport(_)) => {
+            | CliError::Connector(ti_connector_client::Error::Config(_), _) => "connector_config",
+            CliError::Connector(ti_connector_client::Error::Transport(_), _) => {
                 "connector_unreachable"
             }
-            CliError::Connector(ti_connector_client::Error::Fault(_)) => "connector_fault",
-            CliError::Connector(ti_connector_client::Error::Discovery(_)) => {
+            CliError::Connector(ti_connector_client::Error::Fault(_), _) => "connector_fault",
+            CliError::Connector(ti_connector_client::Error::Discovery(_), _) => {
                 "connector_unsupported"
             }
-            CliError::Connector(_) => "connector_failed",
+            CliError::Connector(_, _) => "connector_failed",
             CliError::CardRestricted { .. } => "card_restricted",
             CliError::PinType(_) => "pin_type",
             CliError::IdentityNotFound(_) => "identity_not_found",
@@ -287,16 +314,19 @@ impl CliError {
             }
             CliError::State { .. } => Some("the message names the file"),
             CliError::ConnectorConfig(_)
-            | CliError::Connector(ti_connector_client::Error::Config(_)) => Some(
+            | CliError::Connector(ti_connector_client::Error::Config(_), _) => Some(
                 "`connector config list` shows the configurations; select one with -c NAME or `connector use NAME`",
             ),
-            CliError::Connector(ti_connector_client::Error::Transport(_)) => Some(
+            CliError::Connector(ti_connector_client::Error::Transport(_), _) => Some(
                 "`connector config test` finds the failing step, a refused client certificate too; -v shows each call",
             ),
-            CliError::Connector(ti_connector_client::Error::Discovery(
-                ti_connector_client::DiscoveryError::ForeignEndpoint { .. },
-            )) => Some(ti_connector_client::check::FOREIGN_ENDPOINT),
-            CliError::Connector(ti_connector_client::Error::Fault(fault)) => Some(
+            CliError::Connector(
+                ti_connector_client::Error::Discovery(
+                    ti_connector_client::DiscoveryError::ForeignEndpoint { .. },
+                ),
+                _,
+            ) => Some(ti_connector_client::check::FOREIGN_ENDPOINT),
+            CliError::Connector(ti_connector_client::Error::Fault(fault), _) => Some(
                 fault
                     .hint()
                     .unwrap_or("the Konnektor refused the call; its code and text say why"),
@@ -347,7 +377,7 @@ impl CliError {
             CliError::Trust(_)
             | CliError::Arguments(_)
             | CliError::Output(_)
-            | CliError::Connector(_)
+            | CliError::Connector(_, _)
             | CliError::Signing(_) => None,
         }
     }
@@ -374,12 +404,12 @@ impl CliError {
             | CliError::PinType(_)
             | CliError::Header(_)
             | CliError::ConnectorConfig(_)
-            | CliError::Connector(ti_connector_client::Error::Config(_)) => Exit::Usage,
+            | CliError::Connector(ti_connector_client::Error::Config(_), _) => Exit::Usage,
             CliError::Trust(_)
             | CliError::TrustLoad(_)
             | CliError::TslRollback(_)
             | CliError::ServerUnreachable(_)
-            | CliError::Connector(_)
+            | CliError::Connector(_, _)
             | CliError::CardRestricted { .. }
             | CliError::Signing(_)
             | CliError::Idpd(_)
@@ -398,11 +428,13 @@ impl From<ti_client::Error> for CliError {
     fn from(error: ti_client::Error) -> Self {
         match error {
             ti_client::Error::Setup(message) => CliError::HttpSetup(message),
-            ti_client::Error::Connector(error) => CliError::Connector(error),
+            ti_client::Error::Connector(error) => CliError::Connector(error, None),
             ti_client::Error::ConnectorConfig(message) => CliError::ConnectorConfig(message),
-            ti_client::Error::CardRestricted { card_type, source } => {
-                CliError::CardRestricted { card_type, source }
-            }
+            ti_client::Error::CardRestricted { card_type, source } => CliError::CardRestricted {
+                card_type,
+                source,
+                connector: None,
+            },
             ti_client::Error::PinType(error) => CliError::PinType(error.to_string()),
             ti_client::Error::Refused(message) => CliError::Arguments(message),
             ti_client::Error::Write(error) => CliError::Output(error),
@@ -502,6 +534,49 @@ mod tests {
         }
     }
 
+    /// A Konnektor error names the `.kon` configuration once the command knows it; the
+    /// address and the calls stay `-v`'s. Kind, exit code and hint do not change.
+    #[test]
+    fn a_konnektor_error_names_its_configuration() {
+        let transport = || {
+            CliError::from(ti_client::Error::Connector(Error::Transport(
+                ti_connector_client::TransportError {
+                    message: "io: Connection reset by peer (os error 54)".into(),
+                    timed_out: false,
+                },
+            )))
+        };
+        assert_eq!(
+            transport().to_string(),
+            "Konnektor: transport: io: Connection reset by peer (os error 54)"
+        );
+        let named = transport().for_connector("praxis");
+        assert_eq!(
+            named.to_string(),
+            "Konnektor praxis: transport: io: Connection reset by peer (os error 54)"
+        );
+        assert_eq!(
+            (named.kind(), named.hint(), named.exit()),
+            (transport().kind(), transport().hint(), transport().exit())
+        );
+        assert_eq!(
+            named.for_connector("other").to_string(),
+            "Konnektor praxis: transport: io: Connection reset by peer (os error 54)",
+            "the first name stays"
+        );
+        let restricted = CliError::from(ti_client::Error::CardRestricted {
+            card_type: "SMC-KT".into(),
+            source: Error::Decode("a".into()),
+        })
+        .for_connector("praxis");
+        assert!(
+            restricted
+                .to_string()
+                .starts_with("Konnektor praxis, SMC-KT card: "),
+            "{restricted}"
+        );
+    }
+
     /// The hint of a fault whose trace carries `codes`, outermost first.
     fn hint(codes: &[i64]) -> &'static str {
         let trace = codes
@@ -516,11 +591,14 @@ mod tests {
                 detail: None,
             })
             .collect();
-        CliError::Connector(Error::Fault(Fault {
-            code: "soap:Server".into(),
-            message: "fault".into(),
-            trace,
-        }))
+        CliError::Connector(
+            Error::Fault(Fault {
+                code: "soap:Server".into(),
+                message: "fault".into(),
+                trace,
+            }),
+            None,
+        )
         .hint()
         .unwrap()
     }
@@ -667,24 +745,32 @@ mod tests {
     fn remote_kinds() -> Vec<CliError> {
         vec![
             CliError::ConnectorConfig("a".into()),
-            CliError::Connector(Error::Transport(ti_connector_client::TransportError {
-                message: "a".into(),
-                timed_out: false,
-            })),
-            CliError::Connector(Error::Fault(Fault {
-                code: "soap:Server".into(),
-                message: "a".into(),
-                trace: Vec::new(),
-            })),
-            CliError::Connector(Error::Discovery(
-                ti_connector_client::DiscoveryError::NotAdvertised {
+            CliError::Connector(
+                Error::Transport(ti_connector_client::TransportError {
+                    message: "a".into(),
+                    timed_out: false,
+                }),
+                None,
+            ),
+            CliError::Connector(
+                Error::Fault(Fault {
+                    code: "soap:Server".into(),
+                    message: "a".into(),
+                    trace: Vec::new(),
+                }),
+                None,
+            ),
+            CliError::Connector(
+                Error::Discovery(ti_connector_client::DiscoveryError::NotAdvertised {
                     service: "a".into(),
-                },
-            )),
-            CliError::Connector(Error::Decode("a".into())),
+                }),
+                None,
+            ),
+            CliError::Connector(Error::Decode("a".into()), None),
             CliError::CardRestricted {
                 card_type: "EGK".into(),
                 source: Error::Decode("a".into()),
+                connector: None,
             },
             CliError::PinType("a".into()),
             CliError::IdentityNotFound("a".into()),
@@ -748,7 +834,7 @@ mod tests {
             | CliError::Cache { .. }
             | CliError::State { .. }
             | CliError::ConnectorConfig(_)
-            | CliError::Connector(_)
+            | CliError::Connector(_, _)
             | CliError::CardRestricted { .. }
             | CliError::PinType(_)
             | CliError::IdentityNotFound(_)

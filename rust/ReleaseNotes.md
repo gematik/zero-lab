@@ -29,6 +29,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - `ti probe` shows a `web` server accepted with a warning (an RSA-2048 certificate, no
   revocation status from any source) as a yellow `!` with the warning, not as a failure
   (TASK-282).
+- A Konnektor error names the `.kon` configuration it concerned (TASK-284):
+  `Konnektor praxis: transport: …` instead of `Konnektor: transport: …`; its address and
+  the calls stay with `-v`. Error kinds, exit codes and hints are unchanged.
 
 ### ti-cache
 

@@ -4,6 +4,7 @@ title: Konnektor errors name the configuration
 status: To Do
 assignee: []
 created_date: '2026-11-10T18:40:00Z'
+updated_date: '2026-11-10T19:29:00Z'
 labels:
   - rust
   - ti-cli
@@ -20,5 +21,11 @@ ti 0.6.0 test feedback: 'Konnektor: transport: io: Connection reset by peer (os 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 a Konnektor error reads 'Konnektor <name>: …'; kinds, exit codes and the hint unchanged; tested
+- [x] #1 a Konnektor error reads 'Konnektor <name>: …'; kinds, exit codes and the hint unchanged; tested
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+CliError::Connector and CardRestricted carry the configuration's name (Option<Box<str>>, kept small for clippy's result_large_err); for_connector() attaches it where a command opened a session (commands/connector.rs through its open closure, identity.rs for --card). Tests: error::tests::a_konnektor_error_names_its_configuration, connector::an_unreachable_konnektor_is_named_by_its_configuration.
+<!-- SECTION:NOTES:END -->

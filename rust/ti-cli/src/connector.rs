@@ -52,6 +52,11 @@ fn source_text(source: Source) -> &'static str {
 /// # Errors
 ///
 /// [`CliError::ConnectorConfig`] or [`CliError::Connector`].
+/// The name of the `.kon` configuration `args` select: `-c`, else the active selection.
+pub fn selected_name(args: &ConnectorArgs) -> String {
+    store::selected(args.connector_config.as_deref()).0
+}
+
 pub fn open(args: &ConnectorArgs, global: &GlobalArgs, out: &Output) -> Result<Session, CliError> {
     let (name, source) = store::selected(args.connector_config.as_deref());
     let path = store::resolve(&name).map_err(|e| match (source, e) {
