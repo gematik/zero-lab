@@ -28,8 +28,8 @@ use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use rustls::client::danger::ServerCertVerifier;
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
@@ -290,14 +290,45 @@ fn a_fetch_that_is_not_send_drives_the_web_check() {
 /// TLSV-050: a refusal is never reused; every handshake asks again.
 #[test]
 fn tlsv_050_a_refusal_is_judged_again_every_time() {
-    let verifier = web(None);
-    let chain = [der("web-p256.pem"), der("web-ca.pem")];
+    let verifier = web(Some("ocsp/web-revoked-revoked.der"));
+    let chain = [der("web-revoked.pem"), der("web-ca.pem")];
     let host = name("www.web.test");
     for round in 1..=3 {
+        assert_eq!(
+            verifier
+                .verify_server_cert(&chain[0], &chain[1..], &host, &[], at(AT))
+                .unwrap_err(),
+            Error::InvalidCertificate(CertificateError::Revoked)
+        );
+        assert_eq!(verifier_asked(&verifier), round, "the responder each time");
+    }
+}
+
+/// The warnings a handshake accepted a server with, as an observer collects them.
+fn observed(verifier: WebVerifier<Counting>) -> (WebVerifier<Counting>, Arc<Mutex<Vec<String>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&seen);
+    let verifier = verifier.with_warning_observer(Arc::new(move |host, warnings| {
+        sink.lock()
+            .unwrap()
+            .push(format!("{host}: {}", warnings.join(",")));
+    }));
+    (verifier, seen)
+}
+
+/// TLSV-044 and TLSV-050: a server no source gives a status for is accepted with
+/// `revocation_unavailable`, which the observer is told; the verdict rests on no status, so
+/// every handshake asks the sources again.
+#[test]
+fn tlsv_044_a_server_without_status_is_accepted_with_a_warning_and_not_reused() {
+    let (verifier, seen) = observed(web(None));
+    let chain = [der("web-p256.pem"), der("web-ca.pem")];
+    let host = name("www.web.test");
+    for round in 1..=2 {
         assert!(
             verifier
                 .verify_server_cert(&chain[0], &chain[1..], &host, &[], at(AT))
-                .is_err()
+                .is_ok()
         );
         assert_eq!(
             verifier_asked(&verifier),
@@ -305,6 +336,29 @@ fn tlsv_050_a_refusal_is_judged_again_every_time() {
             "OCSP and CRL each time"
         );
     }
+    assert_eq!(
+        *seen.lock().unwrap(),
+        ["www.web.test: revocation_unavailable"; 2]
+    );
+}
+
+/// TLSV-041 and TLSV-050: an RSA-2048 server is accepted with `key_phased_out`, and a
+/// handshake that reuses the verdict reports the warning too.
+#[test]
+fn tlsv_041_an_rsa_2048_server_is_accepted_with_a_warning_also_when_reused() {
+    let (verifier, seen) = observed(web(None));
+    let chain = [der("web-rsa2048.pem"), der("web-ca.pem")];
+    let host = name("www.web.test");
+    let stapled = bytes("ocsp/web-rsa2048-good.der");
+    for _ in 0..2 {
+        assert!(
+            verifier
+                .verify_server_cert(&chain[0], &chain[1..], &host, &stapled, at(AT))
+                .is_ok()
+        );
+    }
+    assert_eq!(verifier_asked(&verifier), 0, "the staple decided");
+    assert_eq!(*seen.lock().unwrap(), ["www.web.test: key_phased_out"; 2]);
 }
 
 /// TLSV-051: a `ti` verdict rests on its OCSP answer for OCSP-005's hour at most.

@@ -114,7 +114,23 @@ fn tlsv_040_the_web_cases_are_judged_as_the_corpus_says() {
             "{name}: {}",
             verdict.detail
         );
-        assert!(case["warnings"].as_array().unwrap().is_empty(), "{name}");
+        let warnings: Vec<&str> = case["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w.as_str().unwrap())
+            .collect();
+        assert_eq!(verdict.warnings, warnings, "{name}");
+        // TLSV-050: an accepted verdict is reused unless it rests on no revocation status.
+        let rests_on_status = verdict.is_valid() && verdict.status_source.is_some();
+        assert_eq!(verdict.reusable_until.is_some(), rests_on_status, "{name}");
+        assert_eq!(
+            verdict
+                .warnings
+                .contains(&ti_tls::verdict::REVOCATION_UNAVAILABLE),
+            verdict.is_valid() && verdict.status_source.is_none(),
+            "{name}"
+        );
         judged += 1;
     }
     assert!(judged >= 20, "only {judged} web cases");

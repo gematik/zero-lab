@@ -69,7 +69,8 @@ pub enum Code {
     OcspResponseInvalid,
     /// TLSV-044.
     Revoked,
-    /// TLSV-044.
+    /// TLSV-044 before its deviation; the `web` profile now accepts such a server with the
+    /// warning [`REVOCATION_UNAVAILABLE`] and returns this code no more.
     RevocationUnavailable,
     /// TLSV-045.
     ValidityTooLong,
@@ -142,6 +143,43 @@ impl From<ti_pki::tls::Code> for Code {
     }
 }
 
+/// TLSV-041: an end-entity RSA key of 2048 to 2999 bits, accepted under `web` though
+/// below A_28976's 3000 (the spec's deviation); ti-pki gives the same key the same code.
+pub const KEY_PHASED_OUT: &str = "key_phased_out";
+
+/// TLSV-044: no source gave the end entity's revocation status, and the `web` server was
+/// accepted without one (the spec's deviation from A_27857-02).
+pub const REVOCATION_UNAVAILABLE: &str = "revocation_unavailable";
+
+/// Where the revocation status an accepted `web` verdict rests on came from (TLSV-044).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum StatusSource {
+    /// The OCSP response the server stapled.
+    Stapled,
+    /// The end entity's OCSP responder (AIA).
+    Responder,
+    /// The end entity's CRL distribution point.
+    Crl,
+}
+
+impl StatusSource {
+    /// `stapled_ocsp`, `ocsp_responder` or `crl`.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            StatusSource::Stapled => "stapled_ocsp",
+            StatusSource::Responder => "ocsp_responder",
+            StatusSource::Crl => "crl",
+        }
+    }
+}
+
+impl fmt::Display for StatusSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// What a check concluded about a server.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Verdict {
@@ -151,6 +189,9 @@ pub struct Verdict {
     pub detail: String,
     /// Warnings, which never decide.
     pub warnings: Vec<&'static str>,
+    /// Under `web`, the source of the revocation status the verdict rests on; `None` under
+    /// `ti`, for a refusal before revocation, and with [`REVOCATION_UNAVAILABLE`].
+    pub status_source: Option<StatusSource>,
     /// Until when, in seconds since the epoch, an accepted verdict may be reused
     /// (TLSV-050, TLSV-051); `None` for a refusal, which is never reused.
     pub reusable_until: Option<u64>,
@@ -167,6 +208,7 @@ impl Verdict {
             code,
             detail: detail.into(),
             warnings: Vec::new(),
+            status_source: None,
             reusable_until: None,
         }
     }

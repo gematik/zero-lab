@@ -44,6 +44,6 @@ pub mod verifier;
 pub mod web;
 
 pub use fetch::{Fetch, Offline};
-pub use verdict::{Code, Verdict};
-pub use verifier::{TiVerifier, WebVerifier, client_config};
+pub use verdict::{Code, StatusSource, Verdict};
+pub use verifier::{TiVerifier, WarningObserver, WebVerifier, client_config};
 pub use web::WebCheck;

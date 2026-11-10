@@ -10,9 +10,19 @@ profiles of [`spec/pki-validation`](../../spec/pki-validation/README.md):
   as Go and the containers' `ca-certificates` have them), with the requirements gematik and the
   ZETA SDK add: end-entity keys ECDSA P-256/P-384 or RSA ≥ 3000, CA keys RSA ≥ 2048, no SHA-1,
   MD5 or SHA-224, serverAuth, the host in a `dNSName`, at most 398 days of validity, and a
-  revocation status from stapled OCSP, the responder or the CRL, or no connection.
+  revocation status from stapled OCSP, the responder or the CRL; a revoked one refuses.
 
 The profile is the endpoint's, by configuration; neither falls back to the other.
+
+Two `web` rules deviate from gemSpec_Krypt, as the spec's
+[Deviations](../../spec/pki-validation/README.md#deviations) record: an end entity with RSA
+2048 to 2999 bits is accepted with the warning `key_phased_out` (A_28976 asks for 3000), and a
+server whose status no source gives is accepted with `revocation_unavailable` (A_27857-02
+requires one), since Let's Encrypt ended OCSP and responders fail now and then. Such a verdict
+is not reused. `Verdict::warnings` carries them, `WebVerifier::with_warning_observer` tells the
+host of each server a handshake accepted and its warnings, and a host that needs the strict
+rules judges with `WebVerifier::verify` or `WebCheck::verify` and refuses such a verdict in its
+own `ServerCertVerifier`.
 
 A Konnektor is verified by neither: `konnektor::Trust` holds the trust its `.kon` file
 configures, as the Go client verifies it. An end-entity certificate in the trust store is a
@@ -27,7 +37,8 @@ an empty trust store means the operating system's, through a verifier the host s
   of trust material each; `TiVerifier::replace` swaps the TI's for a refreshed TSL while
   connections use the verifier. An accepted verdict is reused for the same chain and host until
   its certificate, its revocation status (its `nextUpdate`, at most an hour under `ti` and a day
-  under `web`) or its snapshot ends; a refusal never is. A verifier keeps at most 4096 verdicts.
+  under `web`) or its snapshot ends; a refusal never is, nor a `web` verdict without a status.
+  A verifier keeps at most 4096 verdicts, with their warnings.
 - `Fetch`: the host's way to an OCSP responder or CRL host for `web`; `ti` takes ti-pki's
   `OcspChecker` over the host's transport.
 
