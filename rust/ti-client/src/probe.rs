@@ -42,8 +42,8 @@
 
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use rustls::CertificateError;
@@ -254,6 +254,8 @@ fn limits(net: &Net) -> Net {
 /// endpoint needs it and the environment's trust material loaded; otherwise why not.
 pub struct Agents {
     web: Agent,
+    /// The warnings the `web` verifier accepted each server with, by host.
+    web_warnings: Warnings,
     /// With `-k`, the agent for every endpoint: no certificate is checked.
     unchecked: Option<Agent>,
     ti: Result<Agent, String>,
@@ -296,7 +298,13 @@ impl Agents {
         } else {
             None
         };
-        let web = crate::tls::agent(builder(&net, "https")?, crate::http::web_config(&net)?);
+        let web_warnings = Warnings::default();
+        let observer = web_warnings.observer();
+        let verifier = crate::http::web_verifier(&net)?.with_warning_observer(observer);
+        let web = crate::tls::agent(
+            builder(&net, "https")?,
+            Arc::new(ti_tls::client_config(Arc::new(verifier))),
+        );
         let ti = if unchecked.is_none() && endpoints.iter().any(|e| e.tls == TlsProfile::Ti) {
             ti_agent(client, &net, env, trust).map_err(|error| error.to_string())
         } else {
@@ -304,10 +312,38 @@ impl Agents {
         };
         Ok(Agents {
             web,
+            web_warnings,
             unchecked,
             ti,
             epa_user_agent: epa_user_agent.to_owned(),
         })
+    }
+}
+
+/// The warnings of the last handshake that accepted each `web` server, by lower-case host.
+/// rustls tells a connection only accepted or refused, so the verifier's observer keeps them
+/// here for the probe that made the connection to read.
+#[derive(Clone, Default)]
+struct Warnings(Arc<Mutex<HashMap<String, Vec<&'static str>>>>);
+
+impl Warnings {
+    fn observer(&self) -> ti_tls::WarningObserver {
+        let map = Arc::clone(&self.0);
+        Arc::new(move |host: &str, warnings: &[&'static str]| {
+            map.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(host.to_ascii_lowercase(), warnings.to_vec());
+        })
+    }
+
+    /// The warnings `url`'s server was last accepted with; none for a server not seen.
+    fn of(&self, url: &str) -> Vec<&'static str> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&server_name(url).to_ascii_lowercase())
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -638,12 +674,14 @@ fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
             };
         }
     };
-    let (verdict, mut detail, discovered) = judge(endpoint.kind, env, base, status, &body);
+    let (mut verdict, mut detail, discovered) = judge(endpoint.kind, env, base, status, &body);
     // The answer is judged as without -k; the detail and `tls.verified` say nobody checked
     // the certificate.
     let unchecked = tls && agents.unchecked.is_some();
     if unchecked {
         detail.push_str(UNCHECKED);
+    } else if tls && endpoint.tls == TlsProfile::Web {
+        (verdict, detail) = tls_warned(verdict, detail, &agents.web_warnings.of(&url));
     }
     Outcome {
         status: verdict,
@@ -654,6 +692,22 @@ fn probe(agents: &Agents, env: Env, endpoint: &Endpoint) -> Outcome {
         discovered,
         verified: (tls && !unchecked).then_some(true),
     }
+}
+
+/// An answer from a `web` server its verifier accepted with warnings (TLSV-041's
+/// `key_phased_out`, TLSV-044's `revocation_unavailable`): a warning at most, never a
+/// failure the answer did not give, and the warnings in the detail.
+fn tls_warned(status: Status, mut detail: String, warnings: &[&str]) -> (Status, String) {
+    if warnings.is_empty() {
+        return (status, detail);
+    }
+    detail.push_str(" · TLS web: ");
+    detail.push_str(&warnings.join(", "));
+    let status = match status {
+        Status::Ok => Status::Warn,
+        other => other,
+    };
+    (status, detail)
 }
 
 /// Why the TLS of an answering server failed, in a few words; `None` for a failure before
@@ -909,6 +963,16 @@ fn host(url: &str) -> String {
         .to_owned()
 }
 
+/// The host of the URL without its port or an IPv6 address's brackets: the name the TLS
+/// connection verifies.
+fn server_name(url: &str) -> String {
+    let host = host(url);
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split(']').next().unwrap_or(rest).to_owned();
+    }
+    host.split(':').next().unwrap_or(&host).to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use base64ct::{Base64UrlUnpadded, Encoding as _};
@@ -1032,6 +1096,7 @@ mod tests {
             code: ti_tls::Code::SignatureAlgorithmNotAllowed,
             detail: "sha1WithRSAEncryption".into(),
             warnings: Vec::new(),
+            status_source: None,
             reusable_until: None,
         };
         let other = rustls::OtherError(Arc::new(ti_tls::verifier::Refused(verdict)));
@@ -1043,6 +1108,49 @@ mod tests {
         assert_eq!(
             tls_failure(&ureq::Error::Io(std::io::ErrorKind::TimedOut.into())),
             None
+        );
+    }
+
+    /// TLSV-041, TLSV-044: a `web` server accepted with warnings makes an expected answer a
+    /// warning, with the warnings in the detail; a warning or failure stays what it was.
+    #[test]
+    fn tlsv_044_a_web_server_accepted_with_warnings_is_a_warning() {
+        let warnings = ["key_phased_out", "revocation_unavailable"];
+        assert_eq!(
+            tls_warned(Status::Ok, "oidc discovery".into(), &warnings),
+            (
+                Status::Warn,
+                "oidc discovery · TLS web: key_phased_out, revocation_unavailable".into()
+            )
+        );
+        assert_eq!(
+            tls_warned(Status::Fail, "HTTP 500".into(), &warnings[1..]).0,
+            Status::Fail
+        );
+        assert_eq!(
+            tls_warned(Status::Ok, "http 200".into(), &[]),
+            (Status::Ok, "http 200".into())
+        );
+    }
+
+    /// The observer keeps each host's warnings of its last accepted handshake, looked up by
+    /// the URL's host without port or brackets, in any case.
+    #[test]
+    fn the_warnings_of_the_last_handshake_are_found_by_the_urls_host() {
+        let warnings = Warnings::default();
+        let observe = warnings.observer();
+        observe("IDP.example.test", &["revocation_unavailable"]);
+        observe("::1", &["key_phased_out"]);
+        assert_eq!(
+            warnings.of("https://idp.example.test:8443/.well-known/x"),
+            ["revocation_unavailable"]
+        );
+        assert_eq!(warnings.of("https://[::1]:443/"), ["key_phased_out"]);
+        observe("idp.example.test", &[]);
+        assert_eq!(warnings.of("https://idp.example.test/"), Vec::<&str>::new());
+        assert_eq!(
+            warnings.of("https://other.example.test/"),
+            Vec::<&str>::new()
         );
     }
 
