@@ -4,9 +4,11 @@
 
 Libraries and tools for the German Telematikinfrastruktur (TI), in Rust and Go: TI PKI and
 TSL validation, JOSE with the TI's brainpool profiles, Konnektor, IDP-Dienst and
-FHIR-Directory clients, ePA, Zero Trust policy (PDP, PEP), and `ti`, the command-line tool on
-top. Security-critical: specified once, proven alike in both languages, verified, not only
-tested.
+FHIR-Directory clients, ePA, and `ti`, the command-line tool on top. Security-critical:
+specified once, proven alike in both languages, verified, not only tested.
+
+The Zero Trust policy components (PDP, PEP) are prototypes that show what the building
+blocks make possible; they are not production software.
 
 > **Note:** The work started as part of the DSR PoC: https://dsr.gematik.solutions/.
 
@@ -22,7 +24,7 @@ The repository has two workspaces:
 | Rust | [`ti-connector-client`](./rust/ti-connector-client), [`ti-idpd-client`](./rust/ti-idpd-client), [`ti-directory-client`](./rust/ti-directory-client) | Konnektor, IDP-Dienst and FHIR-Directory clients |
 | Rust | [`jwz`](./rust/jwz), [`ti-jwz`](./rust/ti-jwz), [`ti-pkcs12`](./rust/ti-pkcs12), [`ti-cache`](./rust/ti-cache), [`ti-types`](./rust/ti-types) | JOSE, brainpool, PKCS#12, caching and shared types |
 | Go | [`epa`](./go/epa) | ePA client and the `zero-epa` command |
-| Go | [`pdp`](./go/pdp), [`pep`](./go/pep), [`zaddy`](./go/zaddy) | Policy decision point (`zero-pdp`) and policy enforcement, including a Caddy-based PEP (`zero-caddy`) |
+| Go | [`pdp`](./go/pdp), [`pep`](./go/pep), [`zaddy`](./go/zaddy) | Prototypes: policy decision point (`zero-pdp`) and policy enforcement, including a Caddy-based PEP (`zero-caddy`) |
 | Go | [`brainpool`](./go/brainpool), [`pkcs12`](./go/pkcs12) | Brainpool elliptic curves (RFC 5639) with X.509 and JOSE, PKCS#12 (RFC 7292) |
 | Go | [`idpd`](./go/idpd), [`openid`](./go/openid), [`oidf`](./go/oidf), [`dpop`](./go/dpop), [`nonce`](./go/nonce), [`kv`](./go/kv) | IDP, OAuth, OpenID Federation, DPoP and supporting libraries |
 | Go | [`metsubushi`](./go/metsubushi) | Pod smoke-test endpoint |
