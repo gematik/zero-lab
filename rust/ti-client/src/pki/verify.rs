@@ -101,7 +101,7 @@ pub struct Verification {
     pub source: String,
     /// The verdict.
     pub valid: bool,
-    /// The environment validated in.
+    /// The environment validated in, or [`NO_ENVIRONMENT`].
     pub environment: EnvironmentInfo,
     /// The instant validated at, RFC 3339.
     pub at: String,
@@ -115,8 +115,9 @@ pub struct Verification {
     pub certificate_type: Option<String>,
     /// The profile validated under.
     pub profile: ProfileInfo,
-    /// The trust material.
-    pub trust: TrustInfo,
+    /// The trust material; `None` when the certificates show no TI environment to
+    /// load it for.
+    pub trust: Option<TrustInfo>,
     /// False offline or with revocation disabled; the verdict then says nothing about
     /// revocation.
     pub revocation_checked: bool,
@@ -235,11 +236,12 @@ pub struct Finding {
 /// Validates `request.certificates` in `request.env` (or the one they show) against
 /// trust material loaded through a session over `client` and `dirs`; `warn` hears what the
 /// session tells as it opens. The client's observer hears which trust material was used.
+/// Certificates that show no TI environment get a report, not an error: invalid, with
+/// [`OUTSIDE_TI`] and no trust material.
 ///
 /// # Errors
 ///
-/// [`Error::EnvironmentUndetected`] when the environment is to be detected and cannot
-/// be; the errors of [`Session::new`] and [`Session::load_env`]; [`Error::Certificate`]
+/// The errors of [`Session::new`] and [`Session::load_env`]; [`Error::Certificate`]
 /// when the chain cannot be validated at all.
 pub fn verify(
     client: &Client,
@@ -249,7 +251,11 @@ pub fn verify(
 ) -> Result<Verification, Error> {
     let certs = &request.certificates;
     let at = request.at.unwrap_or_else(Timestamp::now);
-    let (env, detection) = environment(request.env, certs, at)?;
+    let (env, detection) = match environment(request.env, certs, at) {
+        Ok(found) => found,
+        Err(Error::EnvironmentUndetected(_)) => return Ok(outside_ti(request, at)),
+        Err(error) => return Err(error),
+    };
     let session = Session::new(client, dirs, request.offline, warn)?;
     let (config, material) = session.load_env(env, request.nist_only, request.at)?;
     session.observe(format_args!(
@@ -306,14 +312,10 @@ pub fn verify(
         },
         at: at.to_string(),
         at_ts: at,
-        reference: if request.at.is_some() {
-            Reference::Given
-        } else {
-            Reference::Now
-        },
+        reference: reference(request),
         certificate_type: detect_certificate_type(&certs[0]).map(|t| t.to_string()),
         profile,
-        trust: material.info,
+        trust: Some(material.info),
         revocation_checked: !request.offline && validator.revocation != RevocationMode::Disabled,
         revocation_mode: mode_name(validator.revocation),
         insecure_transport: session.insecure,
@@ -332,6 +334,69 @@ pub fn verify(
         details,
         result,
     })
+}
+
+/// The code of the error a certificate outside every TI environment gets.
+pub const OUTSIDE_TI: &str = "environment_undetected";
+
+/// The report for certificates that show no TI environment: no embedded root, no chain
+/// to one, no marker. No trust material is loaded, as there is no environment to load it
+/// for; the end entity is invalid against TI trust, and `--env` checks it against one.
+fn outside_ti(request: &Request, at: Timestamp) -> Verification {
+    let leaf = request.certificates[0].clone();
+    let subject = leaf.subject_cn().to_owned();
+    let result = ValidationResult {
+        valid: false,
+        chain: vec![leaf.clone()],
+        positions: vec![ChainPosition::EndEntity],
+        ..ValidationResult::default()
+    };
+    Verification {
+        source: request.source.clone(),
+        valid: false,
+        environment: EnvironmentInfo {
+            name: NO_ENVIRONMENT,
+            production: false,
+            detection: Some(Detection {
+                method: NO_ENVIRONMENT,
+                detail: "no TI root, chain or marker".into(),
+            }),
+        },
+        at: at.to_string(),
+        at_ts: at,
+        reference: reference(request),
+        certificate_type: detect_certificate_type(&leaf).map(|t| t.to_string()),
+        profile: ProfileInfo {
+            name: None,
+            reason: "none",
+            detail: "no TI environment".into(),
+        },
+        trust: None,
+        revocation_checked: false,
+        revocation_mode: mode_name(RevocationMode::Disabled),
+        insecure_transport: false,
+        ocsp: ocsp_settings(request),
+        chain: chain(&result),
+        errors: vec![Finding {
+            code: OUTSIDE_TI.into(),
+            subject,
+            message: "no chain to a root of any TI environment".into(),
+        }],
+        warnings: Vec::new(),
+        details: inspect::describe(&Loaded::without_key(leaf), at),
+        result,
+    }
+}
+
+/// [`EnvironmentInfo::name`] when the certificates show no TI environment.
+pub const NO_ENVIRONMENT: &str = "none";
+
+fn reference(request: &Request) -> Reference {
+    if request.at.is_some() {
+        Reference::Given
+    } else {
+        Reference::Now
+    }
 }
 
 /// The OCSP settings `request` gives; none with the defaults.
@@ -445,7 +510,7 @@ pub fn server_profile(
 ///
 /// # Errors
 ///
-/// [`Error::EnvironmentUndetected`] with each method tried and its outcome.
+/// [`Error::EnvironmentUndetected`] with each method tried and its outcome, one per line.
 pub fn environment(
     choice: Option<Env>,
     certs: &[Certificate],
@@ -461,7 +526,7 @@ pub fn environment(
             .iter()
             .map(|step| format!("{}: {}", step.method, step.outcome))
             .collect();
-        return Err(Error::EnvironmentUndetected(tried.join("; ")));
+        return Err(Error::EnvironmentUndetected(tried.join("\n")));
     };
     let env = match tier {
         Tier::Prod => Env::Prod,

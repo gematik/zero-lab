@@ -193,11 +193,18 @@ fn chain_to_verify(
 /// what OCSP said of it.
 fn tree(v: &Verification) -> Vec<TreeRow> {
     let result = &v.result;
-    super::chain_tree(
+    let mut rows = super::chain_tree(
         &result.chain,
         v.complete(),
         v.at_ts,
-        |i| mark(result, i),
+        // Outside every TI environment the end entity is the whole chain, and invalid.
+        |i| {
+            if outside_ti(v) {
+                Line::status(Tone::Bad, "✗ ")
+            } else {
+                mark(result, i)
+            }
+        },
         |i| {
             v.chain
                 .get(i)
@@ -205,7 +212,19 @@ fn tree(v: &Verification) -> Vec<TreeRow> {
                 .map(|r| Line::text(" · ").and_line(ocsp_line(r)))
                 .unwrap_or_default()
         },
-    )
+    );
+    // Without an environment no CA was trusted to begin with: the issuer is missing from
+    // every TI environment, not from the one validated in.
+    if outside_ti(v)
+        && let Some(issuer) = rows.get_mut(result.chain.len())
+    {
+        issuer.detail = Line::status(Tone::Bad, "not under any TI root");
+    }
+    rows
+}
+
+fn outside_ti(v: &Verification) -> bool {
+    v.trust.is_none()
 }
 
 /// ✗ for the certificate at `index` of the chain if an error concerns it; for a CA only
@@ -231,15 +250,10 @@ fn sections(report: &Report) -> Document {
     doc.section("Result");
     doc.field("result", verdict(report));
     doc.field("revocation", revocation_line(report));
-    let env = &report.environment;
-    let mut env_line = Line::code(env.name);
-    if let Some(d) = &env.detection {
-        env_line = env_line.and_dim(format!(" (detected: {})", d.detail));
-    }
-    doc.field("environment", env_line);
+    doc.field("environment", environment_line(report, true));
     doc.field("at", when(report.at_ts));
     doc.field("profile", profile_line(&report.profile));
-    doc.field("trust", super::trust_line(&report.trust));
+    doc.field("trust", trust_line(report));
     if let Some(ocsp) = &report.ocsp {
         doc.field("ocsp", ocsp_settings_line(ocsp));
     }
@@ -255,7 +269,7 @@ fn sections(report: &Report) -> Document {
         doc.paragraph(Line::dim("no chain to a trusted root"));
     }
     doc.tree(report.tree.clone());
-    doc.tree(super::tsl_tree(&report.trust, report.at_ts));
+    doc.tree(tsl_tree(report));
 
     if !report.errors.is_empty() {
         doc.section("Errors");
@@ -269,6 +283,41 @@ fn sections(report: &Report) -> Document {
         doc.items("", report.warnings.iter().map(|f| finding(Tone::Warn, f)));
     }
     doc
+}
+
+/// The environment validated in and, when detected, how: in full for the terminal
+/// view, as `(detected)` for the Markdown one. Without one, what detection missed.
+fn environment_line(report: &Report, full: bool) -> Line {
+    let env = &report.environment;
+    if outside_ti(report) {
+        let detail = env.detection.as_ref().map_or("", |d| d.detail.as_str());
+        return Line::status(Tone::Bad, "no TI environment").and_dim(format!(" (auto: {detail})"));
+    }
+    let line = if full {
+        Line::code(env.name)
+    } else {
+        Line::text(env.name)
+    };
+    match &env.detection {
+        Some(d) if full => line.and_dim(format!(" (detected: {})", d.detail)),
+        Some(_) => line.and_dim(" (detected)"),
+        None => line,
+    }
+}
+
+fn trust_line(report: &Report) -> Line {
+    report.trust.as_ref().map_or_else(
+        || Line::dim("none loaded").and_dim(" (pass --env to check against one)"),
+        super::trust_line,
+    )
+}
+
+fn tsl_tree(report: &Report) -> Vec<TreeRow> {
+    report
+        .trust
+        .as_ref()
+        .map(|trust| super::tsl_tree(trust, report.at_ts))
+        .unwrap_or_default()
 }
 
 /// `VALID`, or `INVALID` with the number of errors; and the number of warnings.
@@ -314,18 +363,13 @@ fn summary(report: &Report) -> Document {
     }
     doc.paragraph(verdict);
 
-    let env = &report.environment;
-    let mut context = Line::text(env.name);
-    if env.detection.is_some() {
-        context = context.and_dim(" (detected)");
-    }
-    context = context
+    let context = environment_line(report, false)
         .and_dim(format!(" · at {}", when(report.at_ts)))
         .and_dim(" · profile ")
         .and_line(profile_line(&report.profile));
     doc.paragraph(context);
     doc.paragraph(Line::dim("revocation ").and_line(revocation_line(report)));
-    doc.paragraph(Line::dim("trust ").and_line(super::trust_line(&report.trust)));
+    doc.paragraph(Line::dim("trust ").and_line(trust_line(report)));
     if let Some(ocsp) = &report.ocsp {
         doc.paragraph(Line::dim("ocsp ").and_line(ocsp_settings_line(ocsp)));
     }
@@ -337,7 +381,7 @@ fn summary(report: &Report) -> Document {
         doc.items("", [Line::dim("no chain to a trusted root")]);
     }
     doc.tree(report.tree.clone());
-    doc.tree(super::tsl_tree(&report.trust, report.at_ts));
+    doc.tree(tsl_tree(report));
 
     if !report.errors.is_empty() || !report.warnings.is_empty() {
         let findings = report
@@ -364,6 +408,9 @@ fn summary(report: &Report) -> Document {
 /// The outcome over the chain: the worst OCSP answer, not the mode. The mode is
 /// named only when it is soft-fail, where a missing answer does not invalidate.
 fn revocation_line(report: &Report) -> Line {
+    if outside_ti(report) {
+        return Line::dim("not checked (no TI environment)");
+    }
     if !report.revocation_checked {
         return Line::status(Tone::Warn, "not checked").and_dim(" (offline)");
     }

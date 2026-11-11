@@ -1027,7 +1027,8 @@ fn removed_commands_are_gone() {
     }
 }
 
-/// The codes a verify report may carry are exactly ti-pki's.
+/// The codes a verify report may carry are exactly ti-pki's, and ti-client's for a
+/// certificate outside every TI environment.
 #[test]
 fn verify_codes_are_ti_pkis() {
     let schema: Value = serde_json::from_str(
@@ -1040,7 +1041,11 @@ fn verify_codes_are_ti_pkis() {
         .iter()
         .map(|c| c.as_str().unwrap())
         .collect();
-    let codes: Vec<&str> = ti_pki::ErrorCode::ALL.iter().map(|c| c.as_str()).collect();
+    let codes: Vec<&str> = ti_pki::ErrorCode::ALL
+        .iter()
+        .map(|c| c.as_str())
+        .chain([ti_client::pki::verify::OUTSIDE_TI])
+        .collect();
     assert_eq!(listed, codes);
 }
 

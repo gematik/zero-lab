@@ -3,9 +3,10 @@ id: TASK-287
 title: >-
   ti pki verify: a certificate outside every TI environment gets a report, not
   an error
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-11T18:35:00Z'
+updated_date: '2026-11-11T18:41:00Z'
 labels:
   - ti-cli
 dependencies: []
@@ -20,8 +21,14 @@ ti pki verify <file> with a certificate that shows no TI environment (no embedde
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 verify without --env renders the report for such a certificate: INVALID, exit 1, error environment_undetected (no chain to a root of any TI environment; pass --env), no trust material loaded
-- [ ] #2 JSON: environment.name 'none', schema pki-verify.json updated, schema tests pass
-- [ ] #3 EnvironmentUndetected's message is one short line plus the hint; the detection steps appear with -v
-- [ ] #4 tests named after the behaviour; release notes (ti-client, ti-cli Unreleased)
+- [x] #1 verify without --env renders the report for such a certificate: INVALID, exit 1, error environment_undetected (no chain to a root of any TI environment; pass --env), no trust material loaded
+- [x] #2 JSON: environment.name 'none', schema pki-verify.json updated, schema tests pass
+- [x] #3 EnvironmentUndetected's message is one short line plus the hint; the detection steps appear with -v
+- [x] #4 tests named after the behaviour; release notes (ti-client, ti-cli Unreleased)
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Report built in ti-client (outside_ti): no session, no trust material; ValidationResult with the leaf alone so the CLI tree shows it, the issuer row says 'not under any TI root'. Schema: environment.name/detection.method gain 'none', trust oneOf null, finding code environment_undetected (verify_codes_are_ti_pkis now lists ti-pki's codes plus OUTSIDE_TI). CliError::detail feeds the -v lines in Output::error. With --connect, 0.6.1 already falls back to the web profile (server_profile).
+<!-- SECTION:NOTES:END -->

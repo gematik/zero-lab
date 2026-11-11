@@ -23,6 +23,8 @@
 
 //! The `ti` binary as a user or an agent sees it: arguments, stdout, stderr, exit codes.
 
+mod support;
+
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
@@ -697,21 +699,28 @@ fn verify_usage_errors() {
 }
 
 #[test]
-fn verify_asks_for_the_environment_when_nothing_tells() {
+fn verify_reports_a_certificate_outside_every_ti_environment_as_invalid() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../ti-pki/tests/pki/rogue-root.pem");
-    let out = ti(&[
-        "--format",
-        "json",
-        "pki",
-        "verify",
-        "--offline",
-        root.to_str().unwrap(),
-    ]);
-    assert_eq!(out.status.code(), Some(2));
-    assert!(out.stdout.is_empty(), "{:?}", out.stdout);
-    let error: serde_json::Value = serde_json::from_slice(&out.stderr).unwrap();
-    assert_eq!(error["error"]["kind"], "environment_undetected");
-    assert_eq!(error["error"]["hint"], "pass --env prod, ref, test or dev");
+    let root = root.to_str().unwrap();
+    let out = ti(&["--format", "json", "pki", "verify", "--offline", root]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    support::assert_verify_conforms(&out.stdout);
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["valid"], false);
+    assert_eq!(json["environment"]["name"], "none");
+    assert!(json["trust"].is_null(), "no trust material is loaded");
+    assert_eq!(json["errors"][0]["code"], "environment_undetected");
+    assert_eq!(
+        json["chain"].as_array().unwrap().len(),
+        1,
+        "the certificate is shown"
+    );
+
+    let text = ti(&["--format", "text", "pki", "verify", "--offline", root]);
+    assert_eq!(text.status.code(), Some(1));
+    let shown = String::from_utf8_lossy(&text.stdout);
+    assert!(shown.contains("no TI environment"), "{shown}");
+    assert!(shown.contains("pass --env"), "{shown}");
 }
 
 #[test]

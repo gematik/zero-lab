@@ -64,7 +64,7 @@ never on `message`. `hint` says what to do, when there is something.
 | --- | --- | --- |
 | `arguments_invalid` | 2 | a combination of arguments the command cannot use |
 | `environment_invalid` | 2 | an environment that does not fit the command |
-| `environment_undetected` | 2 | `--env auto` found no evidence in the certificates |
+| `environment_undetected` | 2 | `--env auto` found no evidence in the certificates; `-v` lists each detection step. `pki verify` instead reports such a certificate: invalid (exit 1), `environment.name` `none`, `trust` null, the finding `environment_undetected` |
 | `output_exists` | 2 | the output file exists; `--force` replaces it |
 | `http_setup` | 2 | `--cacert`, `--capath` or the proxy cannot be used |
 | `unknown_schema` | 2 | `schema` for a command that has none |
