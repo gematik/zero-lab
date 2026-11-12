@@ -250,3 +250,46 @@ everything outside the workload untrusted.
     (as `go/pdp/e2e`), load tests against the latency budgets, a chaos test that takes a
     zone and a store primary down and checks that no single-use value is accepted twice,
     and dynamic scanning (OWASP ZAP or equivalent) of every exposed endpoint.
+27. **Runs under any UID, as on OpenShift.** The platform picks the identity, not the
+    image: OpenShift's `restricted-v2` SCC starts a container with an arbitrary UID from
+    the namespace's range, primary GID `0` and no `/etc/passwd` entry, sets `fsGroup` and
+    supplemental groups from the same range, and rejects a pod that asks for fixed IDs.
+    Pod Security `restricted` on plain Kubernetes is the same minus the arbitrary UID. A
+    workload that only works under the UID its image declares fails there, or is pushed
+    to `anyuid`, which weakens rule 8 for the whole namespace.
+    - **The image:** a numeric non-root `USER` (`65532`, never a name), so the kubelet
+      can check `runAsNonRoot` without a `runAsUser`. Nothing depends on that UID: no
+      lookup of user name or home in `/etc/passwd`, `HOME`, `TMPDIR` and cache
+      directories set by environment. Everything the process reads is readable by group
+      `0` or by others; every path it writes is owned by group `0` and group-writable
+      (`chgrp -R 0 … && chmod -R g=u …`, or `COPY --chown=65532:0` with group write).
+      Ownership by `65532:65532`, `1000:1000` or another group does not count, and
+      neither does a world-writable directory without the sticky bit.
+    - **Writes are known and few.** Each image lists the paths it writes at run time
+      (cache, state, temporary files, sockets); each is a volume mount point or under
+      `/tmp`, so the image runs with a read-only root filesystem and an `emptyDir` or
+      PVC over each path. The process writes nothing else: no generated configuration
+      under `/etc`, no `chown` or `chmod` at start, logs only to stdout and stderr.
+    - **No privilege for ports:** listeners default to ports `>= 1024`; a public port
+      below that is the Service's or the Route's mapping, never `NET_BIND_SERVICE` in the
+      container.
+    - **Manifests set no IDs.** Deployments, Jobs, CronJobs, init and sidecar containers
+      set `runAsNonRoot: true` and leave `runAsUser`, `runAsGroup`, `fsGroup` and
+      `supplementalGroups` to the platform. Where plain Kubernetes needs one (a volume
+      type without ownership management), it sits in an overlay or value that one
+      setting removes for OpenShift; a chart that sets IDs removes them on an explicit
+      `null`, because Helm merges maps and a left-out key inherits the default. Mounted
+      Secrets and ConfigMaps are readable without a known UID (`defaultMode` `0440` with
+      `fsGroup`, or `0444`), and a Unix socket shared between containers is
+      group-accessible through the shared `fsGroup`, with the peer check of rule 8 as the
+      control rather than the UID.
+    - **Bundled third-party parts** (ingress controller, operators, collectors) are
+      either shown to run under `restricted-v2` with the deployment's values or left to
+      the platform on OpenShift; ones that create cluster-scoped resources are optional.
+    - **Tested both ways:** every image passes a start test under an arbitrary UID,
+      `docker run --user 1000680000:0 --read-only --cap-drop ALL --security-opt
+      no-new-privileges` with `--tmpfs` over its listed paths, up to readiness or the
+      first expected missing dependency, and the rendered manifests of every deployment
+      contain no numeric `runAsUser`, `runAsGroup` or `fsGroup` in the OpenShift profile.
+      Before a release, the workloads run on OpenShift (OpenShift Local or OKD) in a
+      project without `anyuid`.
