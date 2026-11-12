@@ -180,6 +180,9 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   provider are sidecars over Unix sockets too. The pod spec and the compose file carry
   them pinned by digest, and none of them listens on the network
   ([servers](../../docs/design/servers.md), rule 8).
+- The OPA client is `net/http` over the Unix socket, one `context` deadline per decision
+  call, the response decoded into a type whose missing `result` is a deny like any
+  transport error or non-200 status (rule 16).
 - Trust material comes from a mounted directory written by the producer job, and the
   server keeps none of it on disk; the signing key is a `crypto.Signer` backed by a KMS
   API or the key provider sidecar, and a missing key fails start-up (rules 6 and 17).

@@ -50,7 +50,12 @@ everything outside the workload untrusted.
    only after its attestation is verified (a KMS or key broker with a release policy on
    the measurement), delivered as files (`*_PATH`), never baked into images, environment
    variables or the kv store. Workload keys follow the [private-key rules](keys.md); rotation
-   works without a restart; credentials are short-lived where the peer allows. An HSM or
+   works without a restart of the workload or its sidecars; credentials are short-lived
+   where the peer allows. A workload's TLS key is generated inside the workload, and its
+   certificate is issued only after the attestation is verified (a CSR bound to the
+   evidence, or SPIRE with a TEE node attestor and its agent inside the confidential VM);
+   a key from a cert-manager Secret or a node-local SPIRE agent was made outside the
+   enclave and does not qualify ([decision-16](../../backlog/decisions/)). An HSM or
    KMS that holds a workload key is part of the workload's trusted base, and its key
    policy admits only this workload, proven by attestation and a workload identity the
    platform provides (the SPIFFE Workload API where it is mounted), never by a credential
@@ -59,8 +64,11 @@ everything outside the workload untrusted.
    workload's image, and only digests cross the channel.
 7. **Attestation friendly, signed workloads.** Builds are reproducible (pinned toolchain,
    base images by digest, `-trimpath`, no build-time network for code), images are
-   signed with provenance and an SBOM, and the measured image contains everything that
-   runs: no code or plugins loaded at runtime. Configuration that changes behaviour is
+   signed with provenance and an SBOM, a vulnerability scan of the image is a CI gate, and
+   the measured image contains everything that runs: no code or plugins loaded at runtime.
+   Third-party code that runs in the workload, a sidecar such as OPA included, is rebuilt
+   reproducibly from source like our own, never taken as the vendor's image
+   ([decision-17](../../backlog/decisions/)). Configuration that changes behaviour is
    part of the measurement or hashed and reported. A workload exposes its version and
    build digest, and verifies the attestation of peers where hardware binding matters.
 8. **Kubernetes, Docker and sidecars as untrusted neighbours.** Run as non-root with a
@@ -79,17 +87,25 @@ everything outside the workload untrusted.
      container started from the same image with the helper as its command; protocol and
      client are the same in both modes.
    - **Sidecars inside the enclave** (a helper, OPA, a key provider) are reached over a
-     Unix socket in a shared `emptyDir` with file permissions and a peer check
+     Unix socket in a shared memory-backed `emptyDir` (`medium: Memory`: a tmpfs in the
+     guest's memory, where a disk-backed volume can be host storage the host sees and
+     replaces), with file permissions and a peer check
      (`SO_PEERCRED`; on Linux the peer's executable through a pidfd), have no network
      listener, receive no secret across the socket, bound their frames and version their
-     handshake. They are part of the measured workload: their digests are in the same
-     signed manifest and in the pod policy that attestation measures; native sidecar
-     containers order their start, and readiness follows their handshake. Policy engines
-     run the same way, and their policies are configuration under rule 7, mounted at
-     start and never loaded at run time.
+     handshake. A sidecar serves its client only the operations it needs and offers none
+     that changes its configuration at run time (for OPA: `--authorization=basic` with a
+     `system.authz` policy that allows one method and one decision path, and refuses
+     policy and data writes); that the socket is reachable is not the restriction. They
+     are part of the measured workload: their digests are in the same signed manifest and
+     in the pod policy that attestation measures; native sidecar containers order their
+     start, and readiness follows their handshake. Policy engines
+     run only this way, never as a service in another pod, and their policies are
+     configuration under rule 7, mounted at start and never loaded at run time.
    - Platform services (workload identity, mesh TLS, attestation) are consumed through
      their standard interfaces and never provided here. A sidecar outside the enclave
-     gets only ciphertext or data that is public anyway.
+     gets only ciphertext or data that is public anyway. Mesh mTLS ends in a proxy that
+     the mesh's control plane configures, outside the TCB: it is defence in depth, never
+     a workload's channel protection (rule 5).
 9. **Cloud native preferred.** Standard, portable building blocks: OCI images,
    Kubernetes primitives (Deployments, probes, PodDisruptionBudgets, topology spread,
    NetworkPolicies, mounted Secrets and ConfigMaps), declarative configuration,
@@ -181,7 +197,9 @@ everything outside the workload untrusted.
     VAU) where they are stricter. Optional security features of a specification are
     treated as mandatory unless a documented interoperability need says otherwise.
 16. **Fail closed.** An error in authentication, authorization, verification, attestation
-    or a dependency they need means deny, never allow. Degraded modes are explicit and
+    or a dependency they need means deny, never allow. A decision call denies on a
+    transport error, a timeout (its own, per call), a non-success status and a response
+    without a decision (OPA's undefined `result`). Degraded modes are explicit and
     bounded (stale trust material only within its policy limits), never a silent
     default to permissive.
 17. **Refuse to start with insecure configuration.** At start-up a production server
@@ -189,7 +207,12 @@ everything outside the workload untrusted.
     store, disabled verification, a missing key, a relaxed policy or a debug endpoint,
     as `TrustConfig::validate(Tier::Prod)` does for trust material. Test-only code and
     material are not compiled into production builds (build features or tags; the
-    language profiles name them).
+    language profiles name them). The image holds no peer address, transport mode or
+    trust source: the deployment sets them through environment and mounted paths, which
+    are measured or hashed and reported (rule 7), and a URL's scheme picks the mode
+    (`unix://`, `https://`). Start-up refuses every inconsistent combination: plaintext to
+    a peer outside the pod, TLS without a trust source, two trust sources at once, a
+    client certificate without its key.
 18. **Business APIs follow the gematik API rules, including versioning.** Every business
     API has a machine-readable OpenAPI contract in the repository, versioned as the rules
     require, and passes the gematik OpenAPI ruleset with no errors and no warnings. A
@@ -228,7 +251,9 @@ everything outside the workload untrusted.
     authorization decisions, consent, key use and administrative actions are written to
     an append-only, hash-chained or signed audit record with correlation IDs,
     pseudonymised, retained as the law and gematik require, and readable without the
-    operational logging pipeline.
+    operational logging pipeline. An authorization decision's record carries the hash of
+    the policies it was made under; a policy engine's own decision log stays off, as it
+    holds the decision's input (rule 14).
 22. **Mixed versions work.** During a rolling deploy versions N and N+1 run side by side:
     tokens, sealed values, stored records and messages from either are readable by the
     other; schema changes go expand, migrate, contract; keys rotate with an overlap in
@@ -249,7 +274,10 @@ everything outside the workload untrusted.
 26. **Tested as a server, not only as code.** End-to-end tests against the real protocol
     (as `go/pdp/e2e`), load tests against the latency budgets, a chaos test that takes a
     zone and a store primary down and checks that no single-use value is accepted twice,
-    and dynamic scanning (OWASP ZAP or equivalent) of every exposed endpoint.
+    and dynamic scanning (OWASP ZAP or equivalent) of every exposed endpoint. A sidecar
+    is tested at its socket: a process with another UID or executable is refused, a
+    write to its configuration through its API is refused, and a stopped or slow sidecar,
+    or one without a decision, leads to deny.
 27. **Runs under any UID, as on OpenShift.** The platform picks the identity, not the
     image: OpenShift's `restricted-v2` SCC starts a container with an arbitrary UID from
     the namespace's range, primary GID `0` and no `/etc/passwd` entry, sets `fsGroup` and
