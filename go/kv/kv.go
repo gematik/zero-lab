@@ -44,6 +44,18 @@ import (
 // ErrClosed is returned by every method after Close.
 var ErrClosed = errors.New("kv: store closed")
 
+// ErrNotSwapper is what [Swapper.Swap] of a wrapping store returns when the store below cannot swap.
+var ErrNotSwapper = errors.New("kv: the store cannot swap")
+
+// Swapper is a [Store] that can replace a value only while it is still the one a caller read. It is how state
+// that every replica may change moves forward one step at a time: of two that replace the same value at once,
+// one succeeds, and the other learns that what it read is gone. The stores of this module are Swappers.
+type Swapper interface {
+	// Swap sets key to value, ending after ttl (zero: never), if key holds old now. swapped is false if it
+	// holds anything else, or is absent or expired.
+	Swap(ctx context.Context, key string, old, value []byte, ttl time.Duration) (swapped bool, err error)
+}
+
 // Entry is one key/value/TTL triple for SetMany. A zero TTL means no expiry.
 type Entry struct {
 	Key   string

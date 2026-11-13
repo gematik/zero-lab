@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -706,5 +707,158 @@ func TestSealed_RecordsOfTheSameValueShareNoSalt(t *testing.T) {
 	second, _, _ := raw.Get(ctx, "b")
 	if string(first[4:20]) == string(second[4:20]) {
 		t.Fatal("two records share a salt")
+	}
+}
+
+// sealedAt is a store sealed with expiries by a clock the test moves, over a raw store that never forgets.
+func sealedAt(t *testing.T, at *time.Time) (raw kv.Store, sealed kv.Store) {
+	t.Helper()
+	raw = kv.NewMemory(kv.WithMemoryClock(func() time.Time { return time.Unix(0, 0) }))
+	return raw, kv.NewSealed(raw, testRing(t, testRingLine("k1", 1)), "test", kv.WithSealedExpiry(func() time.Time { return *at }))
+}
+
+func TestSealed_Format2CarriesTheExpiry(t *testing.T) {
+	ctx := context.Background()
+	at := time.Unix(1_800_000_000, 0)
+	raw, sealed := sealedAt(t, &at)
+	_ = sealed.Set(ctx, "a", []byte("xyz"), time.Minute)
+	got, _, _ := raw.Get(ctx, "a")
+	want := 1 + 1 + len("k1") + 8 + 16 + 12 + len("xyz") + 16
+	if len(got) != want || got[0] != 2 || got[1] != 2 || string(got[2:4]) != "k1" || binary.BigEndian.Uint64(got[4:12]) != uint64(at.Add(time.Minute).UnixMilli()) {
+		t.Fatalf("record %x: want version 2, key ID k1, the expiry, %d bytes in all", got, want)
+	}
+}
+
+// Whoever writes to the store below can keep a record there past its time, or put it back: it does not open
+// after its sealed expiry.
+func TestSealed_RecordKeptPastItsSealedExpiryIsAbsent(t *testing.T) {
+	ctx := context.Background()
+	at := time.Unix(1_800_000_000, 0)
+	raw, sealed := sealedAt(t, &at)
+	if err := sealed.Set(ctx, "a", []byte("v"), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	kept, _, _ := raw.Get(ctx, "a")
+	at = at.Add(time.Minute - time.Millisecond)
+	if v, found, err := sealed.Get(ctx, "a"); err != nil || !found || string(v) != "v" {
+		t.Fatalf("within its time: %q, %v, %v", v, found, err)
+	}
+	at = at.Add(time.Millisecond)
+	_ = raw.Set(ctx, "a", kept, 0)
+	if v, found, err := sealed.Get(ctx, "a"); err != nil || found || v != nil {
+		t.Errorf("Get past the sealed expiry: %q, %v, %v", v, found, err)
+	}
+	if v, found, err := sealed.Take(ctx, "a"); err != nil || found || v != nil {
+		t.Errorf("Take past the sealed expiry: %q, %v, %v", v, found, err)
+	}
+}
+
+func TestSealed_ChangedExpiryFails(t *testing.T) {
+	ctx := context.Background()
+	at := time.Unix(1_800_000_000, 0)
+	raw, sealed := sealedAt(t, &at)
+	_ = sealed.Set(ctx, "a", []byte("v"), time.Minute)
+	record, _, _ := raw.Get(ctx, "a")
+	binary.BigEndian.PutUint64(record[4:12], uint64(at.Add(time.Hour).UnixMilli()))
+	_ = raw.Set(ctx, "a", record, 0)
+	if _, _, err := sealed.Get(ctx, "a"); !errors.Is(err, kv.ErrIntegrity) {
+		t.Errorf("a record with another expiry: %v", err)
+	}
+}
+
+func TestSealed_RecordWithoutTTLNeverExpires(t *testing.T) {
+	ctx := context.Background()
+	at := time.Unix(1_800_000_000, 0)
+	_, sealed := sealedAt(t, &at)
+	_ = sealed.Set(ctx, "a", []byte("v"), 0)
+	at = at.Add(100 * 365 * 24 * time.Hour)
+	if _, found, err := sealed.Get(ctx, "a"); err != nil || !found {
+		t.Errorf("found %v, %v", found, err)
+	}
+}
+
+// Server rule 22: a replica that seals expiries and one that does not yet read each other's records.
+func TestSealed_BothFormatsOpenEitherWay(t *testing.T) {
+	ctx := context.Background()
+	raw := kv.NewMemory()
+	ring := testRing(t, testRingLine("k1", 1))
+	older, newer := kv.NewSealed(raw, ring, "test"), kv.NewSealed(raw, ring, "test", kv.WithSealedExpiry(time.Now))
+	_ = older.Set(ctx, "old", []byte("1"), time.Hour)
+	_ = newer.Set(ctx, "new", []byte("2"), time.Hour)
+	for key, reader := range map[string]kv.Store{"old": newer, "new": older} {
+		if _, found, err := reader.Get(ctx, key); err != nil || !found {
+			t.Errorf("%s: found %v, %v", key, found, err)
+		}
+	}
+	// A record of format 2 does not pass for one of format 1 by its first byte.
+	record, _, _ := raw.Get(ctx, "new")
+	record[0] = 1
+	_ = raw.Set(ctx, "new", record, 0)
+	if _, _, err := older.Get(ctx, "new"); !errors.Is(err, kv.ErrIntegrity) {
+		t.Errorf("format 2 relabelled as 1: %v", err)
+	}
+}
+
+func swapper(t *testing.T, s kv.Store) kv.Swapper {
+	t.Helper()
+	sw, ok := s.(kv.Swapper)
+	if !ok {
+		t.Fatalf("%T cannot swap", s)
+	}
+	return sw
+}
+
+func TestSwap_ReplacesOnlyTheValueThatWasRead(t *testing.T) {
+	ctx := context.Background()
+	_, sealed := sealedFixture(t)
+	for name, s := range map[string]kv.Store{"memory": kv.NewMemory(), "sealed": sealed} {
+		sw := swapper(t, s)
+		if swapped, err := sw.Swap(ctx, "a", nil, []byte("1"), 0); err != nil || swapped {
+			t.Errorf("%s: an absent key: %v, %v", name, swapped, err)
+		}
+		_ = s.Set(ctx, "a", []byte("1"), 0)
+		if swapped, err := sw.Swap(ctx, "a", []byte("0"), []byte("2"), 0); err != nil || swapped {
+			t.Errorf("%s: another value than the one held: %v, %v", name, swapped, err)
+		}
+		if swapped, err := sw.Swap(ctx, "a", []byte("1"), []byte("2"), 0); err != nil || !swapped {
+			t.Errorf("%s: the value held: %v, %v", name, swapped, err)
+		}
+		if swapped, err := sw.Swap(ctx, "a", []byte("1"), []byte("3"), 0); err != nil || swapped {
+			t.Errorf("%s: the same swap again: %v, %v", name, swapped, err)
+		}
+		if v, _, _ := s.Get(ctx, "a"); string(v) != "2" {
+			t.Errorf("%s: holds %q", name, v)
+		}
+	}
+}
+
+func TestSwap_ConcurrencyHasExactlyOneWinner(t *testing.T) {
+	ctx := context.Background()
+	_, sealed := sealedFixture(t)
+	_ = sealed.Set(ctx, "a", []byte("old"), 0)
+	sw := swapper(t, sealed)
+	var wins atomic.Int32
+	var wg sync.WaitGroup
+	for i := range 32 {
+		wg.Go(func() {
+			if swapped, err := sw.Swap(ctx, "a", []byte("old"), []byte{byte(i)}, 0); err == nil && swapped {
+				wins.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	if wins.Load() != 1 {
+		t.Errorf("%d swaps of the same value succeeded", wins.Load())
+	}
+}
+
+func TestSwap_ExpiredCountsAsAbsent(t *testing.T) {
+	ctx := context.Background()
+	at := time.Unix(1_800_000_000, 0)
+	s := kv.NewMemory(kv.WithMemoryClock(func() time.Time { return at }))
+	_ = s.Set(ctx, "a", []byte("1"), time.Minute)
+	at = at.Add(time.Minute)
+	if swapped, err := swapper(t, s).Swap(ctx, "a", []byte("1"), []byte("2"), 0); err != nil || swapped {
+		t.Errorf("%v, %v", swapped, err)
 	}
 }

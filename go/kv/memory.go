@@ -22,6 +22,7 @@
 package kv
 
 import (
+	"bytes"
 	"context"
 	"sort"
 	"strings"
@@ -105,6 +106,19 @@ func (s *memoryStore) SetIfAbsent(_ context.Context, key string, value []byte, t
 		return false, ErrClosed
 	}
 	if e, ok := s.items[key]; ok && !e.expired(s.now()) {
+		return false, nil
+	}
+	s.items[key] = memEntry{value: clone(value), expiresAt: s.ttlExpiry(ttl)}
+	return true, nil
+}
+
+func (s *memoryStore) Swap(_ context.Context, key string, old, value []byte, ttl time.Duration) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false, ErrClosed
+	}
+	if e, ok := s.items[key]; !ok || e.expired(s.now()) || !bytes.Equal(e.value, old) {
 		return false, nil
 	}
 	s.items[key] = memEntry{value: clone(value), expiresAt: s.ttlExpiry(ttl)}
