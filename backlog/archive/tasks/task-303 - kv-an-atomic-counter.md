@@ -4,6 +4,7 @@ title: 'kv: an atomic counter'
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:31:00Z'
+updated_date: '2026-11-13T06:39:00Z'
 labels: []
 dependencies: []
 ordinal: 319000
@@ -20,3 +21,9 @@ kv.Store can set, take and list, and cannot count: two replicas that read a numb
 - [ ] #1 An optional interface of the stores adds n to a key atomically across replicas and returns the total; a count that is absent or expired starts from zero with the given TTL
 - [ ] #2 Memory and Postgres stores implement it, the sealed store passes it through; concurrent adds lose nothing
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Dropped on 2026-11-13: zeta-pdp-go seals its rate-limit quota as records written with SetIfAbsent (its TASK-62), because a counter the sealed store passes through unsealed can be reset or raised by whoever writes to the database. Branch feat/kv-counter is deleted; nothing was merged.
+<!-- SECTION:NOTES:END -->
