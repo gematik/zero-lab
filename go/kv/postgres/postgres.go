@@ -146,6 +146,23 @@ func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl t
 	return n == 1, nil
 }
 
+// Swap is one statement: the row is locked while its value is compared, so of two replicas that swap the same
+// value the second finds the first one's.
+func (s *store) Swap(ctx context.Context, key string, old, value []byte, ttl time.Duration) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE kv SET value=$3, created_at=now(), expires_at=now() + $4::bigint * interval '1 microsecond'
+		  WHERE key=$1 AND value=$2 AND (expires_at IS NULL OR expires_at > now())`,
+		key, old, value, ttlMicroseconds(ttl))
+	if err != nil {
+		return false, fmt.Errorf("kv/postgres: swap: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("kv/postgres: swap: %w", err)
+	}
+	return n == 1, nil
+}
+
 func (s *store) SetMany(ctx context.Context, entries ...kv.Entry) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

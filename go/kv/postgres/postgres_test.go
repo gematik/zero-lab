@@ -387,3 +387,55 @@ func TestPostgres_ErrorsDoNotNameTheKey(t *testing.T) {
 		}
 	}
 }
+
+// Swap replaces only the value that was read, for exactly one of the replicas that try at once, also through
+// the sealed store, and not once the row has expired.
+func TestPostgres_SwapHasExactlyOneWinner(t *testing.T) {
+	ctx := context.Background()
+	raw, p := testStore(t)
+	ring, err := kv.ParseKeyring([]byte("k1 AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, s := range map[string]kv.Store{"plain": raw, "sealed": kv.NewSealed(raw, ring, "test", kv.WithSealedExpiry(time.Now))} {
+		swapper, ok := s.(kv.Swapper)
+		if !ok {
+			t.Fatalf("%s: %T cannot swap", name, s)
+		}
+		for i := range 20 {
+			key := fmt.Sprintf("%s%s:%d", p, name, i)
+			if err := s.Set(ctx, key, []byte("old"), time.Minute); err != nil {
+				t.Fatal(err)
+			}
+			var wins atomic.Int64
+			var wg sync.WaitGroup
+			for n := range 8 {
+				wg.Go(func() {
+					swapped, err := swapper.Swap(ctx, key, []byte("old"), fmt.Appendf(nil, "new-%d", n), time.Minute)
+					if err != nil {
+						t.Error(err)
+					}
+					if swapped {
+						wins.Add(1)
+					}
+				})
+			}
+			wg.Wait()
+			if wins.Load() != 1 {
+				t.Fatalf("%s: %d winners", key, wins.Load())
+			}
+			if v, found, err := s.Get(ctx, key); err != nil || !found || !strings.HasPrefix(string(v), "new-") {
+				t.Fatalf("%s: holds %q, %v, %v", key, v, found, err)
+			}
+		}
+		key := p + name + ":absent"
+		if swapped, err := swapper.Swap(ctx, key, []byte("old"), []byte("new"), 0); err != nil || swapped {
+			t.Errorf("%s: an absent key: %v, %v", name, swapped, err)
+		}
+		_ = s.Set(ctx, key, []byte("old"), time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
+		if swapped, err := swapper.Swap(ctx, key, []byte("old"), []byte("new"), 0); err != nil || swapped {
+			t.Errorf("%s: an expired row: %v, %v", name, swapped, err)
+		}
+	}
+}
