@@ -40,6 +40,8 @@ import (
 	"testing"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // A relying party's default kid is what it registered with the federation master, so the thumbprint must not change
@@ -366,22 +368,16 @@ func TestResolveTrustAnchorKnowsTheBuiltInMasters(t *testing.T) {
 }
 
 func TestServeSignedJwksVerifiesAndKeepsItsShape(t *testing.T) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	enc := jose.JSONWebKey{Key: key.Public(), KeyID: "enc", Use: "enc", Algorithm: "ECDH-ES"}
-	rp := &RelyingParty{
-		keys:             Keys{Sign: key, SignKID: "sign-kid"},
-		entityStatement:  &EntityStatement{Subject: "https://rp.example"},
-		relyingPartyKeys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{enc}},
-	}
+	rp := newTestRelyingParty(t, nil)
 	recorder := httptest.NewRecorder()
 	rp.ServeSignedJwks(recorder, httptest.NewRequest(http.MethodGet, "/jwks", nil))
 	if got := recorder.Header().Get("Content-Type"); got != "application/jwk-set+jwt" {
 		t.Errorf("content type = %s", got)
 	}
 	body := recorder.Body.Bytes()
+	if _, err := openid.VerifyJWS(body, rp.entityStatement.Jwks.Keys, trustAnchorKeys); err != nil {
+		t.Fatal(err)
+	}
 	var header struct {
 		Alg string `json:"alg"`
 		Kid string `json:"kid"`
@@ -411,7 +407,7 @@ func TestServeSignedJwksVerifiesAndKeepsItsShape(t *testing.T) {
 	if claims.Iss != "https://rp.example" || claims.Iat == 0 || claims.Exp <= claims.Iat {
 		t.Errorf("claims = %+v", claims)
 	}
-	if len(claims.Keys.Keys) != 1 || claims.Keys.Keys[0]["kid"] != "enc" {
+	if len(claims.Keys.Keys) != 2 || claims.Keys.Keys[0]["kid"] != "enc-kid" || claims.Keys.Keys[1]["kid"] != "client-kid" {
 		t.Errorf("keys = %+v", claims.Keys)
 	}
 }

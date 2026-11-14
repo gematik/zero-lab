@@ -37,6 +37,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -153,7 +156,7 @@ var knownFedMasters = map[string]string{
 }
 
 // RelyingParty is this service's entity in the federation: it signs and serves its entity statement and creates
-// clients for the federated OpenID providers.
+// clients for the federated OpenID providers. Only one built by New serves.
 type RelyingParty struct {
 	cfg             *RelyingPartyConfig
 	trustAnchor     *jose.JSONWebKeySet
@@ -163,7 +166,17 @@ type RelyingParty struct {
 	relyingPartyKeys *jose.JSONWebKeySet
 	federation       *OpenidFederation
 	httpClient       *http.Client
-	hooks            []func(*EntityStatement) error
+
+	hooksMu sync.Mutex
+	hooks   []func(*EntityStatement) error
+
+	// statement and jwks are what Serve and ServeSignedJwks answer with, signed together and replaced whole.
+	statement, jwks atomic.Pointer[served]
+	// signing holds the one token that lets a caller sign; a buffered channel, so that a wait can end with its
+	// context.
+	signing chan struct{}
+	// stale is set when a hook was added after the last signing.
+	stale atomic.Bool
 }
 
 // Validate reports a missing required field. What needs I/O is checked when the keys are loaded.
@@ -321,21 +334,35 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 		return nil, err
 	}
 
+	// Signed at the start, so that a key or a statement that cannot be signed stops it (servers.md rule 17).
+	rp.signing = make(chan struct{}, 1)
+	if err := rp.sign(ctx); err != nil {
+		return nil, fmt.Errorf("sign the entity statement: %w", err)
+	}
 	return &rp, nil
 }
 
 // AddEntityStatementHook registers a function applied, in registration order, to a copy of the entity statement each
 // time it is signed. A hook may change anything in the copy, add members through the Extra maps and whole entity
 // types through Metadata.Extra; the relying party's own statement stays as it is. iat, exp and authority_hints are
-// set after the hooks. A hook that returns an error fails the signing, and nothing half-built is signed.
+// set after the hooks. A hook that returns an error fails the signing, and nothing half-built is signed. Hooks run
+// only when the relying party signs: at New, when the served statement is due for re-signing, and on Refresh. The
+// statement served next is signed with the new hook; a host that wants a failing hook to stop its start calls Refresh
+// after adding it.
 func (rp *RelyingParty) AddEntityStatementHook(h func(*EntityStatement) error) {
+	rp.hooksMu.Lock()
 	rp.hooks = append(rp.hooks, h)
+	rp.hooksMu.Unlock()
+	rp.stale.Store(true)
 }
 
 // statementWithHooks returns a deep copy of the relying party's statement with the hooks applied.
 func (rp *RelyingParty) statementWithHooks() (*EntityStatement, error) {
+	rp.hooksMu.Lock()
+	hooks := slices.Clone(rp.hooks)
+	rp.hooksMu.Unlock()
 	es := rp.entityStatement.clone()
-	for _, hook := range rp.hooks {
+	for _, hook := range hooks {
 		if err := hook(es); err != nil {
 			return nil, fmt.Errorf("entity statement hook: %w", err)
 		}
@@ -362,13 +389,18 @@ const (
 
 // SignEntityStatement returns the entity statement, with the hooks applied, as a JWT signed with the signing
 // key. It is backdated one hour and valid for 23 hours from now. A statement that is not this relying party's own
-// entity configuration, or that would publish a private key part, is refused with ErrEntityStatement.
+// entity configuration, or that would publish a private key part, is refused with ErrEntityStatement. Each call signs
+// anew; Serve answers with a statement signed before.
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
+	return rp.signEntityStatement(rp.now())
+}
+
+func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
 	es, err := rp.statementWithHooks()
 	if err != nil {
 		return nil, err
 	}
-	issuedAt := rp.now().Add(-statementBackdate)
+	issuedAt := now.Add(-statementBackdate)
 	es.IssuedAt = issuedAt.Unix()
 	es.ExpiresAt = issuedAt.Add(maxStatementLifetime).Unix()
 	es.AuthorityHints = []string{rp.cfg.FedMasterURL}
@@ -419,8 +451,8 @@ type signedJwksClaims struct {
 }
 
 // signJwks returns the ID token and client keys as a signed JWK Set, with the lifetime of the statement.
-func (rp *RelyingParty) signJwks() ([]byte, error) {
-	issuedAt := rp.now().Add(-statementBackdate)
+func (rp *RelyingParty) signJwks(now time.Time) ([]byte, error) {
+	issuedAt := now.Add(-statementBackdate)
 	payload, err := json.Marshal(signedJwksClaims{
 		Issuer:    rp.entityStatement.Subject,
 		IssuedAt:  issuedAt.Unix(),
@@ -463,38 +495,6 @@ func (rp *RelyingParty) signPayload(typ string, payload []byte) ([]byte, error) 
 		return nil, err
 	}
 	return []byte(compact), nil
-}
-
-// Serve is the HTTP handler of the entity statement endpoint.
-func (rp *RelyingParty) Serve(w http.ResponseWriter, _ *http.Request) {
-	signed, err := rp.SignEntityStatement()
-	if err != nil {
-		slog.Error("unable to sign entity statement", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/entity-statement+jwt")
-	if _, err := w.Write(signed); err != nil {
-		slog.Warn("unable to write entity statement", "error", err)
-	}
-}
-
-// ServeSignedJwks is the HTTP handler of signed_jwks_uri: the encryption and client keys of the relying party as
-// a signed JWT, backdated one hour and valid for 23 hours from now.
-func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
-	signed, err := rp.signJwks()
-	if err != nil {
-		slog.Error("unable to sign token", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/jwk-set+jwt")
-	if _, err := w.Write(signed); err != nil {
-		slog.Warn("unable to write signed jwks", "error", err)
-		return
-	}
-
-	slog.Info("served signed jwks", "remote_addr", r.RemoteAddr)
 }
 
 type pushedAuthorizationResponse struct {

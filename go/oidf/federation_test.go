@@ -719,22 +719,6 @@ func TestRelyingPartyDoesNotFollowARedirectFromPARNorTheTokenEndpoint(t *testing
 	}
 }
 
-func TestServeSignedJwksAnswersOnlyOnceWhenItCannotSign(t *testing.T) {
-	rp := &RelyingParty{
-		keys:             Keys{Sign: failingSigner{newTestKey(t)}, SignKID: "sign-kid"},
-		entityStatement:  &EntityStatement{},
-		relyingPartyKeys: &jose.JSONWebKeySet{},
-	}
-	recorder := httptest.NewRecorder()
-	rp.ServeSignedJwks(recorder, httptest.NewRequest(http.MethodGet, "/jwks", nil))
-	if recorder.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d", recorder.Code)
-	}
-	if strings.Contains(recorder.Header().Get("Content-Type"), "jwt") {
-		t.Errorf("content type = %s", recorder.Header().Get("Content-Type"))
-	}
-}
-
 func TestLoadCertBytesFromPemNamesTheFileWithoutAMissingError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cert.pem")
 	if err := os.WriteFile(path, []byte("no pem"), 0o600); err != nil {
