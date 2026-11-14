@@ -13,24 +13,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
-### ti-cli
-
-#### changed
-- `pki verify` shows a certificate outside every TI environment (no TI root, chain or
-  marker) instead of failing with exit 2: INVALID, exit 1, `no TI environment`, the issuer
-  `not under any TI root`, no trust material loaded; `--env` checks it against one. JSON:
-  `environment.name` `none`, `trust` null, the finding `environment_undetected` (TASK-287).
-- The `environment_undetected` error is one line, `cannot tell the TI environment: no TI
-  root, chain or marker`; `-v` lists each detection step (TASK-287).
-
-#### verified
-- `just check` passed on the branch merged with main (2053b604); the release runs the gates
-  again.
-- `ti-pki` real world (`just real-world`) passed on cec71275: the trust material of every
-  environment, and a reference SMC-B end to end with OCSP.
-- Konnektor end to end and probe through the TI VPN were waived by the maintainer: no
-  Konnektor or probe code changed since 0.6.1.
-
 ### ti-cache
 
 #### added
@@ -886,6 +868,24 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   on wasm32-unknown-unknown, where std has no clock and every call would panic). Time
   enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
   `Timestamp::now` and tests a closure (decision-15).
+
+## Release ti-cli 0.6.2, 2026-11-14
+
+### changed
+- `pki verify` shows a certificate outside every TI environment (no TI root, chain or
+  marker) instead of failing with exit 2: INVALID, exit 1, `no TI environment`, the issuer
+  `not under any TI root`, no trust material loaded; `--env` checks it against one. JSON:
+  `environment.name` `none`, `trust` null, the finding `environment_undetected` (TASK-287).
+- The `environment_undetected` error is one line, `cannot tell the TI environment: no TI
+  root, chain or marker`; `-v` lists each detection step (TASK-287).
+
+### verified
+- `just check` passed on the branch merged with main (2053b604); the release runs the gates
+  again.
+- `ti-pki` real world (`just real-world`) passed on cec71275: the trust material of every
+  environment, and a reference SMC-B end to end with OCSP.
+- Konnektor end to end and probe through the TI VPN were waived by the maintainer: no
+  Konnektor or probe code changed since 0.6.1.
 
 ## Release ti-cli 0.6.1, 2026-11-10
 
