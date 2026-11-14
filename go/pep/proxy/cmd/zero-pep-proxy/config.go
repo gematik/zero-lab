@@ -22,6 +22,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"log/slog"
@@ -53,7 +54,8 @@ func loadProviders(path, publicURL string, client *http.Client) (*providers.Set,
 	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
-		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), nil),
+		// In-process until the store-backed one is wired, later in TASK-315.
+		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), oidf.NewMemoryDocuments(1024, nil), nil),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("providers %q: %w", path, err)
@@ -108,7 +110,9 @@ func providersFromEnv(publicURL string, httpClient *http.Client) *providers.Set 
 		}
 		config.APIKey = os.Getenv(oidfDevAPIKeyEnv)
 		config.HTTPClient = httpClient
-		rp, err := oidf.NewRelyingParty(config, filepath.Dir(rpPath))
+		// In-process until the store-backed one is wired, later in TASK-315.
+		config.Documents = oidf.NewMemoryDocuments(1024, nil)
+		rp, err := oidf.NewRelyingParty(context.Background(), config, filepath.Dir(rpPath))
 		if err != nil {
 			log.Fatalf("load oidf relying party: %v", err)
 		}

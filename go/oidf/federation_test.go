@@ -149,7 +149,7 @@ func newFederationStub(t *testing.T) *federationStub {
 
 func (s *federationStub) federation(t *testing.T) *OpenidFederation {
 	t.Helper()
-	federation, err := NewOpenidFederation(s.URL, keySetOf(s.masterKey, "master"), WithHTTPClient(s.Client()))
+	federation, err := NewOpenidFederation(t.Context(), s.URL, keySetOf(s.masterKey, "master"), WithHTTPClient(s.Client()), WithDocuments(NewMemoryDocuments(16, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestFederationVerifiesItsWayFromTheTrustAnchorToTheSignedJwks(t *testing.T)
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 
-	idps, err := federation.FetchIdpList()
+	idps, err := federation.FetchIdpList(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestFederationVerifiesItsWayFromTheTrustAnchorToTheSignedJwks(t *testing.T)
 		t.Fatalf("idps = %+v", idps)
 	}
 
-	op, err := federation.FetchEntityStatement(idps[0].Issuer)
+	op, err := federation.FetchEntityStatement(t.Context(), idps[0].Issuer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestFederationVerifiesItsWayFromTheTrustAnchorToTheSignedJwks(t *testing.T)
 		t.Fatalf("statement = %+v", op)
 	}
 
-	jwks, err := federation.FetchSignedJwks(op)
+	jwks, err := federation.FetchSignedJwks(t.Context(), op)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestFederationVerifiesItsWayFromTheTrustAnchorToTheSignedJwks(t *testing.T)
 
 func TestOIDF_10_2_AMasterStatementNotSignedByTheTrustAnchorIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
-	_, err := NewOpenidFederation(stub.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(stub.Client()))
+	_, err := NewOpenidFederation(t.Context(), stub.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(stub.Client()), WithDocuments(NewMemoryDocuments(16, nil)))
 	if err == nil {
 		t.Error("accepted a statement the trust anchor did not sign")
 	}
@@ -196,7 +196,7 @@ func TestOIDF_10_2_AMasterStatementNotSignedByTheTrustAnchorIsRefused(t *testing
 func TestFederationRefusesTrustAnchorWithoutAlg(t *testing.T) {
 	stub := newFederationStub(t)
 	anchor := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: stub.masterKey.Public(), KeyID: "master"}}}
-	if _, err := NewOpenidFederation(stub.URL, anchor, WithHTTPClient(stub.Client())); err == nil {
+	if _, err := NewOpenidFederation(t.Context(), stub.URL, anchor, WithHTTPClient(stub.Client()), WithDocuments(NewMemoryDocuments(16, nil))); err == nil {
 		t.Error("verified with a key that states no alg")
 	}
 }
@@ -205,7 +205,7 @@ func TestOIDF_10_2_AnOPStatementNotSignedByTheKeyTheMasterVouchesForIsRefused(t 
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	stub.opStatement = signJWS(t, newTestKey(t), "op", map[string]any{"iss": stub.URL + "/op"})
-	if _, err := federation.FetchEntityStatement(stub.URL + "/op"); err == nil {
+	if _, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil {
 		t.Error("accepted a statement by another key")
 	}
 }
@@ -214,7 +214,7 @@ func TestOIDF_3_2_AMasterStatementThatVouchesForNoKeysIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	stub.fetchStatement = signJWS(t, stub.masterKey, "master", map[string]any{"iss": stub.URL, "sub": stub.URL + "/op"})
-	if _, err := federation.FetchEntityStatement(stub.URL + "/op"); err == nil || !strings.Contains(err.Error(), "vouches for no keys") {
+	if _, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil || !strings.Contains(err.Error(), "vouches for no keys") {
 		t.Errorf("went on without keys: %v", err)
 	}
 }
@@ -222,12 +222,12 @@ func TestOIDF_3_2_AMasterStatementThatVouchesForNoKeysIsRefused(t *testing.T) {
 func TestOIDF_5_2_1_ASignedJwksNotSignedByTheStatementsKeyIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
-	op, err := federation.FetchEntityStatement(stub.URL + "/op")
+	op, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op")
 	if err != nil {
 		t.Fatal(err)
 	}
 	stub.signedJwks = signJWS(t, newTestKey(t), "op", map[string]any{"keys": []any{}})
-	if _, err := federation.FetchSignedJwks(op); err == nil {
+	if _, err := federation.FetchSignedJwks(t.Context(), op); err == nil {
 		t.Error("accepted a JWKS signed by another key")
 	}
 }
@@ -235,12 +235,12 @@ func TestOIDF_5_2_1_ASignedJwksNotSignedByTheStatementsKeyIsRefused(t *testing.T
 func TestFederationSignedJwksToleratesSurroundingWhitespace(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
-	op, err := federation.FetchEntityStatement(stub.URL + "/op")
+	op, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op")
 	if err != nil {
 		t.Fatal(err)
 	}
 	stub.signedJwks += "\n"
-	if _, err := federation.FetchSignedJwks(op); err != nil {
+	if _, err := federation.FetchSignedJwks(t.Context(), op); err != nil {
 		t.Error(err)
 	}
 }
@@ -248,7 +248,6 @@ func TestFederationSignedJwksToleratesSurroundingWhitespace(t *testing.T) {
 // The clock is 90 seconds ahead when a statement is judged: an iat that far ahead passes, and an exp that near does not.
 func TestFederationJudgesStatementsNinetySecondsAhead(t *testing.T) {
 	stub := newFederationStub(t)
-	federation := stub.federation(t)
 	for _, tc := range []struct {
 		name   string
 		claims map[string]any
@@ -264,7 +263,7 @@ func TestFederationJudgesStatementsNinetySecondsAhead(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.claims["idp_entity"] = []any{}
 			stub.idpList = signJWS(t, stub.masterKey, "master", tc.claims)
-			_, err := federation.FetchIdpList()
+			_, err := stub.federation(t).FetchIdpList(t.Context())
 			if tc.accept && err != nil {
 				t.Errorf("refused: %v", err)
 			}
@@ -279,7 +278,7 @@ func TestFetchIdpListRefusesListWithoutIdpEntity(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	stub.idpList = signJWS(t, stub.masterKey, "master", map[string]any{"iss": stub.URL})
-	if _, err := federation.FetchIdpList(); err == nil {
+	if _, err := federation.FetchIdpList(t.Context()); err == nil {
 		t.Error("accepted")
 	}
 }
@@ -509,7 +508,7 @@ func TestOIDF_10_2_AMasterStatementNamingAnotherMasterIsRefused(t *testing.T) {
 			}
 			claims["metadata"] = map[string]any{"federation_entity": map[string]any{"federation_fetch_endpoint": stub.URL + "/fetch"}}
 			stub.masterStatement = signJWS(t, stub.masterKey, "master", claims)
-			if _, err := NewOpenidFederation(stub.URL, keySetOf(stub.masterKey, "master"), WithHTTPClient(stub.Client())); err == nil {
+			if _, err := NewOpenidFederation(t.Context(), stub.URL, keySetOf(stub.masterKey, "master"), WithHTTPClient(stub.Client()), WithDocuments(NewMemoryDocuments(16, nil))); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -526,7 +525,7 @@ func TestOIDF_10_2_AMasterStatementAboutAnotherEntityIsRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stub.fetchStatement = signJWS(t, stub.masterKey, "master", claims)
-			if _, err := federation.FetchEntityStatement(stub.URL + "/op"); err == nil {
+			if _, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -542,7 +541,7 @@ func TestOIDF_10_2_ASelfSignedStatementOfAnotherEntityIsRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stub.opStatement = signJWS(t, stub.opKey, "op", stub.opClaims(overrides))
-			if _, err := federation.FetchEntityStatement(stub.URL + "/op"); err == nil {
+			if _, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -560,7 +559,7 @@ func TestOIDF_1_2_NobodyIsAskedAboutAnIssuerThatIsNoHTTPSEntityIdentifier(t *tes
 		counting.ServeHTTP(w, r)
 	})
 	for _, iss := range []string{"", "http://op.example", "ftp://op.example", "op.example", "https://", "https://user@op.example", "https://op.example?x=1", "https://op.example#x"} {
-		if _, err := federation.FetchEntityStatement(iss); err == nil {
+		if _, err := federation.FetchEntityStatement(t.Context(), iss); err == nil {
 			t.Errorf("%q accepted", iss)
 		}
 	}
@@ -572,7 +571,7 @@ func TestOIDF_1_2_NobodyIsAskedAboutAnIssuerThatIsNoHTTPSEntityIdentifier(t *tes
 func TestOIDF_1_2_APlainHTTPMasterIsRefused(t *testing.T) {
 	plain := httptest.NewServer(http.NotFoundHandler())
 	defer plain.Close()
-	_, err := NewOpenidFederation(plain.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(plain.Client()))
+	_, err := NewOpenidFederation(t.Context(), plain.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(plain.Client()), WithDocuments(NewMemoryDocuments(16, nil)))
 	if err == nil || !strings.Contains(err.Error(), "https") {
 		t.Errorf("err = %v", err)
 	}
@@ -581,11 +580,11 @@ func TestOIDF_1_2_APlainHTTPMasterIsRefused(t *testing.T) {
 func TestOIDF_5_1_1_TheMastersEndpointsAreFetchedOverHTTPSOnly(t *testing.T) {
 	for name, fetch := range map[string]func(*OpenidFederation, string) error{
 		"federation_fetch_endpoint": func(f *OpenidFederation, iss string) error {
-			_, err := f.FetchEntityStatement(iss)
+			_, err := f.FetchEntityStatement(t.Context(), iss)
 			return err
 		},
 		"idp_list_endpoint": func(f *OpenidFederation, _ string) error {
-			_, err := f.FetchIdpList()
+			_, err := f.FetchIdpList(t.Context())
 			return err
 		},
 	} {
@@ -608,10 +607,10 @@ func TestServerRule2_FederationDoesNotFollowARedirect(t *testing.T) {
 	endpoints := map[string]any{"federation_fetch_endpoint": stub.URL + "/redirecting", "idp_list_endpoint": stub.URL + "/redirecting"}
 	stub.masterStatement = signJWS(t, stub.masterKey, "master", map[string]any{"iss": stub.URL, "sub": stub.URL, "metadata": map[string]any{"federation_entity": endpoints}})
 	federation := stub.federation(t)
-	if _, err := federation.FetchIdpList(); err == nil {
+	if _, err := federation.FetchIdpList(t.Context()); err == nil {
 		t.Error("list accepted")
 	}
-	if _, err := federation.FetchEntityStatement(stub.URL + "/op"); err == nil {
+	if _, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil {
 		t.Error("statement accepted")
 	}
 	if n := stub.redirected.Load(); n != 0 {
@@ -626,7 +625,7 @@ func TestOIDF_5_2_1_FetchSignedJwksTakesAnHTTPSURIOnly(t *testing.T) {
 		Jwks:     &Jwks{Keys: keySetOf(stub.opKey, "op")},
 		Metadata: &Metadata{OpenidProvider: &OpenIDProviderMetadata{SignedJwksURI: "http" + strings.TrimPrefix(stub.URL, "https") + "/op/jwks"}},
 	}
-	if _, err := federation.FetchSignedJwks(op); err == nil || !strings.Contains(err.Error(), "https") {
+	if _, err := federation.FetchSignedJwks(t.Context(), op); err == nil || !strings.Contains(err.Error(), "https") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -638,7 +637,7 @@ func TestServerRule2_FetchSignedJwksDoesNotFollowARedirect(t *testing.T) {
 		Jwks:     &Jwks{Keys: keySetOf(stub.opKey, "op")},
 		Metadata: &Metadata{OpenidProvider: &OpenIDProviderMetadata{SignedJwksURI: stub.URL + "/redirecting"}},
 	}
-	if _, err := federation.FetchSignedJwks(op); err == nil {
+	if _, err := federation.FetchSignedJwks(t.Context(), op); err == nil {
 		t.Error("accepted")
 	}
 	if n := stub.redirected.Load(); n != 0 {
@@ -650,7 +649,7 @@ func TestServerRule2_FetchSignedJwksDoesNotFollowARedirect(t *testing.T) {
 func TestServerRule15_ASignedJwksThatIsOldOrNeverExpiresIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
-	op, err := federation.FetchEntityStatement(stub.URL + "/op")
+	op, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -663,7 +662,7 @@ func TestServerRule15_ASignedJwksThatIsOldOrNeverExpiresIsRefused(t *testing.T) 
 	} {
 		t.Run(name, func(t *testing.T) {
 			stub.signedJwks = signJWS(t, stub.opKey, "op", claims)
-			if _, err := federation.FetchSignedJwks(op); err == nil {
+			if _, err := federation.FetchSignedJwks(t.Context(), op); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -672,17 +671,17 @@ func TestServerRule15_ASignedJwksThatIsOldOrNeverExpiresIsRefused(t *testing.T) 
 
 func TestServerRule2_FederationReadsNoMoreThanItsBound(t *testing.T) {
 	stub := newFederationStub(t)
-	federation := stub.federation(t)
-	op, err := federation.FetchEntityStatement(stub.URL + "/op")
+	op, err := stub.federation(t).FetchEntityStatement(t.Context(), stub.URL+"/op")
 	if err != nil {
 		t.Fatal(err)
 	}
+	federation := stub.federation(t)
 	huge := strings.Repeat(" ", maxFederationResponseBytes) + stub.signedJwks
 	stub.signedJwks, stub.idpList, stub.fetchStatement = huge, huge, huge
 	for name, fetch := range map[string]func() error{
-		"signed JWKS": func() error { _, err := federation.FetchSignedJwks(op); return err },
-		"IdP list":    func() error { _, err := federation.FetchIdpList(); return err },
-		"statement":   func() error { _, err := federation.FetchEntityStatement(stub.URL + "/op"); return err },
+		"signed JWKS": func() error { _, err := federation.FetchSignedJwks(t.Context(), op); return err },
+		"IdP list":    func() error { _, err := federation.FetchIdpList(t.Context()); return err },
+		"statement":   func() error { _, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op"); return err },
 	} {
 		if err := fetch(); err == nil || !strings.Contains(err.Error(), "larger than") {
 			t.Errorf("%s: %v", name, err)
@@ -692,7 +691,7 @@ func TestServerRule2_FederationReadsNoMoreThanItsBound(t *testing.T) {
 
 func TestRelyingPartyTakesAProviderWhoseEndpointsAreAllHTTPS(t *testing.T) {
 	stub := newFederationStub(t)
-	if _, err := stub.relyingParty(t).newClient(stub.URL + "/op"); err != nil {
+	if _, err := stub.relyingParty(t).newClient(t.Context(), stub.URL+"/op"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -702,7 +701,7 @@ func TestRelyingPartyRefusesAProviderWithAnEndpointThatIsNotHTTPS(t *testing.T) 
 		t.Run(endpoint, func(t *testing.T) {
 			stub := newFederationStub(t)
 			stub.opStatement = signJWS(t, stub.opKey, "op", stub.opClaims(map[string]any{endpoint: "http://op.example/plain"}))
-			if _, err := stub.relyingParty(t).newClient(stub.URL + "/op"); err == nil || !strings.Contains(err.Error(), endpoint) {
+			if _, err := stub.relyingParty(t).newClient(t.Context(), stub.URL+"/op"); err == nil || !strings.Contains(err.Error(), endpoint) {
 				t.Errorf("err = %v", err)
 			}
 		})
@@ -712,7 +711,7 @@ func TestRelyingPartyRefusesAProviderWithAnEndpointThatIsNotHTTPS(t *testing.T) 
 // The relying party's client carries its mTLS key, which a redirect would present elsewhere.
 func TestRelyingPartyDoesNotFollowARedirectFromPARNorTheTokenEndpoint(t *testing.T) {
 	cfg := testRelyingPartyConfig(t, newFederationStub(t))
-	rp, err := NewRelyingParty(cfg, "")
+	rp, err := NewRelyingParty(t.Context(), cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -805,7 +804,7 @@ func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 		fmt.Fprint(w, code)
 	}))
 	defer failing.Close()
-	if _, err := NewOpenidFederation(failing.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(failing.Client())); err == nil {
+	if _, err := NewOpenidFederation(t.Context(), failing.URL, keySetOf(newTestKey(t), "master"), WithHTTPClient(failing.Client()), WithDocuments(NewMemoryDocuments(16, nil))); err == nil {
 		t.Fatal("the failure went unnoticed")
 	}
 
@@ -847,6 +846,7 @@ func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyCon
 		ClientKey:    KeyConfig{KeyPEMPath: clientKey, CertPEMPath: certPath},
 		RelyingParty: RelyingPartyMetadata{ClientName: "rp", RedirectURIs: []string{"https://rp.example/cb"}},
 		HTTPClient:   stub.Client(),
+		Documents:    NewMemoryDocuments(16, nil),
 	}
 }
 
@@ -879,11 +879,11 @@ func TestRFC7517_4_4_FederationAcceptsMemberKeysWithoutAlg(t *testing.T) {
 		"metadata": map[string]any{"openid_provider": map[string]any{"signed_jwks_uri": stub.URL + "/op/jwks"}},
 	}))
 	federation := stub.federation(t)
-	op, err := federation.FetchEntityStatement(stub.URL + "/op")
+	op, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := federation.FetchSignedJwks(op); err != nil {
+	if _, err := federation.FetchSignedJwks(t.Context(), op); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -911,7 +911,7 @@ func TestRFC8725_3_1_AMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlgIsRefused(t *
 	if stub.opStatement, err = object.CompactSerialize(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stub.federation(t).FetchEntityStatement(stub.URL + "/op"); err == nil || !strings.Contains(err.Error(), "cannot verify ES384") {
+	if _, err := stub.federation(t).FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil || !strings.Contains(err.Error(), "cannot verify ES384") {
 		t.Errorf("not refused for its algorithm: %v", err)
 	}
 }

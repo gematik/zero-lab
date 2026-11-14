@@ -91,7 +91,8 @@ func loadProviders(config *Config) error {
 	set, err := providers.Build(entries, providers.Env{BaseDir: filepath.Dir(config.ProvidersPath), HTTPClient: config.HTTPClient}, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(nil),
-		"oidf": oidf.Kind(config.OIDFAPIKey, func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
+		// In-process until the kv-backed store is wired, later in TASK-315.
+		"oidf": oidf.Kind(config.OIDFAPIKey, oidf.NewMemoryDocuments(1024, nil), func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
 	})
 	if err != nil {
 		return fmt.Errorf("providers %q: %w", config.ProvidersPath, err)

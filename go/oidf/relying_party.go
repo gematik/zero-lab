@@ -22,6 +22,7 @@
 package oidf
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -89,6 +90,14 @@ type RelyingPartyConfig struct {
 	// Clock is the time statements and tokens are judged and signed at. Not serialized; supplied programmatically. When nil, the
 	// system clock.
 	Clock func() time.Time `yaml:"-"`
+
+	// Documents keep the federation's signed documents between fetches; see [Documents]. Not serialized; supplied
+	// programmatically, and required.
+	Documents Documents `yaml:"-"`
+
+	// Logger receives the failures of Documents, which cost a fetch and nothing else. Not serialized; supplied
+	// programmatically. When nil, such failures are dropped silently.
+	Logger *slog.Logger `yaml:"-"`
 }
 
 // KeyConfig sources one key. Provide exactly one of KeyPEMPath (a PEM private-key file), JWKPath (a JWK
@@ -174,10 +183,13 @@ func (cfg *RelyingPartyConfig) Validate() error {
 
 // NewRelyingParty validates cfg, resolves its relative key paths against baseDir, loads its keys and fetches the federation master's entity statement,
 // so the master has to be reachable and its statement has to verify for this to succeed.
-func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, error) {
+func NewRelyingParty(ctx context.Context, cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, error) {
 	err := cfg.Validate()
 	if err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+	if cfg.Documents == nil {
+		return nil, errors.New("config validation failed: a store of federation documents is required")
 	}
 
 	rp := RelyingParty{cfg: cfg, baseDir: baseDir}
@@ -234,7 +246,8 @@ func NewRelyingParty(cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, er
 	rp.entityStatement.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{sigPublicKey}}}
 	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{encPublicKey, clientPublicKey}}}
 
-	rp.federation, err = NewOpenidFederation(cfg.FedMasterURL, rp.trustAnchor, WithHTTPClient(baseClient), WithAPIKey(cfg.APIKey), WithClock(rp.now))
+	rp.federation, err = NewOpenidFederation(ctx, cfg.FedMasterURL, rp.trustAnchor,
+		WithHTTPClient(baseClient), WithAPIKey(cfg.APIKey), WithClock(rp.now), WithDocuments(cfg.Documents), WithLogger(cfg.Logger))
 	if err != nil {
 		return nil, err
 	}
@@ -388,10 +401,10 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-// newClient resolves issuer through the federation master and returns a client for that OpenID provider. Each
-// call fetches the provider's entity statement and signed JWKS anew.
-func (rp *RelyingParty) newClient(issuer string) (*RelyingPartyClient, error) {
-	op, err := rp.federation.FetchEntityStatement(issuer)
+// newClient resolves issuer through the federation master and returns a client for that OpenID provider. The
+// provider's entity statement and signed JWKS come from the document store while they verify, else they are fetched.
+func (rp *RelyingParty) newClient(ctx context.Context, issuer string) (*RelyingPartyClient, error) {
+	op, err := rp.federation.FetchEntityStatement(ctx, issuer)
 	if err != nil {
 		return nil, err
 	}
@@ -413,7 +426,7 @@ func (rp *RelyingParty) newClient(issuer string) (*RelyingPartyClient, error) {
 		}
 	}
 
-	jwks, err := rp.federation.FetchSignedJwks(op)
+	jwks, err := rp.federation.FetchSignedJwks(ctx, op)
 	if err != nil {
 		return nil, err
 	}

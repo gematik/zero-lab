@@ -90,9 +90,10 @@ func TestNewRelyingParty(t *testing.T) {
 			ClientName:   "https://example.com",
 			RedirectURIs: []string{"https://example.com/callback"},
 		},
+		Documents: NewMemoryDocuments(16, nil),
 	}
 
-	es, err := NewRelyingParty(cfg, "")
+	es, err := NewRelyingParty(t.Context(), cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}

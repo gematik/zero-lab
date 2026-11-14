@@ -31,8 +31,8 @@ import (
 const TypeOIDF = "oidf"
 
 // Provider implements [providers.Federation]: it resolves issuer in the federation.
-func (rp *RelyingParty) Provider(_ context.Context, issuer string) (providers.Provider, error) {
-	client, err := rp.newClient(issuer)
+func (rp *RelyingParty) Provider(ctx context.Context, issuer string) (providers.Provider, error) {
+	client, err := rp.newClient(ctx, issuer)
 	if err != nil {
 		return providers.Provider{}, err
 	}
@@ -48,8 +48,8 @@ func (rp *RelyingParty) Provider(_ context.Context, issuer string) (providers.Pr
 }
 
 // Providers implements [providers.Federation].
-func (rp *RelyingParty) Providers(_ context.Context) ([]providers.Info, error) {
-	idps, err := rp.Federation().FetchIdpList()
+func (rp *RelyingParty) Providers(ctx context.Context) ([]providers.Info, error) {
+	idps, err := rp.Federation().FetchIdpList(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -61,9 +61,9 @@ func (rp *RelyingParty) Providers(_ context.Context) ([]providers.Info, error) {
 }
 
 // Kind is the kind of a federation's relying party, one [RelyingPartyConfig], with apiKey as its
-// [RelyingPartyConfig.APIKey]. built, if not nil, gets the relying party, for a program that serves its entity
-// statement too.
-func Kind(apiKey string, built func(*RelyingParty)) providers.Kind {
+// [RelyingPartyConfig.APIKey] and documents as its [RelyingPartyConfig.Documents]. built, if not nil, gets the
+// relying party, for a program that serves its entity statement too.
+func Kind(apiKey string, documents Documents, built func(*RelyingParty)) providers.Kind {
 	return func(decode providers.Decode, env providers.Env) (providers.Built, error) {
 		config := new(RelyingPartyConfig)
 		if err := decode(config); err != nil {
@@ -71,7 +71,12 @@ func Kind(apiKey string, built func(*RelyingParty)) providers.Kind {
 		}
 		config.APIKey = apiKey
 		config.HTTPClient = env.HTTPClient
-		rp, err := NewRelyingParty(config, env.BaseDir)
+		config.Documents = documents
+		// providers.Build runs at start-up and hands no context down; the bound keeps a master that does not
+		// answer from holding the start for longer than one fetch may take.
+		ctx, cancel := context.WithTimeout(context.Background(), defaultHTTPTimeout)
+		defer cancel()
+		rp, err := NewRelyingParty(ctx, config, env.BaseDir)
 		if err != nil {
 			return providers.Built{}, err
 		}

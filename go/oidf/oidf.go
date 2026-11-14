@@ -25,13 +25,16 @@ package oidf
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -106,11 +109,7 @@ func readBounded(r io.Reader) ([]byte, error) {
 }
 
 // verifyStatement verifies a signed federation document against keys and checks its lifetime, returning its claims.
-func verifyStatement(r io.Reader, keys *jose.JSONWebKeySet, options openid.VerifyOptions, now time.Time) ([]byte, error) {
-	signed, err := readBounded(r)
-	if err != nil {
-		return nil, err
-	}
+func verifyStatement(signed []byte, keys *jose.JSONWebKeySet, options openid.VerifyOptions, now time.Time) ([]byte, error) {
 	payload, err := openid.VerifyJWS(bytes.TrimSpace(signed), keys, options)
 	if err != nil {
 		return nil, err
@@ -135,9 +134,20 @@ func transportOrDefault(rt http.RoundTripper) http.RoundTripper {
 type OpenidFederation struct {
 	fedMasterURL string
 	jwks         *jose.JSONWebKeySet
-	entity       *FederationEntityMetadata
 	httpClient   *http.Client
 	clock        func() time.Time
+	documents    Documents
+	logger       *slog.Logger
+
+	mu       sync.Mutex
+	inflight map[string]*flight
+}
+
+// flight is one resolution of a document that concurrent callers wait for instead of fetching it too.
+type flight struct {
+	done   chan struct{}
+	signed []byte
+	err    error
 }
 
 // now is the time the federation judges statements at.
@@ -169,6 +179,8 @@ type federationOptions struct {
 	httpClient *http.Client
 	apiKey     string
 	clock      func() time.Time
+	documents  Documents
+	logger     *slog.Logger
 }
 
 // WithClock sets the time statements are judged at; the default is the system clock.
@@ -193,13 +205,31 @@ func WithHTTPClient(httpClient *http.Client) Option {
 	}
 }
 
-// NewOpenidFederation fetches the master's entity statement from fedMasterURL, verifies it against the trust
+// WithDocuments supplies the store of signed federation documents. It is required.
+func WithDocuments(documents Documents) Option {
+	return func(o *federationOptions) {
+		o.documents = documents
+	}
+}
+
+// WithLogger supplies the logger a failing document store is reported to. Without one such failures cost only a
+// fetch and are not reported.
+func WithLogger(logger *slog.Logger) Option {
+	return func(o *federationOptions) {
+		o.logger = logger
+	}
+}
+
+// NewOpenidFederation resolves the master's entity statement from fedMasterURL, verifies it against the trust
 // anchor jwks and returns a client of that master. It fails if the statement does not verify or names no
-// federation_entity metadata.
-func NewOpenidFederation(fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...Option) (*OpenidFederation, error) {
+// federation_entity metadata, or if no document store is given.
+func NewOpenidFederation(ctx context.Context, fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...Option) (*OpenidFederation, error) {
 	o := &federationOptions{}
 	for _, opt := range opts {
 		opt(o)
+	}
+	if o.documents == nil {
+		return nil, errors.New("a store of federation documents is required")
 	}
 
 	httpClient := o.httpClient
@@ -216,143 +246,274 @@ func NewOpenidFederation(fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...
 		jwks:         jwks,
 		httpClient:   &decorated,
 		clock:        o.clock,
+		documents:    o.documents,
+		logger:       o.logger,
+		inflight:     make(map[string]*flight),
 	}
-	es, err := federation.fetchMasterEntityStatement()
-	if err != nil {
+	if _, err := federation.masterEntity(ctx); err != nil {
 		return nil, err
 	}
-
-	if es.Issuer != fedMasterURL || es.Subject != fedMasterURL {
-		return nil, fmt.Errorf("the master's statement names iss %q and sub %q, not %q", es.Issuer, es.Subject, fedMasterURL)
-	}
-	if es.Metadata == nil || es.Metadata.FederationEntity == nil {
-		return nil, errors.New("no federation entity found in master entity statement")
-	}
-	federation.entity = es.Metadata.FederationEntity
 	return federation, nil
 }
 
 // get is the one way a fetch leaves this package: location is checked, whoever chose it.
-func (f *OpenidFederation) get(location string) (*http.Response, error) {
+func (f *OpenidFederation) get(ctx context.Context, location string) (*http.Response, error) {
 	if err := checkFederationURL(location); err != nil {
 		return nil, err
 	}
-	request, err := http.NewRequest(http.MethodGet, location, nil) //nolint:gosec // checkFederationURL let location through: https, from the operator's fed_master_url or a statement that verified along the chain from the trust anchor
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, location, nil) //nolint:gosec // checkFederationURL let location through: https, from the operator's fed_master_url or a statement that verified along the chain from the trust anchor
 	if err != nil {
 		return nil, err
 	}
 	return f.httpClient.Do(request) //nolint:gosec // checkFederationURL let the URL through, and the client refuses redirects
 }
 
-// FetchIdpList fetches the master's IdP list and verifies it against the trust anchor. Each call goes to the
-// network.
-func (f *OpenidFederation) FetchIdpList() ([]IdentityProviderInfo, error) {
-	r, err := f.get(f.entity.IdpListEndpoint)
-	if err != nil {
-		return nil, fmt.Errorf("unable to fetch idp list from '%s': %w", f.entity.IdpListEndpoint, err)
-	}
-	defer r.Body.Close()
-
-	payload, err := verifyStatement(r.Body, f.jwks, trustAnchorKeys, f.now())
+// fetch reads the signed document at location. A refusal the member explains in an OAuth error body is returned as
+// *Error.
+func (f *OpenidFederation) fetch(ctx context.Context, location string) ([]byte, error) {
+	response, err := f.get(ctx, location)
 	if err != nil {
 		return nil, err
 	}
+	defer response.Body.Close()
 
-	var claims struct {
-		IdpEntity *[]IdentityProviderInfo `json:"idp_entity"`
-	}
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return nil, fmt.Errorf("unable to read idp_entity from token: %w", err)
-	}
-	if claims.IdpEntity == nil {
-		return nil, errors.New("unable to get idp_entity from token: no such claim")
-	}
-
-	return *claims.IdpEntity, nil
-}
-
-func (f *OpenidFederation) fetchMasterEntityStatement() (*EntityStatement, error) {
-	resp, err := f.get(f.fedMasterURL + "/.well-known/openid-federation")
+	body, err := readBounded(response.Body)
 	if err != nil {
 		return nil, err
 	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %s", f.fedMasterURL, resp.Status)
-	}
-
-	payload, err := verifyStatement(resp.Body, f.jwks, trustAnchorKeys, f.now())
-	if err != nil {
-		return nil, err
-	}
-
-	return parseEntityStatement(payload)
-}
-
-func (f *OpenidFederation) fetchAndVerify(url string, jwks *jose.JSONWebKeySet, options openid.VerifyOptions) (*EntityStatement, error) {
-	resp, err := f.get(url)
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, err := readBounded(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("http error %d", resp.StatusCode)
-		}
+	if response.StatusCode != http.StatusOK {
 		var oidcErr Error
-		if err := json.Unmarshal(body, &oidcErr); err != nil {
-			return nil, fmt.Errorf("http error %d", resp.StatusCode)
+		if err := json.Unmarshal(body, &oidcErr); err != nil || oidcErr.ErrorCode == "" {
+			return nil, fmt.Errorf("http error %d", response.StatusCode)
 		}
-		return nil, &oidcErr
+		return nil, fmt.Errorf("http error %d: %w", response.StatusCode, &oidcErr)
+	}
+	return body, nil
+}
+
+// document returns what check reads from the signed document at location, once it verified against keys with
+// options and lies within its lifetime. A document kept in the store is judged exactly like a fetched one; one that
+// no longer passes, having expired or been altered, is fetched again and replaces the kept one (servers.md rule 12).
+func document[T any](ctx context.Context, f *OpenidFederation, location string, keys *jose.JSONWebKeySet, options openid.VerifyOptions, check func(payload []byte) (T, error)) (T, error) {
+	read := func(signed []byte) (T, []byte, error) {
+		var zero T
+		payload, err := verifyStatement(signed, keys, options, f.now())
+		if err != nil {
+			return zero, nil, err
+		}
+		value, err := check(payload)
+		return value, payload, err
+	}
+	signed, err := f.signedDocument(ctx, location, func(signed []byte) ([]byte, error) {
+		_, payload, err := read(signed)
+		return payload, err
+	})
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	value, _, err := read(signed)
+	return value, err
+}
+
+// signedDocument resolves the document at location once per process at a time: a caller that finds a resolution
+// under way waits for it, as long as its own context lets it, and judges the result itself. Each caller judges with
+// its own keys, so a result is never trusted for having passed another caller's judgement (servers.md rule 12,
+// protection against stampedes).
+func (f *OpenidFederation) signedDocument(ctx context.Context, location string, judge func(signed []byte) ([]byte, error)) ([]byte, error) {
+	if err := checkFederationURL(location); err != nil {
+		return nil, err
+	}
+	for {
+		f.mu.Lock()
+		call, waiting := f.inflight[location]
+		if !waiting {
+			call = &flight{done: make(chan struct{})}
+			f.inflight[location] = call
+		}
+		f.mu.Unlock()
+
+		if !waiting {
+			f.lead(ctx, location, call, judge)
+			return call.signed, call.err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-call.done:
+		}
+		// The leader's context ended, not this caller's: resolve again rather than fail a login for another's.
+		if (errors.Is(call.err, context.Canceled) || errors.Is(call.err, context.DeadlineExceeded)) && ctx.Err() == nil {
+			continue
+		}
+		if call.err != nil {
+			return nil, call.err
+		}
+		if _, err := judge(call.signed); err != nil {
+			return nil, err
+		}
+		return call.signed, nil
+	}
+}
+
+// lead resolves the document for everyone waiting on call and releases them, also when judge panics.
+func (f *OpenidFederation) lead(ctx context.Context, location string, call *flight, judge func(signed []byte) ([]byte, error)) {
+	defer func() {
+		f.mu.Lock()
+		delete(f.inflight, location)
+		f.mu.Unlock()
+		close(call.done)
+	}()
+	// Stays the result for the waiters if resolve panics.
+	call.err = errors.New("resolution did not finish")
+	call.signed, call.err = f.resolve(ctx, location, judge)
+}
+
+// resolve takes the kept document if it passes judge, and otherwise fetches one and keeps it if it passes. A store
+// that fails costs a fetch, never the result.
+func (f *OpenidFederation) resolve(ctx context.Context, location string, judge func(signed []byte) ([]byte, error)) ([]byte, error) {
+	kept, found, err := f.documents.Get(ctx, location)
+	switch {
+	case err != nil:
+		f.report(ctx, "reading a kept federation document failed", location, err)
+	case found:
+		if _, err := judge(kept); err == nil {
+			return kept, nil
+		}
 	}
 
-	payload, err := verifyStatement(resp.Body, jwks, options, f.now())
+	signed, err := f.fetch(ctx, location)
 	if err != nil {
 		return nil, err
 	}
+	payload, err := judge(signed)
+	if err != nil {
+		return nil, err
+	}
+	// A document without exp is not kept: nothing would bound how long it stays.
+	if until, ok := expiresAt(payload); ok {
+		if err := f.documents.Keep(ctx, location, signed, until); err != nil {
+			f.report(ctx, "keeping a federation document failed", location, err)
+		}
+	}
+	return signed, nil
+}
 
-	return parseEntityStatement(payload)
+// expiresAt reads exp of a verified payload, if it is an integer number of seconds.
+func expiresAt(payload []byte) (time.Time, bool) {
+	var claims struct {
+		ExpiresAt *json.Number `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.ExpiresAt == nil {
+		return time.Time{}, false
+	}
+	seconds, err := claims.ExpiresAt.Int64()
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.Unix(seconds, 0), true
+}
+
+// report hands a failure of the document store to the logger, if there is one.
+func (f *OpenidFederation) report(ctx context.Context, message, location string, err error) {
+	if f.logger != nil {
+		f.logger.WarnContext(ctx, message, "url", location, "error", err)
+	}
+}
+
+// masterEntity is the federation_entity metadata of the master's own statement, which is resolved like any other
+// document, so endpoints come from a statement that has not expired.
+func (f *OpenidFederation) masterEntity(ctx context.Context) (*FederationEntityMetadata, error) {
+	location := f.fedMasterURL + "/.well-known/openid-federation"
+	es, err := document(ctx, f, location, f.jwks, trustAnchorKeys, func(payload []byte) (*EntityStatement, error) {
+		es, err := parseEntityStatement(payload)
+		if err != nil {
+			return nil, err
+		}
+		if es.Issuer != f.fedMasterURL || es.Subject != f.fedMasterURL {
+			return nil, fmt.Errorf("the master's statement names iss %q and sub %q, not %q", es.Issuer, es.Subject, f.fedMasterURL)
+		}
+		if es.Metadata == nil || es.Metadata.FederationEntity == nil {
+			return nil, errors.New("no federation entity found in master entity statement")
+		}
+		return es, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("the master's entity statement from '%s': %w", location, err)
+	}
+	return es.Metadata.FederationEntity, nil
+}
+
+// FetchIdpList returns the master's IdP list, verified against the trust anchor.
+func (f *OpenidFederation) FetchIdpList(ctx context.Context) ([]IdentityProviderInfo, error) {
+	entity, err := f.masterEntity(ctx)
+	if err != nil {
+		return nil, err
+	}
+	idps, err := document(ctx, f, entity.IdpListEndpoint, f.jwks, trustAnchorKeys, func(payload []byte) ([]IdentityProviderInfo, error) {
+		var claims struct {
+			IdpEntity *[]IdentityProviderInfo `json:"idp_entity"`
+		}
+		if err := json.Unmarshal(payload, &claims); err != nil {
+			return nil, fmt.Errorf("unable to read idp_entity from token: %w", err)
+		}
+		if claims.IdpEntity == nil {
+			return nil, errors.New("unable to get idp_entity from token: no such claim")
+		}
+		return *claims.IdpEntity, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("idp list from '%s': %w", entity.IdpListEndpoint, err)
+	}
+	return idps, nil
 }
 
 // FetchEntityStatement returns the self-signed entity statement of the issuer iss, verified with the keys that
 // the master's statement about iss vouches for.
-func (f *OpenidFederation) FetchEntityStatement(iss string) (*EntityStatement, error) {
+func (f *OpenidFederation) FetchEntityStatement(ctx context.Context, iss string) (*EntityStatement, error) {
 	if err := checkEntityIdentifier(iss); err != nil {
 		return nil, fmt.Errorf("issuer: %w", err)
+	}
+	entity, err := f.masterEntity(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	query := url.Values{}
 	query.Add("iss", f.fedMasterURL)
 	query.Add("sub", iss)
+	location := entity.FederationFetchEndpoint + "?" + query.Encode()
 
-	url := f.entity.FederationFetchEndpoint + "?" + query.Encode()
-
-	// fetch the entity statement from the fed master first to get the trusted keys
-	fromMaster, err := f.fetchAndVerify(url, f.jwks, trustAnchorKeys)
+	fromMaster, err := document(ctx, f, location, f.jwks, trustAnchorKeys, func(payload []byte) (*EntityStatement, error) {
+		es, err := parseEntityStatement(payload)
+		if err != nil {
+			return nil, err
+		}
+		if es.Jwks == nil {
+			return nil, fmt.Errorf("the master's statement about '%s' vouches for no keys", iss)
+		}
+		if es.Issuer != f.fedMasterURL || es.Subject != iss {
+			return nil, fmt.Errorf("asked the master about '%s', its statement names iss %q and sub %q", iss, es.Issuer, es.Subject)
+		}
+		return es, nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", url, err)
+		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", location, err)
 	}
 
-	if fromMaster.Jwks == nil {
-		return nil, fmt.Errorf("the master's statement about '%s' vouches for no keys", iss)
-	}
-	if fromMaster.Issuer != f.fedMasterURL || fromMaster.Subject != iss {
-		return nil, fmt.Errorf("asked the master about '%s', its statement names iss %q and sub %q", iss, fromMaster.Issuer, fromMaster.Subject)
-	}
-
-	selfSigned, err := f.fetchAndVerify(iss+"/.well-known/openid-federation", fromMaster.Jwks.Keys, memberKeys)
+	selfSigned, err := document(ctx, f, iss+"/.well-known/openid-federation", fromMaster.Jwks.Keys, memberKeys, func(payload []byte) (*EntityStatement, error) {
+		es, err := parseEntityStatement(payload)
+		if err != nil {
+			return nil, err
+		}
+		if es.Issuer != iss || es.Subject != iss {
+			return nil, fmt.Errorf("the statement of '%s' names iss %q and sub %q", iss, es.Issuer, es.Subject)
+		}
+		return es, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", iss, err)
 	}
-	if selfSigned.Issuer != iss || selfSigned.Subject != iss {
-		return nil, fmt.Errorf("the statement of '%s' names iss %q and sub %q", iss, selfSigned.Issuer, selfSigned.Subject)
-	}
-
 	return selfSigned, nil
 }
 
@@ -363,7 +524,7 @@ func (f *OpenidFederation) FederationMasterURL() string {
 
 // FetchSignedJwks returns the key set published at op's signed_jwks_uri, verified against the keys of op's
 // entity statement, so op has to be a statement FetchEntityStatement verified.
-func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKeySet, error) {
+func (f *OpenidFederation) FetchSignedJwks(ctx context.Context, op *EntityStatement) (*jose.JSONWebKeySet, error) {
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
 		return nil, errors.New("no openid provider found in entity statement")
 	}
@@ -372,31 +533,19 @@ func (f *OpenidFederation) FetchSignedJwks(op *EntityStatement) (*jose.JSONWebKe
 	}
 
 	jwksURL := op.Metadata.OpenidProvider.SignedJwksURI
-
-	resp, err := f.get(jwksURL)
+	jwks, err := document(ctx, f, jwksURL, op.Jwks.Keys, memberKeys, func(payload []byte) (*jose.JSONWebKeySet, error) {
+		if err := requireExpiry(payload); err != nil {
+			return nil, err
+		}
+		jwks, err := openid.ParseKeySet(payload)
+		if err != nil {
+			return nil, fmt.Errorf("parsing jwks failed: %w", err)
+		}
+		return jwks, nil
+	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksURL, err)
 	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unable to fetch jwks from '%s': %s", jwksURL, resp.Status)
-	}
-
-	jwksBytes, err := verifyStatement(resp.Body, op.Jwks.Keys, memberKeys, f.now())
-	if err != nil {
-		return nil, fmt.Errorf("unable to verify jwks: %w", err)
-	}
-	if err := requireExpiry(jwksBytes); err != nil {
-		return nil, fmt.Errorf("unable to verify jwks: %w", err)
-	}
-
-	jwks, err := openid.ParseKeySet(jwksBytes)
-	if err != nil {
-		return nil, fmt.Errorf("parsing jwks failed: %w", err)
-	}
-
 	return jwks, nil
 }
 

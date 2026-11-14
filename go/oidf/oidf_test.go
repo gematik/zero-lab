@@ -58,23 +58,23 @@ func TestFederation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fed, err := NewOpenidFederation(fedMasterURL, jwks)
+	fed, err := NewOpenidFederation(t.Context(), fedMasterURL, jwks, WithDocuments(NewMemoryDocuments(16, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	idps, err := fed.FetchIdpList()
+	idps, err := fed.FetchIdpList(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	es, err := fed.FetchEntityStatement(idps[0].Issuer)
+	es, err := fed.FetchEntityStatement(t.Context(), idps[0].Issuer)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("%+v", es)
 
-	idpJwks, err := fed.FetchSignedJwks(es)
+	idpJwks, err := fed.FetchSignedJwks(t.Context(), es)
 	if err != nil {
 		t.Fatal(err)
 	}
