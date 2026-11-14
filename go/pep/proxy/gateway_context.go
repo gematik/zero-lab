@@ -110,3 +110,41 @@ func (g *statefulGate) Apply(ctx pep.Context, next pep.HandlerFunc) {
 	ctx.SetClaims(raw)
 	next(ctx)
 }
+
+// snapshotGate admits a request on a valid session snapshot whose session was not revoked. A snapshot outlives a
+// sign-out by up to its lifetime, so it is never enough on its own; a revocation that cannot be checked denies.
+type snapshotGate struct {
+	cookieName  string
+	keys        [][]byte
+	revocations Revocations
+}
+
+func (g *snapshotGate) Type() pep.EnforcerType { return pep.EnforcerTypeSessionCookie }
+
+func (g *snapshotGate) Apply(ctx pep.Context, next pep.HandlerFunc) {
+	c, err := ctx.Request().Cookie(g.cookieName)
+	if err != nil {
+		ctx.Deny(pep.ErrSessionRequired)
+		return
+	}
+	identity, sid, ok := pep.OpenSessionCookie(c.Value, g.keys, ctx.Now())
+	if !ok {
+		ctx.Deny(pep.ErrSessionRequired)
+		return
+	}
+	revoked, err := g.revocations.Revoked(ctx.Request().Context(), sid)
+	if err != nil {
+		ctx.Slogger().Error("revocation check failed, denying", "session_ref", logRef(sid), "error", err)
+	}
+	if revoked || err != nil {
+		ctx.Deny(pep.ErrSessionRequired)
+		return
+	}
+	raw, err := json.Marshal(identity)
+	if err != nil {
+		ctx.Deny(pep.ErrSessionRequired)
+		return
+	}
+	ctx.SetClaims(raw)
+	next(ctx)
+}

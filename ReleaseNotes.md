@@ -1,5 +1,13 @@
 # Release Notes
 
+# Unreleased go/pep/proxy
+
+### fixed
+- Gateway routes with `gate: snapshot` ask `Revocations`, as `/oauth2/auth` does: a session that was
+  signed out or rotated no longer passes them until its snapshot expires (8 h by default), and a
+  revocation check that fails denies. A snapshot route without revocations is refused at start
+  (TASK-311).
+
 # Release go/dpop v1.0.0-beta.2
 
 ### breaking
