@@ -43,7 +43,7 @@ their code meets it.
     trusted, multi-zone, observable without leaking, hardened protocol profiles, fail
     closed, insecure configuration refused, business APIs to the gematik API rules,
     per-tenant keys, privacy by design, audit trail, mixed versions, admin plane apart,
-    resilient, signatures enforced at deploy time, tested as a server
+    resilient, signatures enforced at deploy time, tested as a server, runs under any UID
     ([servers](design/servers.md)).
 11. **Languages meet through processes or shared specifications:** a server process does
     not link another language's native core; functions implemented twice share one
