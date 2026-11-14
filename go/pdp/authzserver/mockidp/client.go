@@ -52,7 +52,11 @@ var _ openid.Client = (*mockClient)(nil)
 func (c *mockClient) Issuer() string { return c.issuer }
 
 func (c *mockClient) AuthenticationURL(_ context.Context, login openid.Login) (string, error) {
-	return c.issuer + "/auth?" + openid.AuthorizationQuery(c.clientID, c.redirectURI, []string{"openid"}, login).Encode(), nil
+	query, err := openid.AuthorizationQuery(c.clientID, c.redirectURI, []string{"openid"}, login)
+	if err != nil {
+		return "", err
+	}
+	return c.issuer + "/auth?" + query.Encode(), nil
 }
 
 func (c *mockClient) Exchange(ctx context.Context, login openid.Login, code string) (*openid.TokenResponse, error) {

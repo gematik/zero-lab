@@ -34,8 +34,20 @@ import (
 // maxResponseBytes bounds what a provider can make a relying party read.
 const maxResponseBytes = 1 << 20
 
-// AuthorizationQuery is the query of an authorization request with PKCE, or the form of a pushed one.
-func AuthorizationQuery(clientID, redirectURI string, scopes []string, login Login) url.Values {
+// AuthorizationQuery is the query of an authorization request with PKCE, or the form of a pushed one. The login's
+// scopes replace the configured ones when it has any. It refuses what would change meaning on the wire: a scope or
+// acr value that is empty or holds a space or a character outside NQCHAR (RFC 6749 §3.3), and a claims parameter
+// that is no JSON object or larger than [MaxClaimsBytes] (OIDC Core 5.5).
+func AuthorizationQuery(clientID, redirectURI string, scopes []string, login Login) (url.Values, error) {
+	if len(login.Scopes) > 0 {
+		scopes = login.Scopes
+	}
+	if err := checkTokens(ErrScope, scopes); err != nil {
+		return nil, err
+	}
+	if err := checkTokens(ErrACRValue, login.ACRValues); err != nil {
+		return nil, err
+	}
 	query := url.Values{}
 	query.Set("client_id", clientID)
 	query.Set("redirect_uri", login.RedirectFor(redirectURI))
@@ -45,7 +57,16 @@ func AuthorizationQuery(clientID, redirectURI string, scopes []string, login Log
 	query.Set("nonce", login.Nonce)
 	query.Set("code_challenge", S256Challenge(login.Verifier))
 	query.Set("code_challenge_method", CodeChallengeMethodS256)
-	return query
+	if len(login.ACRValues) > 0 {
+		query.Set("acr_values", strings.Join(login.ACRValues, " "))
+	}
+	if len(login.Claims) > 0 {
+		if err := checkClaimsParameter(login.Claims); err != nil {
+			return nil, err
+		}
+		query.Set("claims", string(login.Claims))
+	}
+	return query, nil
 }
 
 // Response is a provider's answer, read whole and within [maxResponseBytes].

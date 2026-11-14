@@ -110,7 +110,10 @@ func (c *client) DiscoveryDocument() *DiscoveryDocument {
 }
 
 func (c *client) AuthenticationURL(_ context.Context, login Login) (string, error) {
-	query := AuthorizationQuery(c.cfg.ClientID, c.cfg.RedirectURI, c.cfg.Scopes, login)
+	query, err := AuthorizationQuery(c.cfg.ClientID, c.cfg.RedirectURI, c.cfg.Scopes, login)
+	if err != nil {
+		return "", err
+	}
 	return c.discoveryDocument.AuthorizationEndpoint + "?" + query.Encode(), nil
 }
 

@@ -45,14 +45,21 @@ func (e Error) Error() string {
 }
 
 // Login is what one login at a provider keeps from the authorization request to the token request. RFC 6749
-// section 4.1.3 requires the token request to repeat the redirect_uri of the authorization request, so both get
-// the same Login.
+// section 4.1.3 requires the token request to repeat the redirect_uri of the authorization request, and the ID
+// token is judged against the nonce and acr values asked for, so the Login given to Exchange must be the one given
+// to AuthenticationURL.
 type Login struct {
 	State    string
 	Nonce    string
 	Verifier string
 	// RedirectURI overrides the client's configured one, for this login.
 	RedirectURI string
+	// Scopes replace the client's configured scopes, for this login, when set.
+	Scopes []string
+	// ACRValues are the authentication context classes asked for, in order of preference (OIDC Core 3.1.2.1).
+	ACRValues []string
+	// Claims is the claims request parameter (OIDC Core 5.5), a JSON object of at most [MaxClaimsBytes].
+	Claims json.RawMessage
 }
 
 // RedirectFor is the login's redirect URI, or the client's configured one if it has none.
@@ -73,7 +80,7 @@ type Client interface {
 	Exchange(ctx context.Context, login Login, code string) (*TokenResponse, error)
 }
 
-// TokenResponse is a token endpoint response. IDTokenRaw has been verified once ExchangeForIdentity returned it.
+// TokenResponse is a token endpoint response. IDTokenRaw has been verified once Client.Exchange returned it.
 type TokenResponse struct {
 	AccessToken  string `json:"access_token"`
 	TokenType    string `json:"token_type"`
@@ -84,7 +91,7 @@ type TokenResponse struct {
 }
 
 // Claims decodes the payload of IDTokenRaw into claims. It verifies nothing itself, so it is only meaningful on a
-// response ExchangeForIdentity returned.
+// response Client.Exchange returned.
 func (t *TokenResponse) Claims(claims any) error {
 	if t.IDTokenRaw == "" {
 		return errors.New("ID token is empty")

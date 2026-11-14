@@ -55,8 +55,13 @@ type RelyingPartyClient struct {
 
 // AuthenticationURL pushes the authorization request (PAR) and gives the URL that carries its request_uri.
 func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid.Login) (string, error) {
-	form := openid.AuthorizationQuery(c.rp.ClientID(), c.redirectURI, c.scopes, login)
-	form.Set("acr_values", "gematik-ehealth-loa-high")
+	form, err := openid.AuthorizationQuery(c.rp.ClientID(), c.redirectURI, c.scopes, login)
+	if err != nil {
+		return "", err
+	}
+	if len(login.ACRValues) == 0 {
+		form.Set("acr_values", "gematik-ehealth-loa-high")
+	}
 
 	endpoint := c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint
 	response, err := openid.PostForm(ctx, c.rp.httpClient, endpoint, form)

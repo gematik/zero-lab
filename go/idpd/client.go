@@ -190,7 +190,10 @@ func NewClientFromConfig(config ClientConfig, httpClient *http.Client) (*Client,
 // AuthenticationURL gives the URL that starts a login. In authenticator mode it is an authenticator:// link for
 // the gematik Authenticator app.
 func (c *Client) AuthenticationURL(_ context.Context, login openid.Login) (string, error) {
-	query := openid.AuthorizationQuery(c.config.ClientID, c.config.RedirectURI, c.config.Scopes, login)
+	query, err := openid.AuthorizationQuery(c.config.ClientID, c.config.RedirectURI, c.config.Scopes, login)
+	if err != nil {
+		return "", err
+	}
 	authURL := c.Metadata.AuthorizationEndpoint + "?" + query.Encode()
 	if c.config.AuthenticatorMode {
 		return authenticatorURL(authURL)

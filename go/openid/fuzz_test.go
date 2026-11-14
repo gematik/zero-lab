@@ -23,6 +23,7 @@ package openid
 
 import (
 	"crypto/elliptic"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -102,5 +103,29 @@ func FuzzTokenResponseClaims(f *testing.F) {
 	f.Fuzz(func(_ *testing.T, token string) {
 		var claims map[string]any
 		_ = (&TokenResponse{IDTokenRaw: token}).Claims(&claims)
+	})
+}
+
+// FuzzAuthorizationQueryClaims feeds arbitrary claims parameters to AuthorizationQuery. Invariants: it never panics,
+// and what it sends is a JSON object of at most MaxClaimsBytes, unchanged.
+func FuzzAuthorizationQueryClaims(f *testing.F) {
+	for _, seed := range []string{
+		`{"id_token":{"acr":{"essential":true}}}`, `{}`, `[]`, `null`, `"x"`, `{} {}`, `{"a":`, ` {"a":1} `, ``,
+	} {
+		f.Add([]byte(seed))
+	}
+	f.Fuzz(func(t *testing.T, claims []byte) {
+		query, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: claims})
+		if err != nil || len(claims) == 0 {
+			return
+		}
+		sent := query.Get("claims")
+		if sent != string(claims) || len(sent) > MaxClaimsBytes {
+			t.Fatalf("sent %q for %q", sent, claims)
+		}
+		var members map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(sent), &members); err != nil || members == nil {
+			t.Fatalf("sent a claims parameter that is no JSON object: %q", sent)
+		}
 	})
 }
