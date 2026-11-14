@@ -3,13 +3,13 @@ module github.com/gematik/zero-lab/go/pep/proxy
 go 1.27.0
 
 require (
-	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.1
-	github.com/gematik/zero-lab/go/idpd v0.1.1-0.20261106180818-4c2a720247df
-	github.com/gematik/zero-lab/go/kv v0.1.1-0.20261106180818-4c2a720247df
-	github.com/gematik/zero-lab/go/oidf v0.51.1-0.20261106180818-4c2a720247df
-	github.com/gematik/zero-lab/go/openid v0.53.1-0.20261106180818-4c2a720247df
-	github.com/gematik/zero-lab/go/pep v0.26.1-0.20261106180818-4c2a720247df
-	github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261106180818-4c2a720247df
+	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.2
+	github.com/gematik/zero-lab/go/idpd v0.1.1-0.20261114161522-a7ee9b765865
+	github.com/gematik/zero-lab/go/kv v0.2.0
+	github.com/gematik/zero-lab/go/oidf v0.51.1-0.20261114161522-a7ee9b765865
+	github.com/gematik/zero-lab/go/openid v0.53.1-0.20261114161522-a7ee9b765865
+	github.com/gematik/zero-lab/go/pep v0.26.1-0.20261114161522-a7ee9b765865
+	github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261114161522-a7ee9b765865
 	github.com/go-jose/go-jose/v4 v4.1.6
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	go.yaml.in/yaml/v4 v4.0.0-rc.9
