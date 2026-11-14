@@ -63,6 +63,10 @@
 ### changes
 - zaddy chooses DPoP replays in memory itself, as pep did before, and warns at start that replay
   detection holds for this replica only (TASK-309).
+- zaddy reads its DPoP nonce key file itself, once at provisioning, in the format of kv's keyring,
+  and no longer requires kv (TASK-308). A rotated file takes effect with a config reload, no longer
+  while running. A malformed line, a key not of 32 bytes, a duplicate or invalid ID, or an empty
+  file refuses provisioning.
 
 # Release go/oidf v0.51.0
 

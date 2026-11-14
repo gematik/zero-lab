@@ -37,7 +37,6 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pep"
 )
@@ -55,13 +54,15 @@ type App struct {
 	// PublicOrigin is the scheme, host and port clients reach this server at; DPoP proofs' htu are checked
 	// against it plus the request path (RFC 9449 Section 4.3). Defaults to the origin of Resource.
 	PublicOrigin string `json:"public_origin"`
-	// DPoPNonceKeyringPath names the kv keyring (kv.LoadKeyring) the DPoP nonces of nonce_required are sealed
-	// under. Every replica behind one origin needs the same keyring to accept the others' nonces (RFC 9449
-	// Section 9); without one, a key of this process alone, enough for a single replica.
+	// DPoPNonceKeyringPath names the key file, in the format of kv's keyring, the DPoP nonces of nonce_required
+	// are sealed under. Every replica behind one origin needs the same keys to accept the others' nonces
+	// (RFC 9449 Section 9); without one, a key of this process alone, enough for a single replica. It is read at
+	// provisioning, so a rotated file takes effect with a config reload.
 	DPoPNonceKeyringPath string `json:"dpop_nonce_keyring_path"`
 
-	logger *slog.Logger
-	pep    *pep.PEP
+	logger    *slog.Logger
+	nonceKeys nonce.Keys
+	pep       *pep.PEP
 }
 
 // CaddyModule registers App under the module ID "zero".
@@ -98,24 +99,28 @@ func (a *App) Start() error {
 	return nil
 }
 
-// dpopNonces are the resource server nonces of nonce_required, sealed under the configured keyring.
+// dpopNonces are the resource server nonces of nonce_required, sealed under the keys read at provisioning.
 func (a *App) dpopNonces() (*nonce.Source, error) {
-	var keys nonce.Keys
-	if a.DPoPNonceKeyringPath != "" {
-		ring, err := kv.LoadKeyring(a.DPoPNonceKeyringPath)
-		if err != nil {
-			return nil, err
-		}
-		keys = ring
-	} else {
+	return nonce.NewSource(a.nonceKeys, dpopNoncePurpose, dpopNonceTTL)
+}
+
+// loadNonceKeys reads the key file of the DPoP nonces; a file that does not parse refuses provisioning.
+func (a *App) loadNonceKeys() error {
+	if a.DPoPNonceKeyringPath == "" {
 		a.logger.Warn("dpop_nonce_keyring_path not set: DPoP nonces hold for this replica only")
-		ephemeral, err := nonce.NewEphemeralKeys()
+		keys, err := nonce.NewEphemeralKeys()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		keys = ephemeral
+		a.nonceKeys = keys
+		return nil
 	}
-	return nonce.NewSource(keys, dpopNoncePurpose, dpopNonceTTL)
+	keys, err := loadNonceKeys(a.DPoPNonceKeyringPath)
+	if err != nil {
+		return fmt.Errorf("dpop_nonce_keyring_path: %w", err)
+	}
+	a.nonceKeys = keys
+	return nil
 }
 
 const (
@@ -133,10 +138,10 @@ func (a *App) Stop() error {
 	return a.pep.Close()
 }
 
-// Provision takes the app's logger from ctx.
+// Provision takes the app's logger from ctx and reads the DPoP nonce keys.
 func (a *App) Provision(ctx caddy.Context) error {
 	a.logger = ctx.Slogger()
-	return nil
+	return a.loadNonceKeys()
 }
 
 // Validate rejects a configuration without jwks_path.
