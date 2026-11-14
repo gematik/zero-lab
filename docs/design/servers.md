@@ -321,3 +321,82 @@ everything outside the workload untrusted.
       contain no numeric `runAsUser`, `runAsGroup` or `fsGroup` in the OpenShift profile.
       Before a release, the workloads run on OpenShift (OpenShift Local or OKD) in a
       project without `anyuid`.
+28. **Every HTTP message is checked before the logic sees it.** Rule 2's strict input
+    handling, spelled out for HTTP, following the OWASP Input Validation, HTTP Request
+    Smuggling and Unvalidated Redirects cheat sheets and ASVS V5 (validation, sanitisation
+    and encoding). It covers the requests a server receives and the responses of the calls it
+    makes (to IDPs, federation members, backends and sidecars), which are untrusted input in
+    the same way.
+    - **Reject, never repair.** A value outside its grammar is refused. It is not trimmed,
+      decoded again, truncated, case-folded or otherwise fixed up, because a repaired value
+      is not the one that was signed, registered or meant. Values are compared in canonical
+      form, and a value not in canonical form is refused, not normalised and then
+      compared.
+    - **Limits before work.** The adapter bounds the request line, header size and count,
+      body size, JSON depth and member count, parameter count and each value's length
+      before it parses or allocates anything that grows with the input. A response is
+      bounded in the same way before it is read.
+    - **Method and path.** Each route accepts its declared methods only: another gets 405
+      with `Allow`, and method-override headers and parameters are ignored. A path is
+      matched as received. Encoded `/`, `\` or NUL, `.` and `..` segments, double encoding
+      and characters outside the route's grammar are refused, never cleaned up into a
+      match.
+    - **Parameters.** Each endpoint declares its parameters with a type, a grammar and
+      limits; each value is parsed against them before use. A repeated parameter is
+      refused (RFC 6749 §3.1). A parameter the endpoint does not know is refused on our own
+      APIs, and ignored only where the protocol requires it (OAuth endpoints, RFC 6749 §3.1),
+      never passed on. An empty value counts as absent where the protocol says so, and as
+      invalid otherwise.
+    - **Headers.**
+      - `Host` (or `:authority`) is one of the configured names; URLs a server builds use
+        its configured base URL, never the request's Host.
+      - A body comes with the exact `Content-Type` the endpoint takes, and a charset other
+        than UTF-8 is refused.
+      - Request smuggling: a request with several differing `Content-Length`s or with
+        obsolete line folding is refused. One with both `Content-Length` and
+        `Transfer-Encoding` is refused, or its `Content-Length` is dropped before anything
+        reads or forwards the body (RFC 9112 §6.3).
+      - CR, LF and NUL in any header value are refused.
+      - Proxy headers follow rule 1.
+    - **Bodies.** A body is parsed strictly, not leniently:
+      - JSON must be valid UTF-8, with no duplicate keys, numbers within their type's range,
+        and unknown members refused where the format is ours (JSON Schema
+        `additionalProperties: false` in the contract, rule 18);
+      - form bodies follow the parameter rules above;
+      - a JWS or JWE is checked against its compact form and size before it is decoded.
+    - **Values.** Identifiers, codes, states, nonces, scopes and URIs each have an allowlist
+      grammar of characters and length, ASCII unless the specification says otherwise. Free
+      text has a length bound, valid UTF-8, no control characters and no bidi overrides.
+      A URI is parsed and checked as a whole:
+      - its scheme comes from an allowlist (https; `javascript:`, `data:` and `file:` never);
+      - it has no user information;
+      - its host is canonical, with no percent-encoded host delimiters.
+    - **Redirects.** A redirect goes only to a target that is byte-equal to a registered
+      one (an exact redirect URI, RFC 9700 §4.1.3), never one built from or prefix-matched
+      against request input. Parameters added to a redirect are encoded for the query.
+    - **Cookies.** Session cookies use the `__Host-` prefix, `Secure`, `HttpOnly` and
+      `SameSite`. A cookie's value is bounded, parsed and authenticated before use. Cookies
+      a server did not set are ignored.
+    - **Output.** A value from a request or a response is encoded for the context it goes
+      into: HTML, a header, a URL or a log field. Logs take values as structured fields,
+      never by string concatenation, which prevents log injection. Errors name the field
+      and the reason, never echo the value, and leave out stack traces and internals (rule
+      2, uniform errors).
+    - **Outbound responses.**
+      - A call's response is checked before use: the status code expected for the
+        operation, the `Content-Type`, the size, then the body with the same strict parsers.
+      - An error response's text is kept as data, bounded and free of control characters,
+        and never passed into HTML or headers.
+      - A redirect is not followed unless the protocol makes it an answer (architecture,
+        transport independence).
+    - **One implementation, fuzzed.**
+      - Each language has these checks once, as shared code the adapters call, not
+        rewritten per handler. The profiles name it.
+      - Every parser and validator has a fuzz target whose seeds are hostile input: CRLF
+        and NUL injection, overlong and invalid UTF-8, bidi and zero-width characters,
+        encoded separators, double encoding, deeply nested and duplicate-key JSON,
+        oversized and malformed tokens, and huge numbers.
+      - The targets assert properties: an accepted value matches its grammar; an error
+        does not contain the input; a refused value never reaches the logic, the store or
+        the network.
+      - Dynamic scanning (rule 26) runs against the same endpoints.

@@ -158,6 +158,20 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   with method and path patterns; middleware is `func(http.Handler) http.Handler`.
 - Request decoding is strict: `json.Decoder` with `DisallowUnknownFields`, explicit
   `Validate()` methods, and URL, header and form values parsed into types before use.
+  Rule 28 has a few concrete consequences in Go:
+  - `ServeMux` method patterns, which answer 405 with `Allow` themselves.
+  - `r.URL.RawPath` and `EscapedPath()` checked, so `ServeMux`'s path cleaning never turns
+    a non-canonical path into a match.
+  - `url.Values` read through a helper that refuses a repeated key.
+  - `encoding/json` with `DisallowUnknownFields`, plus a check for duplicate keys, because
+    `encoding/json` keeps the last one silently.
+  - `http.Server.MaxHeaderBytes` and `http.MaxBytesReader`.
+  - Validators as `Parse…`/`Check…` functions next to the protocol package (`openid`,
+    `oidf`) that return sentinel errors naming the field, each with its `Fuzz…` target.
+
+  `net/http` already refuses differing `Content-Length`s and CR, LF or NUL in header
+  values. With `Transfer-Encoding: chunked` it drops `Content-Length` (RFC 9112 §6.3), and
+  `httputil.ReverseProxy` frames the forwarded request anew. Tests pin all of that.
 - Shared state goes through `kv.Store`; the in-memory store is for tests and single-node
   development only, and production configuration rejects it. The security state uses the
   transactional backend (Postgres): `Take` for single-use values, transactions for
