@@ -385,7 +385,7 @@ func TestGatewaySnapshotGate(t *testing.T) {
 
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSnapshot},
-	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}})
+	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}, revocations: NewMemoryRevocations(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,5 +403,63 @@ func TestGatewaySnapshotGate(t *testing.T) {
 	}
 	if claims["sub"] != "u9" {
 		t.Errorf("identity = %v", claims)
+	}
+}
+
+// snapshotGatewayFor serves one snapshot route to an upstream that records whether it was reached, and returns a
+// snapshot cookie of session sid.
+func snapshotGatewayFor(t *testing.T, sid string, revocations Revocations) (*Gateway, *http.Cookie, *bool) {
+	t.Helper()
+	key := bytes.Repeat([]byte{3}, 32)
+	snap := &snapshotter{encKey: key, decKeys: [][]byte{key}, ttl: time.Hour, now: time.Now}
+	value, err := snap.mint(sid, map[string]any{"sub": "u9"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reached := new(bool)
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { *reached = true }))
+	t.Cleanup(upstream.Close)
+	gw, err := newGateway([]Route{
+		{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSnapshot},
+	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}, revocations: revocations})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gw, &http.Cookie{Name: "SID", Value: value}, reached //nolint:gosec // request cookie in a test: only name and value go on the wire
+}
+
+// A signed-out or rotated session's snapshot stays valid until it expires; the gateway refuses it at once.
+func TestGatewaySnapshotGate_RefusesARevokedSession(t *testing.T) {
+	revocations := NewMemoryRevocations(nil)
+	gw, cookie, reached := snapshotGatewayFor(t, "sid-1", revocations)
+	if err := revocations.Revoke(t.Context(), "sid-1", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.AddCookie(cookie)
+	gw.ServeHTTP(httptest.NewRecorder(), req)
+	if *reached {
+		t.Fatal("a revoked session's snapshot reached the upstream")
+	}
+}
+
+// Server rule 16, fail closed: a snapshot whose revocation cannot be checked does not reach the upstream.
+func TestServerRule16_AGatewayRevocationCheckThatFailsDenies(t *testing.T) {
+	gw, cookie, reached := snapshotGatewayFor(t, "sid-1", failingRevocations{})
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.AddCookie(cookie)
+	gw.ServeHTTP(httptest.NewRecorder(), req)
+	if *reached {
+		t.Fatal("a snapshot whose revocation could not be checked reached the upstream")
+	}
+}
+
+// Server rule 17: a snapshot route without revocations is refused at start.
+func TestServerRule17_ASnapshotRouteWithoutRevocationsIsRefused(t *testing.T) {
+	_, err := newGateway([]Route{
+		{PathPrefix: "/", Upstream: "http://rs", Inject: InjectIdentity, Gate: GateSnapshot},
+	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{bytes.Repeat([]byte{3}, 32)}})
+	if err == nil || !strings.Contains(err.Error(), "revocations") {
+		t.Fatalf("err = %v", err)
 	}
 }

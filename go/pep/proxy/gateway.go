@@ -43,6 +43,8 @@ type gatewayDeps struct {
 	backend        Backend
 	cookieName     string
 	snapshotKeys   [][]byte
+	// revocations end a snapshot before its expiry; a snapshot route needs them.
+	revocations Revocations
 	// now is the time requests are judged at; nil means the system clock.
 	now func() time.Time
 	// transport reaches the upstreams; nil is only allowed when none is https.
@@ -74,6 +76,9 @@ func newGateway(routes []Route, deps gatewayDeps) (*Gateway, error) {
 		}
 		if rt.Gate == GateSnapshot && len(deps.snapshotKeys) == 0 {
 			return nil, fmt.Errorf("route %q uses gate: snapshot, but the snapshot fast path is not configured (set the session key)", rt.PathPrefix)
+		}
+		if rt.Gate == GateSnapshot && deps.revocations == nil {
+			return nil, fmt.Errorf("route %q uses gate: snapshot without revocations: a signed-out session would pass until its snapshot expires", rt.PathPrefix)
 		}
 	}
 	g := &Gateway{deps: deps, routes: validated}
@@ -117,13 +122,13 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// policyFor builds the route's enforcer: the gate (stateless snapshot or stateful kv), optionally wrapped in
+// policyFor builds the route's enforcer: the gate (snapshot or stored session), optionally wrapped in
 // AllOf with an EnforcerScope.
 func (g *Gateway) policyFor(rt *Route) pep.Enforcer {
 	var gate pep.Enforcer
 	switch rt.Gate {
 	case GateSnapshot:
-		gate = pep.NewEnforcerSessionCookie(g.deps.cookieName, g.deps.snapshotKeys)
+		gate = &snapshotGate{cookieName: g.deps.cookieName, keys: g.deps.snapshotKeys, revocations: g.deps.revocations}
 	default: // GateSession
 		gate = &statefulGate{currentSession: g.deps.currentSession}
 	}

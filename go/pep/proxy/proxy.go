@@ -159,7 +159,7 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	if len(cfg.Routes) > 0 {
-		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now, transport: cfg.UpstreamTransport}
+		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now, transport: cfg.UpstreamTransport, revocations: s.revocations}
 		if snap != nil {
 			deps.cookieName = s.snapCookie.Name // the snapshot gate validates the -SNAP cookie
 			deps.snapshotKeys = snap.decKeys
