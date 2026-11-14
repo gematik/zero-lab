@@ -155,7 +155,7 @@ func (s *Server) dpopBinding(r *http.Request, claims *ClientAssertionClaims) (st
 	if claims.Cnf.Jkt == "" && len(r.Header.Values(dpop.HeaderName)) == 0 {
 		return "", nil
 	}
-	proof, err := s.dpopVerifier.Verify(r.Header, dpop.Request{
+	proof, err := s.dpopVerifier.Verify(r.Context(), r.Header, dpop.Request{
 		Method:     r.Method,
 		URI:        s.Metadata.TokenEndpoint,
 		Thumbprint: claims.Cnf.Jkt,

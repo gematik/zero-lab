@@ -22,6 +22,7 @@
 package dpop
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"maps"
@@ -44,7 +45,7 @@ func TestRFC9449_4_3_00_ValidProofIsAccepted(t *testing.T) {
 }
 
 func TestRFC9449_4_3_00_MissingProofIsRefused(t *testing.T) {
-	_, err := newTestVerifier(t, Config{}).Verify(http.Header{}, testRequest())
+	_, err := newTestVerifier(t, Config{}).Verify(t.Context(), http.Header{}, testRequest())
 	requireRefused(t, err, CodeInvalidProof, "no DPoP proof")
 }
 
@@ -55,7 +56,7 @@ func TestRFC9449_4_3_01_MoreThanOneDPoPHeaderIsRefused(t *testing.T) {
 	h := http.Header{}
 	h.Add(HeaderName, proof)
 	h.Add("dpop", proof) // header names are case-insensitive (Section 4.1)
-	_, err := newTestVerifier(t, Config{}).Verify(h, testRequest())
+	_, err := newTestVerifier(t, Config{}).Verify(t.Context(), h, testRequest())
 	requireRefused(t, err, CodeInvalidProof, "more than one DPoP header")
 }
 
@@ -68,7 +69,7 @@ func TestRFC9449_4_3_02_ValueThatIsNotOneJWTIsRefused(t *testing.T) {
 		"two proofs joined by a proxy": proof + ", " + proof,
 		"JWS JSON serialization":       `{"payload":"e30","signatures":[]}`,
 	} {
-		_, err := v.Verify(withProof(value), testRequest())
+		_, err := v.Verify(t.Context(), withProof(value), testRequest())
 		requireRefused(t, err, CodeInvalidProof, "DPoP header is not a single token68 value")
 		_ = name
 	}
@@ -79,7 +80,7 @@ func TestRFC9449_4_3_02_ValueThatIsNotOneJWTIsRefused(t *testing.T) {
 		"payload not a JSON":   encodeSegment(t, k.header()) + "." + base64.RawURLEncoding.EncodeToString([]byte("x")) + ".AA",
 		"header not base64url": "!!.e30.AA",
 	} {
-		_, err := v.Verify(withProof(value), testRequest())
+		_, err := v.Verify(t.Context(), withProof(value), testRequest())
 		var e *Error
 		if !errors.As(err, &e) || e.Code != CodeInvalidProof {
 			t.Errorf("%s: got %v, want invalid_dpop_proof", name, err)
@@ -88,7 +89,7 @@ func TestRFC9449_4_3_02_ValueThatIsNotOneJWTIsRefused(t *testing.T) {
 }
 
 func TestRFC9449_4_3_02_OversizedProofIsRefused(t *testing.T) {
-	_, err := newTestVerifier(t, Config{MaxSize: 64}).Verify(withProof(strings.Repeat("a", 65)), testRequest())
+	_, err := newTestVerifier(t, Config{MaxSize: 64}).Verify(t.Context(), withProof(strings.Repeat("a", 65)), testRequest())
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof too large")
 }
 
@@ -105,7 +106,7 @@ func TestRFC9449_4_3_03_MissingRequiredClaimIsRefused(t *testing.T) {
 	} {
 		c := validClaims()
 		delete(c, claim)
-		_, err := v.Verify(withProof(k.sign(t, k.header(), c)), testRequest())
+		_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest())
 		requireRefused(t, err, CodeInvalidProof, description)
 	}
 }
@@ -129,7 +130,7 @@ func TestRFC9449_4_3_03_ClaimsAreTypedAndNamedExactly(t *testing.T) {
 	for _, tc := range cases {
 		c := validClaims()
 		tc.change(c)
-		_, err := v.Verify(withProof(k.sign(t, k.header(), c)), testRequest())
+		_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest())
 		requireRefused(t, err, CodeInvalidProof, tc.description)
 	}
 }
@@ -149,7 +150,7 @@ func TestRFC9449_4_3_03_MissingJWKHeaderIsRefused(t *testing.T) {
 	k := newTestKey(t)
 	h := k.header()
 	delete(h, "jwk")
-	_, err := newTestVerifier(t, Config{}).Verify(withProof(k.sign(t, h, validClaims())), testRequest())
+	_, err := newTestVerifier(t, Config{}).Verify(t.Context(), withProof(k.sign(t, h, validClaims())), testRequest())
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof has no valid jwk header")
 }
 
@@ -164,7 +165,7 @@ func TestRFC9449_4_3_04_TypOtherThanDPoPJWTIsRefused(t *testing.T) {
 		} else {
 			h["typ"] = typ
 		}
-		_, err := v.Verify(withProof(k.sign(t, h, validClaims())), testRequest())
+		_, err := v.Verify(t.Context(), withProof(k.sign(t, h, validClaims())), testRequest())
 		requireRefused(t, err, CodeInvalidProof, "DPoP proof typ is not dpop+jwt")
 	}
 }
@@ -188,7 +189,7 @@ func TestRFC9449_4_3_05_NoneMACAndUnacceptedAlgorithmsAreRefused(t *testing.T) {
 	for _, alg := range []string{"none", "HS256", "ES384", "RS256"} {
 		h := k.header()
 		h["alg"] = alg
-		_, err := v.Verify(withProof(k.sign(t, h, validClaims())), testRequest())
+		_, err := v.Verify(t.Context(), withProof(k.sign(t, h, validClaims())), testRequest())
 		requireRefused(t, err, CodeInvalidProof, "DPoP proof is not a well-formed JWS with an accepted algorithm")
 	}
 }
@@ -209,7 +210,7 @@ func TestRFC9449_4_3_06_SignatureByAnotherKeyIsRefused(t *testing.T) {
 	k, other := newTestKey(t), newTestKey(t)
 	h := k.header()
 	h["jwk"] = other.jwk
-	_, err := newTestVerifier(t, Config{}).Verify(withProof(k.sign(t, h, validClaims())), testRequest())
+	_, err := newTestVerifier(t, Config{}).Verify(t.Context(), withProof(k.sign(t, h, validClaims())), testRequest())
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof signature does not verify with its jwk")
 }
 
@@ -219,7 +220,7 @@ func TestRFC9449_4_3_06_TamperedPayloadIsRefused(t *testing.T) {
 	c := validClaims()
 	c["htu"] = "https://evil.example.test/token"
 	parts[1] = encodeSegment(t, c)
-	_, err := newTestVerifier(t, Config{}).Verify(withProof(strings.Join(parts, ".")), Request{Method: testMethod, URI: "https://evil.example.test/token"})
+	_, err := newTestVerifier(t, Config{}).Verify(t.Context(), withProof(strings.Join(parts, ".")), Request{Method: testMethod, URI: "https://evil.example.test/token"})
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof signature does not verify with its jwk")
 }
 
@@ -234,7 +235,7 @@ func TestRFC9449_4_3_07_PrivateKeyInJWKIsRefused(t *testing.T) {
 	jwk["d"] = base64.RawURLEncoding.EncodeToString(d)
 	h := k.header()
 	h["jwk"] = jwk
-	_, err = newTestVerifier(t, Config{}).Verify(withProof(k.sign(t, h, validClaims())), testRequest())
+	_, err = newTestVerifier(t, Config{}).Verify(t.Context(), withProof(k.sign(t, h, validClaims())), testRequest())
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof jwk contains a private key")
 }
 
@@ -246,7 +247,7 @@ func TestRFC9449_4_3_08_MethodMismatchIsRefused(t *testing.T) {
 	for _, method := range []string{"GET", "post"} {
 		c := validClaims()
 		c["htm"] = method
-		_, err := v.Verify(withProof(k.sign(t, k.header(), c)), testRequest())
+		_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest())
 		requireRefused(t, err, CodeInvalidProof, "DPoP proof htm does not match the request method")
 	}
 }
@@ -277,7 +278,7 @@ func TestRFC9449_4_3_09_HtuIsComparedAfterNormalization(t *testing.T) {
 	} {
 		c := validClaims()
 		c["htu"] = htu
-		if _, err := v.Verify(withProof(k.sign(t, k.header(), c)), testRequest()); err != nil {
+		if _, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest()); err != nil {
 			t.Errorf("%s: %v", htu, err)
 		}
 	}
@@ -299,7 +300,7 @@ func TestRFC9449_4_3_09_HtuMismatchIsRefused(t *testing.T) {
 	} {
 		c := validClaims()
 		c["htu"] = htu
-		_, err := v.Verify(withProof(k.sign(t, k.header(), c)), testRequest())
+		_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest())
 		requireRefused(t, err, CodeInvalidProof, "DPoP proof htu does not match the request URI")
 	}
 }
@@ -308,7 +309,7 @@ func TestRFC9449_4_3_09_HtuMismatchIsRefused(t *testing.T) {
 // error, not a refusal of the client's proof.
 func TestRFC9449_4_3_09_MisconfiguredRequestURIIsAServerError(t *testing.T) {
 	k := newTestKey(t)
-	_, err := newTestVerifier(t, Config{}).Verify(withProof(k.sign(t, k.header(), validClaims())), Request{Method: testMethod, URI: "/token"})
+	_, err := newTestVerifier(t, Config{}).Verify(t.Context(), withProof(k.sign(t, k.header(), validClaims())), Request{Method: testMethod, URI: "/token"})
 	var e *Error
 	if err == nil || errors.As(err, &e) {
 		t.Fatalf("got %v, want a non-refusal error", err)
@@ -322,14 +323,14 @@ func TestRFC9449_4_3_10_NonceMustMatchServerNonce(t *testing.T) {
 	k := newTestKey(t)
 	v := newTestVerifier(t, Config{Nonces: staticNonces{current: "n-current", fresh: "n-fresh"}})
 
-	_, err := v.Verify(withProof(k.sign(t, k.header(), validClaims())), testRequest())
+	_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), validClaims())), testRequest())
 	if e := requireRefused(t, err, CodeUseNonce, "DPoP proof has no nonce"); e.Nonce != "n-fresh" {
 		t.Fatalf("nonce %q", e.Nonce)
 	}
 
 	c := validClaims()
 	c["nonce"] = "n-stale"
-	_, err = v.Verify(withProof(k.sign(t, k.header(), c)), testRequest())
+	_, err = v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest())
 	if e := requireRefused(t, err, CodeUseNonce, "DPoP proof nonce is not current"); e.Nonce != "n-fresh" {
 		t.Fatalf("nonce %q", e.Nonce)
 	}
@@ -356,7 +357,7 @@ func TestRFC9449_4_3_11_IatOutsideTheWindowIsRefused(t *testing.T) {
 	at := func(iat time.Time) error {
 		c := validClaims()
 		c["iat"] = iat.Unix()
-		_, err := v.Verify(withProof(k.sign(t, k.header(), c)), testRequest())
+		_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest())
 		return err
 	}
 	for _, iat := range []time.Time{testNow, testNow.Add(-time.Minute), testNow.Add(5 * time.Second)} {
@@ -375,12 +376,12 @@ func TestRFC9449_4_3_12_AthMustMatchTheAccessToken(t *testing.T) {
 	v := newTestVerifier(t, Config{})
 	req := Request{Method: testMethod, URI: testURI, AccessToken: "the-token", Thumbprint: k.thumbprint(t)}
 
-	_, err := v.Verify(withProof(k.sign(t, k.header(), validClaims())), req)
+	_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), validClaims())), req)
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof has no ath")
 
 	c := validClaims()
 	c["ath"] = AccessTokenHash("another-token")
-	_, err = v.Verify(withProof(k.sign(t, k.header(), c)), req)
+	_, err = v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), req)
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof ath does not match the access token")
 
 	c["ath"] = AccessTokenHash("the-token")
@@ -396,10 +397,10 @@ func TestRFC9449_4_3_12_AccessTokenMustBeBoundToTheProofKey(t *testing.T) {
 	proof := withProof(k.sign(t, k.header(), c))
 	v := newTestVerifier(t, Config{})
 
-	_, err := v.Verify(proof, Request{Method: testMethod, URI: testURI, AccessToken: "the-token", Thumbprint: other.thumbprint(t)})
+	_, err := v.Verify(t.Context(), proof, Request{Method: testMethod, URI: testURI, AccessToken: "the-token", Thumbprint: other.thumbprint(t)})
 	requireRefused(t, err, CodeInvalidToken, "Invalid DPoP key binding")
 
-	_, err = v.Verify(proof, Request{Method: testMethod, URI: testURI, AccessToken: "the-token"})
+	_, err = v.Verify(t.Context(), proof, Request{Method: testMethod, URI: testURI, AccessToken: "the-token"})
 	requireRefused(t, err, CodeInvalidToken, "access token is not DPoP-bound")
 }
 
@@ -408,7 +409,7 @@ func TestRFC9449_10_GrantBoundToAnotherKeyIsRefused(t *testing.T) {
 	k, other := newTestKey(t), newTestKey(t)
 	v := newTestVerifier(t, Config{})
 	proof := withProof(k.sign(t, k.header(), validClaims()))
-	_, err := v.Verify(proof, Request{Method: testMethod, URI: testURI, Thumbprint: other.thumbprint(t)})
+	_, err := v.Verify(t.Context(), proof, Request{Method: testMethod, URI: testURI, Thumbprint: other.thumbprint(t)})
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof key is not the key the grant is bound to")
 	mustVerify(t, v, proof, Request{Method: testMethod, URI: testURI, Thumbprint: k.thumbprint(t)})
 }
@@ -418,42 +419,42 @@ func TestRFC9449_10_GrantBoundToAnotherKeyIsRefused(t *testing.T) {
 // prevent multiple uses of the same DPoP proof."
 func TestRFC9449_11_1_ReplayedProofIsRefused(t *testing.T) {
 	k := newTestKey(t)
-	cache := NewMemoryReplayCache(10, fixedClock(testNow))
-	v := newTestVerifier(t, Config{Replay: cache})
+	replays := NewMemoryReplays(10, fixedClock(testNow))
+	v := newTestVerifier(t, Config{Replays: replays})
 	proof := withProof(k.sign(t, k.header(), validClaims()))
 	mustVerify(t, v, proof, testRequest())
-	_, err := v.Verify(proof, testRequest())
+	_, err := v.Verify(t.Context(), proof, testRequest())
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof was used before")
 }
 
-// An invalid proof does not take a place in the replay cache.
+// An invalid proof does not take a place in the replays.
 func TestRFC9449_11_1_RefusedProofIsNotRemembered(t *testing.T) {
 	k := newTestKey(t)
-	cache := NewMemoryReplayCache(1, fixedClock(testNow))
-	v := newTestVerifier(t, Config{Replay: cache})
+	replays := NewMemoryReplays(1, fixedClock(testNow))
+	v := newTestVerifier(t, Config{Replays: replays})
 	c := validClaims()
 	c["htm"] = "GET"
-	if _, err := v.Verify(withProof(k.sign(t, k.header(), c)), testRequest()); err == nil {
+	if _, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest()); err == nil {
 		t.Fatal("accepted")
 	}
 	mustVerify(t, v, withProof(k.sign(t, k.header(), validClaims())), testRequest())
 }
 
-// A full replay cache fails closed: the proof is refused rather than an accepted one forgotten.
-func TestRFC9449_11_1_FullReplayCacheFailsClosed(t *testing.T) {
-	cache := NewMemoryReplayCache(1, fixedClock(testNow))
-	if seen, err := cache.Seen("a", testNow.Add(time.Minute)); seen || err != nil {
+// Full replays fail closed: the proof is refused rather than an accepted one forgotten.
+func TestRFC9449_11_1_FullReplaysFailClosed(t *testing.T) {
+	replays := NewMemoryReplays(1, fixedClock(testNow))
+	if seen, err := replays.Seen(t.Context(), "a", testNow.Add(time.Minute)); seen || err != nil {
 		t.Fatal(seen, err)
 	}
-	if _, err := cache.Seen("b", testNow.Add(time.Minute)); !errors.Is(err, ErrReplayCacheFull) {
+	if _, err := replays.Seen(t.Context(), "b", testNow.Add(time.Minute)); !errors.Is(err, ErrReplaysFull) {
 		t.Fatalf("got %v", err)
 	}
-	later := NewMemoryReplayCache(1, fixedClock(testNow.Add(2*time.Minute)))
-	later.entries = cache.entries
-	if seen, err := later.Seen("b", testNow.Add(3*time.Minute)); seen || err != nil {
+	later := NewMemoryReplays(1, fixedClock(testNow.Add(2*time.Minute)))
+	later.entries = replays.entries
+	if seen, err := later.Seen(t.Context(), "b", testNow.Add(3*time.Minute)); seen || err != nil {
 		t.Fatalf("expired entry not swept: %v %v", seen, err)
 	}
-	if seen, _ := later.Seen("a", testNow.Add(3*time.Minute)); seen {
+	if seen, _ := later.Seen(t.Context(), "a", testNow.Add(3*time.Minute)); seen {
 		t.Fatal("expired entry still seen")
 	}
 }
@@ -461,17 +462,17 @@ func TestRFC9449_11_1_FullReplayCacheFailsClosed(t *testing.T) {
 // recordingReplay records the identifiers a verifier asks about.
 type recordingReplay struct{ ids []string }
 
-func (r *recordingReplay) Seen(id string, _ time.Time) (bool, error) {
+func (r *recordingReplay) Seen(_ context.Context, id string, _ time.Time) (bool, error) {
 	r.ids = append(r.ids, id)
 	return false, nil
 }
 
 // Section 11.1: a server "should reject DPoP proof JWTs with unnecessarily large jti values
 // or store only a hash thereof"; the jti is tracked "in the context of the target URI".
-func TestRFC9449_11_1_ReplayCacheStoresAHashInTheContextOfTheURI(t *testing.T) {
+func TestRFC9449_11_1_ReplaysStoreAHashInTheContextOfTheURI(t *testing.T) {
 	k := newTestKey(t)
 	record := &recordingReplay{}
-	v := newTestVerifier(t, Config{Replay: record})
+	v := newTestVerifier(t, Config{Replays: record})
 	c := validClaims()
 	c["jti"] = strings.Repeat("j", 4000)
 	mustVerify(t, v, withProof(k.sign(t, k.header(), c)), testRequest())
@@ -485,4 +486,65 @@ func TestRFC9449_11_1_ReplayCacheStoresAHashInTheContextOfTheURI(t *testing.T) {
 			t.Fatalf("id %q is not a SHA-256 hash", id)
 		}
 	}
+}
+
+// errStore stands for a store or service behind the nonce and replay state that cannot answer.
+var errStore = errors.New("store unavailable")
+
+// failingNonces fails on Valid, on Fresh, or on both.
+type failingNonces struct{ valid, fresh bool }
+
+func (n failingNonces) Valid(context.Context, string) (bool, error) {
+	if n.valid {
+		return false, errStore
+	}
+	return false, nil
+}
+
+func (n failingNonces) Fresh(context.Context) (string, error) {
+	if n.fresh {
+		return "", errStore
+	}
+	return "n-fresh", nil
+}
+
+type failingReplays struct{}
+
+func (failingReplays) Seen(context.Context, string, time.Time) (bool, error) { return false, errStore }
+
+// requireUndecided fails the test unless err is the state's failure rather than a refusal the
+// client could answer with a new proof or nonce.
+func requireUndecided(t *testing.T, err error) {
+	t.Helper()
+	var refusal *Error
+	if !errors.Is(err, errStore) || errors.As(err, &refusal) {
+		t.Fatalf("got %v, want the store's error", err)
+	}
+}
+
+// Server rule 16: a nonce source that cannot tell whether a nonce is current refuses the
+// proof, instead of treating it as merely not current.
+func TestServerRule16_ANonceSourceErrorOnValidRefusesTheProof(t *testing.T) {
+	k := newTestKey(t)
+	c := validClaims()
+	c["nonce"] = "n-current"
+	v := newTestVerifier(t, Config{Nonces: failingNonces{valid: true}})
+	_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), c)), testRequest())
+	requireUndecided(t, err)
+}
+
+// Server rule 16: a nonce source that cannot issue a nonce refuses the proof.
+func TestServerRule16_ANonceSourceErrorOnFreshRefusesTheProof(t *testing.T) {
+	k := newTestKey(t)
+	v := newTestVerifier(t, Config{Nonces: failingNonces{fresh: true}})
+	_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), validClaims())), testRequest())
+	requireUndecided(t, err)
+}
+
+// Server rule 16: replays that cannot tell whether a proof was seen refuse it.
+func TestServerRule16_AReplaysErrorRefusesTheProof(t *testing.T) {
+	k := newTestKey(t)
+	v := newTestVerifier(t, Config{Replays: failingReplays{}})
+	_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), validClaims())), testRequest())
+	requireUndecided(t, err)
 }

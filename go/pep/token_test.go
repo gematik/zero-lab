@@ -35,6 +35,8 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 // The testdata/legacy_*.json fixtures were made by the code of commit a11372a, the last one built on the previous
@@ -107,7 +109,7 @@ func TestLegacyVerdicts_NothingRefusedBeforeIsAcceptedNow(t *testing.T) {
 				}
 				return
 			}
-			p, err := NewBuilder().WithJWKSet(set).Resource(c.Resource).Build()
+			p, err := NewBuilder().WithJWKSet(set).Resource(c.Resource).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,7 +199,7 @@ func TestLegacyAccessTokenFromOldPDPStillVerifiesAndKeepsItsBinding(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := NewBuilder().WithJWKSet(set).Resource("https://rs.example").Build()
+	p, err := NewBuilder().WithJWKSet(set).Resource("https://rs.example").WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,11 +377,11 @@ func TestWithJWKSetPathFailsTheBuildOnAnUnreadableOrInvalidFile(t *testing.T) {
 	if err := os.WriteFile(invalid, []byte(`{"keys":[{"kty":"nope"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewBuilder().WithJWKSetPath(valid).Build(); err != nil {
+	if _, err := NewBuilder().WithJWKSetPath(valid).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build(); err != nil {
 		t.Fatalf("valid file: %v", err)
 	}
 	for _, path := range []string{invalid, dir + "/absent.json"} {
-		if _, err := NewBuilder().WithJWKSetPath(path).Build(); err == nil {
+		if _, err := NewBuilder().WithJWKSetPath(path).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build(); err == nil {
 			t.Fatalf("%s: a PEP was built without its keys", path)
 		}
 	}

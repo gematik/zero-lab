@@ -36,6 +36,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pep"
@@ -78,11 +79,14 @@ func (a *App) Start() error {
 	if err != nil {
 		return fmt.Errorf("DPoP nonces: %w", err)
 	}
+	// zaddy has no shared store: a proof replayed at another replica is not detected there.
+	a.logger.Warn("DPoP replay detection holds for this replica only")
 	a.pep, err = pep.NewBuilder().
 		Resource(a.Resource).
 		PublicOrigin(a.PublicOrigin).
 		WithJWKSetPath(a.JWKSPath).
 		WithDPoPNonces(nonces).
+		WithDPoPReplays(dpop.NewMemoryReplays(dpopReplaysLimit, nil)).
 		WithSlogger(a.logger).
 		Build()
 	if err != nil {
@@ -115,6 +119,8 @@ func (a *App) dpopNonces() (*nonce.Source, error) {
 }
 
 const (
+	// dpopReplaysLimit bounds the proofs remembered at once; beyond it, proofs are refused until older ones expire.
+	dpopReplaysLimit = 100_000
 	dpopNoncePurpose = "zaddy/dpop-nonce"
 	// dpopNonceTTL is how long a nonce is accepted: long enough for a client's next requests, short enough
 	// that a captured one soon stops working (RFC 9449 Section 8).

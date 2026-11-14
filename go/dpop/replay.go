@@ -22,32 +22,34 @@
 package dpop
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
 )
 
-// ErrReplayCacheFull is returned by [MemoryReplayCache.Seen] when it holds its maximum of
-// unexpired entries. The verifier then refuses the proof rather than forget one it accepted.
-var ErrReplayCacheFull = errors.New("dpop: replay cache full")
+// ErrReplaysFull is returned by [MemoryReplays.Seen] when it holds its maximum of unexpired
+// entries. The verifier then refuses the proof rather than forget one it accepted.
+var ErrReplaysFull = errors.New("dpop: replays full")
 
-// MemoryReplayCache is a [ReplayCache] in the memory of one process: replicas of a server
-// each keep their own, so a proof replayed at another replica is not detected there.
-type MemoryReplayCache struct {
+// MemoryReplays are [Replays] in the memory of one process: replicas of a server each keep
+// their own, so a proof replayed at another replica is not detected there.
+type MemoryReplays struct {
 	mu      sync.Mutex
 	limit   int
 	clock   Clock
 	entries map[string]time.Time
 }
 
-// NewMemoryReplayCache returns a cache of at most limit unexpired entries, expiring them by
-// clock (nil: the system clock).
-func NewMemoryReplayCache(limit int, clock Clock) *MemoryReplayCache {
-	return &MemoryReplayCache{limit: limit, clock: clockOrSystem(clock), entries: make(map[string]time.Time)}
+// NewMemoryReplays returns replays of at most limit unexpired entries, expiring them by clock
+// (nil: the system clock).
+func NewMemoryReplays(limit int, clock Clock) *MemoryReplays {
+	return &MemoryReplays{limit: limit, clock: clockOrSystem(clock), entries: make(map[string]time.Time)}
 }
 
-// Seen records id until the given time and reports whether it was recorded and unexpired.
-func (c *MemoryReplayCache) Seen(id string, until time.Time) (bool, error) {
+// Seen records id until the given time and reports whether it was recorded and unexpired. It
+// holds no I/O, so ctx is not consulted.
+func (c *MemoryReplays) Seen(_ context.Context, id string, until time.Time) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.clock.Now()
@@ -61,7 +63,7 @@ func (c *MemoryReplayCache) Seen(id string, until time.Time) (bool, error) {
 			}
 		}
 		if len(c.entries) >= c.limit {
-			return false, ErrReplayCacheFull
+			return false, ErrReplaysFull
 		}
 	}
 	c.entries[id] = until

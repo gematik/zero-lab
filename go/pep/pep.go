@@ -63,10 +63,10 @@ type PEP struct {
 
 // Builder configures a PEP. An option that fails records its error for Build to return.
 type Builder struct {
-	p          *PEP
-	err        error
-	dpopReplay dpop.ReplayCache
-	dpopNonces dpop.NonceSource
+	p           *PEP
+	err         error
+	dpopReplays dpop.Replays
+	dpopNonces  dpop.NonceSource
 }
 
 // NewBuilder starts a Builder with no JWK set source, which Build requires.
@@ -106,17 +106,18 @@ func (b *Builder) Build() (*PEP, error) {
 		}
 		b.p.publicOrigin = origin
 	}
-	// Without a cache from the host, replay detection covers this process only (RFC 9449 Section 11.1).
-	if b.dpopReplay == nil {
-		b.dpopReplay = dpop.NewMemoryReplayCache(100_000, nil)
+	// Where accepted proofs are remembered decides whether replicas see each other's (RFC 9449 Section 11.1):
+	// the host's choice, never a default of this package.
+	if b.dpopReplays == nil {
+		return nil, errors.New("no DPoP replays: call WithDPoPReplays, with dpop.NewMemoryReplays for a single replica")
 	}
-	verifier, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay, Clock: clockFunc(b.p.now)})
+	verifier, err := dpop.NewVerifier(dpop.Config{Replays: b.dpopReplays, Clock: clockFunc(b.p.now)})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
 	}
 	b.p.dpopVerifier = verifier
 	if b.dpopNonces != nil {
-		nonced, err := dpop.NewVerifier(dpop.Config{Replay: b.dpopReplay, Nonces: b.dpopNonces, Clock: clockFunc(b.p.now)})
+		nonced, err := dpop.NewVerifier(dpop.Config{Replays: b.dpopReplays, Nonces: b.dpopNonces, Clock: clockFunc(b.p.now)})
 		if err != nil {
 			return nil, fmt.Errorf("dpop verifier with nonces: %w", err)
 		}
@@ -176,11 +177,12 @@ func (b *Builder) WithDPoPNonces(source dpop.NonceSource) *Builder {
 	return b
 }
 
-// WithDPoPReplayCache sets where accepted DPoP proofs are remembered. A host running several replicas supplies
-// one they share, so a proof replayed at another replica is refused (RFC 9449 Section 11.1); this package stays
-// free of any store. An error from the cache refuses the proof. Without it, proofs are remembered per process.
-func (b *Builder) WithDPoPReplayCache(cache dpop.ReplayCache) *Builder {
-	b.dpopReplay = cache
+// WithDPoPReplays sets where accepted DPoP proofs are remembered. A host running several replicas supplies
+// replays they share, so a proof replayed at another replica is refused (RFC 9449 Section 11.1); this package
+// stays free of any store. An error from them refuses the proof. Build requires them; a single replica can use
+// dpop.NewMemoryReplays.
+func (b *Builder) WithDPoPReplays(replays dpop.Replays) *Builder {
+	b.dpopReplays = replays
 	return b
 }
 
@@ -383,7 +385,7 @@ func (c *pepContext) verifyAuthorizationDPoP(nonceRequired bool) error {
 		}
 		verifier = c.pep.dpopNonceVerifier
 	}
-	proof, err := verifier.Verify(c.request.Header, dpop.Request{
+	proof, err := verifier.Verify(c.request.Context(), c.request.Header, dpop.Request{
 		Method:      c.request.Method,
 		URI:         c.pep.publicOrigin + c.request.URL.EscapedPath(),
 		AccessToken: accessToken,
@@ -396,7 +398,7 @@ func (c *pepContext) verifyAuthorizationDPoP(nonceRequired bool) error {
 	// Section 8.2: the next nonce rides on the successful response too, so the client need not be refused
 	// once the current one expires.
 	if nonceRequired {
-		if next, err := c.pep.dpopNonces.Fresh(); err == nil {
+		if next, err := c.pep.dpopNonces.Fresh(c.request.Context()); err == nil {
 			handOutNonce(c.writer, next)
 		} else {
 			c.Slogger().Warn("No DPoP nonce for the response", "error", err)

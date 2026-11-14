@@ -155,15 +155,15 @@ func New(cfg Config) (*Server, error) {
 
 	s.initRelyingParty(cfg)
 
-	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, recordNonce(store), nonce.WithClock(s.now))
+	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, newKVRedemptions(store), nonce.WithClock(s.now))
 	if err != nil {
 		return nil, fmt.Errorf("nonce service: %w", err)
 	}
 
 	s.dpopVerifier, err = dpop.NewVerifier(dpop.Config{
-		MaxAge: 5 * time.Minute,
-		Replay: kv.NewReplayCache(store),
-		Clock:  clockFunc(s.now),
+		MaxAge:  5 * time.Minute,
+		Replays: newKVReplays(store),
+		Clock:   clockFunc(s.now),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)

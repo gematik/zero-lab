@@ -46,7 +46,6 @@ import (
 
 // The interfaces are met by shape, so that the modules need not import each other; this is where that holds.
 var (
-	_ dpop.ReplayCache = (*kv.ReplayCache)(nil)
 	_ dpop.NonceSource = (*nonce.Source)(nil)
 	_ nonce.Keys       = (*kv.Keyring)(nil)
 	_ kv.Keys          = nonce.Keys(nil)
@@ -158,8 +157,8 @@ func TestServerRule16_ANonceStoreOutageFailsClosedAndLeaksNothing(t *testing.T) 
 	}
 }
 
-// Server rule 16: without the replay cache no proof is accepted.
-func TestServerRule16_ADPoPReplayCacheOutageRefusesTheProof(t *testing.T) {
+// Server rule 16: without the replays no proof is accepted.
+func TestServerRule16_ADPoPReplaysOutageRefusesTheProof(t *testing.T) {
 	a, _, signKey := replicas(t, &failingOn{Store: kv.NewMemory(), prefix: "dpop:replay:"})
 	resp := httptest.NewRecorder()
 	err := a.TokenEndpoint(resp, clientCredentialsRequest(t, signClientAssertion(t, a, signKey, nil)))
@@ -206,35 +205,6 @@ func TestServerRule10_AnAnonymousNonceRequestCausesNoWrite(t *testing.T) {
 	}
 }
 
-func TestNonceRecord_OutlivesTheNonceByTheClockSkew(t *testing.T) {
-	ctx := context.Background()
-	store := &ttlRecorder{Store: kv.NewMemory()}
-	until := time.Now().Add(time.Minute)
-	if first, err := recordNonce(store)(ctx, "abc", until); err != nil || !first {
-		t.Fatalf("first=%v err=%v", first, err)
-	}
-	if store.key != "nonce:abc" {
-		t.Fatalf("key %q", store.key)
-	}
-	if store.ttl <= time.Minute || store.ttl > time.Minute+nonceClockSkew {
-		t.Fatalf("ttl %v", store.ttl)
-	}
-	if first, err := recordNonce(store)(ctx, "abc", until); err != nil || first {
-		t.Fatalf("again: first=%v err=%v", first, err)
-	}
-}
-
-type ttlRecorder struct {
-	kv.Store
-	key string
-	ttl time.Duration
-}
-
-func (s *ttlRecorder) SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	s.key, s.ttl = key, ttl
-	return s.Store.SetIfAbsent(ctx, key, value, ttl)
-}
-
 // RFC 9449 Section 8 stays possible on the same keys: a proof must carry a nonce from the source, and one
 // issued at another replica counts. nonce_required itself is TASK-131.
 func TestRFC9449_8_ASourceOnTheKeyringServesAVerifier(t *testing.T) {
@@ -261,14 +231,14 @@ func TestRFC9449_8_ASourceOnTheKeyringServesAVerifier(t *testing.T) {
 		header.Set(dpop.HeaderName, proof)
 		return header
 	}
-	if _, err := verifier.Verify(withNonce(""), req); err == nil {
+	if _, err := verifier.Verify(t.Context(), withNonce(""), req); err == nil {
 		t.Fatal("accepted a proof without a nonce")
 	}
-	fresh, err := source.Fresh()
+	fresh, err := source.Fresh(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := verifier.Verify(withNonce(fresh), req); err != nil {
+	if _, err := verifier.Verify(t.Context(), withNonce(fresh), req); err != nil {
 		t.Fatalf("refused the source's nonce: %v", err)
 	}
 }

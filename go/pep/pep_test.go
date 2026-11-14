@@ -24,6 +24,7 @@ package pep_test
 import (
 	"testing"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -51,6 +52,7 @@ func createPEPAt(t *testing.T, publicOrigin string) *pep.PEP {
 		Resource("https://example.com").
 		PublicOrigin(publicOrigin).
 		WithJWKSet(jwkSet).
+		WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).
 		Build()
 	if err != nil {
 		t.Fatal(err)
@@ -67,6 +69,7 @@ func TestPEPBuilder(t *testing.T) {
 
 	pep, err := pep.NewBuilder().
 		WithJWKSet(jwkSet).
+		WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).
 		Build()
 	if err != nil {
 		t.Fatal(err)

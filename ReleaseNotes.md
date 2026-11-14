@@ -1,5 +1,43 @@
 # Release Notes
 
+# Unreleased go/dpop
+
+### breaking
+- `ReplayCache` is `Replays`, `MemoryReplayCache` is `MemoryReplays`, `NewMemoryReplayCache` is
+  `NewMemoryReplays`, `ErrReplayCacheFull` is `ErrReplaysFull` and `Config.Replay` is
+  `Config.Replays`: an entry lost before it expires lets a proof through twice, so it is no cache
+  (TASK-309).
+- `Replays.Seen`, `NonceSource.Valid` and `NonceSource.Fresh` take a context and return an error,
+  so they can be kept in a store; `Verifier.Verify` takes the request's context first and passes it
+  on. An error from either refuses the proof.
+
+# Unreleased go/nonce
+
+### breaking
+- `Record` is the interface `Redemptions`; its `Seen` reports true for a nonce redeemed before, as
+  `dpop.Replays` does, and `New` takes it (TASK-309).
+- `Source.Valid` and `Source.Fresh` take a context and return an error, to meet the new
+  `dpop.NonceSource`.
+
+# Unreleased go/kv
+
+### breaking
+- `ReplayCache` and `NewReplayCache` are gone: kv holds nothing of dpop. A host builds its replays
+  on `SetIfAbsent`, as zero-pdp does (TASK-309).
+
+# Unreleased go/pep
+
+### breaking
+- `WithDPoPReplayCache` is `WithDPoPReplays`, and `Build` refuses a builder without it: the host
+  picks the backend, `dpop.NewMemoryReplays` for a single replica (TASK-309).
+- On the new dpop: nonce sources and replays receive the request's context.
+
+# Unreleased go/zaddy
+
+### changes
+- zaddy chooses DPoP replays in memory itself, as pep did before, and warns at start that replay
+  detection holds for this replica only (TASK-309).
+
 # Release go/oidf v0.51.0
 
 ### breaking
