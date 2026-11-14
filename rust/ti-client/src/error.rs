@@ -69,7 +69,8 @@ pub enum Error {
         /// Why.
         source: ti_pkcs12::Error,
     },
-    /// The certificates give no evidence for production or test.
+    /// The certificates give no evidence for production or test; each detection step
+    /// and its outcome, one per line, for a verbose view. Its message is short.
     EnvironmentUndetected(String),
     /// The trust material of the environment could not be used.
     Trust(ti_pki::Error),
@@ -127,11 +128,14 @@ pub enum Error {
     ProbeEndpoints(String),
 }
 
+/// The message of [`Error::EnvironmentUndetected`]: the steps are detail, not message.
+pub const UNDETECTED: &str = "no TI root, chain or marker";
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Error::EnvironmentUndetected(_) => f.write_str(UNDETECTED),
             Error::Setup(message)
-            | Error::EnvironmentUndetected(message)
             | Error::TrustLoad(message)
             | Error::TslUncached(message)
             | Error::TslRollback(message)

@@ -96,8 +96,9 @@ pub enum CliError {
     /// An output file exists and `--force` was not given.
     #[error("{0} exists")]
     OutputExists(String),
-    /// `--env auto` found no evidence for production or test.
-    #[error("cannot tell the TI environment from the certificates: {0}")]
+    /// `--env auto` found no evidence for production or test; each detection step, one
+    /// per line, shown with `-v` ([`CliError::detail`]).
+    #[error("cannot tell the TI environment: no TI root, chain or marker")]
     EnvironmentUndetected(String),
     /// The environment given does not fit the command.
     #[error("{0}")]
@@ -276,6 +277,14 @@ impl CliError {
                 _ => "directory_protocol",
             },
             CliError::Output(_) => "output_failed",
+        }
+    }
+
+    /// What led to it, line by line, for `-v`: detail that would bury the message.
+    pub fn detail(&self) -> Option<&str> {
+        match self {
+            CliError::EnvironmentUndetected(steps) => Some(steps),
+            _ => None,
         }
     }
 
@@ -536,6 +545,23 @@ mod tests {
 
     /// A Konnektor error names the `.kon` configuration once the command knows it; the
     /// address and the calls stay `-v`'s. Kind, exit code and hint do not change.
+    #[test]
+    fn an_undetected_environment_is_one_line_and_its_steps_are_detail() {
+        let error = CliError::from(ti_client::Error::EnvironmentUndetected(
+            "root-identity: no input certificate is an embedded root\nmarkers: none".into(),
+        ));
+        assert_eq!(
+            error.to_string(),
+            "cannot tell the TI environment: no TI root, chain or marker"
+        );
+        assert_eq!(
+            error.detail().map(|d| d.lines().count()),
+            Some(2),
+            "each step on its own line, for -v"
+        );
+        assert_eq!(error.hint(), Some("pass --env prod, ref, test or dev"));
+    }
+
     #[test]
     fn a_konnektor_error_names_its_configuration() {
         let transport = || {

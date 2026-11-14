@@ -142,10 +142,17 @@ impl Output {
             writeln!(err, "{document}")
         } else {
             let (bad, dim) = (style::BAD, style::DIM);
-            writeln!(err, "{bad}error:{bad:#} {error}").and_then(|()| match error.hint() {
-                Some(hint) => writeln!(err, "{dim}  hint: {hint}{dim:#}"),
-                None => Ok(()),
-            })
+            writeln!(err, "{bad}error:{bad:#} {error}")
+                .and_then(|()| match error.detail().filter(|_| self.verbose > 0) {
+                    Some(detail) => detail
+                        .lines()
+                        .try_for_each(|line| writeln!(err, "{dim}  {line}{dim:#}")),
+                    None => Ok(()),
+                })
+                .and_then(|()| match error.hint() {
+                    Some(hint) => writeln!(err, "{dim}  hint: {hint}{dim:#}"),
+                    None => Ok(()),
+                })
         };
     }
 }

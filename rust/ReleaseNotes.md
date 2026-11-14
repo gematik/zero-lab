@@ -13,6 +13,16 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
+### ti-cli
+
+#### changed
+- `pki verify` shows a certificate outside every TI environment (no TI root, chain or
+  marker) instead of failing with exit 2: INVALID, exit 1, `no TI environment`, the issuer
+  `not under any TI root`, no trust material loaded; `--env` checks it against one. JSON:
+  `environment.name` `none`, `trust` null, the finding `environment_undetected` (TASK-287).
+- The `environment_undetected` error is one line, `cannot tell the TI environment: no TI
+  root, chain or marker`; `-v` lists each detection step (TASK-287).
+
 ### ti-cache
 
 #### added
@@ -126,6 +136,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   in a handshake at a given instant (`TlsServerVerdict`: the chain, the verdict with its
   status source and warnings, the roots); `pki::verify::server_profile` picks `ti` or `web`
   for a `--connect` server (TASK-283).
+- `pki::verify::verify` reports certificates that show no TI environment instead of failing
+  with `EnvironmentUndetected`: invalid, the finding `environment_undetected`
+  (`OUTSIDE_TI`), `environment.name` `none` (`NO_ENVIRONMENT`), no trust material
+  (`Verification::trust` is an `Option` now). `EnvironmentUndetected` displays one short
+  line; it carries the detection steps one per line (TASK-287).
 
 ### ti-tls
 

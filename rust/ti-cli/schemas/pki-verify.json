@@ -22,8 +22,10 @@
             "prod",
             "ref",
             "test",
-            "dev"
-          ]
+            "dev",
+            "none"
+          ],
+          "description": "none: the certificates show no TI environment; the result is invalid with environment_undetected and no trust material was loaded"
         },
         "production": {
           "type": "boolean"
@@ -40,8 +42,10 @@
                   "enum": [
                     "root-identity",
                     "chain",
-                    "markers"
-                  ]
+                    "markers",
+                    "none"
+                  ],
+                  "description": "none: no method decided"
                 },
                 "detail": {
                   "type": "string"
@@ -100,7 +104,15 @@
       "additionalProperties": false
     },
     "trust": {
-      "$ref": "#/$defs/trust"
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/trust"
+        }
+      ],
+      "description": "The trust material; null when the certificates show no TI environment to load it for"
     },
     "revocation_checked": {
       "type": "boolean",
@@ -447,7 +459,8 @@
             "ca_not_in_tsl",
             "issued_before_ca_revocation",
             "revoked_after_reference_time",
-            "ca_expired"
+            "ca_expired",
+            "environment_undetected"
           ]
         },
         "subject": {
