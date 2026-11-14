@@ -1,9 +1,10 @@
 ---
 id: TASK-311
 title: 'pep/proxy: gateway snapshot routes ask Revocations'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T15:21:00Z'
+updated_date: '2026-11-14T16:44:00Z'
 labels: []
 dependencies: []
 ordinal: 326000
