@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -142,6 +143,76 @@ func TestOIDCCore_3_1_2_1_ScopesAndACRValuesArePerLogin(t *testing.T) {
 			if value != "" && value != "openid" && err != nil && strings.Contains(err.Error(), value) {
 				t.Errorf("%s: the error holds the refused value: %v", name, err)
 			}
+		}
+	}
+}
+
+// OIDC Core 5.5 with the bounds of values.go: the claims parameter is UTF-8, names no member twice at any depth, and
+// stays within its nesting and member bounds; at the bounds it is taken.
+func TestOIDCCore_5_5_TheClaimsParameterIsBounded(t *testing.T) {
+	members := func(n int) string {
+		names := make([]string, n)
+		for i := range names {
+			names[i] = fmt.Sprintf(`"m%d":null`, i)
+		}
+		return "{" + strings.Join(names, ",") + "}"
+	}
+	nested := func(depth int) string {
+		return strings.Repeat(`{"a":`, depth-1) + "{}" + strings.Repeat("}", depth-1)
+	}
+	for name, tc := range map[string]struct {
+		claims string
+		accept bool
+	}{
+		"64 members":                   {members(64), true},
+		"65 members":                   {members(65), false},
+		"nested 5 deep":                {nested(5), true},
+		"nested 6 deep":                {nested(6), false},
+		"arrays count as nesting":      {`{"a":[[[[[]]]]]}`, false},
+		"a duplicate at the top":       {`{"id_token":{},"id_token":{}}`, false},
+		"a duplicate deeper":           {`{"id_token":{"acr":{"values":["a"],"values":["b"]}}}`, false},
+		"a duplicate after an escape":  {`{"a":1,"\u0061":2}`, false},
+		"the same name in two objects": {`{"id_token":{"acr":null},"userinfo":{"acr":null}}`, true},
+		"invalid UTF-8":                {"{\"a\":\"\xff\"}", false},
+		"members in an array":          {`{"a":[{"b":1},{"b":2}]}`, true},
+	} {
+		_, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: json.RawMessage(tc.claims)})
+		if tc.accept && err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+		if !tc.accept && !errors.Is(err, ErrClaimsParameter) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// RFC 6749 §3.3 with the bounds of values.go: a request names at most 16 scopes, each once, and at most 8 acr values,
+// each at most 128 bytes.
+func TestRFC6749_3_3_ScopesAndACRValuesAreBounded(t *testing.T) {
+	many := func(n int) []string {
+		values := make([]string, n)
+		for i := range values {
+			values[i] = fmt.Sprintf("v%d", i)
+		}
+		return values
+	}
+	long := strings.Repeat("a", 129)
+	for name, tc := range map[string]struct {
+		login Login
+		want  error
+	}{
+		"16 scopes":           {Login{Scopes: many(16)}, nil},
+		"17 scopes":           {Login{Scopes: many(17)}, ErrScope},
+		"a scope of 128":      {Login{Scopes: []string{long[:128]}}, nil},
+		"a scope of 129":      {Login{Scopes: []string{long}}, ErrScope},
+		"a scope twice":       {Login{Scopes: []string{"openid", "email", "openid"}}, ErrScope},
+		"8 acr values":        {Login{ACRValues: many(8)}, nil},
+		"9 acr values":        {Login{ACRValues: many(9)}, ErrACRValue},
+		"an acr value of 129": {Login{ACRValues: []string{long}}, ErrACRValue},
+	} {
+		_, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, tc.login)
+		if !errors.Is(err, tc.want) {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
 }

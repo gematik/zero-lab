@@ -42,10 +42,10 @@ func AuthorizationQuery(clientID, redirectURI string, scopes []string, login Log
 	if len(login.Scopes) > 0 {
 		scopes = login.Scopes
 	}
-	if err := checkTokens(ErrScope, scopes); err != nil {
+	if err := checkTokens(ErrScope, scopes, maxScopes, true); err != nil {
 		return nil, err
 	}
-	if err := checkTokens(ErrACRValue, login.ACRValues); err != nil {
+	if err := checkTokens(ErrACRValue, login.ACRValues, maxACRValues, false); err != nil {
 		return nil, err
 	}
 	query := url.Values{}

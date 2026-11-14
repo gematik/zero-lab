@@ -22,10 +22,13 @@
 package openid
 
 import (
+	"bytes"
 	"crypto/elliptic"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -107,10 +110,12 @@ func FuzzTokenResponseClaims(f *testing.F) {
 }
 
 // FuzzAuthorizationQueryClaims feeds arbitrary claims parameters to AuthorizationQuery. Invariants: it never panics,
-// and what it sends is a JSON object of at most MaxClaimsBytes, unchanged.
+// and what it sends is the input unchanged, which an oracle of its own finds to be UTF-8, a JSON object within the
+// size bound and without a member named twice.
 func FuzzAuthorizationQueryClaims(f *testing.F) {
 	for _, seed := range []string{
 		`{"id_token":{"acr":{"essential":true}}}`, `{}`, `[]`, `null`, `"x"`, `{} {}`, `{"a":`, ` {"a":1} `, ``,
+		`{"a":1,"a":2}`, `{"a":{"b":1,"b":2}}`, `{"a":[{"b":1},{"b":1}]}`, "{\"a\":\"\xff\"}", `{"a":1,"\u0061":2}`,
 	} {
 		f.Add([]byte(seed))
 	}
@@ -120,12 +125,55 @@ func FuzzAuthorizationQueryClaims(f *testing.F) {
 			return
 		}
 		sent := query.Get("claims")
-		if sent != string(claims) || len(sent) > MaxClaimsBytes {
+		if sent != string(claims) || len(sent) > MaxClaimsBytes || !utf8.ValidString(sent) {
 			t.Fatalf("sent %q for %q", sent, claims)
 		}
-		var members map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(sent), &members); err != nil || members == nil {
+		if trimmed := strings.TrimLeft(sent, " \t\r\n"); !strings.HasPrefix(trimmed, "{") {
 			t.Fatalf("sent a claims parameter that is no JSON object: %q", sent)
 		}
+		var value any
+		if err := json.Unmarshal(claims, &value); err != nil {
+			t.Fatalf("sent a claims parameter that is no JSON: %q", sent)
+		}
+		decoder := json.NewDecoder(bytes.NewReader(claims))
+		if duplicate(t, decoder) {
+			t.Fatalf("sent a claims parameter with a member named twice: %q", sent)
+		}
 	})
+}
+
+// duplicate reads one JSON value from decoder and reports whether an object in it names a member twice. It recurses
+// where the code under test keeps a stack, so the two do not share a mistake.
+func duplicate(t *testing.T, decoder *json.Decoder) bool {
+	t.Helper()
+	token, err := decoder.Token()
+	if err != nil {
+		t.Fatalf("token: %v", err)
+	}
+	switch token {
+	case json.Delim('{'):
+		names := map[string]bool{}
+		found := false
+		for decoder.More() {
+			name, err := decoder.Token()
+			if err != nil {
+				t.Fatalf("name: %v", err)
+			}
+			if names[name.(string)] {
+				found = true
+			}
+			names[name.(string)] = true
+			found = duplicate(t, decoder) || found
+		}
+		_, _ = decoder.Token()
+		return found
+	case json.Delim('['):
+		found := false
+		for decoder.More() {
+			found = duplicate(t, decoder) || found
+		}
+		_, _ = decoder.Token()
+		return found
+	}
+	return false
 }
