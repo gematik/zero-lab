@@ -31,6 +31,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -118,7 +119,7 @@ func writeTestKeyPEM(t *testing.T, curve elliptic.Curve) (string, *ecdsa.Private
 
 func TestLoadKeyConfigDefaultsTheKidToTheThumbprint(t *testing.T) {
 	path, key := writeTestKeyPEM(t, elliptic.P256())
-	_, public, kid, err := loadKeyConfig(KeyConfig{KeyPEMPath: path}, "", keyUseSign)
+	_, kid, err := loadKeyConfig(KeyConfig{KeyPEMPath: path}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,74 +127,99 @@ func TestLoadKeyConfigDefaultsTheKidToTheThumbprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := base64.RawURLEncoding.EncodeToString(sum); kid != want || public.KeyID != want {
-		t.Errorf("kid = %s, public kid = %s, want %s", kid, public.KeyID, want)
+	if want := base64.RawURLEncoding.EncodeToString(sum); kid != want {
+		t.Errorf("kid = %s, want %s", kid, want)
 	}
 }
 
 func TestLoadKeyConfigTakesTheConfiguredKid(t *testing.T) {
 	path, _ := writeTestKeyPEM(t, elliptic.P256())
-	_, public, kid, err := loadKeyConfig(KeyConfig{KeyPEMPath: path, Kid: "registered"}, "", keyUseSign)
+	_, kid, err := loadKeyConfig(KeyConfig{KeyPEMPath: path, Kid: "registered"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if kid != "registered" || public.KeyID != "registered" {
-		t.Errorf("kid = %s, public kid = %s", kid, public.KeyID)
+	if kid != "registered" {
+		t.Errorf("kid = %s", kid)
 	}
 }
 
-// A published key states the algorithm it is for.
+// publishedKeys reads the keys of the relying party's signed statement by kid: its own jwks and those of
+// openid_relying_party.
+func publishedKeys(t *testing.T, rp *RelyingParty) map[string]map[string]any {
+	t.Helper()
+	signed, err := rp.SignEntityStatement()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claims struct {
+		Jwks     struct{ Keys []map[string]any } `json:"jwks"`
+		Metadata struct {
+			OpenidRelyingParty struct {
+				Jwks struct{ Keys []map[string]any } `json:"jwks"`
+			} `json:"openid_relying_party"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(unverifiedPayload(t, signed), &claims); err != nil {
+		t.Fatal(err)
+	}
+	published := map[string]map[string]any{}
+	for _, key := range claims.Jwks.Keys {
+		key["in"] = "statement"
+		published[key["kid"].(string)] = key
+	}
+	for _, key := range claims.Metadata.OpenidRelyingParty.Jwks.Keys {
+		key["in"] = "openid_relying_party"
+		published[key["kid"].(string)] = key
+	}
+	return published
+}
+
+// A published key states the algorithm it is for, also when it comes from a file.
 func TestPublishedKeysStateTheirAlgAndUse(t *testing.T) {
-	path, _ := writeTestKeyPEM(t, elliptic.P256())
-	for _, tc := range []struct {
-		name    string
-		use     keyUse
-		wantUse string
-		wantAlg string
-	}{
-		{"signing key", keyUseSign, "sig", "ES256"},
-		{"encryption key", keyUseEncrypt, "enc", "ECDH-ES"},
-		{"client key", keyUseClientAuth, "sig", "ES256"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, public, _, err := loadKeyConfig(KeyConfig{KeyPEMPath: path}, "", tc.use)
-			if err != nil {
-				t.Fatal(err)
-			}
-			data, err := json.Marshal(public)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var published map[string]any
-			if err := json.Unmarshal(data, &published); err != nil {
-				t.Fatal(err)
-			}
-			if published["alg"] != tc.wantAlg || published["use"] != tc.wantUse {
-				t.Errorf("published %s", data)
-			}
-			if _, private := published["d"]; private {
-				t.Error("published the private part")
-			}
-		})
-	}
-}
-
-func TestClientKeyPublishesTheAlgOfItsCurve(t *testing.T) {
-	path, _ := writeTestKeyPEM(t, elliptic.P384())
-	_, public, _, err := loadKeyConfig(KeyConfig{KeyPEMPath: path}, "", keyUseClientAuth)
+	cfg := testRelyingPartyConfig(t, newFederationStub(t))
+	cfg.SignKey.Kid, cfg.EncKey.Kid, cfg.ClientKey.Kid = "sign", "enc", "client"
+	rp, err := NewRelyingParty(t.Context(), cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if public.Algorithm != "ES384" {
-		t.Errorf("alg = %s", public.Algorithm)
+	published := publishedKeys(t, rp)
+	for kid, want := range map[string][3]string{
+		"sign":   {"statement", "sig", "ES256"},
+		"enc":    {"openid_relying_party", "enc", "ECDH-ES"},
+		"client": {"openid_relying_party", "sig", "ES256"},
+	} {
+		key := published[kid]
+		if key == nil || key["in"] != want[0] || key["use"] != want[1] || key["alg"] != want[2] {
+			t.Errorf("%s: %v", kid, key)
+		}
+		if _, private := key["d"]; private {
+			t.Errorf("%s: published the private part", kid)
+		}
+	}
+}
+
+// gemSpec_IDP_FD A_23196: TLS authentication with a P-256 key only.
+func TestA_23196_AP384ClientKeyFromAFileIsRefused(t *testing.T) {
+	cfg := testRelyingPartyConfig(t, newFederationStub(t))
+	path, _ := writeTestKeyPEM(t, elliptic.P384())
+	certPath, err := generateCert(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(certPath) })
+	cfg.ClientKey = KeyConfig{KeyPEMPath: path, CertPEMPath: certPath}
+	if _, err := NewRelyingParty(t.Context(), cfg, ""); !errors.Is(err, ErrKeys) {
+		t.Errorf("err = %v", err)
 	}
 }
 
 // gemSpec_IDP_FD A_23196: the entity statement is signed with a P-256 key only.
 func TestA_23196_TheSigningKeyHasToBeP256(t *testing.T) {
+	cfg := testRelyingPartyConfig(t, newFederationStub(t))
 	path, _ := writeTestKeyPEM(t, elliptic.P384())
-	if _, _, _, err := loadKeyConfig(KeyConfig{KeyPEMPath: path}, "", keyUseSign); err == nil {
-		t.Error("accepted a key that cannot sign ES256")
+	cfg.SignKey = KeyConfig{KeyPEMPath: path}
+	if _, err := NewRelyingParty(t.Context(), cfg, ""); !errors.Is(err, ErrKeys) {
+		t.Errorf("err = %v", err)
 	}
 }
 
@@ -207,13 +233,20 @@ func TestLoadKeyConfigRefusesKeysThatCannotDoTheJob(t *testing.T) {
 	if err := os.WriteFile(rsaPath, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, use := range []keyUse{keyUseSign, keyUseEncrypt, keyUseClientAuth} {
-		if _, _, _, err := loadKeyConfig(KeyConfig{KeyPEMPath: rsaPath}, "", use); err == nil {
-			t.Errorf("use %d accepted an RSA key", use)
+	stub := newFederationStub(t)
+	for name, place := range map[string]func(*RelyingPartyConfig){
+		"sign_key":   func(c *RelyingPartyConfig) { c.SignKey = KeyConfig{KeyPEMPath: rsaPath} },
+		"enc_key":    func(c *RelyingPartyConfig) { c.EncKey = KeyConfig{KeyPEMPath: rsaPath} },
+		"client_key": func(c *RelyingPartyConfig) { c.ClientKey.KeyPEMPath = rsaPath },
+	} {
+		cfg := testRelyingPartyConfig(t, stub)
+		place(cfg)
+		if _, err := NewRelyingParty(t.Context(), cfg, ""); err == nil {
+			t.Errorf("%s accepted an RSA key", name)
 		}
 	}
 	publicJWK := map[string]any{"kty": "EC", "crv": "P-256", "x": "cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs", "y": "XVp1ySJ2kjEInpjTZy0wD59afEXELpck0fk7vrMWrbw"}
-	if _, _, _, err := loadKeyConfig(KeyConfig{JWK: publicJWK}, "", keyUseSign); err == nil {
+	if _, _, err := loadKeyConfig(KeyConfig{JWK: publicJWK}, ""); err == nil {
 		t.Error("accepted a public key as the private key")
 	}
 }
@@ -253,37 +286,34 @@ func TestParsePrivateKeyPEMReadsTheFormatsOfTheStandardLibrary(t *testing.T) {
 }
 
 func TestCertPEMPathPublishesTheCertificateAsX5c(t *testing.T) {
-	keyPath, err := generateTempKeyFile()
+	cfg := testRelyingPartyConfig(t, newFederationStub(t))
+	cfg.ClientKey.Kid = "client"
+	rp, err := NewRelyingParty(t.Context(), cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(keyPath)
-	certPath, err := generateCert(keyPath)
+	der, err := loadCertBytesFromPem(cfg.ClientKey.CertPEMPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(certPath)
+	x5c, _ := publishedKeys(t, rp)["client"]["x5c"].([]any)
+	if len(x5c) != 1 || x5c[0] != base64.StdEncoding.EncodeToString(der) {
+		t.Errorf("x5c = %v", x5c)
+	}
+}
 
-	_, public, _, err := loadKeyConfig(KeyConfig{KeyPEMPath: keyPath, CertPEMPath: certPath}, "", keyUseClientAuth)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(public)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var published struct {
-		X5c []string `json:"x5c"`
-	}
-	if err := json.Unmarshal(data, &published); err != nil {
-		t.Fatal(err)
-	}
-	der, err := loadCertBytesFromPem(certPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(published.X5c) != 1 || published.X5c[0] != base64.StdEncoding.EncodeToString(der) {
-		t.Errorf("x5c = %v", published.X5c)
+// Servers rule 17: a certificate named for the signing or the ID token key would be ignored, so it stops the start.
+func TestServerRule17_ACertificateForAKeyOtherThanTheClientKeyIsRefused(t *testing.T) {
+	stub := newFederationStub(t)
+	for name, place := range map[string]func(*RelyingPartyConfig){
+		"sign_key": func(c *RelyingPartyConfig) { c.SignKey.CertPEMPath = c.ClientKey.CertPEMPath },
+		"enc_key":  func(c *RelyingPartyConfig) { c.EncKey.CertPEMPath = c.ClientKey.CertPEMPath },
+	} {
+		cfg := testRelyingPartyConfig(t, stub)
+		place(cfg)
+		if _, err := NewRelyingParty(t.Context(), cfg, ""); err == nil || !strings.Contains(err.Error(), "cert_pem_path") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 

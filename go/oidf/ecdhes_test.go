@@ -33,8 +33,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -364,6 +367,75 @@ func TestA_23196_KeysThatAreNotAsRequiredAreRefused(t *testing.T) {
 	}
 	if err := newTestKeys(t).check(); err != nil {
 		t.Errorf("keys as required: %v", err)
+	}
+}
+
+// Servers rule 17: a key given as a nil pointer of its type is missing, and is refused rather than panicking on its
+// first use.
+func TestServerRule17_ANilKeyOfAKeyTypeIsRefused(t *testing.T) {
+	for name, change := range map[string]func(*Keys){
+		"signing key":    func(k *Keys) { k.Sign = (*ecdsa.PrivateKey)(nil) },
+		"ID token key":   func(k *Keys) { k.Decrypt = (*ecdh.PrivateKey)(nil) },
+		"client key":     func(k *Keys) { k.Client.PrivateKey = (*ecdsa.PrivateKey)(nil) },
+		"untyped client": func(k *Keys) { k.Client.PrivateKey = nil },
+	} {
+		keys := newTestKeys(t)
+		change(&keys)
+		if err := keys.check(); !errors.Is(err, ErrKeys) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// gemSpec_IDP_FD A_23195: the kid selects one key, so two keys under one kid are refused.
+func TestA_23195_TwoKeysUnderOneKIDAreRefused(t *testing.T) {
+	for name, change := range map[string]func(*Keys){
+		"signing and ID token": func(k *Keys) { k.DecryptKID = k.SignKID },
+		"signing and client":   func(k *Keys) { k.ClientKID = k.SignKID },
+		"ID token and client":  func(k *Keys) { k.ClientKID = k.DecryptKID },
+	} {
+		keys := newTestKeys(t)
+		change(&keys)
+		if err := keys.check(); !errors.Is(err, ErrKeys) || !strings.Contains(err.Error(), "share a kid") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// gemSpec_IDP_FD A_28484: the ID token's acr is not judged yet, so a login may ask only for the level the relying
+// party registers, and anything else is refused before the IDP is asked.
+func TestA_28484_AnACRThatIsNotCheckedYetIsNotAskedFor(t *testing.T) {
+	var pushed atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushed.Add(1)
+		if err := r.ParseForm(); err != nil || r.PostForm.Get("acr_values") != defaultACRValue {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"request_uri":"urn:r","expires_in":60}`)
+	}))
+	defer server.Close()
+	stub := newLoginStub(t)
+	stub.client.rp.httpClient = server.Client()
+	stub.client.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint = server.URL
+
+	for name, acr := range map[string][]string{
+		"a lower level":         {"gematik-ehealth-loa-substantial"},
+		"high or a lower level": {defaultACRValue, "gematik-ehealth-loa-substantial"},
+		"an unknown class":      {"urn:example:loa"},
+	} {
+		if _, err := stub.client.AuthenticationURL(t.Context(), openid.Login{State: "s", Nonce: "n", Verifier: "v", ACRValues: acr}); !errors.Is(err, ErrACRValues) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if n := pushed.Load(); n != 0 {
+		t.Fatalf("%d requests reached the IDP", n)
+	}
+	for _, acr := range [][]string{nil, {defaultACRValue}} {
+		if _, err := stub.client.AuthenticationURL(t.Context(), openid.Login{State: "s", Nonce: "n", Verifier: "v", ACRValues: acr}); err != nil {
+			t.Errorf("%v: %v", acr, err)
+		}
 	}
 }
 

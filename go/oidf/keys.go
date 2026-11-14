@@ -31,6 +31,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -67,13 +68,17 @@ func (k Keys) check() error {
 	if k.SignKID == "" || k.DecryptKID == "" || k.ClientKID == "" {
 		return fmt.Errorf("%w: every key needs its kid", ErrKeys)
 	}
-	if k.Sign == nil {
+	// A kid selects one key (A_23195): two keys under one kid would leave the IDP to guess.
+	if k.SignKID == k.DecryptKID || k.SignKID == k.ClientKID || k.DecryptKID == k.ClientKID {
+		return fmt.Errorf("%w: two keys share a kid", ErrKeys)
+	}
+	if isNil(k.Sign) {
 		return fmt.Errorf("%w: no signing key", ErrKeys)
 	}
 	if !isP256(k.Sign.Public()) {
 		return fmt.Errorf("%w: the signing key is no P-256 key", ErrKeys)
 	}
-	if k.Decrypt == nil {
+	if isNil(k.Decrypt) {
 		return fmt.Errorf("%w: no ID token key", ErrKeys)
 	}
 	if _, err := decryptionPublicKey(k.Decrypt); err != nil {
@@ -92,7 +97,7 @@ func checkClientCertificate(certificate tls.Certificate) error {
 		return fmt.Errorf("%w: the client certificate's Leaf is not the certificate it presents", ErrKeys)
 	}
 	signer, ok := certificate.PrivateKey.(crypto.Signer)
-	if !ok || signer == nil {
+	if !ok || isNil(signer) {
 		return fmt.Errorf("%w: the client certificate's key is no crypto.Signer", ErrKeys)
 	}
 	public, ok := signer.Public().(*ecdsa.PublicKey)
@@ -103,6 +108,15 @@ func checkClientCertificate(certificate tls.Certificate) error {
 		return fmt.Errorf("%w: the client certificate is not of its key", ErrKeys)
 	}
 	return nil
+}
+
+// isNil reports a key that is missing, also as a nil pointer of a key type, whose Public would panic.
+func isNil(key any) bool {
+	if key == nil {
+		return true
+	}
+	value := reflect.ValueOf(key)
+	return value.Kind() == reflect.Pointer && value.IsNil()
 }
 
 func isP256(public crypto.PublicKey) bool {

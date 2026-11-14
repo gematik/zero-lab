@@ -25,7 +25,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -206,20 +205,24 @@ func NewRelyingParty(ctx context.Context, cfg *RelyingPartyConfig, baseDir strin
 	return New(ctx, cfg, keys)
 }
 
-// loadKeys reads the three keys of a file-based configuration.
+// loadKeys reads the three keys of a file-based configuration. Only the client key has a certificate: one named for
+// another key would be ignored, so it is refused.
 func loadKeys(cfg *RelyingPartyConfig, baseDir string) (Keys, error) {
 	if cfg.ClientKey.CertPEMPath == "" {
 		return Keys{}, errors.New("client_key.cert_pem_path is required (mTLS)")
 	}
-	sign, _, signKID, err := loadKeyConfig(cfg.SignKey, baseDir, keyUseSign)
+	if cfg.SignKey.CertPEMPath != "" || cfg.EncKey.CertPEMPath != "" {
+		return Keys{}, errors.New("cert_pem_path belongs to client_key only")
+	}
+	sign, signKID, err := loadKeyConfig(cfg.SignKey, baseDir)
 	if err != nil {
 		return Keys{}, fmt.Errorf("sign_key: %w", err)
 	}
-	enc, _, decryptKID, err := loadKeyConfig(cfg.EncKey, baseDir, keyUseEncrypt)
+	enc, decryptKID, err := loadKeyConfig(cfg.EncKey, baseDir)
 	if err != nil {
 		return Keys{}, fmt.Errorf("enc_key: %w", err)
 	}
-	client, _, clientKID, err := loadKeyConfig(cfg.ClientKey, baseDir, keyUseClientAuth)
+	client, clientKID, err := loadKeyConfig(cfg.ClientKey, baseDir)
 	if err != nil {
 		return Keys{}, fmt.Errorf("client_key: %w", err)
 	}
@@ -510,87 +513,21 @@ func loadCertBytesFromPem(certPath string) ([]byte, error) {
 	return certDataDer.Bytes, nil
 }
 
-// keyUse is what the relying party uses a key for, which fixes what it publishes about the key.
-type keyUse int
-
-const (
-	keyUseSign keyUse = iota
-	keyUseEncrypt
-	keyUseClientAuth
-)
-
-// published returns the use and alg members of the key's JWK, and refuses a key that cannot do the job, which
-// would otherwise only show at the first signature, login or TLS handshake.
-func (u keyUse) published(public crypto.PublicKey) (use, alg string, err error) {
-	ecKey, ok := public.(*ecdsa.PublicKey)
-	if !ok {
-		return "", "", fmt.Errorf("a %T cannot be used here, an EC key is required", public)
-	}
-	switch u {
-	case keyUseEncrypt:
-		return "enc", string(jose.ECDH_ES), nil
-	case keyUseClientAuth:
-		alg, err := ecdsaAlgorithm(ecKey)
-		return "sig", alg, err
-	default:
-		// The relying party signs ES256 only, as id_token_signed_response_alg and the statement's own header say.
-		if ecKey.Curve != elliptic.P256() {
-			return "", "", fmt.Errorf("signing needs a P-256 key, not %s", ecKey.Curve.Params().Name)
-		}
-		return "sig", string(jose.ES256), nil
-	}
-}
-
-func ecdsaAlgorithm(key *ecdsa.PublicKey) (string, error) {
-	switch key.Curve {
-	case elliptic.P256():
-		return string(jose.ES256), nil
-	case elliptic.P384():
-		return string(jose.ES384), nil
-	case elliptic.P521():
-		return string(jose.ES512), nil
-	}
-	return "", fmt.Errorf("unsupported curve %s", key.Curve.Params().Name)
-}
-
-// loadKeyConfig loads one key (PEM file, JWK file, or inline JWK) for the given use, returning the private key, the
-// matching public JWK, and the key id. The kid is KeyConfig.Kid when set, otherwise the RFC 7638 SHA-256 thumbprint.
-// When KeyConfig.CertPEMPath is set the public JWK carries the X.509 cert chain.
-func loadKeyConfig(kc KeyConfig, baseDir string, use keyUse) (any, jose.JSONWebKey, string, error) {
+// loadKeyConfig loads one private key (PEM file, JWK file, or inline JWK) and its key id: KeyConfig.Kid when set,
+// otherwise the RFC 7638 SHA-256 thumbprint. Whether the key can do its job is New's to judge.
+func loadKeyConfig(kc KeyConfig, baseDir string) (any, string, error) {
 	privateKey, err := parseKeySource(kc, baseDir)
 	if err != nil {
-		return nil, jose.JSONWebKey{}, "", err
+		return nil, "", err
 	}
-
-	kid := kc.Kid
-	if kid == "" {
-		tp, err := privateKey.Thumbprint(crypto.SHA256)
-		if err != nil {
-			return nil, jose.JSONWebKey{}, "", fmt.Errorf("compute key thumbprint: %w", err)
-		}
-		kid = base64.RawURLEncoding.EncodeToString(tp)
+	if kc.Kid != "" {
+		return privateKey.Key, kc.Kid, nil
 	}
-
-	publicKey := privateKey.Public()
-	publicKey.KeyID = kid
-	publicKey.Use, publicKey.Algorithm, err = use.published(publicKey.Key)
+	tp, err := privateKey.Thumbprint(crypto.SHA256)
 	if err != nil {
-		return nil, jose.JSONWebKey{}, "", err
+		return nil, "", fmt.Errorf("compute key thumbprint: %w", err)
 	}
-
-	if kc.CertPEMPath != "" {
-		certDataDer, err := loadCertBytesFromPem(joinBase(baseDir, kc.CertPEMPath))
-		if err != nil {
-			return nil, jose.JSONWebKey{}, "", err
-		}
-		certificate, err := x509.ParseCertificate(certDataDer)
-		if err != nil {
-			return nil, jose.JSONWebKey{}, "", fmt.Errorf("parse cert: %w", err)
-		}
-		publicKey.Certificates = []*x509.Certificate{certificate}
-	}
-
-	return privateKey.Key, publicKey, kid, nil
+	return privateKey.Key, base64.RawURLEncoding.EncodeToString(tp), nil
 }
 
 // parseKeySource parses a private key from exactly one of pem_path, jwk_path, or an inline jwk.

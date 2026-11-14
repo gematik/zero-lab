@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -53,14 +54,31 @@ type RelyingPartyClient struct {
 	jwks        *jose.JSONWebKeySet
 }
 
+// ErrACRValues is a login that asks for an authentication context class the relying party does not judge the ID
+// token by.
+var ErrACRValues = errors.New("acr values refused")
+
+// checkACRValues takes no acr values, which ask for gematik-ehealth-loa-high, or exactly that one. gemSpec_IDP_FD
+// A_28484 has the relying party judge the ID token's acr; until it does, asking for a lower level would let an
+// authentication at that level through unnoticed.
+func checkACRValues(values []string) error {
+	if len(values) == 0 || (len(values) == 1 && values[0] == defaultACRValue) {
+		return nil
+	}
+	return fmt.Errorf("%w: only %s is judged", ErrACRValues, defaultACRValue)
+}
+
 // AuthenticationURL pushes the authorization request (PAR) and gives the URL that carries its request_uri.
 func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid.Login) (string, error) {
+	if err := checkACRValues(login.ACRValues); err != nil {
+		return "", err
+	}
 	form, err := openid.AuthorizationQuery(c.rp.ClientID(), c.redirectURI, c.scopes, login)
 	if err != nil {
 		return "", err
 	}
 	if len(login.ACRValues) == 0 {
-		form.Set("acr_values", "gematik-ehealth-loa-high")
+		form.Set("acr_values", defaultACRValue)
 	}
 
 	endpoint := c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint
