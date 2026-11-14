@@ -25,6 +25,11 @@ provisions the app, so a rotated file takes effect with a config reload, and ref
 file that does not parse. Without it, each process uses a key of its own, which holds for a single
 replica only.
 
+To rotate, change the file in three steps (the new key second, then first, then the old key
+removed) and run `caddy reload --force` on every replica after each step; without `--force` Caddy
+skips a reload whose configuration did not change. Like Caddy's own certificate files, the key file
+is not watched.
+
 ```caddyfile
 {
 	pep {
