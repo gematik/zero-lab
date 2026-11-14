@@ -4,6 +4,7 @@ title: 'oidf: what a ZETA guard needs to be a relying party of the TI federation
 status: To Do
 assignee: []
 created_date: '2026-11-14T20:17:00Z'
+updated_date: '2026-11-14T20:36:00Z'
 labels: []
 dependencies: []
 ordinal: 330000
@@ -41,3 +42,11 @@ Not needed by zeta-pdp-go: decryption on brainpool (TASK-299; the schema asks P-
 - [ ] #6 An exported test federation with a sektoral IDP exists
 - [ ] #7 A tag of go/oidf carries it
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-14, from zeta-pdp-go, two more sources:
+- gematik/app-FedIdpTestsuite (features/fachdienstRegistration.feature, FEDM_FD_REG_001 to 005) is what a relying party's entity statement is tested with before registration: Content-Type application/entity-statement+jwt;charset=UTF-8, header alg ES256 with kid and typ entity-statement+jwt, claims iss, sub, iat, exp, jwks, authority_hints (the master first), metadata with openid_relying_party and federation_entity. Worth running against what this module serves.
+- State towards a sektoral IDP must be short and of the base64url alphabet. Measured on 2026-11-14 with pushed requests as a registered relying party of the reference federation: BMS and T-Systems IDPs refuse a state of 513 characters and take 512; IBM takes 8192. gematik/ref-idp-server has the same bound for its own endpoint (IdpController: state and nonce ^[_\-a-zA-Z0-9]{1,512}$, code_verifier at most 128), and its test suite says the bound comes from RISE's concept, not from a requirement. All three IDPs return a short random request_uri (27 to 60 characters) that lasts 90 seconds.
+<!-- SECTION:NOTES:END -->
