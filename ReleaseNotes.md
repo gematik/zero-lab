@@ -32,6 +32,17 @@
   picks the backend, `dpop.NewMemoryReplays` for a single replica (TASK-309).
 - On the new dpop: nonce sources and replays receive the request's context.
 
+# Unreleased go/pdp
+
+### breaking
+- `authzserver.Config` takes `Sessions`, `NonceRedemptions` and `Replays` in place of `Store`, and
+  `New` refuses a configuration without them or `NonceKeys` instead of keeping them in its own
+  memory; `authzserver` imports no kv (TASK-306). `ErrSessionNotFound` and `DefaultSessionTTL` are
+  exported for session stores.
+- zero-pdp builds the kv-backed sessions, nonce redemptions and DPoP replays over its one store,
+  under the keys used before; without `DATABASE_URL` that store is in memory, with the warning as
+  before.
+
 # Unreleased go/zaddy
 
 ### changes

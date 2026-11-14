@@ -238,7 +238,7 @@ func (s *Server) PAREndpoint(w http.ResponseWriter, r *http.Request) error {
 	}
 	return writeJSON(w, http.StatusCreated, map[string]any{
 		"request_uri": session.RequestURI,
-		"expires_in":  int(defaultSessionTTL.Seconds()),
+		"expires_in":  int(DefaultSessionTTL.Seconds()),
 	})
 }
 
@@ -267,7 +267,7 @@ func (s *Server) OPCallbackEndpoint(w http.ResponseWriter, r *http.Request) erro
 
 	// find running session by the OP state, which this consumes
 	authzSession, err := s.sessionStore.GetAuthzServerSessionByAuthnState(state)
-	if errors.Is(err, errSessionNotFound) {
+	if errors.Is(err, ErrSessionNotFound) {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "unknown or expired login")
 	}
 	if err != nil {

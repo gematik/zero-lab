@@ -22,6 +22,9 @@
 package authzserver
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
 	"time"
 
 	"github.com/gematik/zero-lab/go/openid"
@@ -51,8 +54,16 @@ type Session struct {
 	DPoPThumbprint      string                     `json:"dpop_thumbprint"`
 }
 
-// SessionStore persists sessions and finds them by their lookup values. The lookup by request_uri
-// consumes it, so a pushed request starts one login at most.
+// ErrSessionNotFound is what a [SessionStore] returns for a session that does not exist, has expired or was
+// consumed, and for a record it cannot open: the client can do nothing about either but start again.
+var ErrSessionNotFound = errors.New("session not found")
+
+// SessionStore persists sessions and finds them by their lookup values. The lookups by authentication state,
+// request_uri and code consume the value, so each answers once even under concurrent requests (RFC 9126
+// Section 4, RFC 6749 Section 4.1.2, RFC 9700 Section 2.1). Save writes a session and all its lookup values
+// at once, so a lookup never resolves a half-written session. A session without ExpiresAt is kept for
+// [DefaultSessionTTL]. RefreshToken arrives as a hash already; the other lookup values are secrets that an
+// implementation keeps out of anything it stores in the clear.
 type SessionStore interface {
 	GetAuthzServerSessionByID(id string) (*Session, error)
 	GetAuthzServerSessionByAuthnState(authnState string) (*Session, error)
@@ -62,4 +73,12 @@ type SessionStore interface {
 	DeleteRefreshIndex(refreshTokenHash string) error
 	SaveAutzhServerSession(session *Session) error
 	DeleteAuthzServerSessionByID(id string) error
+}
+
+// hashRefreshToken maps a raw refresh token to its stored form. Only the hash is persisted (in the session
+// record and the refresh lookup), so a rogue storage admin learns hashes, not replayable tokens. The raw token
+// exists only in transit (issued in the token response, presented back on refresh).
+func hashRefreshToken(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }

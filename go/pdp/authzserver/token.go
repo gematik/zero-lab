@@ -264,7 +264,7 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	slog.Info("Token request", "redirect_uri", redirectURI, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
-	if errors.Is(err, errSessionNotFound) {
+	if errors.Is(err, ErrSessionNotFound) {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "invalid or expired code")
 	}
 	if err != nil {

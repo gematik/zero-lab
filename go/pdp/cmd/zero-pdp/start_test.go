@@ -28,6 +28,17 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/nonce"
+	"github.com/gematik/zero-lab/go/pdp/authzserver"
+)
+
+// The interfaces are met by shape, so that the modules need not import each other; this is where that holds.
+var (
+	_ nonce.Keys = (*kv.Keyring)(nil)
+	_ kv.Keys    = nonce.Keys(nil)
 )
 
 // Rule 17: the refusal comes before any connection, so an unreachable database cannot hide it.
@@ -77,5 +88,36 @@ func TestOpenStore_InMemoryWithAKeyFileUsesItForNonces(t *testing.T) {
 	defer store.Close()
 	if id, _ := keys.Current(); id != "k1" {
 		t.Fatalf("current %q", id)
+	}
+}
+
+// Server rule 11: two replicas wired on one store share sessions, nonce redemptions and DPoP replays.
+func TestServerRule11_ReplicasWiredOnOneStoreShareTheirState(t *testing.T) {
+	store := kv.NewMemory()
+	var a, b authzserver.Config
+	wireStores(&a, store, testKeyring(t))
+	wireStores(&b, store, testKeyring(t))
+	until := time.Now().Add(time.Minute)
+	if err := a.Sessions.SaveAutzhServerSession(&authzserver.Session{ID: "s1", Code: "c1"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.Sessions.GetAuthzServerSessionByCode("c1"); err != nil {
+		t.Fatalf("session at the other replica: %v", err)
+	}
+	if seen, err := a.NonceRedemptions.Seen(t.Context(), "n1", until); err != nil || seen {
+		t.Fatalf("first redemption: %v %v", seen, err)
+	}
+	if seen, err := b.NonceRedemptions.Seen(t.Context(), "n1", until); err != nil || !seen {
+		t.Fatalf("redemption at the other replica: %v %v", seen, err)
+	}
+	if seen, err := a.Replays.Seen(t.Context(), "p1", until); err != nil || seen {
+		t.Fatalf("first proof: %v %v", seen, err)
+	}
+	if seen, err := b.Replays.Seen(t.Context(), "p1", until); err != nil || !seen {
+		t.Fatalf("proof at the other replica: %v %v", seen, err)
+	}
+	// A nonce id and a proof id that are equal stay apart.
+	if seen, err := a.Replays.Seen(t.Context(), "n1", until); err != nil || seen {
+		t.Fatalf("a proof id collided with a nonce id: %v %v", seen, err)
 	}
 }

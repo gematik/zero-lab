@@ -136,7 +136,7 @@ func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	config.AuthzServerConfig.Store, config.AuthzServerConfig.NonceKeys = store, nonceKeys
+	wireStores(&config.AuthzServerConfig, store, nonceKeys)
 	if config.AuthzServerConfig.SigningKey, err = config.AuthzServerConfig.LoadSigningKey(); err != nil {
 		return nil, nil, fmt.Errorf("load the signing key: %w", err)
 	}
@@ -182,6 +182,15 @@ func openStore(dsn, keyPath string) (kv.Store, nonce.Keys, error) {
 	}
 	slog.Info("Using postgres kv store, sealed", "keys", ring.String())
 	return kv.NewSealed(store, ring, storePurpose), ring, nil
+}
+
+// wireStores builds the authorization server's sessions, nonce redemptions and DPoP replays over the one store,
+// so that replicas on a shared store share all three.
+func wireStores(cfg *authzserver.Config, store kv.Store, nonceKeys nonce.Keys) {
+	cfg.Sessions = newKVSessionStore(store, authzserver.DefaultSessionTTL)
+	cfg.NonceRedemptions = newKVRedemptions(store)
+	cfg.Replays = newKVReplays(store)
+	cfg.NonceKeys = nonceKeys
 }
 
 // expandHome expands a leading ~ to $HOME.

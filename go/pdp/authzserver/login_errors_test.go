@@ -34,12 +34,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/openid"
 	"github.com/gematik/zero-lab/go/openid/providers"
 )
@@ -115,17 +113,13 @@ func pendingLogin(t *testing.T, server *Server, assertion string, op *fakeOP) (o
 // sessionOfState reads a pending login's session without consuming its state, as the callback does.
 func sessionOfState(t *testing.T, server *Server, opState string) *Session {
 	t.Helper()
-	store, ok := server.sessionStore.(*kvSessionStore)
+	store, ok := server.sessionStore.(*memorySessions)
 	if !ok {
 		t.Fatalf("session store is a %T", server.sessionStore)
 	}
-	data, found, err := store.store.Get(context.Background(), asAuthnKey(opState))
-	if err != nil || !found {
-		t.Fatalf("no index for the state: %v", err)
-	}
-	session, err := store.resolveIndex(data, found, nil)
+	session, err := store.peekAuthnState(opState)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("no session for the state: %v", err)
 	}
 	return session
 }
@@ -219,53 +213,6 @@ func TestServerRule14_ALoginThatFailsLogsNoSecretEvenIfTheProviderEchoesIt(t *te
 		t.Errorf("the detail is gone from the log:\n%s", logs)
 	}
 	assertNoneInLog(t, logs, opState, op.login.Nonce, op.login.Verifier, opCode)
-}
-
-// Server rule 10: a kv key is in clear even in a sealed store, so it holds a hash of a secret.
-func TestServerRule10_AKVKeyHoldsNoSecretOfALogin(t *testing.T) {
-	server, signKey := newTestServer(t)
-	memory := kv.NewMemory()
-	server.sessionStore = newKVSessionStore(memory, time.Hour)
-	op := &fakeOP{}
-	opState := pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
-	session := sessionOfState(t, server, opState)
-	requestURI := session.RequestURI
-	done := callback(server, url.Values{"state": {opState}, "code": {"op-code-value"}})
-	location, err := url.Parse(done.Header().Get("Location"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	clientCode := location.Query().Get("code")
-	if clientCode == "" {
-		t.Fatalf("no code: %s", done.Header().Get("Location"))
-	}
-	keys, err := memory.Keys(context.Background(), "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(keys) == 0 {
-		t.Fatal("no keys to check")
-	}
-	for _, key := range keys {
-		for name, secret := range map[string]string{"code": clientCode, "state": opState, "request_uri": requestURI} {
-			if secret != "" && strings.Contains(key, secret) {
-				t.Errorf("key %q holds the %s", key, name)
-			}
-		}
-	}
-	if len(keysWithPrefix(keys, "as:code:")) != 1 {
-		t.Errorf("keys = %v", keys)
-	}
-}
-
-func keysWithPrefix(keys []string, prefix string) []string {
-	var found []string
-	for _, key := range keys {
-		if strings.HasPrefix(key, prefix) {
-			found = append(found, key)
-		}
-	}
-	return found
 }
 
 // RFC 9700 section 2.1 (RFC 6749 section 10.12): a state answers one request. A replay with another code must not overwrite the authorization
@@ -391,35 +338,42 @@ func TestRFC6749_4_1_2_1_AnUpstreamErrorReachesTheClientWithItsOwnState(t *testi
 	}
 }
 
-// failingStore fails as the Postgres store used to, naming the key.
-type failingStore struct {
-	kv.Store
+// failingSessions fail as the Postgres store used to, naming the key with the secret behind it.
+type failingSessions struct {
+	*memorySessions
 	fail map[string]bool
 }
 
-func (s *failingStore) refusal(operation, key string) error {
+func (s *failingSessions) refusal(operation, key string) error {
 	return fmt.Errorf("kv/postgres: %s %q: %s", operation, key, testInternals)
 }
 
-func (s *failingStore) Get(ctx context.Context, key string) ([]byte, bool, error) {
+func (s *failingSessions) GetAuthzServerSessionByID(id string) (*Session, error) {
 	if s.fail["get"] {
-		return nil, false, s.refusal("get", key)
+		return nil, s.refusal("get", "as:session:"+id)
 	}
-	return s.Store.Get(ctx, key)
+	return s.memorySessions.GetAuthzServerSessionByID(id)
 }
 
-func (s *failingStore) Take(ctx context.Context, key string) ([]byte, bool, error) {
+func (s *failingSessions) GetAuthzServerSessionByAuthnState(state string) (*Session, error) {
 	if s.fail["take"] {
-		return nil, false, s.refusal("take", key)
+		return nil, s.refusal("take", "as:authn:"+state)
 	}
-	return s.Store.Take(ctx, key)
+	return s.memorySessions.GetAuthzServerSessionByAuthnState(state)
 }
 
-func (s *failingStore) SetMany(ctx context.Context, entries ...kv.Entry) error {
-	if s.fail["set"] {
-		return s.refusal("set", entries[0].Key)
+func (s *failingSessions) GetAuthzServerSessionByCode(code string) (*Session, error) {
+	if s.fail["take"] {
+		return nil, s.refusal("take", "as:code:"+code)
 	}
-	return s.Store.SetMany(ctx, entries...)
+	return s.memorySessions.GetAuthzServerSessionByCode(code)
+}
+
+func (s *failingSessions) SaveAutzhServerSession(session *Session) error {
+	if s.fail["set"] {
+		return s.refusal("set", "as:session:"+session.ID)
+	}
+	return s.memorySessions.SaveAutzhServerSession(session)
 }
 
 // assertGenericError holds a response to a server error that says nothing of the cause.
@@ -438,14 +392,14 @@ func assertGenericError(t *testing.T, rec *httptest.ResponseRecorder, secrets ..
 
 // Server rule 2: uniform errors that leak no internals. The store's text can carry its key, as:code:<the code> among them.
 func TestServerRule2_AStoreFailureReachesTheClientAsAGenericErrorAndTheLogWithoutTheSecret(t *testing.T) {
-	for name, run := range map[string]func(t *testing.T, server *Server, store *failingStore, assertion string, op *fakeOP) (*httptest.ResponseRecorder, string){
-		"token endpoint looking up the code": func(t *testing.T, server *Server, store *failingStore, assertion string, _ *fakeOP) (*httptest.ResponseRecorder, string) {
+	for name, run := range map[string]func(t *testing.T, server *Server, store *failingSessions, assertion string, op *fakeOP) (*httptest.ResponseRecorder, string){
+		"token endpoint looking up the code": func(t *testing.T, server *Server, store *failingSessions, assertion string, _ *fakeOP) (*httptest.ResponseRecorder, string) {
 			store.fail["take"] = true
 			rec := httptest.NewRecorder()
 			server.handle(server.TokenEndpoint).ServeHTTP(rec, authorizationCodeRequest(t, assertion, "client-code-value"))
 			return rec, "client-code-value"
 		},
-		"token endpoint saving the session": func(t *testing.T, server *Server, store *failingStore, assertion string, op *fakeOP) (*httptest.ResponseRecorder, string) {
+		"token endpoint saving the session": func(t *testing.T, server *Server, store *failingSessions, assertion string, op *fakeOP) (*httptest.ResponseRecorder, string) {
 			done := callback(server, url.Values{"state": {op.login.State}, "code": {"op-code-value"}})
 			location, err := url.Parse(done.Header().Get("Location"))
 			if err != nil {
@@ -457,19 +411,19 @@ func TestServerRule2_AStoreFailureReachesTheClientAsAGenericErrorAndTheLogWithou
 			server.handle(server.TokenEndpoint).ServeHTTP(rec, authorizationCodeRequest(t, assertion, code))
 			return rec, code
 		},
-		"callback looking up the state": func(_ *testing.T, server *Server, store *failingStore, _ string, op *fakeOP) (*httptest.ResponseRecorder, string) {
+		"callback looking up the state": func(_ *testing.T, server *Server, store *failingSessions, _ string, op *fakeOP) (*httptest.ResponseRecorder, string) {
 			store.fail["take"] = true
 			return callback(server, url.Values{"state": {op.login.State}, "code": {"op-code-value"}}), op.login.State
 		},
-		"callback saving the session": func(_ *testing.T, server *Server, store *failingStore, _ string, op *fakeOP) (*httptest.ResponseRecorder, string) {
+		"callback saving the session": func(_ *testing.T, server *Server, store *failingSessions, _ string, op *fakeOP) (*httptest.ResponseRecorder, string) {
 			store.fail["set"] = true
 			return callback(server, url.Values{"state": {op.login.State}, "code": {"op-code-value"}}), op.login.State
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			server, signKey := newTestServer(t)
-			store := &failingStore{Store: kv.NewMemory(), fail: map[string]bool{}}
-			server.sessionStore = newKVSessionStore(store, time.Hour)
+			store := &failingSessions{memorySessions: newMemorySessions(), fail: map[string]bool{}}
+			server.sessionStore = store
 			op := &fakeOP{}
 			pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), op)
 			assertion := signClientAssertion(t, server, signKey, nil)

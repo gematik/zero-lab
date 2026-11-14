@@ -113,7 +113,7 @@ func TestLegacyWire_PublishedJWKSIsUnchanged(t *testing.T) {
 		"thumbprint kid": {"", fixture.JWKSThumbprintKid},
 	} {
 		t.Run(name, func(t *testing.T) {
-			server, err := New(Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: signer, KeyID: c.kid}})
+			server, err := New(withTestStores(t, Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: signer, KeyID: c.kid}}))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -128,7 +128,7 @@ func TestLegacyWire_PublishedJWKSIsUnchanged(t *testing.T) {
 
 func TestLegacyWire_TokensOfTheOldServerStillVerify(t *testing.T) {
 	fixture := readLegacyIssued(t)
-	server, err := New(Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: legacySigner(t, fixture), KeyID: fixture.KeyID}})
+	server, err := New(withTestStores(t, Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: legacySigner(t, fixture), KeyID: fixture.KeyID}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func decodeSegment(t *testing.T, segment string) map[string]any {
 // Apart from the instants, a token issued now reads as the old server's did, header and claims.
 func TestLegacyWire_IssuedTokensKeepTheirShape(t *testing.T) {
 	fixture := readLegacyIssued(t)
-	server, err := New(Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: legacySigner(t, fixture), KeyID: fixture.KeyID}})
+	server, err := New(withTestStores(t, Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: legacySigner(t, fixture), KeyID: fixture.KeyID}}))
 	if err != nil {
 		t.Fatal(err)
 	}

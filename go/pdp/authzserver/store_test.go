@@ -22,17 +22,16 @@
 package authzserver
 
 import (
-	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/base64"
+	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,28 +39,203 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
 )
 
 // The interfaces are met by shape, so that the modules need not import each other; this is where that holds.
-var (
-	_ dpop.NonceSource = (*nonce.Source)(nil)
-	_ nonce.Keys       = (*kv.Keyring)(nil)
-	_ kv.Keys          = nonce.Keys(nil)
-)
+var _ dpop.NonceSource = (*nonce.Source)(nil)
 
-func testKeyring(t *testing.T) *kv.Keyring {
+// memorySessions is a SessionStore in the memory of the test: lookups by authentication state, request_uri
+// and code consume them, as the interface requires. Records are copied in and out, as a store does.
+type memorySessions struct {
+	mu       sync.Mutex
+	records  map[string]memorySession
+	authn    map[string]string
+	requests map[string]string
+	codes    map[string]string
+	refresh  map[string]string
+}
+
+type memorySession struct {
+	record  []byte
+	expires time.Time
+}
+
+func newMemorySessions() *memorySessions {
+	return &memorySessions{
+		records:  map[string]memorySession{},
+		authn:    map[string]string{},
+		requests: map[string]string{},
+		codes:    map[string]string{},
+		refresh:  map[string]string{},
+	}
+}
+
+func (m *memorySessions) SaveAutzhServerSession(session *Session) error {
+	record, err := json.Marshal(session) //nolint:gosec // the record stays in the memory of the test, as a store would hold it
+	if err != nil {
+		return err
+	}
+	expires := session.ExpiresAt
+	if expires.IsZero() {
+		expires = time.Now().Add(DefaultSessionTTL)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.records[session.ID] = memorySession{record: record, expires: expires}
+	if session.Code != "" {
+		m.codes[session.Code] = session.ID
+	}
+	if session.RequestURI != "" {
+		m.requests[session.RequestURI] = session.ID
+	}
+	if session.RefreshToken != "" {
+		m.refresh[session.RefreshToken] = session.ID
+	}
+	if session.AuthnClientSession != nil && session.AuthnClientSession.State != "" {
+		m.authn[session.AuthnClientSession.State] = session.ID
+	}
+	return nil
+}
+
+// byID is GetAuthzServerSessionByID with the lock held.
+func (m *memorySessions) byID(id string) (*Session, error) {
+	stored, ok := m.records[id]
+	if !ok || !time.Now().Before(stored.expires) {
+		return nil, ErrSessionNotFound
+	}
+	var session Session
+	if err := json.Unmarshal(stored.record, &session); err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+func (m *memorySessions) lookup(index map[string]string, value string, consume bool) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	id, ok := index[value]
+	if !ok {
+		return nil, ErrSessionNotFound
+	}
+	if consume {
+		delete(index, value)
+	}
+	return m.byID(id)
+}
+
+func (m *memorySessions) GetAuthzServerSessionByID(id string) (*Session, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.byID(id)
+}
+
+func (m *memorySessions) GetAuthzServerSessionByAuthnState(state string) (*Session, error) {
+	return m.lookup(m.authn, state, true)
+}
+
+func (m *memorySessions) GetAutzhServerSessionByRequestURI(requestURI string) (*Session, error) {
+	return m.lookup(m.requests, requestURI, true)
+}
+
+func (m *memorySessions) GetAuthzServerSessionByCode(code string) (*Session, error) {
+	return m.lookup(m.codes, code, true)
+}
+
+func (m *memorySessions) GetAuthzServerSessionByRefreshToken(token string) (*Session, error) {
+	return m.lookup(m.refresh, token, false)
+}
+
+// peekAuthnState reads a pending login's session without consuming its state, as the callback does.
+func (m *memorySessions) peekAuthnState(state string) (*Session, error) {
+	return m.lookup(m.authn, state, false)
+}
+
+func (m *memorySessions) DeleteRefreshIndex(refreshTokenHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.refresh, refreshTokenHash)
+	return nil
+}
+
+func (m *memorySessions) DeleteAuthzServerSessionByID(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	session, err := m.byID(id)
+	delete(m.records, id)
+	if err != nil {
+		return err
+	}
+	delete(m.codes, session.Code)
+	delete(m.requests, session.RequestURI)
+	delete(m.refresh, session.RefreshToken)
+	if session.AuthnClientSession != nil {
+		delete(m.authn, session.AuthnClientSession.State)
+	}
+	return nil
+}
+
+// memoryRedemptions are nonce.Redemptions in the memory of the test.
+type memoryRedemptions struct {
+	mu   sync.Mutex
+	seen map[string]time.Time
+}
+
+func newMemoryRedemptions() *memoryRedemptions {
+	return &memoryRedemptions{seen: map[string]time.Time{}}
+}
+
+func (m *memoryRedemptions) Seen(_ context.Context, id string, until time.Time) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if expiry, ok := m.seen[id]; ok && time.Now().Before(expiry) {
+		return true, nil
+	}
+	m.seen[id] = until
+	return false, nil
+}
+
+// testStores are the state replicas share; servers built with the same testStores are replicas of each other.
+type testStores struct {
+	sessions    *memorySessions
+	redemptions nonce.Redemptions
+	replays     dpop.Replays
+	keys        nonce.Keys
+}
+
+func newTestStores(t *testing.T) *testStores {
 	t.Helper()
-	ring, err := kv.ParseKeyring([]byte("k1 " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)) + "\n"))
+	return &testStores{
+		sessions:    newMemorySessions(),
+		redemptions: newMemoryRedemptions(),
+		replays:     dpop.NewMemoryReplays(1000, nil),
+		keys:        testNonceKeys(t),
+	}
+}
+
+// with returns cfg with the stores in it.
+func (s *testStores) with(cfg Config) Config {
+	cfg.Sessions, cfg.NonceRedemptions, cfg.Replays, cfg.NonceKeys = s.sessions, s.redemptions, s.replays, s.keys
+	return cfg
+}
+
+// withTestStores returns cfg with stores of its own, for a test of one server.
+func withTestStores(t *testing.T, cfg Config) Config {
+	t.Helper()
+	return newTestStores(t).with(cfg)
+}
+
+func testNonceKeys(t *testing.T) nonce.Keys {
+	t.Helper()
+	keys, err := nonce.NewEphemeralKeys()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ring
+	return keys
 }
 
-// replicas builds two servers that share a store and keys, as replicas behind one endpoint do.
-func replicas(t *testing.T, store kv.Store) (a, b *Server, signKey *jose.JSONWebKey) {
+// replicas builds two servers that share stores and keys, as replicas behind one endpoint do.
+func replicas(t *testing.T, stores *testStores) (a, b *Server, signKey *jose.JSONWebKey) {
 	t.Helper()
 	prk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -70,9 +244,8 @@ func replicas(t *testing.T, store kv.Store) (a, b *Server, signKey *jose.JSONWeb
 	signKey = &jose.JSONWebKey{Key: prk, KeyID: "test-client-key"}
 	pubKey := signKey.Public()
 	signer := newP256(t)
-	ring := testKeyring(t)
 	build := func() *Server {
-		server, err := New(Config{
+		server, err := New(stores.with(Config{
 			Issuer:     testIssuer,
 			SigningKey: &SigningKey{Signer: signer, KeyID: "test-server-key"},
 			Products: []Product{{
@@ -80,10 +253,8 @@ func replicas(t *testing.T, store kv.Store) (a, b *Server, signKey *jose.JSONWeb
 				RedirectURIs: []string{"https://rp.example.com/callback"},
 				Scopes:       []string{testScope},
 			}},
-			Clients:   []Client{{ClientID: testClientID, ProductID: testProductID, PublicJWK: jwkToMap(t, &pubKey)}},
-			Store:     store,
-			NonceKeys: ring,
-		})
+			Clients: []Client{{ClientID: testClientID, ProductID: testProductID, PublicJWK: jwkToMap(t, &pubKey)}},
+		}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,17 +271,29 @@ func requireStatus(t *testing.T, err error, status int, code string) {
 	}
 }
 
-// Server rule 17: a per-process nonce key with a shared store would refuse every other replica's nonces.
-func TestServerRule17_NewRefusesAStoreWithoutNonceKeys(t *testing.T) {
-	_, err := New(Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: newP256(t), KeyID: "k"}, Store: kv.NewMemory()})
-	if err == nil {
-		t.Fatal("started with a store and a per-process nonce key")
+// Server rule 17: without its stores the server would keep sessions, nonces and proofs in its own memory, where
+// no other replica sees them; it refuses to start and names what is missing.
+func TestServerRule17_NewRefusesAConfigurationWithoutItsStores(t *testing.T) {
+	for name, drop := range map[string]func(*Config){
+		"Sessions":         func(c *Config) { c.Sessions = nil },
+		"NonceRedemptions": func(c *Config) { c.NonceRedemptions = nil },
+		"Replays":          func(c *Config) { c.Replays = nil },
+		"NonceKeys":        func(c *Config) { c.NonceKeys = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			cfg := withTestStores(t, Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: newP256(t), KeyID: "k"}})
+			drop(&cfg)
+			_, err := New(cfg)
+			if err == nil || !strings.Contains(err.Error(), name) {
+				t.Fatalf("got %v", err)
+			}
+		})
 	}
 }
 
 // A nonce issued at one replica is good at another, and single use holds across them.
 func TestServerRule11_PrivateKeyJWTNonceIsAcceptedOnceAcrossReplicas(t *testing.T) {
-	a, b, signKey := replicas(t, kv.NewSealed(kv.NewMemory(), testKeyring(t), "test"))
+	a, b, signKey := replicas(t, newTestStores(t))
 	assertion := signClientAssertion(t, a, signKey, nil)
 	if err := b.TokenEndpoint(httptest.NewRecorder(), clientCredentialsRequest(t, assertion)); err != nil {
 		t.Fatalf("redeeming at the other replica: %v", err)
@@ -120,7 +303,7 @@ func TestServerRule11_PrivateKeyJWTNonceIsAcceptedOnceAcrossReplicas(t *testing.
 
 // RFC 9449 Section 11.1: a proof accepted at one replica is refused at another.
 func TestRFC9449_11_1_ProofReplayedAtAnotherReplicaIsRefused(t *testing.T) {
-	a, b, signKey := replicas(t, kv.NewMemory())
+	a, b, signKey := replicas(t, newTestStores(t))
 	proofed := clientCredentialsRequest(t, signClientAssertion(t, a, signKey, nil))
 	if err := a.TokenEndpoint(httptest.NewRecorder(), proofed); err != nil {
 		t.Fatalf("first use: %v", err)
@@ -134,22 +317,19 @@ func TestRFC9449_11_1_ProofReplayedAtAnotherReplicaIsRefused(t *testing.T) {
 	}
 }
 
-// failingOn fails the writes to keys with the given prefix, as a store outage would.
-type failingOn struct {
-	kv.Store
-	prefix string
-}
+// errOutage is a store outage, with a detail no client may read.
+var errOutage = errors.New("kv/postgres: store down, secret detail")
 
-func (s *failingOn) SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	if strings.HasPrefix(key, s.prefix) {
-		return false, errors.New("kv/postgres: store down, secret detail")
-	}
-	return s.Store.SetIfAbsent(ctx, key, value, ttl)
-}
+// failing are Replays and Redemptions on a store that is down.
+type failing struct{}
+
+func (failing) Seen(context.Context, string, time.Time) (bool, error) { return false, errOutage }
 
 // Server rule 16: an outage of the store behind single use means deny, and its text stays out of the answer.
 func TestServerRule16_ANonceStoreOutageFailsClosedAndLeaksNothing(t *testing.T) {
-	a, _, signKey := replicas(t, &failingOn{Store: kv.NewMemory(), prefix: "nonce:"})
+	stores := newTestStores(t)
+	stores.redemptions = failing{}
+	a, _, signKey := replicas(t, stores)
 	err := a.TokenEndpoint(httptest.NewRecorder(), clientCredentialsRequest(t, signClientAssertion(t, a, signKey, nil)))
 	requireStatus(t, err, http.StatusInternalServerError, "server_error")
 	if strings.Contains(err.Error(), "secret detail") {
@@ -159,7 +339,9 @@ func TestServerRule16_ANonceStoreOutageFailsClosedAndLeaksNothing(t *testing.T) 
 
 // Server rule 16: without the replays no proof is accepted.
 func TestServerRule16_ADPoPReplaysOutageRefusesTheProof(t *testing.T) {
-	a, _, signKey := replicas(t, &failingOn{Store: kv.NewMemory(), prefix: "dpop:replay:"})
+	stores := newTestStores(t)
+	stores.replays = failing{}
+	a, _, signKey := replicas(t, stores)
 	resp := httptest.NewRecorder()
 	err := a.TokenEndpoint(resp, clientCredentialsRequest(t, signClientAssertion(t, a, signKey, nil)))
 	requireStatus(t, err, http.StatusInternalServerError, "server_error")
@@ -168,31 +350,42 @@ func TestServerRule16_ADPoPReplaysOutageRefusesTheProof(t *testing.T) {
 	}
 }
 
-// writeCounter counts every call that could write to the store.
-type writeCounter struct {
-	kv.Store
-	writes atomic.Int64
+// countingSeen counts the calls to Replays or Redemptions.
+type countingSeen struct {
+	inner interface {
+		Seen(ctx context.Context, id string, until time.Time) (bool, error)
+	}
+	writes *atomic.Int64
 }
 
-func (s *writeCounter) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	s.writes.Add(1)
-	return s.Store.Set(ctx, key, value, ttl)
+func (c countingSeen) Seen(ctx context.Context, id string, until time.Time) (bool, error) {
+	c.writes.Add(1)
+	return c.inner.Seen(ctx, id, until)
 }
 
-func (s *writeCounter) SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	s.writes.Add(1)
-	return s.Store.SetIfAbsent(ctx, key, value, ttl)
+// countingSessions counts the sessions saved.
+type countingSessions struct {
+	*memorySessions
+	writes *atomic.Int64
 }
 
-func (s *writeCounter) SetMany(ctx context.Context, entries ...kv.Entry) error {
+func (s countingSessions) SaveAutzhServerSession(session *Session) error {
 	s.writes.Add(1)
-	return s.Store.SetMany(ctx, entries...)
+	return s.memorySessions.SaveAutzhServerSession(session)
 }
 
 // Server rule 10: handing out a nonce costs no store.
 func TestServerRule10_AnAnonymousNonceRequestCausesNoWrite(t *testing.T) {
-	store := &writeCounter{Store: kv.NewMemory()}
-	a, _, _ := replicas(t, store)
+	var writes atomic.Int64
+	stores := newTestStores(t)
+	stores.redemptions = countingSeen{inner: stores.redemptions, writes: &writes}
+	stores.replays = countingSeen{inner: stores.replays, writes: &writes}
+	cfg := stores.with(Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: newP256(t), KeyID: "k"}})
+	cfg.Sessions = countingSessions{memorySessions: stores.sessions, writes: &writes}
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	resp := httptest.NewRecorder()
 	if err := a.NonceEndpoint(resp, httptest.NewRequest(http.MethodGet, testIssuer+"/nonce", nil)); err != nil {
 		t.Fatal(err)
@@ -200,16 +393,16 @@ func TestServerRule10_AnAnonymousNonceRequestCausesNoWrite(t *testing.T) {
 	if resp.Code != http.StatusOK || resp.Body.Len() == 0 {
 		t.Fatalf("status %d, %q", resp.Code, resp.Body)
 	}
-	if n := store.writes.Load(); n != 0 {
+	if n := writes.Load(); n != 0 {
 		t.Fatalf("%d writes", n)
 	}
 }
 
 // RFC 9449 Section 8 stays possible on the same keys: a proof must carry a nonce from the source, and one
 // issued at another replica counts. nonce_required itself is TASK-131.
-func TestRFC9449_8_ASourceOnTheKeyringServesAVerifier(t *testing.T) {
-	ring := testKeyring(t)
-	source, err := nonce.NewSource(ring, "pep/dpop-nonce", time.Minute)
+func TestRFC9449_8_ASourceOnTheNonceKeysServesAVerifier(t *testing.T) {
+	keys := testNonceKeys(t)
+	source, err := nonce.NewSource(keys, "pep/dpop-nonce", time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,71 +433,5 @@ func TestRFC9449_8_ASourceOnTheKeyringServesAVerifier(t *testing.T) {
 	}
 	if _, err := verifier.Verify(t.Context(), withNonce(fresh), req); err != nil {
 		t.Fatalf("refused the source's nonce: %v", err)
-	}
-}
-
-func captureLogs(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
-	return &buf
-}
-
-// After the upgrade an old record does not open, and it may also mean tampering: the client sees a session that
-// does not exist, not a server error, and the log has it at error level.
-func TestSessionLookup_ARecordThatDoesNotOpenIsAnInvalidSessionAndLogged(t *testing.T) {
-	raw := kv.NewMemory()
-	sealed := kv.NewSealed(raw, testKeyring(t), "test")
-	sessions := newKVSessionStore(sealed, time.Hour)
-	ctx := context.Background()
-	if err := sessions.SaveAutzhServerSession(&Session{
-		ID: "s1", Code: "c1", RequestURI: "r1", RefreshToken: "t1",
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Set(ctx, asSessionKey("s1"), []byte(`{"id":"s1"}`), time.Hour); err != nil {
-		t.Fatal(err)
-	}
-	if err := raw.Set(ctx, asRefreshKey("t2"), []byte(`"s1"`), time.Hour); err != nil {
-		t.Fatal(err)
-	}
-
-	lookups := map[string]func() (*Session, error){
-		"record by id":          func() (*Session, error) { return sessions.GetAuthzServerSessionByID("s1") },
-		"record behind a code":  func() (*Session, error) { return sessions.GetAuthzServerSessionByCode("c1") },
-		"record behind a uri":   func() (*Session, error) { return sessions.GetAutzhServerSessionByRequestURI("r1") },
-		"index in the clear":    func() (*Session, error) { return sessions.GetAuthzServerSessionByRefreshToken("t2") },
-		"index behind a secret": func() (*Session, error) { return sessions.GetAuthzServerSessionByRefreshToken("t1") },
-	}
-	for name, lookup := range lookups {
-		logs := captureLogs(t)
-		if _, err := lookup(); !errors.Is(err, errSessionNotFound) {
-			t.Errorf("%s: got %v", name, err)
-		}
-		if !strings.Contains(logs.String(), "level=ERROR") {
-			t.Errorf("%s: not logged at error level: %q", name, logs)
-		}
-	}
-}
-
-// Server rule 5: the store sees ciphertext only.
-func TestServerRule5_SessionRecordsReachASealedStoreAsCiphertext(t *testing.T) {
-	raw := kv.NewMemory()
-	sessions := newKVSessionStore(kv.NewSealed(raw, testKeyring(t), "test"), time.Hour)
-	if err := sessions.SaveAutzhServerSession(&Session{ID: "s1", RefreshToken: "refresh-secret", Code: "code-secret"}); err != nil {
-		t.Fatal(err)
-	}
-	stored, found, err := raw.Get(context.Background(), asSessionKey("s1"))
-	if err != nil || !found {
-		t.Fatalf("found=%v err=%v", found, err)
-	}
-	if bytes.Contains(stored, []byte("refresh-secret")) || bytes.Contains(stored, []byte("code-secret")) {
-		t.Fatal("the store holds the session in the clear")
-	}
-	got, err := sessions.GetAuthzServerSessionByID("s1")
-	if err != nil || got.RefreshToken != "refresh-secret" {
-		t.Fatalf("%+v %v", got, err)
 	}
 }
