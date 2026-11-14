@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-14T10:42:00Z'
-updated_date: '2026-11-14T10:53:00Z'
+updated_date: '2026-11-14T11:01:00Z'
 labels: []
 dependencies: []
 ordinal: 324000
@@ -29,4 +29,6 @@ kv.ReplayCache (kv/replay.go) is dpop logic inside kv: the dpop:replay: prefix, 
 - [ ] #3 nonce.Source meets the new NonceSource
 - [ ] #4 kv has no replay type; the kv-backed Replays lives with the wiring in the hosts
 - [ ] #5 Release notes of dpop, nonce and kv name the breaking change
+- [ ] #6 pep's builder refuses a missing Replays; zaddy passes in-memory Replays explicitly and logs that they hold for one replica
+- [ ] #7 nonce.Record becomes nonce.Redemptions with Seen(ctx, id, until) (bool, error), true meaning already redeemed; one kv-backed type in zero-pdp serves both, with unchanged key layouts
 <!-- AC:END -->
