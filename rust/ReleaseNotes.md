@@ -23,6 +23,14 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The `environment_undetected` error is one line, `cannot tell the TI environment: no TI
   root, chain or marker`; `-v` lists each detection step (TASK-287).
 
+#### verified
+- `just check` passed on the branch merged with main (2053b604); the release runs the gates
+  again.
+- `ti-pki` real world (`just real-world`) passed on cec71275: the trust material of every
+  environment, and a reference SMC-B end to end with OCSP.
+- Konnektor end to end and probe through the TI VPN were waived by the maintainer: no
+  Konnektor or probe code changed since 0.6.1.
+
 ### ti-cache
 
 #### added
