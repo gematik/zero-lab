@@ -1,11 +1,13 @@
 ---
 id: TASK-315
 title: 'oidf: what a ZETA guard needs to be a relying party of the TI federation'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T20:17:00Z'
-updated_date: '2026-11-14T20:36:00Z'
-labels: []
+updated_date: '2026-11-14T20:52:00Z'
+labels:
+  - oidf
+  - go
 dependencies: []
 ordinal: 330000
 ---
@@ -34,14 +36,31 @@ Not needed by zeta-pdp-go: decryption on brainpool (TASK-299; the schema asks P-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A caller can serve an entity statement that validates against as-entity-statement.yaml of gemSpec_ZETA 2.0.0, with oauth_authorization_server metadata
-- [ ] #2 acr_values, scope and claims are set per login
-- [ ] #3 Signing, decryption and TLS client keys can be handed in as crypto.Signer and crypto.Decrypter
-- [ ] #4 Statements and JWKS are cached until they expire; fetches take the context
-- [ ] #5 ID token claims are typed; a lower acr than asked for is refused; an IDP that is not on the master's list or not of an accepted user type is refused
+- [ ] #1 A caller can add any member and whole entity types to the served entity statement through the hook; empty optional members are left out; exp minus iat is at most 86400 s; kids as the caller sets them
+- [ ] #2 acr_values, scope and claims are set per login; state and nonce beyond 512 base64url characters are refused before the request
+- [ ] #3 Signing and TLS client keys can be handed in as crypto.Signer, the ID token key as an ECDH key agreement (ECDH-ES is no decryption, so not a crypto.Decrypter)
+- [ ] #4 Statements, signed JWKS and the IdP list are kept in a store interface of oidf's own terms, wired by the hosts, verified again on every read; fetches take the context
+- [ ] #5 ID token claims are typed; a lower acr than asked for is refused; an IDP that is not on the master's IdP list or not an openid_provider is refused
 - [ ] #6 An exported test federation with a sektoral IDP exists
-- [ ] #7 A tag of go/oidf carries it
+- [ ] #7 The entity statement and signed JWKS are signed once and served as bytes, re-signed on age or change
+- [ ] #8 A tag of go/oidf carries it
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Plan approved 2026-11-14 (maintainer). Branch feat/oidf-rp. No ZETA names in go/oidf: ZETA's members (keywords, contacts, ti_features_supported, oauth_authorization_server) come from zeta-pdp-go through the hook; the ZETA schema proof is zeta-pdp-go's conformance.
+1. openid: Login gets Scopes, ACRValues, Claims; AuthorizationQuery validates claims (JSON object, 4 KiB) and returns an error.
+2. oidf: ctx on every fetch; Documents store (Get/Keep), every read verified again, single-flight per URL, master statement refetched on expiry; NewMemoryDocuments; Kind takes the store.
+3. oidf: Keys{Sign crypto.Signer, Decrypt KeyAgreement, Client tls.Certificate, kids}; New(ctx, cfg, keys); ES256 through cryptosigner; ECDH-ES through an OpaqueKeyDecrypter with Concat KDF; NewRelyingParty loads files and calls New.
+4. oidf: Extra members on metadata and Metadata, hook with error on a deep copy; checks at signing (shadowing, iss=sub, kid in jwks, no d); omitempty; jwks or signed_jwks_uri; lifetime constant (A_28857).
+4b. oidf: statement and signed JWKS signed once, served as bytes (atomic), re-signed after 1 h or on Refresh, single-flight, last good until exp then 503, ETag/304/Cache-Control/HEAD, Content-Type with charset (FEDM_FD_REG), no per-request log.
+5. oidf: Client(ctx, issuer) admits by the master's IdP list before any fetch at the issuer, requires openid_provider; PAR with per-login scope/acr/claims checked against registration and the LoA set, state/nonce bounds; ExchangeIdentity with typed Identity, acr not below the asked, amr and auth_time required, one rate-limited refetch on an unknown kid (A_22861); trust anchor from the master's statement URI.
+6. oidf/oidftest: master and one sektoral IDP over TLS with mTLS, PAR, authorize, token, signed and encrypted ID token, knobs; mod-check guard that no non-test package imports oidftest or epatest.
+7. pdp and pep/proxy wire a kv-backed Documents.
+8. Release openid, oidf, pdp, pep/proxy after full just check, review, oidf-test (maintainer) and a live TK login.
+Full plan: ~/.claude/plans/cheerful-tickling-bear.md
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 

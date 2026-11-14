@@ -1,9 +1,10 @@
 ---
 id: TASK-294
-title: 'oidf: relying party keys as crypto.Signer and crypto.Decrypter, with rotation'
+title: 'oidf: relying party keys rotate with an overlap'
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
+updated_date: '2026-11-14T20:52:00Z'
 labels: []
 dependencies: []
 ordinal: 310000
@@ -17,5 +18,11 @@ The relying party loads its signing and encryption keys as raw private keys from
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Keys are handed in as crypto.Signer and crypto.Decrypter; the published JWKS can hold the next and the previous key
+- [ ] #1 The published JWKS can hold the next and the previous key, and decryption works with each until the exp of the last document that published it
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-14: keys as crypto.Signer, an ECDH key agreement and a tls.Certificate come with TASK-315 (ECDH-ES needs a key agreement, not a crypto.Decrypter). What is left here: publishing the next and the previous key, so they rotate with an overlap (servers.md rule 22).
+<!-- SECTION:NOTES:END -->

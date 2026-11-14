@@ -1,9 +1,10 @@
 ---
 id: TASK-296
 title: 'oidf: scopes and acr per login, typed claims of the ID token'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
+updated_date: '2026-11-14T20:52:00Z'
 labels: []
 dependencies: []
 ordinal: 312000
@@ -19,3 +20,9 @@ AuthenticationURL sends fixed scopes and a hard-coded acr_values (client.go); Ex
 <!-- AC:BEGIN -->
 - [ ] #1 Scopes and acr are parameters of a login; the result is a typed identity; an ID token with a lower acr than asked is refused
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-14: done as part of TASK-315 on feat/oidf-rp (per-login scope, acr_values, claims; typed Identity; lower acr refused).
+<!-- SECTION:NOTES:END -->
