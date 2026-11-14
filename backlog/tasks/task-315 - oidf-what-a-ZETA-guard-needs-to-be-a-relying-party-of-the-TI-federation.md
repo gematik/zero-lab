@@ -4,7 +4,7 @@ title: 'oidf: what a ZETA guard needs to be a relying party of the TI federation
 status: In Progress
 assignee: []
 created_date: '2026-11-14T20:17:00Z'
-updated_date: '2026-11-14T20:52:00Z'
+updated_date: '2026-11-14T21:03:00Z'
 labels:
   - oidf
   - go
@@ -44,6 +44,7 @@ Not needed by zeta-pdp-go: decryption on brainpool (TASK-299; the schema asks P-
 - [ ] #6 An exported test federation with a sektoral IDP exists
 - [ ] #7 The entity statement and signed JWKS are signed once and served as bytes, re-signed on age or change
 - [ ] #8 A tag of go/oidf carries it
+- [ ] #9 Every request value to and from the IDP is validated against an allowlist before use (OWASP input validation: reject, never repair; errors name the field, not the value); fuzz targets with nasty-input seeds cover each entry point
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -60,6 +61,8 @@ Plan approved 2026-11-14 (maintainer). Branch feat/oidf-rp. No ZETA names in go/
 7. pdp and pep/proxy wire a kv-backed Documents.
 8. Release openid, oidf, pdp, pep/proxy after full just check, review, oidf-test (maintainer) and a live TK login.
 Full plan: ~/.claude/plans/cheerful-tickling-bear.md
+
+5b (maintainer, 2026-11-14): OWASP input validation of every request value to and from the IDP (state, nonce, verifier, scope, acr, claims, redirect_uri exact, code, idp_iss, PAR/token/error responses, ID token claim strings), reject never repair, sentinel errors without the value; fuzz targets per entry point with CRLF/NUL/overlong/invalid-UTF-8/bidi/encoded-separator/nested-JSON seeds, asserting properties.
 <!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
