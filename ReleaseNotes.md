@@ -43,6 +43,21 @@
   under the keys used before; without `DATABASE_URL` that store is in memory, with the warning as
   before.
 
+# Unreleased go/pep/proxy
+
+### breaking
+- `Config` takes `Sessions` (a `SessionStore`) and `Revocations` in place of `Store` and `Bus`, and
+  `New` refuses a configuration without either instead of keeping them in its own memory;
+  `pep/proxy` imports no kv (TASK-307). `ErrSessionNotFound`, `LoginStateTTL` and
+  `DefaultSnapshotTTL` are exported for the stores, `MemoryRevocations` and
+  `NewMemoryRevocations` for a single replica.
+- `Revocations` take a context and return an error; an error from `Revoked` denies the request.
+  A revocation holds until the time its snapshot would expire.
+- zero-pep-proxy builds the kv-backed sessions and revocations over its one store and bus, under
+  the keys and channel used before; without `DATABASE_URL` the revocations are in memory, with a
+  warning. It refuses to start when it cannot subscribe to the revocations or load the stored
+  ones, where it logged and went on before.
+
 # Unreleased go/zaddy
 
 ### changes

@@ -153,19 +153,24 @@ func openStore() kv.Store {
 	return kv.NewSealed(store, ring, sessionStorePurpose)
 }
 
-// openBus returns the revocation bus: Postgres LISTEN/NOTIFY when DATABASE_URL is set (so logout/lockout is
-// fleet-wide), otherwise nil — a single-instance in-memory revoker.
-func openBus() kv.Bus {
+// openRevocations returns the session revocations: published over Postgres LISTEN/NOTIFY and stored in the
+// store when DATABASE_URL is set, so logout and lockout hold at every replica; otherwise in memory, for a single
+// replica. ttl is the snapshot lifetime, how long a revocation learned from another replica holds.
+func openRevocations(store kv.Store, ttl time.Duration) proxy.Revocations {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		return nil
+		slog.Warn("DATABASE_URL not set — revocations held in memory, for a single replica only")
+		return proxy.NewMemoryRevocations(nil)
 	}
 	bus, err := postgres.OpenBus(context.Background(), dsn)
 	if err != nil {
 		log.Fatalf("open revocation bus: %v", err)
 	}
 	slog.Info("using postgres revocation bus (LISTEN/NOTIFY)")
-	return bus
+	if ttl <= 0 {
+		ttl = proxy.DefaultSnapshotTTL
+	}
+	return newKVRevocations(bus, store, ttl)
 }
 
 func main() {
@@ -261,16 +266,17 @@ func main() {
 	}
 
 	store := openStore()
+	revocations := openRevocations(store, snapshotTTL)
 	server, err := proxy.New(proxy.Config{
 		Backend:                 backend,
-		Store:                   store,
+		Sessions:                newKVSessions(store),
+		Revocations:             revocations,
 		CookieName:              env("PEP_COOKIE_NAME", "ZERO-PEP-SID"),
 		InsecureCookie:          insecureCookie,
 		TemplateDir:             os.Getenv("PEP_TEMPLATE_DIR"),
 		SnapshotKeyPath:         os.Getenv("PEP_SESSION_KEY_PATH"),
 		SnapshotPreviousKeyPath: os.Getenv("PEP_SESSION_PREVIOUS_KEY_PATH"),
 		SnapshotTTL:             snapshotTTL,
-		Bus:                     openBus(),
 		Routes:                  routes,
 		// An https upstream is on the internet as far as pep can tell, so it gets the web profile too; the
 		// transport alone, as the client's timeout would cut off long uploads and downloads.
@@ -292,6 +298,12 @@ func main() {
 
 	slog.Info("zero-pep-proxy listening", "version", pep.Version, "addr", addr, "public_url", publicURL)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// Fail closed (server rule 17): a replica that cannot learn the revocations of the others would admit
+	// snapshots they ended.
+	if err := revocations.Follow(ctx); err != nil {
+		stop()
+		log.Fatalf("follow revocations: %v", err)
+	}
 	go kv.Reap(ctx, store, reapEvery)
 	err = serve(ctx, srv)
 	stop()

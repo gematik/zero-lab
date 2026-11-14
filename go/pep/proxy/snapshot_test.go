@@ -30,8 +30,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/gematik/zero-lab/go/kv"
 )
 
 func writeKeyFile(t *testing.T, name string) string {
@@ -105,18 +103,17 @@ func TestSnapshotDisabledWhenNoKey(t *testing.T) {
 	}
 }
 
-func TestMemRevoker(t *testing.T) {
-	r := newMemRevoker(time.Hour, time.Now)
-	if r.IsRevoked("a") {
+func TestMemoryRevocations_HoldUntilTheirTime(t *testing.T) {
+	r := NewMemoryRevocations(nil)
+	if revoked, err := r.Revoked(t.Context(), "a"); revoked || err != nil {
 		t.Error("not revoked yet")
 	}
-	r.Revoke("a")
-	if !r.IsRevoked("a") {
+	_ = r.Revoke(t.Context(), "a", time.Now().Add(time.Hour))
+	if revoked, err := r.Revoked(t.Context(), "a"); !revoked || err != nil {
 		t.Error("should be revoked")
 	}
-	expired := newMemRevoker(-time.Minute, time.Now)
-	expired.Revoke("b")
-	if expired.IsRevoked("b") {
+	_ = r.Revoke(t.Context(), "b", time.Now().Add(-time.Minute))
+	if revoked, _ := r.Revoked(t.Context(), "b"); revoked {
 		t.Error("expired revocation entry should self-evict")
 	}
 }
@@ -126,7 +123,8 @@ func TestMemRevoker(t *testing.T) {
 func TestForwardAuth_SnapshotFastPath(t *testing.T) {
 	s, err := New(Config{
 		Backend:         &fakeBackend{},
-		Store:           kv.NewMemory(),
+		Sessions:        newMemorySessions(),
+		Revocations:     NewMemoryRevocations(nil),
 		CookieName:      "TEST-SID",
 		SnapshotKeyPath: writeKeyFile(t, "key"),
 	})
@@ -146,13 +144,13 @@ func TestForwardAuth_SnapshotFastPath(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, newReq())
 	if rec.Code != http.StatusAccepted {
-		t.Fatalf("snapshot fast path = %d, want 202 (no kv session exists)", rec.Code)
+		t.Fatalf("snapshot fast path = %d, want 202 (no stored session exists)", rec.Code)
 	}
 	if got := rec.Header().Get("X-Auth-Request-User"); got != "user-1" {
 		t.Errorf("X-Auth-Request-User = %q, want user-1", got)
 	}
 
-	s.revoker.Revoke("sid-x")
+	_ = s.revocations.Revoke(t.Context(), "sid-x", time.Now().Add(time.Hour))
 	rec2 := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec2, newReq())
 	if rec2.Code != http.StatusUnauthorized {

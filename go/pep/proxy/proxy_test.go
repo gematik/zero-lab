@@ -32,8 +32,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/gematik/zero-lab/go/kv"
 )
 
 type fakeBackend struct{ identity map[string]any }
@@ -60,13 +58,9 @@ func (f *fakeBackend) FreshAccessToken(_ context.Context, _ *Session) (string, e
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	s, err := New(Config{
-		Backend: &fakeBackend{identity: map[string]any{
-			"sub": "user-1", "email": "u@example.com", "groups": []any{"admin", "dev"},
-		}},
-		Store:      kv.NewMemory(),
-		CookieName: "TEST-SID",
-	})
+	s, err := New(testConfig(&fakeBackend{identity: map[string]any{
+		"sub": "user-1", "email": "u@example.com", "groups": []any{"admin", "dev"},
+	}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,13 +91,13 @@ func TestServerRule2_AFailedLoginShowsTheBrowserGenericText(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
-	s, err := New(Config{Backend: &failingBackend{}, Store: kv.NewMemory(), CookieName: "TEST-SID"})
+	s, err := New(testConfig(&failingBackend{}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	sess := s.sessions.create()
 	sess.State = "test-state"
-	if err := s.sessions.save(sess); err != nil {
+	if err := s.sessions.save(t.Context(), sess); err != nil {
 		t.Fatal(err)
 	}
 	for name, target := range map[string]string{
@@ -134,7 +128,7 @@ func TestServerRule2_AnIdentityProvidersErrorIsNotReflected(t *testing.T) {
 	s := newTestServer(t)
 	sess := s.sessions.create()
 	sess.State = "test-state"
-	if err := s.sessions.save(sess); err != nil {
+	if err := s.sessions.save(t.Context(), sess); err != nil {
 		t.Fatal(err)
 	}
 	const planted = "planted-text-value"
@@ -160,7 +154,7 @@ func TestForwardAuth_Authenticated(t *testing.T) {
 	s := newTestServer(t)
 	sess := s.sessions.create()
 	sess.Identity = map[string]any{"sub": "user-1", "email": "u@example.com", "groups": []any{"admin", "dev"}}
-	if err := s.sessions.save(sess); err != nil {
+	if err := s.sessions.save(t.Context(), sess); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
@@ -205,7 +199,7 @@ func TestStart_RedirectsAndBindsCookie(t *testing.T) {
 	if sid == "" {
 		t.Fatal("no session cookie set")
 	}
-	sess, err := s.sessions.byState("test-state")
+	sess, err := s.sessions.byState(t.Context(), "test-state")
 	if err != nil {
 		t.Fatalf("session not persisted by state: %v", err)
 	}
@@ -219,7 +213,7 @@ func TestSignOut_ClearsSession(t *testing.T) {
 	s := newTestServer(t)
 	sess := s.sessions.create()
 	sess.Identity = map[string]any{"sub": "x"}
-	_ = s.sessions.save(sess)
+	_ = s.sessions.save(t.Context(), sess)
 
 	req := httptest.NewRequest(http.MethodPost, "/oauth2/sign_out", nil)
 	req.Header.Set("X-Requested-With", "fetch")
@@ -230,7 +224,7 @@ func TestSignOut_ClearsSession(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("sign_out = %d, want 204", rec.Code)
 	}
-	if _, err := s.sessions.byID(sess.ID); err == nil {
+	if _, err := s.sessions.byID(t.Context(), sess.ID); err == nil {
 		t.Error("session not deleted on sign_out")
 	}
 }
@@ -311,31 +305,72 @@ func TestServerRule14_ALoginLogsNoSessionIDNorCookieNorStateAtDebug(t *testing.T
 	}
 }
 
-// failingBus and failingStore make the revoker log why a revocation did not get out.
-type failingBus struct{ kv.Bus }
+// failingRevocations cannot tell, nor reach the other replicas.
+type failingRevocations struct{}
 
-func (failingBus) Subscribe(context.Context, string) (<-chan string, error) {
-	return nil, errors.New("no bus")
+func (failingRevocations) Revoke(context.Context, string, time.Time) error {
+	return errors.New("no bus, no store")
 }
-func (failingBus) Publish(context.Context, string, string) error { return errors.New("no bus") }
 
-type failingStore struct{ kv.Store }
-
-func (failingStore) Set(context.Context, string, []byte, time.Duration) error {
-	return errors.New("no store")
+func (failingRevocations) Revoked(context.Context, string) (bool, error) {
+	return false, errors.New("no store")
 }
+
+func (failingRevocations) Follow(context.Context) error { return nil }
 
 // Server rule 14: telemetry carries no secrets and only pseudonymised identifiers.
 func TestServerRule14_ARevocationThatFailsLogsNoSid(t *testing.T) {
 	logs := captureDebugLogs(t)
-	r := &busRevoker{local: newMemRevoker(time.Hour, time.Now), bus: failingBus{}, store: failingStore{kv.NewMemory()}, ttl: time.Hour}
+	cfg := testConfig(&fakeBackend{})
+	cfg.Revocations = failingRevocations{}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
 	const sid = "sid-token-hash-value"
-	r.Revoke(sid)
+	s.revoke(t.Context(), sid)
 	if !strings.Contains(logs.String(), "revocation") {
 		t.Fatalf("the failure went unlogged: %s", logs)
 	}
 	if strings.Contains(logs.String(), sid) {
 		t.Errorf("the log holds the sid: %s", logs)
+	}
+}
+
+// Server rule 17, fail closed: a snapshot whose revocation cannot be checked is denied.
+func TestServerRule17_ARevocationCheckThatFailsDenies(t *testing.T) {
+	cfg := testConfig(&fakeBackend{})
+	cfg.Revocations = failingRevocations{}
+	cfg.SnapshotKeyPath = writeKeyFile(t, "key")
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok, err := s.snap.mint("sid-x", map[string]any{"sub": "user-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
+	req.AddCookie(&http.Cookie{Name: s.snapCookie.Name, Value: tok}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+// Server rule 17: New refuses to keep the state replicas share in its own memory.
+func TestServerRule17_NewRefusesAConfigWithoutSessionsOrRevocations(t *testing.T) {
+	without := map[string]func(*Config){
+		"Sessions":    func(c *Config) { c.Sessions = nil },
+		"Revocations": func(c *Config) { c.Revocations = nil },
+	}
+	for name, drop := range without {
+		cfg := testConfig(&fakeBackend{})
+		drop(&cfg)
+		if _, err := New(cfg); err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("without %s: %v", name, err)
+		}
 	}
 }
 
@@ -378,11 +413,11 @@ func TestServerRule14_AForwardAuthDenialLogsNoQuery(t *testing.T) {
 
 // A store's error text reaches pages and logs, so a session's own lookup errors name neither the ID nor the state.
 func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
-	store := newSessionStore(kv.NewMemory(), time.Hour)
-	if _, err := store.byID("session-id-value"); err == nil || strings.Contains(err.Error(), "session-id-value") {
+	store := newSessionManager(newMemorySessions(), time.Hour)
+	if _, err := store.byID(t.Context(), "session-id-value"); err == nil || strings.Contains(err.Error(), "session-id-value") {
 		t.Errorf("err = %v", err)
 	}
-	if _, err := store.byState("state-value"); err == nil || strings.Contains(err.Error(), "state-value") {
+	if _, err := store.byState(t.Context(), "state-value"); err == nil || strings.Contains(err.Error(), "state-value") {
 		t.Errorf("err = %v", err)
 	}
 }
