@@ -143,7 +143,8 @@ type OpenidFederation struct {
 	inflight map[string]*flight
 }
 
-// flight is one resolution of a document that concurrent callers wait for instead of fetching it too.
+// flight is one fetch of a document that concurrent callers wait for instead of fetching it too. It carries the
+// fetched bytes or the fetch's error, never a judgement.
 type flight struct {
 	done   chan struct{}
 	signed []byte
@@ -294,9 +295,11 @@ func (f *OpenidFederation) fetch(ctx context.Context, location string) ([]byte, 
 // document returns what check reads from the signed document at location, once it verified against keys with
 // options and lies within its lifetime. A document kept in the store is judged exactly like a fetched one; one that
 // no longer passes, having expired or been altered, is fetched again and replaces the kept one (servers.md rule 12).
+// Every caller judges with its own keys and checks, once per document it reads, so no caller takes a document for
+// having passed another caller's judgement.
 func document[T any](ctx context.Context, f *OpenidFederation, location string, keys *jose.JSONWebKeySet, options openid.VerifyOptions, check func(payload []byte) (T, error)) (T, error) {
+	var zero T
 	read := func(signed []byte) (T, []byte, error) {
-		var zero T
 		payload, err := verifyStatement(signed, keys, options, f.now())
 		if err != nil {
 			return zero, nil, err
@@ -304,26 +307,44 @@ func document[T any](ctx context.Context, f *OpenidFederation, location string, 
 		value, err := check(payload)
 		return value, payload, err
 	}
-	signed, err := f.signedDocument(ctx, location, func(signed []byte) ([]byte, error) {
-		_, payload, err := read(signed)
-		return payload, err
-	})
-	if err != nil {
-		var zero T
+	if err := checkFederationURL(location); err != nil {
 		return zero, err
 	}
-	value, _, err := read(signed)
+
+	kept, found, err := f.documents.Get(ctx, location)
+	switch {
+	case err != nil:
+		f.report(ctx, "reading a kept federation document failed", location, err)
+	case found:
+		if value, _, err := read(kept); err == nil {
+			return value, nil
+		}
+	}
+
+	var value T
+	var readErr error
+	signed, led, err := f.fetchOnce(ctx, location, func(signed []byte) {
+		var payload []byte
+		value, payload, readErr = read(signed)
+		if readErr == nil {
+			f.keep(ctx, location, signed, payload)
+		}
+	})
+	if err != nil {
+		return zero, err
+	}
+	if led {
+		return value, readErr
+	}
+	value, _, err = read(signed)
 	return value, err
 }
 
-// signedDocument resolves the document at location once per process at a time: a caller that finds a resolution
-// under way waits for it, as long as its own context lets it, and judges the result itself. Each caller judges with
-// its own keys, so a result is never trusted for having passed another caller's judgement (servers.md rule 12,
-// protection against stampedes).
-func (f *OpenidFederation) signedDocument(ctx context.Context, location string, judge func(signed []byte) ([]byte, error)) ([]byte, error) {
-	if err := checkFederationURL(location); err != nil {
-		return nil, err
-	}
+// fetchOnce fetches the document at location once per process at a time (servers.md rule 12, protection against
+// stampedes). The caller that fetches leads: it runs lead on what it fetched before the others are released, so a
+// document it keeps is in the store by then. The others wait as long as their own context lets them and get the
+// fetched bytes, or the fetch's error, to judge themselves.
+func (f *OpenidFederation) fetchOnce(ctx context.Context, location string, lead func(signed []byte)) (signed []byte, led bool, err error) {
 	for {
 		f.mu.Lock()
 		call, waiting := f.inflight[location]
@@ -334,69 +355,49 @@ func (f *OpenidFederation) signedDocument(ctx context.Context, location string, 
 		f.mu.Unlock()
 
 		if !waiting {
-			f.lead(ctx, location, call, judge)
-			return call.signed, call.err
+			f.fetchFor(ctx, location, call, lead)
+			return call.signed, true, call.err
 		}
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, false, ctx.Err()
 		case <-call.done:
 		}
-		// The leader's context ended, not this caller's: resolve again rather than fail a login for another's.
+		// The leader's context ended, not this caller's: fetch again rather than fail a login for another's.
 		if (errors.Is(call.err, context.Canceled) || errors.Is(call.err, context.DeadlineExceeded)) && ctx.Err() == nil {
 			continue
 		}
-		if call.err != nil {
-			return nil, call.err
-		}
-		if _, err := judge(call.signed); err != nil {
-			return nil, err
-		}
-		return call.signed, nil
+		return call.signed, false, call.err
 	}
 }
 
-// lead resolves the document for everyone waiting on call and releases them, also when judge panics.
-func (f *OpenidFederation) lead(ctx context.Context, location string, call *flight, judge func(signed []byte) ([]byte, error)) {
+// fetchFor fetches for everyone waiting on call and releases them, also when lead panics.
+func (f *OpenidFederation) fetchFor(ctx context.Context, location string, call *flight, lead func(signed []byte)) {
 	defer func() {
 		f.mu.Lock()
 		delete(f.inflight, location)
 		f.mu.Unlock()
 		close(call.done)
 	}()
-	// Stays the result for the waiters if resolve panics.
-	call.err = errors.New("resolution did not finish")
-	call.signed, call.err = f.resolve(ctx, location, judge)
+	// Stays the result for the waiters if the fetch or lead panics.
+	call.err = errors.New("fetch did not finish")
+	signed, err := f.fetch(ctx, location)
+	if err == nil {
+		lead(signed)
+	}
+	call.signed, call.err = signed, err
 }
 
-// resolve takes the kept document if it passes judge, and otherwise fetches one and keeps it if it passes. A store
-// that fails costs a fetch, never the result.
-func (f *OpenidFederation) resolve(ctx context.Context, location string, judge func(signed []byte) ([]byte, error)) ([]byte, error) {
-	kept, found, err := f.documents.Get(ctx, location)
-	switch {
-	case err != nil:
-		f.report(ctx, "reading a kept federation document failed", location, err)
-	case found:
-		if _, err := judge(kept); err == nil {
-			return kept, nil
-		}
+// keep stores a document that passed its judgement until its exp. A document without exp is not kept: nothing would
+// bound how long it stays. A store that fails costs a later fetch, never the result.
+func (f *OpenidFederation) keep(ctx context.Context, location string, signed, payload []byte) {
+	until, ok := expiresAt(payload)
+	if !ok {
+		return
 	}
-
-	signed, err := f.fetch(ctx, location)
-	if err != nil {
-		return nil, err
+	if err := f.documents.Keep(ctx, location, signed, until); err != nil {
+		f.report(ctx, "keeping a federation document failed", location, err)
 	}
-	payload, err := judge(signed)
-	if err != nil {
-		return nil, err
-	}
-	// A document without exp is not kept: nothing would bound how long it stays.
-	if until, ok := expiresAt(payload); ok {
-		if err := f.documents.Keep(ctx, location, signed, until); err != nil {
-			f.report(ctx, "keeping a federation document failed", location, err)
-		}
-	}
-	return signed, nil
 }
 
 // expiresAt reads exp of a verified payload, if it is an integer number of seconds.

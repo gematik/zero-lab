@@ -33,6 +33,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
 )
 
 // fakeDocuments is a store a test can read, alter and break.
@@ -364,6 +366,73 @@ func TestServerRule24_AFetchEndsWithItsContext(t *testing.T) {
 			t.Errorf("the fetch under way: %v", err)
 		}
 		if n := transport.count("/idps"); n != 1 {
+			t.Errorf("%d fetches of the list", n)
+		}
+	})
+}
+
+// Servers rule 12: a fetch is shared, a judgement is not. A caller whose keys refuse the document does not make
+// another caller, whose keys take it, fail.
+func TestServerRule12_EachCallerJudgesASharedFetchWithItsOwnKeys(t *testing.T) {
+	stub := newFederationStub(t)
+	realNow := time.Now()
+	synctest.Test(t, func(t *testing.T) {
+		federation, transport := inBubble(t, stub, realNow)
+		location := stub.URL + "/op/.well-known/openid-federation"
+		read := func(keys *jose.JSONWebKeySet) error {
+			_, err := document(t.Context(), federation, location, keys, memberKeys, parseEntityStatement)
+			return err
+		}
+		wrong := make(chan error, 1)
+		go func() { wrong <- read(keySetOf(newTestKey(t), "op")) }()
+		synctest.Wait()
+		right := make(chan error, 1)
+		go func() { right <- read(keySetOf(stub.opKey, "op")) }()
+		synctest.Wait()
+		close(transport.gate)
+		if err := <-wrong; err == nil {
+			t.Error("the caller with the wrong keys took the document")
+		}
+		if err := <-right; err != nil {
+			t.Errorf("the caller with the right keys: %v", err)
+		}
+		if n := transport.count("/op/.well-known/openid-federation"); n != 1 {
+			t.Errorf("%d fetches", n)
+		}
+	})
+}
+
+// Servers rule 24: a fetch under way that ends with its leader's context is fetched again for a caller whose context
+// is still live, instead of failing it for another's.
+func TestServerRule24_AWaiterOutlivesTheLeadersContext(t *testing.T) {
+	stub := newFederationStub(t)
+	realNow := time.Now()
+	synctest.Test(t, func(t *testing.T) {
+		federation, transport := inBubble(t, stub, realNow)
+		leading, cancel := context.WithCancel(t.Context())
+		leader := make(chan error, 1)
+		go func() {
+			_, err := federation.FetchIdpList(leading)
+			leader <- err
+		}()
+		synctest.Wait()
+		waiter := make(chan error, 1)
+		go func() {
+			_, err := federation.FetchIdpList(t.Context())
+			waiter <- err
+		}()
+		synctest.Wait()
+
+		cancel()
+		if err := <-leader; !errors.Is(err, context.Canceled) {
+			t.Errorf("the leader: %v", err)
+		}
+		synctest.Wait()
+		close(transport.gate)
+		if err := <-waiter; err != nil {
+			t.Errorf("the waiter: %v", err)
+		}
+		if n := transport.count("/idps"); n != 2 {
 			t.Errorf("%d fetches of the list", n)
 		}
 	})
