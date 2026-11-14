@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-14T10:42:00Z'
-updated_date: '2026-11-14T11:01:00Z'
+updated_date: '2026-11-14T15:21:00Z'
 labels: []
 dependencies: []
 ordinal: 324000
@@ -24,11 +24,11 @@ kv.ReplayCache (kv/replay.go) is dpop logic inside kv: the dpop:replay: prefix, 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 dpop exports Replays, MemoryReplays and their constructor; no ReplayCache name remains in dpop, pep, pdp or kv
-- [ ] #2 Replays.Seen, NonceSource.Valid and NonceSource.Fresh take a context and return an error; an error refuses the proof, with a test per method
-- [ ] #3 nonce.Source meets the new NonceSource
-- [ ] #4 kv has no replay type; the kv-backed Replays lives with the wiring in the hosts
-- [ ] #5 Release notes of dpop, nonce and kv name the breaking change
-- [ ] #6 pep's builder refuses a missing Replays; zaddy passes in-memory Replays explicitly and logs that they hold for one replica
-- [ ] #7 nonce.Record becomes nonce.Redemptions with Seen(ctx, id, until) (bool, error), true meaning already redeemed; one kv-backed type in zero-pdp serves both, with unchanged key layouts
+- [x] #1 dpop exports Replays, MemoryReplays and their constructor; no ReplayCache name remains in dpop, pep, pdp or kv
+- [x] #2 Replays.Seen, NonceSource.Valid and NonceSource.Fresh take a context and return an error; an error refuses the proof, with a test per method
+- [x] #3 nonce.Source meets the new NonceSource
+- [x] #4 kv has no replay type; the kv-backed Replays lives with the wiring in the hosts
+- [x] #5 Release notes of dpop, nonce and kv name the breaking change
+- [x] #6 pep's builder refuses a missing Replays; zaddy passes in-memory Replays explicitly and logs that they hold for one replica
+- [x] #7 nonce.Record becomes nonce.Redemptions with Seen(ctx, id, until) (bool, error), true meaning already redeemed; one kv-backed type in zero-pdp serves both, with unchanged key layouts
 <!-- AC:END -->

@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
-updated_date: '2026-11-14T10:53:00Z'
+updated_date: '2026-11-14T15:21:00Z'
 labels: []
 dependencies: []
 ordinal: 322000
@@ -20,9 +20,9 @@ proxy.Config takes kv.Store and kv.Bus (proxy.go), and the session store (sessio
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Config takes pep SessionStore and Revocations interfaces, not kv.Store and kv.Bus
-- [ ] #2 pep/proxy does not import kv; the kv-backed implementations live with the wiring in cmd/zero-pep-proxy
-- [ ] #3 Revocation across replicas and sessions at rest keep their tests, including the Postgres-gated ones
-- [ ] #4 Revocations is the one name for the interface and its implementations (no Revoker, revocation store or cache)
+- [x] #1 Config takes pep SessionStore and Revocations interfaces, not kv.Store and kv.Bus
+- [x] #2 pep/proxy does not import kv; the kv-backed implementations live with the wiring in cmd/zero-pep-proxy
+- [x] #3 Revocation across replicas and sessions at rest keep their tests, including the Postgres-gated ones
+- [x] #4 Revocations is the one name for the interface and its implementations (no Revoker, revocation store or cache)
 - [ ] #5 Revocations methods take a context and return an error; an error means revoked (deny), with a test; entries carry an until so they expire with the session
 <!-- AC:END -->

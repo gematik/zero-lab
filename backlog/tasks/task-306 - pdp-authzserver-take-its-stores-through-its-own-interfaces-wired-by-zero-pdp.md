@@ -4,7 +4,7 @@ title: 'pdp authzserver: take its stores through its own interfaces, wired by ze
 status: In Progress
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
-updated_date: '2026-11-14T10:53:00Z'
+updated_date: '2026-11-14T15:21:00Z'
 labels: []
 dependencies: []
 ordinal: 321000
@@ -18,8 +18,8 @@ authzserver.Config takes a raw kv.Store (config.go Store), and NewServer builds 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Config takes SessionStore, nonce.Record and dpop.ReplayCache, not kv.Store
-- [ ] #2 pdp/authzserver does not import kv; cmd/zero-pdp builds the kv-backed implementations
-- [ ] #3 NewServer refuses a configuration without the stores instead of creating in-memory ones, or the in-memory default is chosen by the command and logged
-- [ ] #4 Shared-by-replicas behaviour (nonces, replay, sessions) keeps its tests
+- [x] #1 Config takes SessionStore, nonce.Record and dpop.ReplayCache, not kv.Store
+- [x] #2 pdp/authzserver does not import kv; cmd/zero-pdp builds the kv-backed implementations
+- [x] #3 NewServer refuses a configuration without the stores instead of creating in-memory ones, or the in-memory default is chosen by the command and logged
+- [x] #4 Shared-by-replicas behaviour (nonces, replay, sessions) keeps its tests
 <!-- AC:END -->

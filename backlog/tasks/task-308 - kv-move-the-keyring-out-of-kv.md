@@ -4,7 +4,7 @@ title: 'zaddy: load its DPoP nonce keys itself instead of importing kv'
 status: In Progress
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
-updated_date: '2026-11-14T10:53:00Z'
+updated_date: '2026-11-14T15:21:00Z'
 labels: []
 dependencies: []
 ordinal: 323000
@@ -18,7 +18,7 @@ zaddy imports kv only for kv.LoadKeyring, to get the keys of its DPoP nonces (za
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 zaddy loads its DPoP nonce key file itself, in the keyring's format, and no longer imports kv
-- [ ] #2 A malformed file, a key of the wrong size or a duplicate ID refuses provisioning, with tests
-- [ ] #3 kv's keyring is unchanged
+- [x] #1 zaddy loads its DPoP nonce key file itself, in the keyring's format, and no longer imports kv
+- [x] #2 A malformed file, a key of the wrong size or a duplicate ID refuses provisioning, with tests
+- [x] #3 kv's keyring is unchanged
 <!-- AC:END -->
