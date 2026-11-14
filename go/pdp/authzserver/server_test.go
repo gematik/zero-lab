@@ -82,7 +82,7 @@ func newTestServer(t *testing.T) (*Server, *jose.JSONWebKey) {
 			PublicJWK: jwkToMap(t, &pubKey),
 		}},
 	}
-	server, err := New(cfg)
+	server, err := New(withTestStores(t, cfg))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

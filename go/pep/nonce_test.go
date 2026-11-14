@@ -24,6 +24,7 @@
 package pep_test
 
 import (
+	"context"
 	"crypto/rand"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +52,7 @@ func nonceServer(t *testing.T, source dpop.NonceSource) *httptest.Server {
 	if source != nil {
 		builder = builder.WithDPoPNonces(source)
 	}
-	p, err := builder.Build()
+	p, err := builder.WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,13 +70,13 @@ type nonces struct {
 
 func newNonces() *nonces { return &nonces{issued: map[string]bool{}} }
 
-func (n *nonces) Valid(nonce string) bool {
+func (n *nonces) Valid(_ context.Context, nonce string) (bool, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	return n.issued[nonce]
+	return n.issued[nonce], nil
 }
 
-func (n *nonces) Fresh() (string, error) {
+func (n *nonces) Fresh(context.Context) (string, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	nonce := rand.Text()

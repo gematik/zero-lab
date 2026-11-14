@@ -35,8 +35,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/gematik/zero-lab/go/kv"
 )
 
 // dpopTestBackend is a Backend that yields a token and forwards DPoP via the real pdpBackend minting.
@@ -287,10 +285,11 @@ func TestServerMountsOAuthBeforeGateway(t *testing.T) {
 	defer upstream.Close()
 
 	s, err := New(Config{
-		Backend:    &fakeBackend{identity: map[string]any{"sub": "u1"}},
-		Store:      kv.NewMemory(),
-		CookieName: "TEST-SID",
-		Routes:     []Route{{PathPrefix: "/", Upstream: upstream.URL, Gate: GateNone}},
+		Backend:     &fakeBackend{identity: map[string]any{"sub": "u1"}},
+		Sessions:    newMemorySessions(),
+		Revocations: NewMemoryRevocations(nil),
+		CookieName:  "TEST-SID",
+		Routes:      []Route{{PathPrefix: "/", Upstream: upstream.URL, Gate: GateNone}},
 	})
 	if err != nil {
 		t.Fatal(err)

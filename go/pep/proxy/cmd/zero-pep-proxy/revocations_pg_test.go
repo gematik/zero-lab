@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package proxy
+package main
 
 import (
 	"context"
@@ -30,10 +30,10 @@ import (
 	"github.com/gematik/zero-lab/go/kv/postgres"
 )
 
-// TestBusRevokerPostgres proves revocation crosses processes over real Postgres LISTEN/NOTIFY: two
-// independently-connected busRevokers (two "replicas"), a Revoke on one must reach the other. Gated on
-// PEP_PG_DSN.
-func TestBusRevokerPostgres(t *testing.T) {
+// TestRevocations_ReachTheOtherReplicaOverPostgres proves revocation crosses processes over real Postgres
+// LISTEN/NOTIFY: two independently-connected revocations (two "replicas"), a Revoke on one must reach the other.
+// Gated on PEP_PG_DSN.
+func TestRevocations_ReachTheOtherReplicaOverPostgres(t *testing.T) {
 	dsn := os.Getenv("PEP_PG_DSN")
 	if dsn == "" {
 		t.Skip("PEP_PG_DSN not set — skipping Postgres LISTEN/NOTIFY integration test")
@@ -55,13 +55,15 @@ func TestBusRevokerPostgres(t *testing.T) {
 	}
 	defer busB.Close()
 
-	a := newBusRevoker(busA, store, time.Hour, time.Now)
-	b := newBusRevoker(busB, store, time.Hour, time.Now)
+	a := followed(t, busA, store)
+	b := followed(t, busB, store)
 	time.Sleep(300 * time.Millisecond) // let both listeners establish LISTEN before the first NOTIFY
 
-	a.Revoke("sid-pg")
+	if err := a.Revoke(ctx, "sid-pg", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 	deadline := time.Now().Add(5 * time.Second)
-	for !b.IsRevoked("sid-pg") {
+	for !revoked(t, b, "sid-pg") {
 		if time.Now().After(deadline) {
 			t.Fatal("revocation did not propagate across processes via Postgres LISTEN/NOTIFY")
 		}

@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/openid/providers"
@@ -51,12 +51,14 @@ type Config struct {
 	// Providers and RelyingParty are built by the caller from the providers file; nil means none.
 	Providers    *providers.Set     `yaml:"-"`
 	RelyingParty *oidf.RelyingParty `yaml:"-"`
-	// Store is the kv backend for sessions, nonce records and DPoP proofs. The command opens the Postgres
-	// store from DATABASE_URL, sealed (it owns the driver dependency), and injects it here; nil ⇒ an in-memory
-	// store, for one replica only (tests and dev).
-	Store kv.Store `yaml:"-"`
-	// NonceKeys seal the replay nonces; all replicas share them. Required with a Store; without one, nonces
-	// are sealed under a key of this process alone, as the in-memory store is its alone.
+	// Sessions, NonceRedemptions and Replays are the state replicas share: authorization sessions, the single
+	// use of client-assertion nonces, and the DPoP proofs accepted (RFC 9449 Section 11.1). The command picks the
+	// backend and builds them; the server refuses to start without any of them rather than keep one in its own
+	// memory, which another replica would not see.
+	Sessions         SessionStore      `yaml:"-"`
+	NonceRedemptions nonce.Redemptions `yaml:"-"`
+	Replays          dpop.Replays      `yaml:"-"`
+	// NonceKeys seal the client-assertion nonces; all replicas that share the stores share them as well.
 	NonceKeys nonce.Keys `yaml:"-"`
 	// Clock is the time tokens, sessions, nonces and DPoP proofs are issued and judged at; nil means the
 	// system clock.

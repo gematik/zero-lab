@@ -1,5 +1,73 @@
 # Release Notes
 
+# Unreleased go/dpop
+
+### breaking
+- `ReplayCache` is `Replays`, `MemoryReplayCache` is `MemoryReplays`, `NewMemoryReplayCache` is
+  `NewMemoryReplays`, `ErrReplayCacheFull` is `ErrReplaysFull` and `Config.Replay` is
+  `Config.Replays`: an entry lost before it expires lets a proof through twice, so it is no cache
+  (TASK-309).
+- `Replays.Seen`, `NonceSource.Valid` and `NonceSource.Fresh` take a context and return an error,
+  so they can be kept in a store; `Verifier.Verify` takes the request's context first and passes it
+  on. An error from either refuses the proof.
+
+# Unreleased go/nonce
+
+### breaking
+- `Record` is the interface `Redemptions`; its `Seen` reports true for a nonce redeemed before, as
+  `dpop.Replays` does, and `New` takes it (TASK-309).
+- `Source.Valid` and `Source.Fresh` take a context and return an error, to meet the new
+  `dpop.NonceSource`.
+
+# Unreleased go/kv
+
+### breaking
+- `ReplayCache` and `NewReplayCache` are gone: kv holds nothing of dpop. A host builds its replays
+  on `SetIfAbsent`, as zero-pdp does (TASK-309).
+
+# Unreleased go/pep
+
+### breaking
+- `WithDPoPReplayCache` is `WithDPoPReplays`, and `Build` refuses a builder without it: the host
+  picks the backend, `dpop.NewMemoryReplays` for a single replica (TASK-309).
+- On the new dpop: nonce sources and replays receive the request's context.
+
+# Unreleased go/pdp
+
+### breaking
+- `authzserver.Config` takes `Sessions`, `NonceRedemptions` and `Replays` in place of `Store`, and
+  `New` refuses a configuration without them or `NonceKeys` instead of keeping them in its own
+  memory; `authzserver` imports no kv (TASK-306). `ErrSessionNotFound` and `DefaultSessionTTL` are
+  exported for session stores.
+- zero-pdp builds the kv-backed sessions, nonce redemptions and DPoP replays over its one store,
+  under the keys used before; without `DATABASE_URL` that store is in memory, with the warning as
+  before.
+
+# Unreleased go/pep/proxy
+
+### breaking
+- `Config` takes `Sessions` (a `SessionStore`) and `Revocations` in place of `Store` and `Bus`, and
+  `New` refuses a configuration without either instead of keeping them in its own memory;
+  `pep/proxy` imports no kv (TASK-307). `ErrSessionNotFound`, `LoginStateTTL` and
+  `DefaultSnapshotTTL` are exported for the stores, `MemoryRevocations` and
+  `NewMemoryRevocations` for a single replica.
+- `Revocations` take a context and return an error; an error from `Revoked` denies the request.
+  A revocation holds until the time its snapshot would expire.
+- zero-pep-proxy builds the kv-backed sessions and revocations over its one store and bus, under
+  the keys and channel used before; without `DATABASE_URL` the revocations are in memory, with a
+  warning. It refuses to start when it cannot subscribe to the revocations or load the stored
+  ones, where it logged and went on before.
+
+# Unreleased go/zaddy
+
+### changes
+- zaddy chooses DPoP replays in memory itself, as pep did before, and warns at start that replay
+  detection holds for this replica only (TASK-309).
+- zaddy reads its DPoP nonce key file itself, once at provisioning, in the format of kv's keyring,
+  and no longer requires kv (TASK-308). A rotated file takes effect with a config reload, no longer
+  while running. A malformed line, a key not of 32 bytes, a duplicate or invalid ID, or an empty
+  file refuses provisioning.
+
 # Release go/oidf v0.51.0
 
 ### breaking

@@ -27,13 +27,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
-
-	"github.com/gematik/zero-lab/go/kv"
 )
 
 const (
@@ -42,19 +38,20 @@ const (
 	// defaultSessionMaxLifetime is the absolute cap from creation, enforced regardless of activity, so an
 	// actively-used session cannot live forever (OWASP: both idle and absolute timeouts).
 	defaultSessionMaxLifetime = 12 * time.Hour
-	// defaultStateTTL bounds the pep:state index to the login window, so an abandoned login's state mapping
-	// expires quickly instead of lingering for the whole session TTL.
-	defaultStateTTL = 15 * time.Minute
 )
 
+// LoginStateTTL is how long a [SessionStore] keeps the index from a login's state to its session: the login
+// window, so an abandoned login's state expires quickly instead of lingering for the whole session.
+const LoginStateTTL = 15 * time.Minute
+
 // Session is the server-side login session. The browser holds an opaque, HttpOnly cookie carrying a random
-// secret token; the kv record is stored under ID = hashToken(token), so reading the kv (a rogue storage
+// secret token; the record is stored under ID = hashToken(token), so reading the store (a rogue storage
 // admin) reveals only hashes, never a usable cookie. Tokens and identity stay here (the BCP token-mediating
 // property). IDPIss records which provider the login is/was driven against so the callback resolves the
 // same client.
 type Session struct {
 	// token is the cookie secret. It is set on create/rotate, written to the cookie, and never persisted
-	// (unexported ⇒ not marshaled); the kv key is its hash. Empty on sessions loaded from the store.
+	// (unexported ⇒ not marshaled); the store's key is its hash. Empty on sessions loaded from the store.
 	token string
 
 	ID                   string         `json:"id"`
@@ -101,37 +98,49 @@ func (s *Session) GetTokens(asIssuer string) (*TokenEntry, bool) {
 // Authenticated reports whether the login completed (identity captured).
 func (s *Session) Authenticated() bool { return len(s.Identity) > 0 }
 
-// sessionStore persists sessions in a kv.Store: the record under "pep:session:<id>" plus a
-// "pep:state:<state>" index → id. Each save refreshes the TTL (sliding expiry); the record + index are
-// written in one atomic SetMany so a state lookup never resolves a half-written record.
-type sessionStore struct {
-	store       kv.Store
+// ErrSessionNotFound is what a [SessionStore] returns for a session or a login state it does not hold, or no
+// longer holds.
+var ErrSessionNotFound = errors.New("session not found")
+
+// SessionStore keeps the sessions of all replicas. The proxy treats any error from it as an absent session, so
+// the user logs in again; a record that fails the store's integrity check is reported by the store, at error
+// level, since only the store can tell it apart (server rule 14). A persistent store holds ciphertext only
+// (server rule 5).
+type SessionStore interface {
+	// Save keeps the session for ttl, which every save starts again, and, when its State is set, an index from
+	// that state to its ID for [LoginStateTTL]. Both are written at once, so a lookup by state never resolves a
+	// half-written session. The state is a secret, kept out of anything stored in the clear (server rule 10).
+	Save(ctx context.Context, s *Session, ttl time.Duration) error
+	// Load returns the session stored under id, or [ErrSessionNotFound].
+	Load(ctx context.Context, id string) (*Session, error)
+	// SessionID returns the ID of the session whose login has state, or [ErrSessionNotFound].
+	SessionID(ctx context.Context, state string) (string, error)
+	// Delete removes the session stored under id, and DeleteState the index of state; what is gone already is
+	// no error.
+	Delete(ctx context.Context, id string) error
+	DeleteState(ctx context.Context, state string) error
+}
+
+// sessionManager holds the proxy's rules for sessions over a [SessionStore]: their IDs, rotation, and the idle
+// and absolute timeouts.
+type sessionManager struct {
+	store       SessionStore
 	ttl         time.Duration // idle timeout (sliding)
 	maxLifetime time.Duration // absolute timeout from CreatedAt
-	stateTTL    time.Duration // login-window TTL for the state index
 	now         func() time.Time
 }
 
-func newSessionStore(store kv.Store, ttl time.Duration) *sessionStore {
+func newSessionManager(store SessionStore, ttl time.Duration) *sessionManager {
 	if ttl <= 0 {
 		ttl = defaultSessionTTL
 	}
-	return &sessionStore{now: time.Now, store: store, ttl: ttl, maxLifetime: defaultSessionMaxLifetime, stateTTL: defaultStateTTL}
+	return &sessionManager{now: time.Now, store: store, ttl: ttl, maxLifetime: defaultSessionMaxLifetime}
 }
 
-func sessionKey(id string) string  { return "pep:session:" + id }
-func stateKey(state string) string { return "pep:state:" + hashToken(state) }
+// errSessionMismatch is a record that names another session than the one it was stored under.
+var errSessionMismatch = errors.New("session record names another session")
 
-// reportIntegrity logs a record that does not open at error level, since it can mean tampering with the store
-// (server rule 14). The caller gets the error and treats the session as absent, so the user just logs in again.
-func reportIntegrity(record string, err error) error {
-	if errors.Is(err, kv.ErrIntegrity) {
-		slog.Error("kv record failed its integrity check, treating it as absent", "record", record, "error", err)
-	}
-	return err
-}
-
-func (m *sessionStore) create() *Session {
+func (m *sessionManager) create() *Session {
 	token := randomToken()
 	return &Session{token: token, ID: hashToken(token), CreatedAt: m.now()}
 }
@@ -140,23 +149,23 @@ func (m *sessionStore) create() *Session {
 // called on successful authentication (anti session-fixation) by whichever device holds the cookie. The
 // caller must re-set the cookie to the new token. CreatedAt is preserved, so the absolute lifetime cap still
 // counts from the original login start.
-func (m *sessionStore) rotate(s *Session) error {
+func (m *sessionManager) rotate(ctx context.Context, s *Session) error {
 	oldID := s.ID
 	token := randomToken()
 	s.token = token
 	s.ID = hashToken(token)
-	if err := m.save(s); err != nil {
+	if err := m.save(ctx, s); err != nil {
 		s.ID, s.token = oldID, ""
 		return err
 	}
-	_ = m.store.Delete(context.Background(), sessionKey(oldID))
+	_ = m.store.Delete(context.WithoutCancel(ctx), oldID)
 	return nil
 }
 
-// byToken resolves the session for a cookie token by hashing it to the kv key. The token is never stored, so
-// a rogue storage admin reading the kv learns only hashes and cannot reconstruct a valid cookie.
-func (m *sessionStore) byToken(token string) (*Session, error) {
-	return m.byID(hashToken(token))
+// byToken resolves the session for a cookie token by hashing it to the store's key. The token is never stored,
+// so a rogue storage admin reading the store learns only hashes and cannot reconstruct a valid cookie.
+func (m *sessionManager) byToken(ctx context.Context, token string) (*Session, error) {
+	return m.byID(ctx, hashToken(token))
 }
 
 // logRef is what a log says for a session: enough to correlate its lines, and nothing of its ID, which names the
@@ -169,7 +178,7 @@ func logRef(id string) string {
 	return hex.EncodeToString(sum[:6])
 }
 
-// hashToken maps a cookie secret to its kv slot id (SHA-256, base64url).
+// hashToken maps a cookie secret to its session ID (SHA-256, base64url).
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
@@ -182,84 +191,61 @@ func randomToken() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func (m *sessionStore) save(s *Session) error {
-	record, err := json.Marshal(s) //nolint:gosec // the command seals a persistent store: zero-pep-proxy refuses to start without the key
-	if err != nil {
-		return fmt.Errorf("marshal session: %w", err)
-	}
-	idValue, err := json.Marshal(s.ID)
-	if err != nil {
-		return err
-	}
-	entries := []kv.Entry{{Key: sessionKey(s.ID), Value: record, TTL: m.ttl}}
-	if s.State != "" {
-		entries = append(entries, kv.Entry{Key: stateKey(s.State), Value: idValue, TTL: m.stateTTL})
-	}
-	return m.store.SetMany(context.Background(), entries...)
+func (m *sessionManager) save(ctx context.Context, s *Session) error {
+	return m.store.Save(ctx, s, m.ttl)
 }
 
-func (m *sessionStore) byID(id string) (*Session, error) {
-	data, found, err := m.store.Get(context.Background(), sessionKey(id))
+func (m *sessionManager) byID(ctx context.Context, id string) (*Session, error) {
+	s, err := m.store.Load(ctx, id)
 	if err != nil {
-		return nil, reportIntegrity("session", err)
-	}
-	if !found {
-		return nil, errors.New("session not found")
-	}
-	var s Session
-	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, fmt.Errorf("unmarshal session: %w", err)
+		return nil, err
 	}
 	if s.ID != id {
-		// Defense in depth (the sealed store already binds record and kv key): never serve a record whose own
-		// id differs from the slot it was read from.
-		return nil, reportIntegrity("session", kv.ErrIntegrity)
+		// Defense in depth (a sealed store already binds record and key): never serve a record whose own id
+		// differs from the slot it was read from. It can mean tampering with the store (server rule 14).
+		slog.Error("session record names another session, treating it as absent")
+		return nil, errSessionMismatch
 	}
 	// Absolute timeout: a session past its max lifetime is treated as absent and garbage-collected on access,
 	// regardless of how recently the sliding idle TTL was refreshed.
 	if m.maxLifetime > 0 && !s.CreatedAt.IsZero() && m.now().Sub(s.CreatedAt) > m.maxLifetime {
-		ctx := context.Background()
-		_ = m.store.Delete(ctx, sessionKey(id))
-		if s.State != "" {
-			_ = m.store.Delete(ctx, stateKey(s.State))
-		}
+		m.remove(ctx, s)
 		return nil, errors.New("session expired (max lifetime)")
 	}
-	return &s, nil
+	return s, nil
 }
 
-// deleteState consumes a one-time login state: it removes the pep:state index so the same OAuth state
-// cannot be replayed after the callback has used it.
-func (m *sessionStore) deleteState(state string) {
+// remove deletes a session and its state index. It runs to the end when the request is cancelled, so no part
+// of an ended session stays behind.
+func (m *sessionManager) remove(ctx context.Context, s *Session) {
+	ctx = context.WithoutCancel(ctx)
+	_ = m.store.Delete(ctx, s.ID)
+	if s.State != "" {
+		_ = m.store.DeleteState(ctx, s.State)
+	}
+}
+
+// deleteState consumes a one-time login state: it removes the state index so the same OAuth state cannot be
+// replayed after the callback has used it.
+func (m *sessionManager) deleteState(ctx context.Context, state string) {
 	if state != "" {
-		_ = m.store.Delete(context.Background(), stateKey(state))
+		_ = m.store.DeleteState(context.WithoutCancel(ctx), state)
 	}
 }
 
-func (m *sessionStore) byState(state string) (*Session, error) {
-	idData, found, err := m.store.Get(context.Background(), stateKey(state))
+func (m *sessionManager) byState(ctx context.Context, state string) (*Session, error) {
+	id, err := m.store.SessionID(ctx, state)
 	if err != nil {
-		return nil, reportIntegrity("login state", err)
-	}
-	if !found {
-		return nil, errors.New("no session for this state")
-	}
-	var id string
-	if err := json.Unmarshal(idData, &id); err != nil {
 		return nil, err
 	}
-	return m.byID(id)
+	return m.byID(ctx, id)
 }
 
-func (m *sessionStore) deleteByID(id string) error {
-	s, err := m.byID(id)
+func (m *sessionManager) deleteByID(ctx context.Context, id string) error {
+	s, err := m.byID(ctx, id)
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
-	_ = m.store.Delete(ctx, sessionKey(id))
-	if s.State != "" {
-		_ = m.store.Delete(ctx, stateKey(s.State))
-	}
+	m.remove(ctx, s)
 	return nil
 }

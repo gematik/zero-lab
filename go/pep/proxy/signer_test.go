@@ -63,7 +63,7 @@ func verifyDPoP(t *testing.T, proof string, req dpop.Request) *dpop.Proof {
 	}
 	h := http.Header{}
 	h.Set(dpop.HeaderName, proof)
-	got, err := v.Verify(h, req)
+	got, err := v.Verify(t.Context(), h, req)
 	if err != nil {
 		t.Fatalf("DPoP proof refused: %v", err)
 	}

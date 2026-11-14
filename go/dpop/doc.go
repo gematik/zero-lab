@@ -36,8 +36,9 @@
 // prescribes.
 //
 // Time comes from a [Clock], never from the system directly, so every decision can be
-// reproduced. Replay detection (Section 11.1) is a [ReplayCache]; [MemoryReplayCache] keeps it
-// within one process. Server-provided nonces (Sections 8, 9) are a [NonceSource].
+// reproduced. Replay detection (Section 11.1) is [Replays]; [MemoryReplays] keeps them within
+// one process. Server-provided nonces (Sections 8, 9) are a [NonceSource]. Both take the
+// request's context and may fail, which refuses the proof.
 //
 // A browser client reads the DPoP-Nonce and WWW-Authenticate response headers only if the
 // server lists them in Access-Control-Expose-Headers (Sections 7.1, 8); that is the

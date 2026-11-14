@@ -80,7 +80,7 @@ func writeJWK(t *testing.T, key any, kid string) (dir, name string) {
 // servers.md rule 17: a server without its key does not start; it never makes one up.
 func TestServerRule17_AMissingOrUnusableSigningKeyFailsStartup(t *testing.T) {
 	t.Run("no key at all", func(t *testing.T) {
-		if _, err := New(Config{Issuer: testIssuer}); err == nil {
+		if _, err := New(withTestStores(t, Config{Issuer: testIssuer})); err == nil {
 			t.Fatal("a server started without a signing key")
 		}
 	})
@@ -126,7 +126,7 @@ func TestKeysRule5_TheSigningKeyMustBeP256(t *testing.T) {
 	}
 	for name, signer := range map[string]crypto.Signer{"P-384": p384, "RSA": rsaKey} {
 		t.Run(name, func(t *testing.T) {
-			_, err := New(Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: signer}})
+			_, err := New(withTestStores(t, Config{Issuer: testIssuer, SigningKey: &SigningKey{Signer: signer}}))
 			if err == nil || !strings.Contains(err.Error(), "P-256") {
 				t.Fatalf("got %v", err)
 			}
@@ -143,10 +143,10 @@ func TestKeysRule5_TheSigningKeyMustBeP256(t *testing.T) {
 // it publishes.
 func TestKeysRule1_TokensAreSignedThroughTheSigner(t *testing.T) {
 	signer := &countingSigner{inner: newP256(t)}
-	server, err := New(Config{
+	server, err := New(withTestStores(t, Config{
 		Issuer:     testIssuer,
 		SigningKey: &SigningKey{Signer: signer, KeyID: "hsm-1"},
-	})
+	}))
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestSigningKey_from_a_file(t *testing.T) {
 				t.Fatalf("kid = %q", loaded.KeyID)
 			}
 			cfg.SigningKey = loaded
-			server, err := New(cfg)
+			server, err := New(withTestStores(t, cfg))
 			if err != nil {
 				t.Fatalf("New: %v", err)
 			}

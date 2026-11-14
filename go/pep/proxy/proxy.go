@@ -27,6 +27,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -38,14 +39,11 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/gematik/zero-lab/go/kv"
 )
 
 // Config configures the proxy server.
 type Config struct {
 	Backend        Backend       // the auth backend (providerBackend today; pdpBackend later)
-	Store          kv.Store      // session store; a persistent one comes sealed from the host (kv.NewSealed)
 	SessionTTL     time.Duration // sliding session TTL (0 = 1h); ignored when the snapshot fast path is on
 	CookieName     string        // session cookie name (default ZERO-PEP-SID)
 	InsecureCookie bool          // drop the __Host- prefix + Secure for http dev; default is secure
@@ -57,9 +55,11 @@ type Config struct {
 	SnapshotPreviousKeyPath string        // optional previous key file (rotation overlap)
 	SnapshotTTL             time.Duration // = session absolute lifetime (0 = 8h)
 
-	// Bus carries session revocations to all replicas so logout/lockout is fleet-wide instant. nil = a
-	// single-instance in-memory revoker.
-	Bus kv.Bus
+	// Sessions and Revocations are the state replicas share. The host picks the backend and builds them; New
+	// refuses to start without either rather than keep one in its own memory, which another replica would not
+	// see. A sign-out or a rotation at one replica revokes the session ID at every other through Revocations.
+	Sessions    SessionStore
+	Revocations Revocations
 
 	// Routes, when non-empty, turn on standalone gateway mode: pep gates + reverse-proxies these upstreams
 	// itself (no Caddy). Empty = forward_auth-only, unchanged. gate: snapshot routes require the snapshot fast
@@ -82,30 +82,33 @@ type clockSetter interface {
 	setClock(now func() time.Time)
 }
 
-// defaultSnapshotTTL is the snapshot lifetime, and — when the fast path is on — the session lifetime: the
+// DefaultSnapshotTTL is the snapshot lifetime, and — when the fast path is on — the session lifetime: the
 // snapshot covers the whole session (forward_auth can't refresh the cookie), with instant revocation via the
-// revoked-set as the only early termination.
-const defaultSnapshotTTL = 8 * time.Hour
+// Revocations as the only early termination.
+const DefaultSnapshotTTL = 8 * time.Hour
 
 // Server serves the /oauth2/* endpoints over a Backend + session store.
 type Server struct {
-	sessions   *sessionStore
-	cookie     *http.Cookie
-	render     *renderer
-	backend    Backend
-	snap       *snapshotter // nil when the fast path is disabled (no key file)
-	snapCookie *http.Cookie // snapshot cookie template (only when snap != nil)
-	revoker    revoker
-	gateway    *Gateway // nil in forward_auth-only mode (no Routes)
+	sessions    *sessionManager
+	cookie      *http.Cookie
+	render      *renderer
+	backend     Backend
+	snap        *snapshotter // nil when the fast path is disabled (no key file)
+	snapCookie  *http.Cookie // snapshot cookie template (only when snap != nil)
+	snapTTL     time.Duration
+	revocations Revocations
+	gateway     *Gateway // nil in forward_auth-only mode (no Routes)
+	now         func() time.Time
 }
 
-// New returns a Server for cfg. It fails without a Backend or Store and on a key file that cannot be loaded.
+// New returns a Server for cfg. It fails without a Backend, Sessions or Revocations and on a key file that
+// cannot be loaded.
 func New(cfg Config) (*Server, error) {
 	if cfg.Backend == nil {
 		return nil, errors.New("proxy: backend is required")
 	}
-	if cfg.Store == nil {
-		return nil, errors.New("proxy: store is required")
+	if cfg.Sessions == nil || cfg.Revocations == nil {
+		return nil, errors.New("proxy: Sessions and Revocations are required: the host supplies the state replicas share")
 	}
 	if cfg.CookieName == "" {
 		cfg.CookieName = "ZERO-PEP-SID"
@@ -117,7 +120,7 @@ func New(cfg Config) (*Server, error) {
 
 	snapTTL := cfg.SnapshotTTL
 	if snapTTL <= 0 {
-		snapTTL = defaultSnapshotTTL
+		snapTTL = DefaultSnapshotTTL
 	}
 	now := cfg.Clock
 	if now == nil {
@@ -134,23 +137,20 @@ func New(cfg Config) (*Server, error) {
 		snap.now = now
 	}
 
-	var rev revoker = newMemRevoker(snapTTL, now)
-	if cfg.Bus != nil {
-		rev = newBusRevoker(cfg.Bus, cfg.Store, snapTTL, now)
-	}
-
-	sessions := newSessionStore(cfg.Store, cfg.SessionTTL)
+	sessions := newSessionManager(cfg.Sessions, cfg.SessionTTL)
 	sessions.now = now
 	s := &Server{
-		sessions: sessions,
-		cookie:   newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),
-		render:   r,
-		backend:  cfg.Backend,
-		snap:     snap,
-		revoker:  rev,
+		sessions:    sessions,
+		cookie:      newCookieTemplate(cfg.CookieName, cfg.InsecureCookie),
+		render:      r,
+		backend:     cfg.Backend,
+		snap:        snap,
+		snapTTL:     snapTTL,
+		revocations: cfg.Revocations,
+		now:         now,
 	}
 	if snap != nil {
-		// The snapshot covers the whole session, so the kv session must live as long (it holds the refresh
+		// The snapshot covers the whole session, so the stored session must live as long (it holds the refresh
 		// token) and there is no sliding idle: pin both the idle and absolute TTLs to the snapshot lifetime.
 		sessions.ttl = snapTTL
 		sessions.maxLifetime = snapTTL
@@ -223,12 +223,16 @@ type qrData struct {
 // handleAuth is the forward_auth subrequest: 202 + identity headers when authenticated, bare 401 otherwise
 // (Caddy's handle_response then redirects to /oauth2/start?rd=).
 func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
-	// Fast path: validate the encrypted snapshot locally — no kv — for the whole session lifetime. Revoked
-	// sessions are rejected immediately via the revoked-set.
+	// Fast path: validate the encrypted snapshot locally — no store — for the whole session lifetime. Revoked
+	// sessions are rejected immediately via Revocations.
 	if s.snap != nil {
 		if c, err := r.Cookie(s.snapCookie.Name); err == nil {
 			if claims, ok := s.snap.open(c.Value); ok {
-				if s.revoker.IsRevoked(claims.SID) {
+				revoked, err := s.revocations.Revoked(r.Context(), claims.SID)
+				if err != nil {
+					slog.Error("revocation check failed, denying", "session_ref", logRef(claims.SID), "error", err)
+				}
+				if revoked || err != nil {
 					w.WriteHeader(http.StatusUnauthorized)
 					return
 				}
@@ -237,7 +241,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		// No valid snapshot → fall through to the kv path; the /auth subrequest can't re-mint the cookie
+		// No valid snapshot → fall through to the store path; the /auth subrequest can't re-mint the cookie
 		// (forward_auth), so the snapshot is (re)minted on the browser-direct callback/poll responses.
 	}
 	sess, ok := s.currentSession(r)
@@ -333,7 +337,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		s.renderFailure(w, "login_failed", loginNotStarted, err, idpIss, rd)
 		return
 	}
-	if err := s.sessions.save(sess); err != nil {
+	if err := s.sessions.save(r.Context(), sess); err != nil {
 		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
@@ -384,10 +388,10 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		// now on this cookie-owning device (anti-fixation), revoke the old id, re-bind the cookie, and mint the
 		// snapshot before handing back control.
 		oldID := sess.ID
-		if err := s.sessions.rotate(sess); err != nil {
+		if err := s.sessions.rotate(r.Context(), sess); err != nil {
 			slog.Warn("session rotation failed", "session_ref", logRef(sess.ID), "error", err)
 		} else {
-			s.revoker.Revoke(oldID)
+			s.revoke(r.Context(), oldID)
 			setCookie(w, s.cookie, sess.token)
 			s.setSnapshot(w, sess)
 		}
@@ -419,7 +423,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	// Resolve the session by state first so error pages know which provider to retry.
-	sess, serr := s.sessions.byState(q.Get("state"))
+	sess, serr := s.sessions.byState(r.Context(), q.Get("state"))
 	var idpIss, rd string
 	if serr == nil {
 		idpIss, rd = sess.IDPIss, sess.ReturnTo
@@ -438,9 +442,9 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Consume the one-time state so it can't be replayed; clearing it also stops save() from re-indexing it.
-	s.sessions.deleteState(sess.State)
+	s.sessions.deleteState(r.Context(), sess.State)
 	sess.State = ""
-	if err := s.sessions.save(sess); err != nil {
+	if err := s.sessions.save(r.Context(), sess); err != nil {
 		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
@@ -461,11 +465,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// On-device: now that the user is authenticated, rotate the session id (anti-fixation), revoke the old id
 	// (kills any old snapshot), re-bind the cookie, and mint a fresh snapshot before returning to rd.
 	oldID := sess.ID
-	if err := s.sessions.rotate(sess); err != nil {
+	if err := s.sessions.rotate(r.Context(), sess); err != nil {
 		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
 	}
-	s.revoker.Revoke(oldID)
+	s.revoke(r.Context(), oldID)
 	setCookie(w, s.cookie, sess.token)
 	s.setSnapshot(w, sess)
 	slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "return_to", dest)
@@ -479,6 +483,9 @@ func (s *Server) requestOwnsSession(r *http.Request, sess *Session) bool {
 	return err == nil && hashToken(c.Value) == sess.ID
 }
 
+// signOutTimeout bounds the store calls of a sign-out, which no longer end with the request.
+const signOutTimeout = 5 * time.Second
+
 // handleSignOut clears the session. POST (XHR) requires the X-Requested-With CSRF header and returns 204;
 // GET (a link) renders signed_out.html.
 func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
@@ -486,9 +493,13 @@ func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing X-Requested-With", http.StatusForbidden)
 		return
 	}
-	if sess, ok := s.currentSession(r); ok {
-		_ = s.sessions.deleteByID(sess.ID)
-		s.revoker.Revoke(sess.ID) // instant: any valid snapshot for this sid is rejected on the fast path
+	// A browser that navigates away right after the request cancels it; a sign-out cut short would leave a
+	// session that still authenticates. The bound keeps a stalled store from holding the handler instead.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), signOutTimeout)
+	defer cancel()
+	if sess, ok := s.currentSession(r.WithContext(ctx)); ok {
+		_ = s.sessions.deleteByID(ctx, sess.ID)
+		s.revoke(ctx, sess.ID) // instant: any valid snapshot for this sid is rejected on the fast path
 	}
 	expireCookie(w, s.cookie)
 	if s.snapCookie != nil {
@@ -506,11 +517,19 @@ func (s *Server) currentSession(r *http.Request) (*Session, bool) {
 	if err != nil {
 		return nil, false
 	}
-	sess, err := s.sessions.byToken(c.Value)
+	sess, err := s.sessions.byToken(r.Context(), c.Value)
 	if err != nil {
 		return nil, false
 	}
 	return sess, true
+}
+
+// revoke ends sid at every replica for as long as a snapshot naming it can be valid. It runs to the end when the
+// browser goes away mid-request, as the session it ends is gone already.
+func (s *Server) revoke(ctx context.Context, sid string) {
+	if err := s.revocations.Revoke(context.WithoutCancel(ctx), sid, s.now().Add(s.snapTTL)); err != nil {
+		slog.Warn("revocation did not reach every replica", "session_ref", logRef(sid), "error", err)
+	}
 }
 
 // renderError renders the error page. idpIss (when non-empty) makes "Try again" retry that provider;

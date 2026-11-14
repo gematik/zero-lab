@@ -58,7 +58,7 @@ Two cookies (cookie-caching style — the opaque id stays canonical; the snapsho
   claims are PII (`email`), so the browser holds an opaque blob (data minimization + the BFF "nothing
   identity-bearing client-side" property), and AES-GCM gives integrity in the same primitive. Encryption is
   for confidentiality, **not** anti-replay — a stolen snapshot is replayable either way; that is handled by the
-  cookie hardening, the bounded lifetime, and the revoked-set.
+  cookie hardening, the bounded lifetime, and Revocations.
 
 Minted at login and on rotation (browser-direct responses). It is **not** refreshed mid-session — in
 forward_auth the `/auth` subrequest can't set a browser cookie, so the snapshot is long-lived (covers the
@@ -145,7 +145,7 @@ interval. So a dropped pub/sub message bounds exposure to the reconcile interval
 - Token-mediating BFF preserved: tokens stay in `kv`; the snapshot carries only identity claims.
 - **No sliding idle on the snapshot path.** Because forward_auth can't refresh the cookie, the snapshot must
   cover the whole session, so the `kv` session TTL and the snapshot `exp` are both set to the session's
-  **absolute lifetime** (default 8h); instant revocation (revoked-set) is the only early termination. When no
+  **absolute lifetime** (default 8h); instant revocation (Revocations) is the only early termination. When no
   key is configured, the current sliding-idle + per-request `kv` behavior is unchanged. Reverse-proxy mode
   (S5) — pep in the request path, refreshing the cookie per response — can restore a true sliding idle.
 - The `kv` session must outlive any valid snapshot (it holds the refresh token the auth flow needs), which is
@@ -179,7 +179,7 @@ Sessions must survive pep restarts and replica replacement. Nothing session-crit
 - **Snapshot = client-side cookie + stable key.** It is held by the browser, so it survives a restart on its
   own; with the stable configured key any replica still decrypts it after a restart and can answer
   `/oauth2/auth` *without touching `kv`* — so no thundering-herd of re-validation when a replica comes back.
-- **Revoked-set rebuilt on startup** from the durable `pep:revoked` `kv` set (TTL = `SNAPSHOT_TTL`), then kept
+- **Revocations rebuilt on startup** from the durable `pep:revoked` `kv` set (TTL = `SNAPSHOT_TTL`), then kept
   live over the bus — so revocations also survive restarts and a freshly-started replica is never blind.
 
 Net: a restart (or a rolling deploy) is transparent — outstanding snapshots keep verifying locally, and the
@@ -192,7 +192,7 @@ worst case is the usual `kv` fallback + re-mint, never a forced re-login.
   reconcile interval, not `SNAPSHOT_TTL`.
 - **Snapshot confidentiality:** encrypted, so a cookie thief cannot read the embedded claims (`email` etc.)
   without the key; the browser holds an opaque blob. A *stolen* snapshot is still replayable (encryption is
-  not anti-replay) — bounded by `HttpOnly`+`Secure`+`__Host-`, the short `SNAPSHOT_TTL`, and the revoked-set.
+  not anti-replay) — bounded by `HttpOnly`+`Secure`+`__Host-`, the short `SNAPSHOT_TTL`, and Revocations.
 - **Key compromise:** a leaked key file lets an attacker both forge and decrypt snapshots → treat as a
   security incident, rotate the key file (two-file overlap makes rotation non-disruptive). The key is never
   in `kv`, env, or logs — only the mounted file.
@@ -231,7 +231,7 @@ worst case is the usual `kv` fallback + re-mint, never a forced re-login.
    and replicas. Required regardless of the rest of this design. ✅ done.
 1. Snapshot cookie + `/oauth2/auth` fast path with fallback; in-mem bus; key file (`PEP_SESSION_KEY_PATH`) +
    rotation. Single instance. (No key file → fast path off, current per-request `kv` behavior.) ✅ done.
-2. `kv` revocation bus on Postgres `LISTEN`/`NOTIFY` (behind the `revoker` interface); `Revoke` already wired
+2. `kv` revocation bus on Postgres `LISTEN`/`NOTIFY` (behind the `Revocations` interface, wired by zero-pep-proxy); `Revoke` already wired
    into logout + rotation in Stage 1. ✅ done.
 3. Durable `pep:revoked` backstop: startup load + periodic reconcile. ✅ done.
 4. HITL: shared key + instant cross-replica revocation + durable-backstop late-join, all proven with two+ replicas. ✅ done.

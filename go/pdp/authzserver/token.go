@@ -155,7 +155,7 @@ func (s *Server) dpopBinding(r *http.Request, claims *ClientAssertionClaims) (st
 	if claims.Cnf.Jkt == "" && len(r.Header.Values(dpop.HeaderName)) == 0 {
 		return "", nil
 	}
-	proof, err := s.dpopVerifier.Verify(r.Header, dpop.Request{
+	proof, err := s.dpopVerifier.Verify(r.Context(), r.Header, dpop.Request{
 		Method:     r.Method,
 		URI:        s.Metadata.TokenEndpoint,
 		Thumbprint: claims.Cnf.Jkt,
@@ -264,7 +264,7 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	slog.Info("Token request", "redirect_uri", redirectURI, "client_id", client.ClientID)
 
 	session, err := s.sessionStore.GetAuthzServerSessionByCode(code)
-	if errors.Is(err, errSessionNotFound) {
+	if errors.Is(err, ErrSessionNotFound) {
 		return oauthErr(http.StatusBadRequest, "invalid_grant", "invalid or expired code")
 	}
 	if err != nil {

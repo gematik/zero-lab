@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -43,7 +44,7 @@ func TestVerifyAccessToken_AudienceOptional(t *testing.T) {
 	}
 
 	// No resource configured (authorization-server use): audience is not restricted.
-	asPEP, err := pep.NewBuilder().WithJWKSet(jwks).Build()
+	asPEP, err := pep.NewBuilder().WithJWKSet(jwks).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +53,7 @@ func TestVerifyAccessToken_AudienceOptional(t *testing.T) {
 	}
 
 	// Resource matching the token audience: accepted.
-	matchPEP, err := pep.NewBuilder().WithJWKSet(jwks).Resource("https://example.com").Build()
+	matchPEP, err := pep.NewBuilder().WithJWKSet(jwks).Resource("https://example.com").WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +62,7 @@ func TestVerifyAccessToken_AudienceOptional(t *testing.T) {
 	}
 
 	// Resource guarding a different resource server: audience enforced, token rejected.
-	otherPEP, err := pep.NewBuilder().WithJWKSet(jwks).Resource("https://other.example.com").Build()
+	otherPEP, err := pep.NewBuilder().WithJWKSet(jwks).Resource("https://other.example.com").WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}

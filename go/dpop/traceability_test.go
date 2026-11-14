@@ -165,10 +165,10 @@ var requirements = []requirement{
 		"TestRFC9449_4_3_11_IatOutsideTheWindowIsRefused",
 	}},
 	{"11.1", `In the context of the target URI, servers can store the jti value of each DPoP proof for the time window in which the respective DPoP proof JWT would be accepted to prevent multiple uses of the same DPoP proof.`, []string{
-		"TestRFC9449_11_1_ReplayedProofIsRefused", "TestRFC9449_11_1_RefusedProofIsNotRemembered", "TestRFC9449_11_1_FullReplayCacheFailsClosed",
+		"TestRFC9449_11_1_ReplayedProofIsRefused", "TestRFC9449_11_1_RefusedProofIsNotRemembered", "TestRFC9449_11_1_FullReplaysFailClosed",
 	}},
 	{"11.1", `a server that is tracking jti values should reject DPoP proof JWTs with unnecessarily large jti values or store only a hash thereof.`, []string{
-		"TestRFC9449_11_1_ReplayCacheStoresAHashInTheContextOfTheURI",
+		"TestRFC9449_11_1_ReplaysStoreAHashInTheContextOfTheURI",
 	}},
 }
 

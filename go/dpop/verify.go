@@ -23,6 +23,7 @@ package dpop
 
 import (
 	"cmp"
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -62,20 +63,23 @@ var asymmetric = []jose.SignatureAlgorithm{
 	jose.EdDSA,
 }
 
-// NonceSource is the server's nonce state (Sections 8, 9).
+// NonceSource is the server's nonce state (Sections 8, 9). Its methods take the request's
+// context and may fail, so the state can live in a store or another service; an error refuses
+// the proof.
 type NonceSource interface {
 	// Valid reports whether nonce is one the server recently supplied; it must match
 	// exactly (Section 8).
-	Valid(nonce string) bool
+	Valid(ctx context.Context, nonce string) (bool, error)
 	// Fresh returns an unpredictable nonce for the client's next proof (Section 8).
-	Fresh() (string, error)
+	Fresh(ctx context.Context) (string, error)
 }
 
-// ReplayCache remembers the proofs a server has accepted (Section 11.1).
-type ReplayCache interface {
+// Replays remember the proofs a server has accepted (Section 11.1). Losing an entry before it
+// expires lets that proof through again, so an implementation that cannot keep one fails.
+type Replays interface {
 	// Seen records id until the given time and reports whether it was recorded already. An
 	// error means the server cannot tell, and the proof is refused.
-	Seen(id string, until time.Time) (bool, error)
+	Seen(ctx context.Context, id string, until time.Time) (bool, error)
 }
 
 // Config is a [Verifier]'s policy.
@@ -95,12 +99,12 @@ type Config struct {
 	Clock Clock
 	// Nonces, when set, makes the server require its nonce in every proof (Sections 8, 9).
 	Nonces NonceSource
-	// Replay, when set, refuses a proof whose jti was accepted before (Section 11.1).
-	Replay ReplayCache
+	// Replays, when set, refuse a proof whose jti was accepted before (Section 11.1).
+	Replays Replays
 }
 
 // Verifier checks DPoP proofs (Section 4.3) under one [Config]. It is safe for concurrent use
-// when its NonceSource and ReplayCache are.
+// when its NonceSource and Replays are.
 type Verifier struct {
 	algorithms []jose.SignatureAlgorithm
 	maxAge     time.Duration
@@ -108,7 +112,7 @@ type Verifier struct {
 	maxSize    int
 	clock      Clock
 	nonces     NonceSource
-	replay     ReplayCache
+	replays    Replays
 }
 
 // NewVerifier returns a Verifier for config, or an error if it allows an algorithm Section
@@ -130,7 +134,7 @@ func NewVerifier(config Config) (*Verifier, error) {
 		maxSize:    cmp.Or(config.MaxSize, DefaultMaxSize),
 		clock:      clockOrSystem(config.Clock),
 		nonces:     config.Nonces,
-		replay:     config.Replay,
+		replays:    config.Replays,
 	}
 	if v.maxAge < 0 || v.leeway < 0 || v.maxSize < 0 {
 		return nil, errors.New("dpop: negative MaxAge, Leeway or MaxSize")
@@ -172,9 +176,10 @@ type Proof struct {
 }
 
 // Verify checks the DPoP proof in header against req, performing every check of Section 4.3
-// and, for an access token, the binding of Section 7.1. A refusal is an [*Error]; any other
-// error means the server could not decide (its nonce or replay state failed).
-func (v *Verifier) Verify(header http.Header, req Request) (*Proof, error) {
+// and, for an access token, the binding of Section 7.1. ctx is the request's, handed to the
+// NonceSource and Replays. A refusal is an [*Error]; any other error means the server could
+// not decide (its nonce or replay state failed).
+func (v *Verifier) Verify(ctx context.Context, header http.Header, req Request) (*Proof, error) {
 	values := header.Values(HeaderName)
 	if len(values) == 0 {
 		return nil, proofError("no DPoP proof")
@@ -250,7 +255,7 @@ func (v *Verifier) Verify(header http.Header, req Request) (*Proof, error) {
 		return nil, err
 	}
 	// Check 10: the server's nonce, when it uses nonces (Sections 8, 9).
-	if err := v.checkNonce(proof.Nonce); err != nil {
+	if err := v.checkNonce(ctx, proof.Nonce); err != nil {
 		return nil, err
 	}
 	// Check 11: iat within the window (Section 11.1).
@@ -267,11 +272,11 @@ func (v *Verifier) Verify(header http.Header, req Request) (*Proof, error) {
 		return nil, err
 	}
 	// Section 11.1: a proof is accepted once. Checked last, so only proofs that passed
-	// every other check take a place in the cache.
-	if v.replay != nil {
-		seen, err := v.replay.Seen(replayID(proof), proof.IssuedAt.Add(v.maxAge+v.leeway))
+	// every other check take a place in the replays.
+	if v.replays != nil {
+		seen, err := v.replays.Seen(ctx, replayID(proof), proof.IssuedAt.Add(v.maxAge+v.leeway))
 		if err != nil {
-			return nil, fmt.Errorf("dpop: replay cache: %w", err)
+			return nil, fmt.Errorf("dpop: replays: %w", err)
 		}
 		if seen {
 			return nil, proofError("DPoP proof was used before")
@@ -308,9 +313,8 @@ func headerHasPrivateKey(raw string) bool {
 	return false
 }
 
-// replayID identifies a proof for the replay cache: the jti "in the context of the target
-// URI" and of the key, and only "a hash thereof", so no jti size can exhaust the cache
-// (Section 11.1).
+// replayID identifies a proof for the [Replays]: the jti "in the context of the target URI"
+// and of the key, and only "a hash thereof", so no jti size can exhaust them (Section 11.1).
 func replayID(proof *Proof) string {
 	htu, err := normalizeHTU(proof.URI)
 	if err != nil {
@@ -409,14 +413,20 @@ func (v *Verifier) checkURI(htu, requestURI string) error {
 
 // checkNonce is check 10 of Section 4.3. A missing or unknown nonce is answered with
 // use_dpop_nonce and a fresh nonce (Sections 8, 9).
-func (v *Verifier) checkNonce(nonce string) error {
+func (v *Verifier) checkNonce(ctx context.Context, nonce string) error {
 	if v.nonces == nil {
 		return nil
 	}
-	if nonce != "" && v.nonces.Valid(nonce) {
-		return nil
+	if nonce != "" {
+		valid, err := v.nonces.Valid(ctx, nonce)
+		if err != nil {
+			return fmt.Errorf("dpop: nonce source: %w", err)
+		}
+		if valid {
+			return nil
+		}
 	}
-	fresh, err := v.nonces.Fresh()
+	fresh, err := v.nonces.Fresh(ctx)
 	if err != nil {
 		return fmt.Errorf("dpop: nonce source: %w", err)
 	}

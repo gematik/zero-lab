@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -46,7 +47,7 @@ func TestThePEPJudgesTokensByItsClock(t *testing.T) {
 		for _, opt := range opts {
 			b = opt(b)
 		}
-		p, err := b.Build()
+		p, err := b.WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 		if err != nil {
 			t.Fatal(err)
 		}

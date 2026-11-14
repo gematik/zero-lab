@@ -56,16 +56,17 @@ func keysOf(ids ...string) *testKeys {
 	return k
 }
 
-type recorder struct {
+// redemptions are Redemptions in the memory of the test, counting the calls and failing with err when set.
+type redemptions struct {
 	mu    sync.Mutex
 	seen  map[string]time.Time
 	err   error
 	calls int
 }
 
-func newRecorder() *recorder { return &recorder{seen: map[string]time.Time{}} }
+func newRedemptions() *redemptions { return &redemptions{seen: map[string]time.Time{}} }
 
-func (r *recorder) record(_ context.Context, id string, until time.Time) (bool, error) {
+func (r *redemptions) Seen(_ context.Context, id string, until time.Time) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
@@ -73,10 +74,10 @@ func (r *recorder) record(_ context.Context, id string, until time.Time) (bool, 
 		return false, r.err
 	}
 	if _, ok := r.seen[id]; ok {
-		return false, nil
+		return true, nil
 	}
 	r.seen[id] = until
-	return true, nil
+	return false, nil
 }
 
 type clock struct{ now time.Time }
@@ -85,9 +86,9 @@ func (c *clock) Now() time.Time { return c.now }
 
 var start = time.Unix(1_800_000_000, 0)
 
-func newService(t *testing.T, keys nonce.Keys, purpose string, r *recorder, c *clock) *nonce.Service {
+func newService(t *testing.T, keys nonce.Keys, purpose string, r *redemptions, c *clock) *nonce.Service {
 	t.Helper()
-	s, err := nonce.New(keys, purpose, time.Minute, r.record, nonce.WithClock(c.Now))
+	s, err := nonce.New(keys, purpose, time.Minute, r, nonce.WithClock(c.Now))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func newService(t *testing.T, keys nonce.Keys, purpose string, r *recorder, c *c
 }
 
 func TestServerRule11_ANonceIsRedeemedOnce(t *testing.T) {
-	r := newRecorder()
+	r := newRedemptions()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, err := s.Get()
 	if err != nil {
@@ -109,8 +110,8 @@ func TestServerRule11_ANonceIsRedeemedOnce(t *testing.T) {
 	}
 }
 
-func TestServerRule11_SingleUseHoldsAcrossReplicasSharingKeysAndRecord(t *testing.T) {
-	keys, r, c := keysOf("k1"), newRecorder(), &clock{start}
+func TestServerRule11_SingleUseHoldsAcrossReplicasSharingKeysAndRedemptions(t *testing.T) {
+	keys, r, c := keysOf("k1"), newRedemptions(), &clock{start}
 	a, b := newService(t, keys, "p", r, c), newService(t, keys, "p", r, c)
 	n, _ := a.Get()
 	if err := b.Redeem(context.Background(), n); err != nil {
@@ -122,7 +123,7 @@ func TestServerRule11_SingleUseHoldsAcrossReplicasSharingKeysAndRecord(t *testin
 }
 
 func TestServerRule11_ConcurrentRedeemsHaveExactlyOneWinner(t *testing.T) {
-	r := newRecorder()
+	r := newRedemptions()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
 	var wins atomic.Int64
@@ -141,7 +142,7 @@ func TestServerRule11_ConcurrentRedeemsHaveExactlyOneWinner(t *testing.T) {
 }
 
 func TestServerRule10_IssuingANonceTouchesNoStore(t *testing.T) {
-	r := newRecorder()
+	r := newRedemptions()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	for range 10 {
 		if _, err := s.Get(); err != nil {
@@ -149,12 +150,12 @@ func TestServerRule10_IssuingANonceTouchesNoStore(t *testing.T) {
 		}
 	}
 	if r.calls != 0 {
-		t.Fatalf("Get called record %d times", r.calls)
+		t.Fatalf("Get called the redemptions %d times", r.calls)
 	}
 }
 
-func TestServerRule10_RecordIsKeyedByTheSHA256OfTheNonceUntilItsExpiry(t *testing.T) {
-	r := newRecorder()
+func TestServerRule10_RedemptionIsKeyedByTheSHA256OfTheNonceUntilItsExpiry(t *testing.T) {
+	r := newRedemptions()
 	c := &clock{start}
 	s := newService(t, keysOf("k1"), "p", r, c)
 	n, _ := s.Get()
@@ -171,8 +172,8 @@ func TestServerRule10_RecordIsKeyedByTheSHA256OfTheNonceUntilItsExpiry(t *testin
 	}
 }
 
-func TestServerRule16_ARecordFailureRefusesTheNonce(t *testing.T) {
-	r := newRecorder()
+func TestServerRule16_ARedemptionsFailureRefusesTheNonce(t *testing.T) {
+	r := newRedemptions()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
 	outage := errors.New("store down")
@@ -186,8 +187,8 @@ func TestServerRule16_ARecordFailureRefusesTheNonce(t *testing.T) {
 	}
 }
 
-func TestServerRule10_ExpiredNonceIsRefusedWithoutARecord(t *testing.T) {
-	r := newRecorder()
+func TestServerRule10_ExpiredNonceIsRefusedWithoutAStoreCall(t *testing.T) {
+	r := newRedemptions()
 	c := &clock{start}
 	s := newService(t, keysOf("k1"), "p", r, c)
 	n, _ := s.Get()
@@ -201,15 +202,15 @@ func TestServerRule10_ExpiredNonceIsRefusedWithoutARecord(t *testing.T) {
 }
 
 func TestServerRule10_ANonceOfAnotherPurposeIsRefused(t *testing.T) {
-	keys, r, c := keysOf("k1"), newRecorder(), &clock{start}
+	keys, r, c := keysOf("k1"), newRedemptions(), &clock{start}
 	n, _ := newService(t, keys, "a", r, c).Get()
 	if err := newService(t, keys, "b", r, c).Redeem(context.Background(), n); !errors.Is(err, nonce.ErrInvalid) {
 		t.Fatalf("got %v", err)
 	}
 }
 
-func TestServerRule10_AForgedOrAlteredNonceIsRefusedWithoutARecord(t *testing.T) {
-	r := newRecorder()
+func TestServerRule10_AForgedOrAlteredNonceIsRefusedWithoutAStoreCall(t *testing.T) {
+	r := newRedemptions()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
 	raw, err := base64.RawURLEncoding.DecodeString(n)
@@ -233,10 +234,10 @@ func TestServerRule10_AForgedOrAlteredNonceIsRefusedWithoutARecord(t *testing.T)
 	}
 }
 
-// The record is keyed by the string: a second spelling of the same bytes would be a second use. Go's base64
+// A redemption is keyed by the string: a second spelling of the same bytes would be a second use. Go's base64
 // decoder skips newlines and, unless strict, ignores the trailing bits of the last character.
 func TestServerRule11_AnotherSpellingOfANonceIsRefused(t *testing.T) {
-	r := newRecorder()
+	r := newRedemptions()
 	s := newService(t, keysOf("k1"), "p", r, &clock{start})
 	n, _ := s.Get()
 	if err := s.Redeem(context.Background(), n); err != nil {
@@ -258,7 +259,7 @@ func TestServerRule11_AnotherSpellingOfANonceIsRefused(t *testing.T) {
 
 func TestRFC9449_8_1_NoncesAreNQCHARAndBounded(t *testing.T) {
 	long := strings.Repeat("k", nonce.MaxKeyIDLen)
-	s := newService(t, keysOf(long), "p", newRecorder(), &clock{start})
+	s := newService(t, keysOf(long), "p", newRedemptions(), &clock{start})
 	for range 100 {
 		n, err := s.Get()
 		if err != nil {
@@ -277,7 +278,7 @@ func TestRFC9449_8_1_NoncesAreNQCHARAndBounded(t *testing.T) {
 }
 
 func TestGet_NoncesDiffer(t *testing.T) {
-	s := newService(t, keysOf("k1"), "p", newRecorder(), &clock{start})
+	s := newService(t, keysOf("k1"), "p", newRedemptions(), &clock{start})
 	a, _ := s.Get()
 	b, _ := s.Get()
 	if a == b {
@@ -286,7 +287,7 @@ func TestGet_NoncesDiffer(t *testing.T) {
 }
 
 func TestServerRule10_ANonceFromBeforeARotationStaysValid(t *testing.T) {
-	r, c := newRecorder(), &clock{start}
+	r, c := newRedemptions(), &clock{start}
 	n, _ := newService(t, keysOf("old"), "p", r, c).Get()
 	rotated := keysOf("new")
 	rotated.keys["old"] = bytes.Repeat([]byte{1}, 32)
@@ -296,7 +297,7 @@ func TestServerRule10_ANonceFromBeforeARotationStaysValid(t *testing.T) {
 }
 
 func TestServerRule10_ANonceUnderADroppedKeyIsRefused(t *testing.T) {
-	r, c := newRecorder(), &clock{start}
+	r, c := newRedemptions(), &clock{start}
 	n, _ := newService(t, keysOf("old"), "p", r, c).Get()
 	if err := newService(t, keysOf("new"), "p", r, c).Redeem(context.Background(), n); !errors.Is(err, nonce.ErrInvalid) {
 		t.Fatalf("got %v", err)
@@ -304,25 +305,25 @@ func TestServerRule10_ANonceUnderADroppedKeyIsRefused(t *testing.T) {
 }
 
 func TestNew_RefusesAnIncompleteConfiguration(t *testing.T) {
-	keys, record := keysOf("k1"), newRecorder().record
-	if _, err := nonce.New(nil, "p", time.Minute, record); err == nil {
+	keys, r := keysOf("k1"), newRedemptions()
+	if _, err := nonce.New(nil, "p", time.Minute, r); err == nil {
 		t.Error("no keys")
 	}
-	if _, err := nonce.New(keys, "", time.Minute, record); err == nil {
+	if _, err := nonce.New(keys, "", time.Minute, r); err == nil {
 		t.Error("no purpose")
 	}
-	if _, err := nonce.New(keys, "p", 0, record); err == nil {
+	if _, err := nonce.New(keys, "p", 0, r); err == nil {
 		t.Error("no ttl")
 	}
 	if _, err := nonce.New(keys, "p", time.Minute, nil); err == nil {
-		t.Error("no record")
+		t.Error("no redemptions")
 	}
 }
 
 func TestGet_FailsOnAKeyOfTheWrongLength(t *testing.T) {
 	keys := keysOf("k1")
 	keys.keys["k1"] = make([]byte, 16)
-	if _, err := newService(t, keys, "p", newRecorder(), &clock{start}).Get(); err == nil {
+	if _, err := newService(t, keys, "p", newRedemptions(), &clock{start}).Get(); err == nil {
 		t.Fatal("sealed under a 16-byte key")
 	}
 }
@@ -336,38 +337,48 @@ func newSource(t *testing.T, keys nonce.Keys, purpose string, c *clock) *nonce.S
 	return s
 }
 
+// valid is s.Valid, failing the test on an error: a Source has no store to fail.
+func valid(tb testing.TB, s *nonce.Source, candidate string) bool {
+	tb.Helper()
+	ok, err := s.Valid(tb.Context(), candidate)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return ok
+}
+
 // RFC 9449 Section 8: a server nonce may be used by several proofs while it is current.
 func TestRFC9449_8_ASourceNonceIsReusableWithinItsWindow(t *testing.T) {
 	c := &clock{start}
 	s := newSource(t, keysOf("k1"), "dpop", c)
-	n, err := s.Fresh()
+	n, err := s.Fresh(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if !s.Valid(n) {
+		if !valid(t, s, n) {
 			t.Fatal("refused within its window")
 		}
 	}
 	c.now = start.Add(time.Minute)
-	if s.Valid(n) {
+	if valid(t, s, n) {
 		t.Fatal("accepted after its window")
 	}
 }
 
 func TestServerRule3_SourceReplicasSharingKeysAcceptEachOthersNonces(t *testing.T) {
 	keys, c := keysOf("k1"), &clock{start}
-	n, _ := newSource(t, keys, "dpop", c).Fresh()
-	if !newSource(t, keys, "dpop", c).Valid(n) {
+	n, _ := newSource(t, keys, "dpop", c).Fresh(t.Context())
+	if !valid(t, newSource(t, keys, "dpop", c), n) {
 		t.Fatal("refused at the other replica")
 	}
 }
 
 func TestRFC9449_8_ASourceNonceMustMatchExactly(t *testing.T) {
 	s := newSource(t, keysOf("k1"), "dpop", &clock{start})
-	n, _ := s.Fresh()
+	n, _ := s.Fresh(t.Context())
 	for _, bad := range []string{"", "x", n + "\n", n + "=", n[:len(n)-1], strings.Repeat("A", 100_000)} {
-		if s.Valid(bad) {
+		if valid(t, s, bad) {
 			t.Fatalf("accepted %.20q", bad)
 		}
 	}
@@ -375,14 +386,14 @@ func TestRFC9449_8_ASourceNonceMustMatchExactly(t *testing.T) {
 
 // Even under one purpose string, a nonce that is reusable must not pass as a single-use one, or the other way.
 func TestServerRule10_SourceAndServiceDoNotAcceptEachOthersNonces(t *testing.T) {
-	keys, c, r := keysOf("k1"), &clock{start}, newRecorder()
+	keys, c, r := keysOf("k1"), &clock{start}, newRedemptions()
 	source, service := newSource(t, keys, "same", c), newService(t, keys, "same", r, c)
-	fromSource, _ := source.Fresh()
+	fromSource, _ := source.Fresh(t.Context())
 	if err := service.Redeem(context.Background(), fromSource); !errors.Is(err, nonce.ErrInvalid) {
 		t.Fatalf("a source nonce redeemed: %v", err)
 	}
 	fromService, _ := service.Get()
-	if source.Valid(fromService) {
+	if valid(t, source, fromService) {
 		t.Fatal("a single-use nonce passed as a source nonce")
 	}
 }
@@ -401,7 +412,7 @@ func TestEphemeralKeys_AreRandomAndUsable(t *testing.T) {
 	if len(keyA) != 32 || bytes.Equal(keyA, keyB) {
 		t.Fatal("not two random keys")
 	}
-	r, c := newRecorder(), &clock{start}
+	r, c := newRedemptions(), &clock{start}
 	n, _ := newService(t, a, "p", r, c).Get()
 	if err := newService(t, a, "p", r, c).Redeem(context.Background(), n); err != nil {
 		t.Fatal(err)
@@ -419,14 +430,14 @@ const (
 )
 
 func FuzzRedeem(f *testing.F) {
-	r := newRecorder()
+	r := newRedemptions()
 	c := &clock{start}
-	s, err := nonce.New(keysOf("k1"), "fuzz", time.Minute, r.record, nonce.WithClock(c.Now))
+	s, err := nonce.New(keysOf("k1"), "fuzz", time.Minute, r, nonce.WithClock(c.Now))
 	if err != nil {
 		f.Fatal(err)
 	}
 	good := fuzzServiceNonce
-	fresh, err := nonce.New(keysOf("k1"), "fuzz", time.Minute, newRecorder().record, nonce.WithClock(c.Now))
+	fresh, err := nonce.New(keysOf("k1"), "fuzz", time.Minute, newRedemptions(), nonce.WithClock(c.Now))
 	if err != nil {
 		f.Fatal(err)
 	}
@@ -458,14 +469,14 @@ func FuzzSourceValid(f *testing.F) {
 		f.Fatal(err)
 	}
 	good := fuzzSourceNonce
-	if !s.Valid(good) {
+	if !valid(f, s, good) {
 		f.Fatal("the fixture is not valid")
 	}
 	f.Add(good)
 	f.Add("")
 	f.Add(good[:len(good)-1])
 	f.Fuzz(func(t *testing.T, candidate string) {
-		if s.Valid(candidate) && candidate != good {
+		if valid(t, s, candidate) && candidate != good {
 			t.Fatalf("accepted %q", candidate)
 		}
 	})

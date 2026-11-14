@@ -22,6 +22,7 @@
 package dpop
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -155,7 +156,7 @@ func requireRefused(t *testing.T, err error, code, description string) Error {
 // mustVerify is v.Verify of header and req, failing the test on a refusal.
 func mustVerify(t *testing.T, v *Verifier, header http.Header, req Request) *Proof {
 	t.Helper()
-	proof, err := v.Verify(header, req)
+	proof, err := v.Verify(t.Context(), header, req)
 	if err != nil {
 		t.Fatalf("refused: %v", err)
 	}
@@ -165,5 +166,7 @@ func mustVerify(t *testing.T, v *Verifier, header http.Header, req Request) *Pro
 // staticNonces accepts one nonce and hands out another.
 type staticNonces struct{ current, fresh string }
 
-func (n staticNonces) Valid(nonce string) bool { return nonce == n.current }
-func (n staticNonces) Fresh() (string, error)  { return n.fresh, nil }
+func (n staticNonces) Valid(_ context.Context, nonce string) (bool, error) {
+	return nonce == n.current, nil
+}
+func (n staticNonces) Fresh(context.Context) (string, error) { return n.fresh, nil }

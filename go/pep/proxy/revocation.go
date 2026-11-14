@@ -23,123 +23,66 @@ package proxy
 
 import (
 	"context"
-	"log/slog"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/gematik/zero-lab/go/kv"
 )
 
-const (
-	// revokeChannel is the kv.Bus channel session revocations are published on.
-	revokeChannel = "pep_revoked"
-	// revokedPrefix namespaces the durable revoked-set keys in kv (one key per revoked sid).
-	revokedPrefix = "pep:revoked:"
-	// reconcileEvery is how often a replica re-reads the durable revoked-set, bounding the window in which a
-	// dropped NOTIFY could let a revoked snapshot through.
-	reconcileEvery = 30 * time.Second
-)
-
-// revoker tracks revoked session ids so the snapshot fast path can reject a still-valid snapshot immediately.
-// memRevoker is single-instance; busRevoker keeps the set in sync across replicas over a kv.Bus.
-type revoker interface {
-	Revoke(sid string)
-	IsRevoked(sid string) bool
+// Revocations are the session IDs ended before their time: at sign-out, and the ID a session had before it was
+// rotated. The snapshot fast path admits a request without loading its session, so it asks here, and a
+// revocation made at one replica must hold at every other (docs/stateless-session-validation.md).
+type Revocations interface {
+	// Revoke records sid as revoked until the given time, when every snapshot naming it has expired anyway.
+	Revoke(ctx context.Context, sid string, until time.Time) error
+	// Revoked reports whether sid is revoked. An error means it cannot tell, and the proxy denies.
+	Revoked(ctx context.Context, sid string) (bool, error)
+	// Follow applies the revocations made at other replicas: those made before the call by the time it returns,
+	// and those made later until ctx ends. The host calls it before it serves; an error means it cannot follow.
+	Follow(ctx context.Context) error
 }
 
-// busRevoker keeps the local revoked-set in sync across replicas three ways: it publishes each revocation on
-// a kv.Bus (instant fan-out), persists it to a durable kv set (so a fresh replica loads it on startup and a
-// dropped NOTIFY is caught by the periodic reconcile), and applies remote revocations from the bus.
-type busRevoker struct {
-	local *memRevoker
-	bus   kv.Bus
-	store kv.Store
-	ttl   time.Duration
+// MemoryRevocations are [Revocations] in the memory of this process, for a single replica. Entries leave when
+// their time is up.
+type MemoryRevocations struct {
+	mu    sync.Mutex
+	until map[string]time.Time
+	now   func() time.Time
 }
 
-func newBusRevoker(bus kv.Bus, store kv.Store, ttl time.Duration, now func() time.Time) *busRevoker {
-	r := &busRevoker{local: newMemRevoker(ttl, now), bus: bus, store: store, ttl: ttl}
-	r.reconcile() // startup: load the durable set so a fresh replica isn't blind to recent revocations
-	if ch, err := bus.Subscribe(context.Background(), revokeChannel); err != nil {
-		slog.Error("revocation bus subscribe failed; relying on the periodic reconcile", "error", err)
-	} else {
-		go func() {
-			for sid := range ch {
-				r.local.Revoke(sid)
-			}
-		}()
+// NewMemoryRevocations returns empty revocations judged at now; nil means the system clock.
+func NewMemoryRevocations(now func() time.Time) *MemoryRevocations {
+	if now == nil {
+		now = time.Now
 	}
-	go r.reconcileLoop()
-	return r
+	return &MemoryRevocations{until: make(map[string]time.Time), now: now}
 }
 
-func (r *busRevoker) Revoke(sid string) {
-	r.local.Revoke(sid) // local immediately
-	// Durable backstop: persist so a fresh replica loads it on startup and a dropped NOTIFY is caught by
-	// reconcile. TTL = the snapshot lifetime (self-cleaning — past it the snapshot is exp-rejected anyway).
-	if err := r.store.Set(context.Background(), revokedPrefix+sid, []byte{'1'}, r.ttl); err != nil {
-		slog.Warn("revocation backstop write failed", "session_ref", logRef(sid), "error", err)
-	}
-	if err := r.bus.Publish(context.Background(), revokeChannel, sid); err != nil {
-		slog.Warn("revocation publish failed; other replicas catch it on reconcile", "session_ref", logRef(sid), "error", err)
-	}
-}
-
-func (r *busRevoker) IsRevoked(sid string) bool { return r.local.IsRevoked(sid) }
-
-// reconcile loads the durable revoked-set from the store into the local set.
-func (r *busRevoker) reconcile() {
-	keys, err := r.store.Keys(context.Background(), revokedPrefix)
-	if err != nil {
-		slog.Warn("revocation reconcile failed", "error", err)
-		return
-	}
-	for _, k := range keys {
-		r.local.Revoke(strings.TrimPrefix(k, revokedPrefix))
-	}
-}
-
-func (r *busRevoker) reconcileLoop() {
-	t := time.NewTicker(reconcileEvery)
-	defer t.Stop()
-	for range t.C {
-		r.reconcile()
-	}
-}
-
-// memRevoker is an in-memory revoked-session set with self-expiring entries (TTL = the snapshot lifetime —
-// past that the snapshot is rejected by its own exp, so the entry is no longer needed).
-type memRevoker struct {
-	mu  sync.Mutex
-	ttl time.Duration
-	m   map[string]time.Time // sid -> entry expiry
-	now func() time.Time
-}
-
-func newMemRevoker(ttl time.Duration, now func() time.Time) *memRevoker {
-	return &memRevoker{ttl: ttl, m: make(map[string]time.Time), now: now}
-}
-
-func (r *memRevoker) Revoke(sid string) {
+// Revoke implements [Revocations]. It never fails.
+func (r *MemoryRevocations) Revoke(_ context.Context, sid string, until time.Time) error {
 	if sid == "" {
-		return
+		return nil
 	}
-	r.mu.Lock()
-	r.m[sid] = r.now().Add(r.ttl)
-	r.mu.Unlock()
-}
-
-func (r *memRevoker) IsRevoked(sid string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	exp, ok := r.m[sid]
-	if !ok {
-		return false
+	if until.After(r.until[sid]) {
+		r.until[sid] = until
 	}
-	if r.now().After(exp) {
-		delete(r.m, sid)
-		return false
-	}
-	return true
+	return nil
 }
+
+// Revoked implements [Revocations]. It never fails.
+func (r *MemoryRevocations) Revoked(_ context.Context, sid string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	until, ok := r.until[sid]
+	if !ok {
+		return false, nil
+	}
+	if r.now().After(until) {
+		delete(r.until, sid)
+		return false, nil
+	}
+	return true, nil
+}
+
+// Follow implements [Revocations]: there is no other replica to follow.
+func (r *MemoryRevocations) Follow(context.Context) error { return nil }

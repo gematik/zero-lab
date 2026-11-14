@@ -27,27 +27,27 @@ package authzserver
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 const (
-	// defaultSessionTTL bounds a pending authorization session before a policy sets its ExpiresAt.
-	defaultSessionTTL = 15 * time.Minute
+	// DefaultSessionTTL is how long a [SessionStore] keeps a session whose ExpiresAt is not set yet: the pending
+	// window between the pushed request and the token request, which the PAR response announces as expires_in.
+	DefaultSessionTTL = 15 * time.Minute
 	// defaultNonceTTL bounds how long an issued replay nonce stays redeemable.
 	defaultNonceTTL = 5 * time.Minute
 )
@@ -96,10 +96,13 @@ func NewFromConfigFile(filename string) (*Server, error) {
 	return New(*cfg)
 }
 
-// New builds a server from cfg. Without Config.Store, sessions and nonces live in process memory, for one
-// replica only. It refuses to start without Config.SigningKey: a replica with a key of its own signs tokens
-// nobody else can verify. For the same reason it refuses a Store without Config.NonceKeys.
+// New builds a server from cfg. It refuses to start without Config.SigningKey: a replica with a key of its own
+// signs tokens nobody else can verify. For the same reason it refuses a Config without Sessions, NonceRedemptions,
+// Replays or NonceKeys instead of keeping that state in its own memory.
 func New(cfg Config) (*Server, error) {
+	if err := cfg.requireStores(); err != nil {
+		return nil, err
+	}
 	if cfg.Providers == nil {
 		cfg.Providers = providers.New(nil)
 	}
@@ -136,40 +139,46 @@ func New(cfg Config) (*Server, error) {
 		return nil, err
 	}
 
-	// One kv.Store backs the session store and the nonce service. The caller injects a Postgres-backed
-	// store via Config.Store (built in the command, which owns the driver dependency); without it we use
-	// an in-memory store (tests and dev).
-	store, nonceKeys := cfg.Store, cfg.NonceKeys
-	if store == nil {
-		store = kv.NewMemory()
-		if nonceKeys == nil {
-			if nonceKeys, err = nonce.NewEphemeralKeys(); err != nil {
-				return nil, fmt.Errorf("nonce keys: %w", err)
-			}
-		}
-	}
-	if nonceKeys == nil {
-		return nil, errors.New("a store shared by replicas needs NonceKeys: nonces under a per-process key fail at every other replica")
-	}
-	s.sessionStore = newKVSessionStore(store, defaultSessionTTL)
+	s.sessionStore = cfg.Sessions
 
 	s.initRelyingParty(cfg)
 
-	s.nonceService, err = nonce.New(nonceKeys, nonceServicePurpose, defaultNonceTTL, recordNonce(store), nonce.WithClock(s.now))
+	s.nonceService, err = nonce.New(cfg.NonceKeys, nonceServicePurpose, defaultNonceTTL, cfg.NonceRedemptions, nonce.WithClock(s.now))
 	if err != nil {
 		return nil, fmt.Errorf("nonce service: %w", err)
 	}
 
 	s.dpopVerifier, err = dpop.NewVerifier(dpop.Config{
-		MaxAge: 5 * time.Minute,
-		Replay: kv.NewReplayCache(store),
-		Clock:  clockFunc(s.now),
+		MaxAge:  5 * time.Minute,
+		Replays: cfg.Replays,
+		Clock:   clockFunc(s.now),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("dpop verifier: %w", err)
 	}
 
 	return s, nil
+}
+
+// requireStores refuses a Config that lacks the state replicas share (server rules 10, 17).
+func (cfg *Config) requireStores() error {
+	var missing []string
+	if cfg.Sessions == nil {
+		missing = append(missing, "Sessions")
+	}
+	if cfg.NonceRedemptions == nil {
+		missing = append(missing, "NonceRedemptions")
+	}
+	if cfg.Replays == nil {
+		missing = append(missing, "Replays")
+	}
+	if cfg.NonceKeys == nil {
+		missing = append(missing, "NonceKeys")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("authorization server: no %s configured: the caller supplies the stores replicas share", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 // initMetadata fills the authorization-server metadata document (RFC 8414).

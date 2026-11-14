@@ -159,8 +159,6 @@ github.com/fxamacker/cbor/v2 v2.9.4 h1:xwjVlxEMR3S605oUlgBjKLTTeGFciYPGYCtF/35LK
 github.com/fxamacker/cbor/v2 v2.9.4/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gematik/zero-lab/go/dpop v1.0.0-beta.1 h1:OuckHOy+nSvnIB6eTnYldDlub+JZfRvZVrpIuBsYcpg=
 github.com/gematik/zero-lab/go/dpop v1.0.0-beta.1/go.mod h1:8Z/vsJQw1lkmqhNOZW4UGTCpL+8ixx/bjG0T4ReoDuc=
-github.com/gematik/zero-lab/go/kv v0.1.1-0.20261106180818-4c2a720247df h1:2utKZc9OpnL3mTkErJItZ33iSyatVJaMCwJXHDU4jFc=
-github.com/gematik/zero-lab/go/kv v0.1.1-0.20261106180818-4c2a720247df/go.mod h1:Zs0Mxfe+Wobv9eFUtau/YzppX7ppa9GNU1G8DE9RfCs=
 github.com/gematik/zero-lab/go/nonce v0.22.1-0.20261106180818-4c2a720247df h1:xqLyR5mypxqoZbQ8Fho4DvxgC4Lo/rwW2LvKy5dvNJE=
 github.com/gematik/zero-lab/go/nonce v0.22.1-0.20261106180818-4c2a720247df/go.mod h1:w0vTUL1c1HQuBvXZGkEXzaD9fiK2VioGdNbNLs6D7uQ=
 github.com/gematik/zero-lab/go/pep v0.26.1-0.20261106180818-4c2a720247df h1:zpqp516xAoD2fwzF7Fajz8vHrmR5hFA+ewQC9iM2+vQ=

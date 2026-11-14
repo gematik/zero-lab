@@ -43,7 +43,7 @@ func FuzzVerify(f *testing.F) {
 	f.Fuzz(func(t *testing.T, value string) {
 		h := http.Header{}
 		h.Set(HeaderName, value)
-		proof, err := v.Verify(h, req)
+		proof, err := v.Verify(t.Context(), h, req)
 		if err == nil {
 			if value != rfcFigure2Proof && proof.Thumbprint != rfcJKT {
 				t.Fatalf("accepted a proof not signed by the example key: %q", value)

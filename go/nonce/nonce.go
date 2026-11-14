@@ -21,7 +21,7 @@
 
 // Package nonce issues nonces that verify themselves, so that handing one out costs no store and no shared
 // state (server rule 10): a nonce seals its expiry and random bytes with AES-256-GCM under a key derived from a
-// key all replicas share. [Service] nonces are single use, which takes a record on acceptance; [Source] nonces
+// key all replicas share. [Service] nonces are single use, which takes a write on acceptance; [Source] nonces
 // are reusable within their window, as RFC 9449 Section 8 allows.
 package nonce
 
@@ -69,7 +69,8 @@ const (
 // encoding is the unpadded base64url of RFC 4648: every character is an NQCHAR of RFC 9449 Section 8.1.
 var encoding = base64.RawURLEncoding.Strict()
 
-// Keys is where nonce keys come from; kv.Keyring has this shape without this package importing kv.
+// Keys is where nonce keys come from. The host supplies them, typically a key ring all replicas load from one file;
+// this package imports no store.
 type Keys interface {
 	// Current returns the key that seals new nonces. The slice is a fresh copy the caller owns and clears.
 	Current() (id string, key []byte)
@@ -195,54 +196,58 @@ func (s *sealer) open(candidate string) (time.Time, error) {
 	return expiry, nil
 }
 
-// Record remembers an accepted nonce: id is the SHA-256 of the nonce, until its expiry. It reports whether this
-// was the first time, atomically across all replicas, and keeps the record at least until until.
-type Record func(ctx context.Context, id string, until time.Time) (first bool, err error)
+// Redemptions remember the nonces a [Service] accepted.
+type Redemptions interface {
+	// Seen records id, the SHA-256 of a nonce, until its expiry and reports whether it was recorded already,
+	// atomically across all replicas. It keeps the entry at least until until. An error means it cannot tell, and
+	// the nonce is refused.
+	Seen(ctx context.Context, id string, until time.Time) (bool, error)
+}
 
-// Service issues nonces without touching a store, and accepts each one once, keeping a record only from
-// acceptance on: an anonymous request for a nonce costs no write.
+// Service issues nonces without touching a store, and accepts each one once, writing to its [Redemptions] only
+// from acceptance on: an anonymous request for a nonce costs no write.
 type Service struct {
-	sealer *sealer
-	record Record
+	sealer      *sealer
+	redemptions Redemptions
 }
 
 // New returns a Service for one purpose: a nonce of one purpose is refused under another. ttl is how long a
-// nonce stays redeemable. Replicas share a Service's single use through what record writes to, and accept each
+// nonce stays redeemable. Replicas share a Service's single use through the redemptions they share, and accept each
 // other's nonces by sharing keys.
-func New(keys Keys, purpose string, ttl time.Duration, record Record, opts ...Option) (*Service, error) {
-	if record == nil {
-		return nil, errors.New("nonce: a record function is required")
+func New(keys Keys, purpose string, ttl time.Duration, redemptions Redemptions, opts ...Option) (*Service, error) {
+	if redemptions == nil {
+		return nil, errors.New("nonce: redemptions are required")
 	}
 	sealer, err := newSealer(keys, "single-use", purpose, ttl, opts)
 	if err != nil {
 		return nil, err
 	}
-	return &Service{sealer: sealer, record: record}, nil
+	return &Service{sealer: sealer, redemptions: redemptions}, nil
 }
 
 // Get returns a fresh nonce.
 func (s *Service) Get() (string, error) { return s.sealer.issue() }
 
-// Redeem accepts a nonce once. It returns [ErrInvalid] or [ErrReplayed] for a nonce it refuses, and the record's
-// error if the record fails, which also refuses: a store outage fails closed.
+// Redeem accepts a nonce once. It returns [ErrInvalid] or [ErrReplayed] for a nonce it refuses, and the error of
+// the [Redemptions] if they fail, which also refuses: a store outage fails closed.
 func (s *Service) Redeem(ctx context.Context, nonce string) error {
 	expiry, err := s.sealer.open(nonce)
 	if err != nil {
 		return err
 	}
 	sum := sha256.Sum256([]byte(nonce))
-	first, err := s.record(ctx, hex.EncodeToString(sum[:]), expiry)
+	seen, err := s.redemptions.Seen(ctx, hex.EncodeToString(sum[:]), expiry)
 	if err != nil {
-		return fmt.Errorf("nonce: recording: %w", err)
+		return fmt.Errorf("nonce: redemptions: %w", err)
 	}
-	if !first {
+	if seen {
 		return ErrReplayed
 	}
 	return nil
 }
 
 // Source has the shape of dpop.NonceSource (RFC 9449 Section 8) without importing dpop. Its nonces are reusable
-// within their window by design and need no record; the proofs that carry them are what a replay cache watches.
+// within their window by design and need no redemptions; the proofs that carry them are what dpop.Replays watch.
 type Source struct {
 	sealer *sealer
 }
@@ -256,14 +261,15 @@ func NewSource(keys Keys, purpose string, ttl time.Duration, opts ...Option) (*S
 	return &Source{sealer: sealer}, nil
 }
 
-// Valid reports whether nonce is one a replica recently supplied.
-func (s *Source) Valid(nonce string) bool {
+// Valid reports whether nonce is one a replica recently supplied. It needs no store, so ctx is not consulted and
+// the error is always nil: a nonce it does not accept is false, not an error.
+func (s *Source) Valid(_ context.Context, nonce string) (bool, error) {
 	_, err := s.sealer.open(nonce)
-	return err == nil
+	return err == nil, nil
 }
 
 // Fresh returns an unpredictable nonce for a client's next proof.
-func (s *Source) Fresh() (string, error) { return s.sealer.issue() }
+func (s *Source) Fresh(context.Context) (string, error) { return s.sealer.issue() }
 
 // ephemeralKeys is one random key that lives and dies with the process.
 type ephemeralKeys struct {

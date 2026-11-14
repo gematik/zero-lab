@@ -104,11 +104,11 @@ func TestRFC9449_4_2_AthOfFigure14(t *testing.T) {
 // known answers above test the checks and not only the parser.
 func TestRFC9449_Figure2_ExampleProofIsBoundToItsRequest(t *testing.T) {
 	v := newTestVerifier(t, Config{Clock: fixedClock(time.Unix(1562262616, 0))})
-	_, err := v.Verify(withProof(rfcFigure2Proof), Request{Method: http.MethodGet, URI: "https://server.example.com/token"})
+	_, err := v.Verify(t.Context(), withProof(rfcFigure2Proof), Request{Method: http.MethodGet, URI: "https://server.example.com/token"})
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof htm does not match the request method")
-	_, err = v.Verify(withProof(rfcFigure2Proof), Request{Method: http.MethodPost, URI: "https://server.example.com/other"})
+	_, err = v.Verify(t.Context(), withProof(rfcFigure2Proof), Request{Method: http.MethodPost, URI: "https://server.example.com/other"})
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof htu does not match the request URI")
 	late := newTestVerifier(t, Config{Clock: fixedClock(time.Unix(1562262616, 0).Add(DefaultMaxAge + time.Second))})
-	_, err = late.Verify(withProof(rfcFigure2Proof), Request{Method: http.MethodPost, URI: "https://server.example.com/token"})
+	_, err = late.Verify(t.Context(), withProof(rfcFigure2Proof), Request{Method: http.MethodPost, URI: "https://server.example.com/token"})
 	requireRefused(t, err, CodeInvalidProof, "DPoP proof is too old")
 }

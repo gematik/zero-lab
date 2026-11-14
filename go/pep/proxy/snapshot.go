@@ -35,7 +35,7 @@ import (
 )
 
 // snapshotClaims is the encrypted session-snapshot payload: enough for /oauth2/auth to emit the identity
-// headers locally, the session id (for the revoked-set check), and an absolute expiry. It carries the full
+// headers locally, the session id (for the Revocations check), and an absolute expiry. It carries the full
 // identity map so the fast path reproduces every header the kv path emits.
 type snapshotClaims struct {
 	SID      string         `json:"sid"`
