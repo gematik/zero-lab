@@ -1,12 +1,19 @@
 # Release Notes
 
-# Unreleased go/pep/proxy
+# Release go/pep/proxy v0.2.1
 
 ### fixed
 - Gateway routes with `gate: snapshot` ask `Revocations`, as `/oauth2/auth` does: a session that was
   signed out or rotated no longer passes them until its snapshot expires (8 h by default), and a
   revocation check that fails denies. A snapshot route without revocations is refused at start
   (TASK-311).
+
+### verified
+- `just check` across all Go modules passed on 889847b6 (the branch merged with main); later
+  commits change no Go code. `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- Revocations reaching another replica over Postgres (`PEP_PG_DSN`) passed on db34b723 for v0.2.0;
+  this release does not change the revocation store or the bus.
 
 # Release go/dpop v1.0.0-beta.2
 
