@@ -3,10 +3,10 @@ id: TASK-307
 title: >-
   pep/proxy: SessionStore and Revocations as pep interfaces, wired by
   zero-pep-proxy
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
-updated_date: '2026-11-14T10:42:00Z'
+updated_date: '2026-11-14T10:53:00Z'
 labels: []
 dependencies: []
 ordinal: 322000

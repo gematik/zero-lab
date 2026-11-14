@@ -1,9 +1,10 @@
 ---
 id: TASK-306
 title: 'pdp authzserver: take its stores through its own interfaces, wired by zero-pdp'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
+updated_date: '2026-11-14T10:53:00Z'
 labels: []
 dependencies: []
 ordinal: 321000

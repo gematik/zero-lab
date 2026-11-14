@@ -3,9 +3,10 @@ id: TASK-309
 title: >-
   dpop: Replays instead of ReplayCache, ctx and error on its interfaces;
   kv-backed Replays moves to the hosts
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T10:42:00Z'
+updated_date: '2026-11-14T10:53:00Z'
 labels: []
 dependencies: []
 ordinal: 324000
