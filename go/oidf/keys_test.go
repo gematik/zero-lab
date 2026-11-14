@@ -311,7 +311,7 @@ func TestServerRule17_ACertificateForAKeyOtherThanTheClientKeyIsRefused(t *testi
 	} {
 		cfg := testRelyingPartyConfig(t, stub)
 		place(cfg)
-		if _, err := NewRelyingParty(t.Context(), cfg, ""); err == nil || !strings.Contains(err.Error(), "cert_pem_path") {
+		if _, err := NewRelyingParty(t.Context(), cfg, ""); err == nil || !strings.Contains(err.Error(), "cert_pem_path belongs to client_key only") {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -372,11 +372,9 @@ func TestServeSignedJwksVerifiesAndKeepsItsShape(t *testing.T) {
 	}
 	enc := jose.JSONWebKey{Key: key.Public(), KeyID: "enc", Use: "enc", Algorithm: "ECDH-ES"}
 	rp := &RelyingParty{
-		keys: Keys{Sign: key, SignKID: "sign-kid"},
-		entityStatement: &EntityStatement{
-			Subject:  "https://rp.example",
-			Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{Jwks: &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{enc}}}}},
-		},
+		keys:             Keys{Sign: key, SignKID: "sign-kid"},
+		entityStatement:  &EntityStatement{Subject: "https://rp.example"},
+		relyingPartyKeys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{enc}},
 	}
 	recorder := httptest.NewRecorder()
 	rp.ServeSignedJwks(recorder, httptest.NewRequest(http.MethodGet, "/jwks", nil))

@@ -237,9 +237,9 @@ func (s *Server) initRelyingParty(cfg Config) {
 	// AS callback URLs the products register. oidf stays registry-agnostic — it just runs this func hook.
 	if s.oidfRelyingParty != nil && s.productsRegistry != nil {
 		registry := s.productsRegistry
-		s.oidfRelyingParty.AddEntityStatementHook(func(es *oidf.EntityStatement) {
+		s.oidfRelyingParty.AddEntityStatementHook(func(es *oidf.EntityStatement) error {
 			if es.Metadata == nil || es.Metadata.OpenidRelyingParty == nil {
-				return
+				return nil
 			}
 			rpMeta := es.Metadata.OpenidRelyingParty
 			seen := make(map[string]struct{}, len(rpMeta.RedirectURIs))
@@ -253,6 +253,7 @@ func (s *Server) initRelyingParty(cfg Config) {
 				seen[u] = struct{}{}
 				rpMeta.RedirectURIs = append(rpMeta.RedirectURIs, u)
 			}
+			return nil
 		})
 	}
 }

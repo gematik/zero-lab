@@ -37,7 +37,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -114,21 +113,30 @@ type KeyConfig struct {
 }
 
 // RelyingPartyMetadata holds the variable openid_relying_party fields; the OIDF boilerplate is defaulted.
+// gemSpec_IDP_FD A_23034-02 asks a registered relying party for keywords (its product type and version), contacts
+// (a support address) and organization_name, and A_27505 for ti_features_supported; their content is the
+// deployment's to give.
 type RelyingPartyMetadata struct {
-	ClientName       string   `yaml:"client_name"`
-	RedirectURIs     []string `yaml:"redirect_uris"`
-	OrganizationName string   `yaml:"organization_name,omitempty"`
-	LogoURI          string   `yaml:"logo_uri,omitempty"`
-	Scope            string   `yaml:"scope,omitempty"`              // default defaultMetadataScope
-	DefaultACRValues []string `yaml:"default_acr_values,omitempty"` // default [defaultACRValue]
-	SignedJwksURI    string   `yaml:"signed_jwks_uri,omitempty"`
+	ClientName          string      `yaml:"client_name"`
+	RedirectURIs        []string    `yaml:"redirect_uris"`
+	OrganizationName    string      `yaml:"organization_name,omitempty"`
+	LogoURI             string      `yaml:"logo_uri,omitempty"`
+	Keywords            []string    `yaml:"keywords,omitempty"`
+	Contacts            []string    `yaml:"contacts,omitempty"`
+	TIFeaturesSupported *TIFeatures `yaml:"ti_features_supported,omitempty"`
+	Scope               string      `yaml:"scope,omitempty"`              // default defaultMetadataScope
+	DefaultACRValues    []string    `yaml:"default_acr_values,omitempty"` // default [defaultACRValue]
+	// SignedJwksURI, when set, names where ServeSignedJwks publishes the relying party's keys as a signed JWK Set;
+	// the openid_relying_party metadata then carries no jwks of its own (gemSpec_IDP_FD A_23034-02).
+	SignedJwksURI string `yaml:"signed_jwks_uri,omitempty"`
 }
 
 // FederationEntity holds the variable federation_entity metadata.
 type FederationEntity struct {
-	Name        string   `yaml:"name,omitempty"`
-	Contacts    []string `yaml:"contacts,omitempty"`
-	HomepageURI string   `yaml:"homepage_uri,omitempty"`
+	Name             string   `yaml:"name,omitempty"`
+	OrganizationName string   `yaml:"organization_name,omitempty"`
+	Contacts         []string `yaml:"contacts,omitempty"`
+	HomepageURI      string   `yaml:"homepage_uri,omitempty"`
 }
 
 const (
@@ -151,9 +159,11 @@ type RelyingParty struct {
 	trustAnchor     *jose.JSONWebKeySet
 	keys            Keys
 	entityStatement *EntityStatement
-	federation      *OpenidFederation
-	httpClient      *http.Client
-	hooks           []func(*EntityStatement)
+	// relyingPartyKeys are the ID token and client keys, inline in the statement or behind signed_jwks_uri.
+	relyingPartyKeys *jose.JSONWebKeySet
+	federation       *OpenidFederation
+	httpClient       *http.Client
+	hooks            []func(*EntityStatement) error
 }
 
 // Validate reports a missing required field. What needs I/O is checked when the keys are loaded.
@@ -300,7 +310,10 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 		Metadata: cfg.buildMetadata(),
 		Jwks:     &Jwks{Keys: statementKeys},
 	}
-	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
+	rp.relyingPartyKeys = relyingPartyKeys
+	if cfg.RelyingParty.SignedJwksURI == "" {
+		rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
+	}
 
 	rp.federation, err = NewOpenidFederation(ctx, cfg.FedMasterURL, rp.trustAnchor,
 		WithHTTPClient(baseClient), WithAPIKey(cfg.APIKey), WithClock(rp.now), WithDocuments(cfg.Documents), WithLogger(cfg.Logger))
@@ -311,33 +324,23 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 	return &rp, nil
 }
 
-// AddEntityStatementHook registers a function applied to a copy of the entity statement on every
-// SignEntityStatement call, in registration order. A hook may mutate the copy (e.g. append redirect_uris)
-// and never affects the relying party's base statement. This lets a consumer inject values into the served
-// entity statement without oidf depending on it; add more hooks the same way for future needs.
-func (rp *RelyingParty) AddEntityStatementHook(h func(*EntityStatement)) {
+// AddEntityStatementHook registers a function applied, in registration order, to a copy of the entity statement each
+// time it is signed. A hook may change anything in the copy, add members through the Extra maps and whole entity
+// types through Metadata.Extra; the relying party's own statement stays as it is. iat, exp and authority_hints are
+// set after the hooks. A hook that returns an error fails the signing, and nothing half-built is signed.
+func (rp *RelyingParty) AddEntityStatementHook(h func(*EntityStatement) error) {
 	rp.hooks = append(rp.hooks, h)
 }
 
-// entityStatementForRequest returns a copy of the base entity statement with all hooks applied. Only the
-// fields a hook may mutate (metadata.openid_relying_party.redirect_uris) are deep-copied; the rest shares
-// the base's pointers, which is safe because hooks only append to the cloned slice — so repeated calls do
-// not accumulate.
-func (rp *RelyingParty) entityStatementForRequest() *EntityStatement {
-	es := *rp.entityStatement
-	if md := rp.entityStatement.Metadata; md != nil {
-		mdCopy := *md
-		if orp := md.OpenidRelyingParty; orp != nil {
-			orpCopy := *orp
-			orpCopy.RedirectURIs = slices.Clone(orp.RedirectURIs)
-			mdCopy.OpenidRelyingParty = &orpCopy
+// statementWithHooks returns a deep copy of the relying party's statement with the hooks applied.
+func (rp *RelyingParty) statementWithHooks() (*EntityStatement, error) {
+	es := rp.entityStatement.clone()
+	for _, hook := range rp.hooks {
+		if err := hook(es); err != nil {
+			return nil, fmt.Errorf("entity statement hook: %w", err)
 		}
-		es.Metadata = &mdCopy
 	}
-	for _, h := range rp.hooks {
-		h(&es)
-	}
-	return &es
+	return es, nil
 }
 
 // now is the time the relying party judges and signs at.
@@ -348,30 +351,62 @@ func (rp *RelyingParty) now() time.Time {
 	return time.Now()
 }
 
+const (
+	// maxStatementLifetime is exp − iat of what the relying party signs. gemSpec_IDP_FedMaster A_28857: "Die maximale
+	// Gültigkeitsdauer - gegeben durch die Differenz der Attributwerte exp - iat - darf 24 Stunden nicht
+	// überschreiten."
+	maxStatementLifetime = 24 * time.Hour
+	// statementBackdate puts iat before now, so that a verifier whose clock runs behind takes the statement too.
+	statementBackdate = time.Hour
+)
+
 // SignEntityStatement returns the entity statement, with the hooks applied, as a JWT signed with the signing
-// key. It is backdated one hour and valid for 23 hours from now.
+// key. It is backdated one hour and valid for 23 hours from now. A statement that is not this relying party's own
+// entity configuration, or that would publish a private key part, is refused with ErrEntityStatement.
 func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
-	es := rp.entityStatementForRequest()
-	now := rp.now()
-	return rp.signClaims("entity-statement+jwt", entityStatementClaims{
-		Issuer:         es.Issuer,
-		Subject:        es.Subject,
-		IssuedAt:       now.Add(-1 * time.Hour).Unix(), // backdate token to avoid clock skew
-		ExpiresAt:      now.Add(time.Hour * 23).Unix(),
-		Jwks:           es.Jwks.Keys,
-		AuthorityHints: []string{rp.cfg.FedMasterURL},
-		Metadata:       es.Metadata,
-	})
+	es, err := rp.statementWithHooks()
+	if err != nil {
+		return nil, err
+	}
+	issuedAt := rp.now().Add(-statementBackdate)
+	es.IssuedAt = issuedAt.Unix()
+	es.ExpiresAt = issuedAt.Add(maxStatementLifetime).Unix()
+	es.AuthorityHints = []string{rp.cfg.FedMasterURL}
+	if err := rp.checkStatement(es); err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(es)
+	if err != nil {
+		return nil, fmt.Errorf("marshal entity statement: %w", err)
+	}
+	return rp.signPayload("entity-statement+jwt", payload)
 }
 
-type entityStatementClaims struct {
-	Issuer         string              `json:"iss"`
-	Subject        string              `json:"sub"`
-	IssuedAt       int64               `json:"iat"`
-	ExpiresAt      int64               `json:"exp"`
-	Jwks           *jose.JSONWebKeySet `json:"jwks"`
-	AuthorityHints []string            `json:"authority_hints"`
-	Metadata       *Metadata           `json:"metadata"`
+// checkStatement refuses a statement that others could not take for this relying party's entity configuration: it
+// names itself as issuer and subject (OpenID Federation 1.1 section 3), its jwks holds the key it is signed with under
+// the header's kid, and its openid_relying_party metadata has jwks or signed_jwks_uri, not both (gemSpec_IDP_FD
+// A_23034-02).
+func (rp *RelyingParty) checkStatement(es *EntityStatement) error {
+	if es.Issuer == "" || es.Issuer != es.Subject {
+		return fmt.Errorf("%w: iss and sub differ", ErrEntityStatement)
+	}
+	if es.Jwks == nil || es.Jwks.Keys == nil {
+		return fmt.Errorf("%w: no jwks", ErrEntityStatement)
+	}
+	published := es.Jwks.Keys.Key(rp.keys.SignKID)
+	if len(published) != 1 {
+		return fmt.Errorf("%w: jwks does not hold the signing key's kid exactly once", ErrEntityStatement)
+	}
+	public, ok := published[0].Key.(interface{ Equal(crypto.PublicKey) bool })
+	if !ok || isNil(rp.keys.Sign) || !public.Equal(rp.keys.Sign.Public()) {
+		return fmt.Errorf("%w: jwks holds another key under the signing key's kid", ErrEntityStatement)
+	}
+	if es.Metadata != nil && es.Metadata.OpenidRelyingParty != nil {
+		if metadata := es.Metadata.OpenidRelyingParty; metadata.Jwks != nil && metadata.SignedJwksURI != "" {
+			return fmt.Errorf("%w: openid_relying_party has both jwks and signed_jwks_uri", ErrEntityStatement)
+		}
+	}
+	return nil
 }
 
 // signedJwksClaims keep the shape registered parties get today: a whole JWK Set under "keys", so the array sits at
@@ -383,15 +418,34 @@ type signedJwksClaims struct {
 	Keys      *jose.JSONWebKeySet `json:"keys"`
 }
 
-// signClaims signs claims as a compact JWT with the signing key, under its kid and the given typ. The key signs
-// through crypto.Signer, so it may be an HSM's, and only ES256 (A_23196).
-func (rp *RelyingParty) signClaims(typ string, claims any) ([]byte, error) {
-	if rp.keys.Sign == nil {
-		return nil, errors.New("no signing key")
-	}
-	payload, err := json.Marshal(claims)
+// signJwks returns the ID token and client keys as a signed JWK Set, with the lifetime of the statement.
+func (rp *RelyingParty) signJwks() ([]byte, error) {
+	issuedAt := rp.now().Add(-statementBackdate)
+	payload, err := json.Marshal(signedJwksClaims{
+		Issuer:    rp.entityStatement.Subject,
+		IssuedAt:  issuedAt.Unix(),
+		ExpiresAt: issuedAt.Add(maxStatementLifetime).Unix(),
+		Keys:      rp.relyingPartyKeys,
+	})
 	if err != nil {
 		return nil, err
+	}
+	return rp.signPayload("jwk-set+json", payload)
+}
+
+// signPayload signs the payload as a compact JWT with the signing key, under its kid and the given typ. The key signs
+// through crypto.Signer, so it may be an HSM's, and only ES256 (A_23196). A payload with a member named d at any depth
+// is refused, so that no private key part is ever published.
+func (rp *RelyingParty) signPayload(typ string, payload []byte) ([]byte, error) {
+	if isNil(rp.keys.Sign) {
+		return nil, errors.New("no signing key")
+	}
+	private, err := hasMemberD(payload)
+	if err != nil {
+		return nil, err
+	}
+	if private {
+		return nil, fmt.Errorf("%w: a member named d would publish a private key part", ErrEntityStatement)
 	}
 	signer, err := jose.NewSigner(
 		jose.SigningKey{Algorithm: jose.ES256, Key: cryptosigner.Opaque(rp.keys.Sign)},
@@ -428,13 +482,7 @@ func (rp *RelyingParty) Serve(w http.ResponseWriter, _ *http.Request) {
 // ServeSignedJwks is the HTTP handler of signed_jwks_uri: the encryption and client keys of the relying party as
 // a signed JWT, backdated one hour and valid for 23 hours from now.
 func (rp *RelyingParty) ServeSignedJwks(w http.ResponseWriter, r *http.Request) {
-	now := rp.now()
-	signed, err := rp.signClaims("jwk-set+json", signedJwksClaims{
-		Issuer:    rp.entityStatement.Subject,
-		IssuedAt:  now.Add(-1 * time.Hour).Unix(), // backdate token to avoid clock skew
-		ExpiresAt: now.Add(time.Hour * 23).Unix(),
-		Keys:      rp.entityStatement.Metadata.OpenidRelyingParty.Jwks.Keys,
-	})
+	signed, err := rp.signJwks()
 	if err != nil {
 		slog.Error("unable to sign token", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -653,6 +701,9 @@ func (cfg *RelyingPartyConfig) buildMetadata() *Metadata {
 			RedirectURIs:                       rp.RedirectURIs,
 			OrganizationName:                   rp.OrganizationName,
 			LogoURI:                            rp.LogoURI,
+			Keywords:                           rp.Keywords,
+			Contacts:                           rp.Contacts,
+			TIFeaturesSupported:                rp.TIFeaturesSupported,
 			Scope:                              scope,
 			DefaultACRValues:                   acr,
 			SignedJwksURI:                      rp.SignedJwksURI,
@@ -666,9 +717,10 @@ func (cfg *RelyingPartyConfig) buildMetadata() *Metadata {
 			IDTokenEncryptedResponseEnc:        "A256GCM",
 		},
 		FederationEntity: &FederationEntityMetadata{
-			Name:        cfg.FederationEntity.Name,
-			Contacts:    cfg.FederationEntity.Contacts,
-			HomepageURI: cfg.FederationEntity.HomepageURI,
+			Name:             cfg.FederationEntity.Name,
+			OrganizationName: cfg.FederationEntity.OrganizationName,
+			Contacts:         cfg.FederationEntity.Contacts,
+			HomepageURI:      cfg.FederationEntity.HomepageURI,
 		},
 	}
 }

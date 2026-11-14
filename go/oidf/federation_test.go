@@ -721,8 +721,9 @@ func TestRelyingPartyDoesNotFollowARedirectFromPARNorTheTokenEndpoint(t *testing
 
 func TestServeSignedJwksAnswersOnlyOnceWhenItCannotSign(t *testing.T) {
 	rp := &RelyingParty{
-		keys:            Keys{Sign: failingSigner{newTestKey(t)}, SignKID: "sign-kid"},
-		entityStatement: &EntityStatement{Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{Jwks: &Jwks{Keys: &jose.JSONWebKeySet{}}}}},
+		keys:             Keys{Sign: failingSigner{newTestKey(t)}, SignKID: "sign-kid"},
+		entityStatement:  &EntityStatement{},
+		relyingPartyKeys: &jose.JSONWebKeySet{},
 	}
 	recorder := httptest.NewRecorder()
 	rp.ServeSignedJwks(recorder, httptest.NewRequest(http.MethodGet, "/jwks", nil))

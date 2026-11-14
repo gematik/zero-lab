@@ -53,7 +53,10 @@ type EntityStatement struct {
 type Metadata struct {
 	OpenidRelyingParty *OpenIDRelyingPartyMetadata `json:"openid_relying_party,omitempty"`
 	OpenidProvider     *OpenIDProviderMetadata     `json:"openid_provider,omitempty"`
-	FederationEntity   *FederationEntityMetadata   `json:"federation_entity"`
+	FederationEntity   *FederationEntityMetadata   `json:"federation_entity,omitempty"`
+	// Extra holds further entity types of a statement this relying party publishes, by their member name. It is
+	// written beside the typed members and never filled from a parsed statement.
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 // OpenIDProviderMetadata is the openid_provider metadata of an identity provider.
@@ -84,35 +87,52 @@ type OpenIDProviderMetadata struct {
 	UserTypeSupported                          []UserType `json:"user_type_supported"`
 }
 
-// OpenIDRelyingPartyMetadata is the openid_relying_party metadata this relying party publishes.
+// OpenIDRelyingPartyMetadata is the openid_relying_party metadata this relying party publishes, with the members
+// of gemSpec_IDP_FD A_23034-02 Tabelle 4. It carries either jwks or signed_jwks_uri, not both.
 type OpenIDRelyingPartyMetadata struct {
-	SignedJwksURI                      string   `json:"signed_jwks_uri,omitempty"`
-	Jwks                               *Jwks    `json:"jwks"`
-	OrganizationName                   string   `json:"organization_name"`
-	ClientName                         string   `json:"client_name"`
-	LogoURI                            string   `json:"logo_uri"`
-	RedirectURIs                       []string `json:"redirect_uris"`
-	ResponseTypes                      []string `json:"response_types"`
-	ClientRegistrationTypes            []string `json:"client_registration_types"`
-	GrantTypes                         []string `json:"grant_types"`
-	RequirePushedAuthorizationRequests bool     `json:"require_pushed_authorization_requests"`
-	TokenEndpointAuthMethod            string   `json:"token_endpoint_auth_method"`
-	DefaultACRValues                   []string `json:"default_acr_values"`
-	IDTokenSignedResponseAlg           string   `json:"id_token_signed_response_alg"`
-	IDTokenEncryptedResponseAlg        string   `json:"id_token_encrypted_response_alg"`
-	IDTokenEncryptedResponseEnc        string   `json:"id_token_encrypted_response_enc"`
-	Scope                              string   `json:"scope"`
+	SignedJwksURI                      string      `json:"signed_jwks_uri,omitempty"`
+	Jwks                               *Jwks       `json:"jwks,omitempty"`
+	OrganizationName                   string      `json:"organization_name,omitempty"`
+	ClientName                         string      `json:"client_name"`
+	LogoURI                            string      `json:"logo_uri,omitempty"`
+	Keywords                           []string    `json:"keywords,omitempty"`
+	Contacts                           []string    `json:"contacts,omitempty"`
+	RedirectURIs                       []string    `json:"redirect_uris"`
+	ResponseTypes                      []string    `json:"response_types"`
+	ClientRegistrationTypes            []string    `json:"client_registration_types"`
+	GrantTypes                         []string    `json:"grant_types"`
+	RequirePushedAuthorizationRequests bool        `json:"require_pushed_authorization_requests"`
+	TokenEndpointAuthMethod            string      `json:"token_endpoint_auth_method"`
+	DefaultACRValues                   []string    `json:"default_acr_values,omitempty"`
+	IDTokenSignedResponseAlg           string      `json:"id_token_signed_response_alg"`
+	IDTokenEncryptedResponseAlg        string      `json:"id_token_encrypted_response_alg"`
+	IDTokenEncryptedResponseEnc        string      `json:"id_token_encrypted_response_enc"`
+	Scope                              string      `json:"scope"`
+	TIFeaturesSupported                *TIFeatures `json:"ti_features_supported,omitempty"`
+	// Extra holds further members by name. It is written beside the typed members and never filled from a parsed
+	// statement.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// TIFeatures is the ti_features_supported member, the versions of the TI federation's features a relying party
+// supports (gemSpec_IDP_FD A_27505).
+type TIFeatures struct {
+	IDTokenVersionSupported []string `json:"id_token_version_supported" yaml:"id_token_version_supported"`
 }
 
 // FederationEntityMetadata is the federation_entity metadata; the federation master's names its fetch and
 // IdP list endpoints.
 type FederationEntityMetadata struct {
 	Name                    string   `json:"name,omitempty"`
+	OrganizationName        string   `json:"organization_name,omitempty"`
 	Contacts                []string `json:"contacts,omitempty"`
 	HomepageURI             string   `json:"homepage_uri,omitempty"`
 	FederationFetchEndpoint string   `json:"federation_fetch_endpoint,omitempty"`
 	FederationListEndpoint  string   `json:"federation_list_endpoint,omitempty"`
 	IdpListEndpoint         string   `json:"idp_list_endpoint,omitempty"`
+	// Extra holds further members by name. It is written beside the typed members and never filled from a parsed
+	// statement.
+	Extra map[string]json.RawMessage `json:"-"`
 }
 
 func parseEntityStatement(payload []byte) (*EntityStatement, error) {
