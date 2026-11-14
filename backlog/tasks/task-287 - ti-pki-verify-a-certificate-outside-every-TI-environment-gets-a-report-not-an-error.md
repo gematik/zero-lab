@@ -3,10 +3,10 @@ id: TASK-287
 title: >-
   ti pki verify: a certificate outside every TI environment gets a report, not
   an error
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-11T18:35:00Z'
-updated_date: '2026-11-11T18:41:00Z'
+updated_date: '2026-11-14T16:54:00Z'
 labels:
   - ti-cli
 dependencies: []
@@ -32,3 +32,9 @@ ti pki verify <file> with a certificate that shows no TI environment (no embedde
 <!-- SECTION:NOTES:BEGIN -->
 Report built in ti-client (outside_ti): no session, no trust material; ValidationResult with the leaf alone so the CLI tree shows it, the issuer row says 'not under any TI root'. Schema: environment.name/detection.method gain 'none', trust oneOf null, finding code environment_undetected (verify_codes_are_ti_pkis now lists ti-pki's codes plus OUTSIDE_TI). CliError::detail feeds the -v lines in Output::error. With --connect, 0.6.1 already falls back to the web profile (server_profile).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti pki verify without --env reports a certificate outside every TI environment instead of failing: INVALID, exit 1, environment.name none, trust null, finding environment_undetected, the leaf shown with 'not under any TI root'. The undetected-environment error is one line; its detection steps appear with -v. Schema pki-verify.json and tests updated. Branch feat/ti-0.6.2, released in ti 0.6.2.
+<!-- SECTION:FINAL_SUMMARY:END -->
