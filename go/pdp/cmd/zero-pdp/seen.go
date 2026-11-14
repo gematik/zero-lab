@@ -37,6 +37,10 @@ import (
 // proof or nonce still sees it as unexpired for that much longer, and the record must still be there.
 const seenClockSkew = time.Minute
 
+// seenTimeout bounds the store call on the token endpoint: the request's context has no deadline, and a stalled
+// store would otherwise hold every token request.
+const seenTimeout = 5 * time.Second
+
 // kvSeen remembers identifiers under a key prefix of a kv.Store until they expire, atomically across the replicas
 // on that store. It serves the DPoP replays (RFC 9449 Section 11.1) and the single use of client-assertion
 // nonces. Records carry their own TTL and leave with kv.Reap. Nothing is written before a proof or nonce passed
@@ -72,6 +76,8 @@ func (s kvSeen) Seen(ctx context.Context, id string, until time.Time) (bool, err
 	}
 	// max: a TTL of zero or below would mean a record that never expires.
 	ttl := max(time.Until(until), 0) + seenClockSkew
+	ctx, cancel := context.WithTimeout(ctx, seenTimeout)
+	defer cancel()
 	set, err := s.store.SetIfAbsent(ctx, s.prefix+id, []byte{1}, ttl)
 	if err != nil {
 		return false, fmt.Errorf("%s: %w", s.prefix, err)

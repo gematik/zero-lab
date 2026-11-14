@@ -229,6 +229,52 @@ func TestSignOut_ClearsSession(t *testing.T) {
 	}
 }
 
+// A sign-out the browser abandons mid-request still ends the session everywhere: SPAs fire it and navigate on.
+func TestSignOut_EndsTheSessionWhenTheBrowserGoesAway(t *testing.T) {
+	cfg := testConfig(&fakeBackend{})
+	cfg.Sessions = cancelAwareSessions{newMemorySessions()}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := s.sessions.create()
+	sess.Identity = map[string]any{"sub": "x"}
+	if err := s.sessions.save(t.Context(), sess); err != nil {
+		t.Fatal(err)
+	}
+
+	gone, cancel := context.WithCancel(t.Context())
+	cancel()
+	req := httptest.NewRequestWithContext(gone, http.MethodPost, "/oauth2/sign_out", nil)
+	req.Header.Set("X-Requested-With", "fetch")
+	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+	s.Handler().ServeHTTP(httptest.NewRecorder(), req)
+
+	if _, err := s.sessions.byID(t.Context(), sess.ID); err == nil {
+		t.Error("the session survived a sign-out the browser abandoned")
+	}
+	if revoked, err := cfg.Revocations.Revoked(t.Context(), sess.ID); err != nil || !revoked {
+		t.Errorf("the session was not revoked: revoked=%v err=%v", revoked, err)
+	}
+}
+
+// cancelAwareSessions fails every call under a cancelled context, as a network store does.
+type cancelAwareSessions struct{ *memorySessions }
+
+func (c cancelAwareSessions) Load(ctx context.Context, id string) (*Session, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return c.memorySessions.Load(ctx, id)
+}
+
+func (c cancelAwareSessions) Delete(ctx context.Context, id string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return c.memorySessions.Delete(ctx, id)
+}
+
 // Server rule 2: CSRF protection for cookie flows.
 func TestServerRule2_SignOutByPOSTRequiresCSRFProtection(t *testing.T) {
 	s := newTestServer(t)
@@ -337,8 +383,8 @@ func TestServerRule14_ARevocationThatFailsLogsNoSid(t *testing.T) {
 	}
 }
 
-// Server rule 17, fail closed: a snapshot whose revocation cannot be checked is denied.
-func TestServerRule17_ARevocationCheckThatFailsDenies(t *testing.T) {
+// Server rule 16, fail closed: a snapshot whose revocation cannot be checked is denied.
+func TestServerRule16_ARevocationCheckThatFailsDenies(t *testing.T) {
 	cfg := testConfig(&fakeBackend{})
 	cfg.Revocations = failingRevocations{}
 	cfg.SnapshotKeyPath = writeKeyFile(t, "key")

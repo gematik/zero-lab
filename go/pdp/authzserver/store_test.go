@@ -435,3 +435,20 @@ func TestRFC9449_8_ASourceOnTheNonceKeysServesAVerifier(t *testing.T) {
 		t.Fatalf("refused the source's nonce: %v", err)
 	}
 }
+
+// Server rule 10: the session store only ever receives the hash of a refresh token; the raw token goes to the
+// client alone, so a reader of the store holds nothing it could redeem.
+func TestServerRule10_TheStoreReceivesOnlyTheHashOfARefreshToken(t *testing.T) {
+	s, _ := newTestServer(t)
+	session := &Session{ID: "session-1", ClientID: testClientID, AccessTokenDuration: time.Minute, ExpiresAt: time.Now().Add(time.Hour)}
+	response, err := s.issueOrRefreshTokens(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.RefreshToken == "" || session.RefreshToken == response.RefreshToken {
+		t.Fatalf("the session to be stored holds the raw refresh token")
+	}
+	if session.RefreshToken != hashRefreshToken(response.RefreshToken) {
+		t.Errorf("the session holds %q, not the hash of the issued token", session.RefreshToken)
+	}
+}

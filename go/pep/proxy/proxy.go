@@ -483,6 +483,9 @@ func (s *Server) requestOwnsSession(r *http.Request, sess *Session) bool {
 	return err == nil && hashToken(c.Value) == sess.ID
 }
 
+// signOutTimeout bounds the store calls of a sign-out, which no longer end with the request.
+const signOutTimeout = 5 * time.Second
+
 // handleSignOut clears the session. POST (XHR) requires the X-Requested-With CSRF header and returns 204;
 // GET (a link) renders signed_out.html.
 func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
@@ -490,9 +493,13 @@ func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing X-Requested-With", http.StatusForbidden)
 		return
 	}
-	if sess, ok := s.currentSession(r); ok {
-		_ = s.sessions.deleteByID(r.Context(), sess.ID)
-		s.revoke(r.Context(), sess.ID) // instant: any valid snapshot for this sid is rejected on the fast path
+	// A browser that navigates away right after the request cancels it; a sign-out cut short would leave a
+	// session that still authenticates. The bound keeps a stalled store from holding the handler instead.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), signOutTimeout)
+	defer cancel()
+	if sess, ok := s.currentSession(r.WithContext(ctx)); ok {
+		_ = s.sessions.deleteByID(ctx, sess.ID)
+		s.revoke(ctx, sess.ID) // instant: any valid snapshot for this sid is rejected on the fast path
 	}
 	expireCookie(w, s.cookie)
 	if s.snapCookie != nil {

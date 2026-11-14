@@ -63,14 +63,20 @@ func TestReplays_StoreFailureIsAnError(t *testing.T) {
 	}
 }
 
-// The request's context reaches the store, so its deadline bounds the call.
-func TestReplays_TheStoreCallRunsUnderTheRequestContext(t *testing.T) {
+// The store call runs under the request's context, so a request that ends ends it, and under a deadline of its
+// own, as the token endpoint's context has none.
+func TestReplays_TheStoreCallFollowsTheRequestAndIsBounded(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	store := &ttlRecorder{Store: kv.NewMemory()}
 	_, _ = newKVReplays(store).Seen(ctx, "proof", time.Now().Add(time.Minute))
-	if store.ctx != ctx {
-		t.Fatal("the store got another context")
+	if store.ctx == nil || store.ctx.Err() == nil {
+		t.Fatal("the store call outlives the request")
+	}
+	store = &ttlRecorder{Store: kv.NewMemory()}
+	_, _ = newKVReplays(store).Seen(t.Context(), "proof", time.Now().Add(time.Minute))
+	if deadline, ok := store.ctx.Deadline(); !ok || time.Until(deadline) > seenTimeout {
+		t.Fatalf("the store call is not bounded: deadline=%v ok=%v", deadline, ok)
 	}
 }
 
