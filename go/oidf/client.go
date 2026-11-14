@@ -125,13 +125,18 @@ func (c *RelyingPartyClient) Exchange(ctx context.Context, login openid.Login, c
 }
 
 // decryptIDToken takes only what buildMetadata registers the relying party for: id_token_encrypted_response_alg
-// ECDH-ES and id_token_encrypted_response_enc A256GCM.
+// ECDH-ES and id_token_encrypted_response_enc A256GCM. The content key is agreed through the ID token key's
+// KeyAgreement, the key the header's kid names (A_23195).
 func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, error) {
 	encrypted, err := jose.ParseEncryptedCompact(raw, []jose.KeyAlgorithm{jose.ECDH_ES}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
 		return nil, err
 	}
-	return encrypted.Decrypt(c.rp.encPrivateKey)
+	// go-jose reports every failure of the key as one cryptographic error, so the kid is checked here as well to say why.
+	if kid := encrypted.Header.KeyID; kid != "" && kid != c.rp.keys.DecryptKID {
+		return nil, fmt.Errorf("%w: kid names another key", ErrIDTokenEncryption)
+	}
+	return encrypted.Decrypt(opaqueDecrypter{agreement: c.rp.keys.Decrypt, kid: c.rp.keys.DecryptKID})
 }
 
 func (c *RelyingPartyClient) verifyIDToken(login openid.Login, response *openid.TokenResponse) error {

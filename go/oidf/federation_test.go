@@ -46,7 +46,7 @@ import (
 	"github.com/gematik/zero-lab/go/openid"
 )
 
-func newTestKey(t *testing.T) *ecdsa.PrivateKey {
+func newTestKey(t testing.TB) *ecdsa.PrivateKey {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -300,7 +300,7 @@ func newLoginStub(t *testing.T) *loginStub {
 	t.Cleanup(server.Close)
 	stub.client = &RelyingPartyClient{
 		rp: &RelyingParty{
-			encPrivateKey:   stub.encKey,
+			keys:            Keys{Decrypt: ecdhKey(t, stub.encKey), DecryptKID: "enc"},
 			httpClient:      server.Client(),
 			entityStatement: &EntityStatement{Subject: "https://rp.example"},
 		},
@@ -313,7 +313,7 @@ func newLoginStub(t *testing.T) *loginStub {
 	return stub
 }
 
-func encryptForTest(t *testing.T, recipient any, alg jose.KeyAlgorithm, enc jose.ContentEncryption, plaintext string) string {
+func encryptForTest(t testing.TB, recipient any, alg jose.KeyAlgorithm, enc jose.ContentEncryption, plaintext string) string {
 	t.Helper()
 	encrypter, err := jose.NewEncrypter(enc, jose.Recipient{Algorithm: alg, Key: recipient}, nil)
 	if err != nil {
@@ -416,9 +416,8 @@ func TestA_23049_AnIDTokenThatDoesNotHoldIsRefused(t *testing.T) {
 func TestSignEntityStatementVerifiesAgainstItsPublishedKey(t *testing.T) {
 	key := newTestKey(t)
 	rp := &RelyingParty{
-		cfg:           &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
-		sigPrivateKey: key,
-		signKid:       "sign-kid",
+		cfg:  &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
+		keys: Keys{Sign: key, SignKID: "sign-kid"},
 		entityStatement: &EntityStatement{
 			Issuer:   "https://rp.example",
 			Subject:  "https://rp.example",
@@ -722,7 +721,7 @@ func TestRelyingPartyDoesNotFollowARedirectFromPARNorTheTokenEndpoint(t *testing
 
 func TestServeSignedJwksAnswersOnlyOnceWhenItCannotSign(t *testing.T) {
 	rp := &RelyingParty{
-		sigPrivateKey:   "not a key",
+		keys:            Keys{Sign: failingSigner{newTestKey(t)}, SignKID: "sign-kid"},
 		entityStatement: &EntityStatement{Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{Jwks: &Jwks{Keys: &jose.JSONWebKeySet{}}}}},
 	}
 	recorder := httptest.NewRecorder()

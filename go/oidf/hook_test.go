@@ -42,9 +42,8 @@ func TestEntityStatementHook(t *testing.T) {
 	jwks := &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: prk.Public(), KeyID: "sign-kid", Algorithm: "ES256"}}}}
 
 	rp := &RelyingParty{
-		cfg:           &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
-		sigPrivateKey: prk,
-		signKid:       "sign-kid",
+		cfg:  &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
+		keys: Keys{Sign: prk, SignKID: "sign-kid"},
 		entityStatement: &EntityStatement{
 			Issuer:  "https://rp.example",
 			Subject: "https://rp.example",

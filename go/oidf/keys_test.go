@@ -342,8 +342,7 @@ func TestServeSignedJwksVerifiesAndKeepsItsShape(t *testing.T) {
 	}
 	enc := jose.JSONWebKey{Key: key.Public(), KeyID: "enc", Use: "enc", Algorithm: "ECDH-ES"}
 	rp := &RelyingParty{
-		sigPrivateKey: key,
-		signKid:       "sign-kid",
+		keys: Keys{Sign: key, SignKID: "sign-kid"},
 		entityStatement: &EntityStatement{
 			Subject:  "https://rp.example",
 			Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{Jwks: &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{enc}}}}},

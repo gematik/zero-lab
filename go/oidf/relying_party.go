@@ -42,6 +42,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	"github.com/go-jose/go-jose/v4/cryptosigner"
 
 	"github.com/gematik/zero-lab/go/openid"
 )
@@ -147,17 +148,13 @@ var knownFedMasters = map[string]string{
 // RelyingParty is this service's entity in the federation: it signs and serves its entity statement and creates
 // clients for the federated OpenID providers.
 type RelyingParty struct {
-	cfg              *RelyingPartyConfig
-	trustAnchor      *jose.JSONWebKeySet
-	sigPrivateKey    any
-	signKid          string
-	encPrivateKey    any
-	clientPrivateKey any
-	entityStatement  *EntityStatement
-	federation       *OpenidFederation
-	httpClient       *http.Client
-	hooks            []func(*EntityStatement)
-	baseDir          string
+	cfg             *RelyingPartyConfig
+	trustAnchor     *jose.JSONWebKeySet
+	keys            Keys
+	entityStatement *EntityStatement
+	federation      *OpenidFederation
+	httpClient      *http.Client
+	hooks           []func(*EntityStatement)
 }
 
 // Validate reports a missing required field. What needs I/O is checked when the keys are loaded.
@@ -166,11 +163,25 @@ func (cfg *RelyingPartyConfig) Validate() error {
 		name    string
 		present bool
 	}{
-		{"sub", cfg.Subject != ""},
-		{"fed_master_url", cfg.FedMasterURL != ""},
 		{"sign_key", !reflect.ValueOf(cfg.SignKey).IsZero()},
 		{"enc_key", !reflect.ValueOf(cfg.EncKey).IsZero()},
 		{"client_key", !reflect.ValueOf(cfg.ClientKey).IsZero()},
+	} {
+		if !field.present {
+			return fmt.Errorf("%s is required", field.name)
+		}
+	}
+	return cfg.validateEntity()
+}
+
+// validateEntity reports a missing field of what the relying party publishes and whom it trusts.
+func (cfg *RelyingPartyConfig) validateEntity() error {
+	for _, field := range []struct {
+		name    string
+		present bool
+	}{
+		{"sub", cfg.Subject != ""},
+		{"fed_master_url", cfg.FedMasterURL != ""},
 		{"relying_party.client_name", cfg.RelyingParty.ClientName != ""},
 		{"relying_party.redirect_uris", len(cfg.RelyingParty.RedirectURIs) > 0},
 	} {
@@ -181,42 +192,84 @@ func (cfg *RelyingPartyConfig) Validate() error {
 	return nil
 }
 
-// NewRelyingParty validates cfg, resolves its relative key paths against baseDir, loads its keys and fetches the federation master's entity statement,
-// so the master has to be reachable and its statement has to verify for this to succeed.
+// NewRelyingParty validates cfg, loads its keys from the files and inline JWKs it names, with relative paths resolved
+// against baseDir, and builds the relying party with [New]. A key without a configured kid gets its RFC 7638
+// thumbprint.
 func NewRelyingParty(ctx context.Context, cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, error) {
-	err := cfg.Validate()
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+	keys, err := loadKeys(cfg, baseDir)
 	if err != nil {
+		return nil, err
+	}
+	return New(ctx, cfg, keys)
+}
+
+// loadKeys reads the three keys of a file-based configuration.
+func loadKeys(cfg *RelyingPartyConfig, baseDir string) (Keys, error) {
+	if cfg.ClientKey.CertPEMPath == "" {
+		return Keys{}, errors.New("client_key.cert_pem_path is required (mTLS)")
+	}
+	sign, _, signKID, err := loadKeyConfig(cfg.SignKey, baseDir, keyUseSign)
+	if err != nil {
+		return Keys{}, fmt.Errorf("sign_key: %w", err)
+	}
+	enc, _, decryptKID, err := loadKeyConfig(cfg.EncKey, baseDir, keyUseEncrypt)
+	if err != nil {
+		return Keys{}, fmt.Errorf("enc_key: %w", err)
+	}
+	client, _, clientKID, err := loadKeyConfig(cfg.ClientKey, baseDir, keyUseClientAuth)
+	if err != nil {
+		return Keys{}, fmt.Errorf("client_key: %w", err)
+	}
+
+	signer, ok := sign.(crypto.Signer)
+	if !ok {
+		return Keys{}, fmt.Errorf("sign_key: a %T cannot sign", sign)
+	}
+	encKey, ok := enc.(*ecdsa.PrivateKey)
+	if !ok {
+		return Keys{}, fmt.Errorf("enc_key: a %T is no EC key", enc)
+	}
+	agreement, err := encKey.ECDH()
+	if err != nil {
+		return Keys{}, fmt.Errorf("enc_key: %w", err)
+	}
+	certificate, err := tlsCertFromKey(client, joinBase(baseDir, cfg.ClientKey.CertPEMPath))
+	if err != nil {
+		return Keys{}, fmt.Errorf("client_key: %w", err)
+	}
+	return Keys{
+		Sign: signer, SignKID: signKID,
+		Decrypt: agreement, DecryptKID: decryptKID,
+		Client: certificate, ClientKID: clientKID,
+	}, nil
+}
+
+// New builds the relying party from cfg and keys and resolves the federation master's entity statement, so the
+// master has to be reachable and its statement has to verify. The key files and inline JWKs of cfg are not read:
+// keys are the ones that count. It refuses a configuration without a document store and keys that are not as
+// A_23196 requires (see [Keys]).
+func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty, error) {
+	if err := cfg.validateEntity(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 	if cfg.Documents == nil {
 		return nil, errors.New("config validation failed: a store of federation documents is required")
 	}
-
-	rp := RelyingParty{cfg: cfg, baseDir: baseDir}
-
-	rp.trustAnchor, err = cfg.resolveTrustAnchor()
+	if err := keys.check(); err != nil {
+		return nil, err
+	}
+	statementKeys, relyingPartyKeys, err := keys.publishedKeys()
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.ClientKey.CertPEMPath == "" {
-		return nil, errors.New("client_key.cert_pem_path is required (mTLS)")
-	}
-
-	var sigPublicKey, encPublicKey, clientPublicKey jose.JSONWebKey
-	if rp.sigPrivateKey, sigPublicKey, rp.signKid, err = loadKeyConfig(cfg.SignKey, baseDir, keyUseSign); err != nil {
-		return nil, fmt.Errorf("sign_key: %w", err)
-	}
-	if rp.encPrivateKey, encPublicKey, _, err = loadKeyConfig(cfg.EncKey, baseDir, keyUseEncrypt); err != nil {
-		return nil, fmt.Errorf("enc_key: %w", err)
-	}
-	if rp.clientPrivateKey, clientPublicKey, _, err = loadKeyConfig(cfg.ClientKey, baseDir, keyUseClientAuth); err != nil {
-		return nil, fmt.Errorf("client_key: %w", err)
-	}
-
-	tlsCert, err := tlsCertFromKey(rp.clientPrivateKey, rp.absPath(cfg.ClientKey.CertPEMPath))
+	rp := RelyingParty{cfg: cfg, keys: keys}
+	rp.trustAnchor, err = cfg.resolveTrustAnchor()
 	if err != nil {
-		return nil, fmt.Errorf("build mTLS client cert: %w", err)
+		return nil, err
 	}
 
 	baseClient := cfg.HTTPClient
@@ -232,8 +285,9 @@ func NewRelyingParty(ctx context.Context, cfg *RelyingPartyConfig, baseDir strin
 	// unconditionally: self_signed_tls_client_auth means the IDP's CertificateRequest advertises a
 	// list of acceptable CA names that does not include our self-signed issuer, and Go would otherwise
 	// withhold the cert for not chaining to one of them.
+	clientCertificate := keys.Client
 	mtlsClient.Transport = AddAPIKeyTransport(transportWithClientCertificate(baseClient.Transport, func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		return &tlsCert, nil
+		return &clientCertificate, nil
 	}), cfg.APIKey)
 	rp.httpClient = &mtlsClient
 
@@ -241,10 +295,9 @@ func NewRelyingParty(ctx context.Context, cfg *RelyingPartyConfig, baseDir strin
 		Issuer:   cfg.Subject,
 		Subject:  cfg.Subject,
 		Metadata: cfg.buildMetadata(),
+		Jwks:     &Jwks{Keys: statementKeys},
 	}
-
-	rp.entityStatement.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{sigPublicKey}}}
-	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{encPublicKey, clientPublicKey}}}
+	rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
 
 	rp.federation, err = NewOpenidFederation(ctx, cfg.FedMasterURL, rp.trustAnchor,
 		WithHTTPClient(baseClient), WithAPIKey(cfg.APIKey), WithClock(rp.now), WithDocuments(cfg.Documents), WithLogger(cfg.Logger))
@@ -253,13 +306,6 @@ func NewRelyingParty(ctx context.Context, cfg *RelyingPartyConfig, baseDir strin
 	}
 
 	return &rp, nil
-}
-
-func (rp *RelyingParty) absPath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(rp.baseDir, path)
 }
 
 // AddEntityStatementHook registers a function applied to a copy of the entity statement on every
@@ -334,15 +380,19 @@ type signedJwksClaims struct {
 	Keys      *jose.JSONWebKeySet `json:"keys"`
 }
 
-// signClaims signs claims as a compact JWT with the signing key, under its kid and the given typ.
+// signClaims signs claims as a compact JWT with the signing key, under its kid and the given typ. The key signs
+// through crypto.Signer, so it may be an HSM's, and only ES256 (A_23196).
 func (rp *RelyingParty) signClaims(typ string, claims any) ([]byte, error) {
+	if rp.keys.Sign == nil {
+		return nil, errors.New("no signing key")
+	}
 	payload, err := json.Marshal(claims)
 	if err != nil {
 		return nil, err
 	}
 	signer, err := jose.NewSigner(
-		jose.SigningKey{Algorithm: jose.ES256, Key: jose.JSONWebKey{Key: rp.sigPrivateKey, KeyID: rp.signKid}},
-		(&jose.SignerOptions{}).WithType(jose.ContentType(typ)),
+		jose.SigningKey{Algorithm: jose.ES256, Key: cryptosigner.Opaque(rp.keys.Sign)},
+		(&jose.SignerOptions{}).WithType(jose.ContentType(typ)).WithHeader("kid", rp.keys.SignKID),
 	)
 	if err != nil {
 		return nil, err
@@ -620,7 +670,11 @@ func tlsCertFromKey(clientPrivateKey any, certPEMPath string) (tls.Certificate, 
 	if !ok {
 		return tls.Certificate{}, fmt.Errorf("client private key is a %T, not an EC key", clientPrivateKey)
 	}
-	return tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: ecKey}, nil
+	leaf, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("parse cert: %w", err)
+	}
+	return tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: ecKey, Leaf: leaf}, nil
 }
 
 // resolveTrustAnchor returns the federation master's signing key set: the explicit FedMasterJWK, else the
