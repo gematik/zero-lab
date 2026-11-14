@@ -1,10 +1,10 @@
 ---
 id: TASK-306
 title: 'pdp authzserver: take its stores through its own interfaces, wired by zero-pdp'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
-updated_date: '2026-11-14T15:21:00Z'
+updated_date: '2026-11-14T16:02:00Z'
 labels: []
 dependencies: []
 ordinal: 321000
@@ -23,3 +23,9 @@ authzserver.Config takes a raw kv.Store (config.go Store), and NewServer builds 
 - [x] #3 NewServer refuses a configuration without the stores instead of creating in-memory ones, or the in-memory default is chosen by the command and logged
 - [x] #4 Shared-by-replicas behaviour (nonces, replay, sessions) keeps its tests
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+authzserver.Config takes Sessions, NonceRedemptions and Replays instead of kv.Store; New refuses a configuration without them or NonceKeys. The kv-backed session store moved to cmd/zero-pdp, which wires all stores over one (memory or sealed Postgres) store; authzserver imports no kv. A test proves the store only receives refresh token hashes. Dead NewFromConfigFile: TASK-312. Branch refactor/module-stores.
+<!-- SECTION:FINAL_SUMMARY:END -->

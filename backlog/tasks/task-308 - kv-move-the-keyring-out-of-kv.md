@@ -1,10 +1,10 @@
 ---
 id: TASK-308
 title: 'zaddy: load its DPoP nonce keys itself instead of importing kv'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
-updated_date: '2026-11-14T15:21:00Z'
+updated_date: '2026-11-14T16:02:00Z'
 labels: []
 dependencies: []
 ordinal: 323000
@@ -22,3 +22,9 @@ zaddy imports kv only for kv.LoadKeyring, to get the keys of its DPoP nonces (za
 - [x] #2 A malformed file, a key of the wrong size or a duplicate ID refuses provisioning, with tests
 - [x] #3 kv's keyring is unchanged
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zaddy reads its DPoP nonce key file itself at provisioning, in kv's keyring format with the same refusals (one test each), and no longer requires kv. Like Caddy's own certificate files the file is not watched; the README says to rotate with caddy reload --force on every replica (maintainer's decision). Branch refactor/module-stores.
+<!-- SECTION:FINAL_SUMMARY:END -->

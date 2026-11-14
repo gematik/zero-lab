@@ -3,10 +3,10 @@ id: TASK-309
 title: >-
   dpop: Replays instead of ReplayCache, ctx and error on its interfaces;
   kv-backed Replays moves to the hosts
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T10:42:00Z'
-updated_date: '2026-11-14T15:21:00Z'
+updated_date: '2026-11-14T16:02:00Z'
 labels: []
 dependencies: []
 ordinal: 324000
@@ -32,3 +32,9 @@ kv.ReplayCache (kv/replay.go) is dpop logic inside kv: the dpop:replay: prefix, 
 - [x] #6 pep's builder refuses a missing Replays; zaddy passes in-memory Replays explicitly and logs that they hold for one replica
 - [x] #7 nonce.Record becomes nonce.Redemptions with Seen(ctx, id, until) (bool, error), true meaning already redeemed; one kv-backed type in zero-pdp serves both, with unchanged key layouts
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+dpop.ReplayCache is Replays (MemoryReplays, WithDPoPReplays in pep); Replays.Seen, NonceSource.Valid and Fresh take a context and return an error, and an error refuses the proof. nonce.Record is the interface Redemptions with dpop's direction (true = seen). kv holds nothing of dpop: one kvSeen type in cmd/zero-pdp serves replays and redemptions with unchanged key layouts and a 5 s bound on the store call. pep's Build refuses a missing Replays; zaddy passes in-memory replays explicitly and warns (shared replays: TASK-310). Branch refactor/module-stores.
+<!-- SECTION:FINAL_SUMMARY:END -->

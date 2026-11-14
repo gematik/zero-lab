@@ -3,10 +3,10 @@ id: TASK-307
 title: >-
   pep/proxy: SessionStore and Revocations as pep interfaces, wired by
   zero-pep-proxy
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T10:36:00Z'
-updated_date: '2026-11-14T15:21:00Z'
+updated_date: '2026-11-14T16:02:00Z'
 labels: []
 dependencies: []
 ordinal: 322000
@@ -26,3 +26,9 @@ proxy.Config takes kv.Store and kv.Bus (proxy.go), and the session store (sessio
 - [x] #4 Revocations is the one name for the interface and its implementations (no Revoker, revocation store or cache)
 - [ ] #5 Revocations methods take a context and return an error; an error means revoked (deny), with a test; entries carry an until so they expire with the session
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+proxy.Config takes SessionStore and Revocations (ctx and error on every method; a failing revocation check denies; entries expire with the snapshot TTL) instead of kv.Store and kv.Bus. kv-backed versions live in cmd/zero-pep-proxy with unchanged keys, sealing and channel; the proxy refuses to start when it cannot follow revocations (maintainer confirmed). Sign-out runs to the end when the browser cancels the request, with a test. Gateway snapshot routes not checking revocations predates this: TASK-311. Branch refactor/module-stores.
+<!-- SECTION:FINAL_SUMMARY:END -->
