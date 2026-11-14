@@ -1,6 +1,6 @@
 # Release Notes
 
-# Unreleased go/dpop
+# Release go/dpop v1.0.0-beta.2
 
 ### breaking
 - `ReplayCache` is `Replays`, `MemoryReplayCache` is `MemoryReplays`, `NewMemoryReplayCache` is
@@ -11,7 +11,11 @@
   so they can be kept in a store; `Verifier.Verify` takes the request's context first and passes it
   on. An error from either refuses the proof.
 
-# Unreleased go/nonce
+### verified
+- `just check` across all Go modules passed on db34b723; later commits change only release notes and
+  go.mod pins. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+
+# Release go/nonce v0.23.0
 
 ### breaking
 - `Record` is the interface `Redemptions`; its `Seen` reports true for a nonce redeemed before, as
@@ -19,20 +23,42 @@
 - `Source.Valid` and `Source.Fresh` take a context and return an error, to meet the new
   `dpop.NonceSource`.
 
-# Unreleased go/kv
+### verified
+- `just check` across all Go modules passed on db34b723; later commits change only release notes and
+  go.mod pins. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+
+# Release go/kv v0.2.0
 
 ### breaking
 - `ReplayCache` and `NewReplayCache` are gone: kv holds nothing of dpop. A host builds its replays
   on `SetIfAbsent`, as zero-pdp does (TASK-309).
 
-# Unreleased go/pep
+### added
+- `WithSealedExpiry` seals each record with the time it ends (record format 2), so that whoever
+  can write to the store cannot extend a record or put back a deleted one beyond its own lifetime;
+  records of format 1 still open (TASK-304).
+- `Swapper` replaces a value only while it is still the one a caller read, in memory, Postgres and
+  through `NewSealed` (TASK-305).
+
+### verified
+- `just check` across all Go modules passed on db34b723; later commits change only release notes and
+  go.mod pins. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- kv on Postgres (`TEST_DATABASE_URL`, postgres:18-alpine) passed on db34b723.
+
+# Release go/pep v0.27.0
 
 ### breaking
 - `WithDPoPReplayCache` is `WithDPoPReplays`, and `Build` refuses a builder without it: the host
   picks the backend, `dpop.NewMemoryReplays` for a single replica (TASK-309).
 - On the new dpop: nonce sources and replays receive the request's context.
 
-# Unreleased go/pdp
+### verified
+- `just check` across all Go modules passed on db34b723; later commits change only release notes and
+  go.mod pins. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- kv on Postgres (`TEST_DATABASE_URL`, postgres:18-alpine) passed on db34b723.
+- The OpenID Federation suite was waived by the maintainer: this release changes no federation code.
+
+# Release go/pdp v0.23.0
 
 ### breaking
 - `authzserver.Config` takes `Sessions`, `NonceRedemptions` and `Replays` in place of `Store`, and
@@ -43,7 +69,16 @@
   under the keys used before; without `DATABASE_URL` that store is in memory, with the warning as
   before.
 
-# Unreleased go/pep/proxy
+### verified
+- `just check` across all Go modules passed on db34b723; later commits change only release notes and
+  go.mod pins. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- kv on Postgres (`TEST_DATABASE_URL`, postgres:18-alpine) passed on db34b723.
+- PDP end to end (`just pdp-e2e`) passed on db34b723 against a local zero-pdp on a sealed Postgres
+  store; federation PAR, cross-client introspection and the entity statement checks skipped for
+  lack of their variables. PDP HITL was waived by the maintainer: this release rewires the stores
+  and changes no login code.
+
+# Release go/pep/proxy v0.2.0
 
 ### breaking
 - `Config` takes `Sessions` (a `SessionStore`) and `Revocations` in place of `Store` and `Bus`, and
@@ -58,15 +93,24 @@
   warning. It refuses to start when it cannot subscribe to the revocations or load the stored
   ones, where it logged and went on before.
 
-# Unreleased go/zaddy
+### verified
+- `just check` across all Go modules passed on db34b723; later commits change only release notes and
+  go.mod pins. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- Revocations reaching another replica over Postgres (`PEP_PG_DSN`) passed on db34b723.
+
+# Release go/zaddy v0.7.0
 
 ### changes
 - zaddy chooses DPoP replays in memory itself, as pep did before, and warns at start that replay
   detection holds for this replica only (TASK-309).
 - zaddy reads its DPoP nonce key file itself, once at provisioning, in the format of kv's keyring,
-  and no longer requires kv (TASK-308). A rotated file takes effect with a config reload, no longer
+  and no longer requires kv (TASK-308). A rotated file takes effect with `caddy reload --force`, no longer
   while running. A malformed line, a key not of 32 bytes, a duplicate or invalid ID, or an empty
   file refuses provisioning.
+
+### verified
+- `just check` across all Go modules passed on db34b723; later commits change only release notes and
+  go.mod pins. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
 
 # Release go/oidf v0.51.0
 
