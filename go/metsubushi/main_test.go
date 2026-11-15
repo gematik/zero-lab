@@ -30,7 +30,8 @@ import (
 )
 
 // TestIndexAnswersBrowsersWithHTMLAndProgramsWithJSON shows the smoke test's two readers at GET /: a browser's
-// Accept gets the page, curl's and a program's get the info document, and both answers say they vary by Accept.
+// Accept gets the page, curl's and a program's get the request echoed with its headers, and both answers say they
+// vary by Accept.
 func TestIndexAnswersBrowsersWithHTMLAndProgramsWithJSON(t *testing.T) {
 	cases := []struct {
 		name, accept, contentType string
@@ -43,7 +44,8 @@ func TestIndexAnswersBrowsersWithHTMLAndProgramsWithJSON(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			r := httptest.NewRequest(http.MethodGet, "/?probe=1", nil)
+			r.Header.Set("X-Userinfo", "from-the-gateway")
 			if c.accept != "" {
 				r.Header.Set("Accept", c.accept)
 			}
@@ -63,8 +65,16 @@ func TestIndexAnswersBrowsersWithHTMLAndProgramsWithJSON(t *testing.T) {
 				if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
 					t.Fatal(err)
 				}
-				if doc["app"] != "metsubushi" {
-					t.Fatalf("app %v, want metsubushi", doc["app"])
+				if doc["app"] != "metsubushi" || doc["method"] != http.MethodGet {
+					t.Fatalf("app %v method %v, want metsubushi GET", doc["app"], doc["method"])
+				}
+				headers, _ := doc["headers"].(map[string]any)
+				if headers["X-Userinfo"] != "from-the-gateway" {
+					t.Fatalf("headers %v lack the gateway's X-Userinfo", headers)
+				}
+				args, _ := doc["args"].(map[string]any)
+				if args["probe"] != "1" {
+					t.Fatalf("args %v lack probe", args)
 				}
 			}
 		})

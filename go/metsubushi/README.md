@@ -12,7 +12,7 @@ The whole thing is a single static Go binary embedded into a `scratch` image —
 
 | Method | Path                | Description                              |
 | ------ | ------------------- | ---------------------------------------- |
-| GET    | `/`                 | The smoke-test page to a browser (`Accept: text/html`), the `/api/info` JSON to curl and programs |
+| GET    | `/`                 | The smoke-test page to a browser (`Accept: text/html`); to curl and programs the request echoed back, as `/api/anything` |
 | GET    | `/healthz`          | Liveness, uptime, request count          |
 | GET    | `/api/info`         | Pod metadata (hostname, pod name/IP, …)  |
 | GET    | `/api/headers`      | Reflected request headers                |

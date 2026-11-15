@@ -97,10 +97,10 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The same URL serves the smoke test's two readers: a browser gets the page, curl and test programs the
-	// document of /api/info.
+	// request echoed back, as /api/anything does.
 	w.Header().Set("Vary", "Accept")
 	if !wantsHTML(r.Header.Values("Accept")) {
-		writeJSON(w, http.StatusOK, info())
+		writeJSON(w, http.StatusOK, echo(r))
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -188,6 +188,12 @@ func handleUUID(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleEcho(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, echo(r))
+}
+
+// echo is the request as it arrived, which is what a smoke test behind a gateway needs to see: above all the
+// headers the gateway added.
+func echo(r *http.Request) map[string]any {
 	args := map[string]string{}
 	for k, v := range r.URL.Query() {
 		args[k] = strings.Join(v, ",")
@@ -196,14 +202,15 @@ func handleEcho(w http.ResponseWriter, r *http.Request) {
 	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
 		scheme = "https"
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	return map[string]any{
+		"app":     "metsubushi",
 		"method":  r.Method,
 		"url":     scheme + "://" + r.Host + r.URL.RequestURI(),
 		"args":    args,
 		"headers": flatHeaders(r),
 		"origin":  clientIP(r),
 		"host":    hostname(),
-	})
+	}
 }
 
 func handleStatus(w http.ResponseWriter, r *http.Request) {
