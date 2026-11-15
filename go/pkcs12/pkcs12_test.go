@@ -371,6 +371,56 @@ func TestDecodeWrongPasswordAndTampering(t *testing.T) {
 	}
 }
 
+// TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey decodes files without
+// MAC with the wrong password until the padding of a decryption happens to be
+// valid (about 1 in 256), so the plaintext behind valid padding is refused in
+// every run, not only in the run that draws it.
+func TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey(t *testing.T) {
+	_, keyDER := identity(t, "ec")
+	bags := &pkcs12.Bags{PrivateKeys: []pkcs12.PrivateKeyBag{{Raw: keyDER}}}
+	opts := pkcs12.DefaultEncodeOptions()
+	opts.IncludeMAC = false
+	opts.Iterations = 1
+	for range 20000 {
+		data, err := pkcs12.EncodeWithOptions(bags, []byte("right"), opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = pkcs12.Decode(data, []byte("wrong"))
+		switch {
+		case errors.Is(err, pkcs12.ErrInvalidPadding):
+		case errors.Is(err, pkcs12.ErrParse):
+			return
+		default:
+			t.Fatalf("wrong password with valid padding: %v, want ErrParse", err)
+		}
+	}
+	t.Fatal("no decryption with the wrong password had valid padding")
+}
+
+// TestP12_041AShroudedKeyIsAPrivateKeyInfo: the decrypted octets of a
+// shrouded key bag are returned only when they are one DER PrivateKeyInfo.
+func TestP12_041AShroudedKeyIsAPrivateKeyInfo(t *testing.T) {
+	_, keyDER := identity(t, "ec")
+	opts := pkcs12.DefaultEncodeOptions()
+	opts.IncludeMAC = false
+	for name, raw := range map[string][]byte{
+		"random octets":  []byte("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"),
+		"trailing octet": append(bytes.Clone(keyDER), 0),
+		"empty":          {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			data, err := pkcs12.EncodeWithOptions(&pkcs12.Bags{PrivateKeys: []pkcs12.PrivateKeyBag{{Raw: raw}}}, []byte("pw"), opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pkcs12.Decode(data, []byte("pw")); !errors.Is(err, pkcs12.ErrParse) {
+				t.Errorf("error = %v, want ErrParse", err)
+			}
+		})
+	}
+}
+
 func TestIterationLimits(t *testing.T) {
 	data, err := pkcs12.Encode(testBags(t), []byte("x"))
 	if err != nil {

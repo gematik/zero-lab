@@ -156,6 +156,9 @@ func collectBags(sc *syntax.SafeContents, password []byte, bags *Bags, budget *s
 
 		case bag.BagID.Equal(syntax.OIDKeyBag):
 			// A KeyBag holds the PKCS#8 PrivateKeyInfo in the clear.
+			if err := syntax.CheckPrivateKeyInfo(bag.BagValue); err != nil {
+				return fmt.Errorf("failed to extract key: %w", err)
+			}
 			bags.PrivateKeys = append(bags.PrivateKeys, PrivateKeyBag{
 				Raw: bag.BagValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})

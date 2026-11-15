@@ -157,11 +157,17 @@ func collect(safe, password []byte, bags *pkcs12.Bags, budget *syntax.Budget) er
 			if err != nil {
 				return fmt.Errorf("failed to extract shrouded key: %w", err)
 			}
+			if err := syntax.CheckPrivateKeyInfo(key); err != nil {
+				return fmt.Errorf("failed to extract shrouded key: %w", err)
+			}
 			bags.PrivateKeys = append(bags.PrivateKeys, pkcs12.PrivateKeyBag{
 				Raw: key, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})
 
 		case bag.BagID.Equal(syntax.OIDKeyBag):
+			if err := syntax.CheckPrivateKeyInfo(bag.BagValue); err != nil {
+				return fmt.Errorf("failed to extract key: %w", err)
+			}
 			bags.PrivateKeys = append(bags.PrivateKeys, pkcs12.PrivateKeyBag{
 				Raw: bag.BagValue, FriendlyName: friendlyName, LocalKeyID: localKeyID,
 			})

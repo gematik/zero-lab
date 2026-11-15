@@ -172,7 +172,7 @@ func DecryptEncryptedData(contentInfo ContentInfo, password []byte, budget *Budg
 }
 
 // DecryptShroudedKeyBag decrypts the value of a shrouded key bag and returns
-// the PKCS#8 PrivateKeyInfo.
+// the PKCS#8 PrivateKeyInfo, once it has passed CheckPrivateKeyInfo.
 func DecryptShroudedKeyBag(bagValue []byte, password []byte, budget *Budget) ([]byte, error) {
 	epki, err := ParseEncryptedPrivateKeyInfo(bagValue)
 	if err != nil {
@@ -182,7 +182,14 @@ func DecryptShroudedKeyBag(bagValue []byte, password []byte, budget *Budget) ([]
 	if err != nil {
 		return nil, err
 	}
-	return decryptWith(alg, password, epki.Data, budget)
+	key, err := decryptWith(alg, password, epki.Data, budget)
+	if err != nil {
+		return nil, err
+	}
+	if err := CheckPrivateKeyInfo(key); err != nil {
+		return nil, err
+	}
+	return key, nil
 }
 
 // decryptCBC decrypts CBC and removes the PKCS#7 padding.

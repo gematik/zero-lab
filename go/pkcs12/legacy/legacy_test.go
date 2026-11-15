@@ -23,7 +23,11 @@ package legacy
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -153,6 +157,40 @@ func TestEncryptedContentSegments(t *testing.T) {
 	if _, err := encryptedContent(&s); !errors.Is(err, pkcs12.ErrParse) {
 		t.Errorf("segment of another type: error = %v, want ErrParse", err)
 	}
+}
+
+// TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey decodes files without
+// MAC with the wrong password until the padding of a decryption happens to be
+// valid (about 1 in 256), so the plaintext behind valid padding is refused in
+// every run, not only in the run that draws it.
+func TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bags := &pkcs12.Bags{PrivateKeys: []pkcs12.PrivateKeyBag{{Raw: keyDER}}}
+	opts := pkcs12.DefaultEncodeOptions()
+	opts.IncludeMAC = false
+	opts.Iterations = 1
+	for range 20000 {
+		data, err := pkcs12.EncodeWithOptions(bags, []byte("right"), opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = Decode(data, []byte("wrong"))
+		switch {
+		case errors.Is(err, pkcs12.ErrInvalidPadding):
+		case errors.Is(err, pkcs12.ErrParse):
+			return
+		default:
+			t.Fatalf("wrong password with valid padding: %v, want ErrParse", err)
+		}
+	}
+	t.Fatal("no decryption with the wrong password had valid padding")
 }
 
 func FuzzDecode(f *testing.F) {
