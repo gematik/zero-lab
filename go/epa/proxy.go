@@ -24,7 +24,7 @@ package epa
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -637,7 +637,7 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 		if errors.As(err, &mperr) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadGateway)
-			errBytes, err := json.Marshal(mperr)
+			errBytes, err := json.Marshal(mperr, responseJSON)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("failed to marshal error: %v", err), http.StatusInternalServerError)
 				return
@@ -690,7 +690,7 @@ func (p *Proxy) HandleProxyInfo(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(info)
+	err = json.MarshalWrite(w, info, responseJSON)
 	if err != nil {
 		slog.Error("Failed to encode proxy info", "error", err)
 		return
@@ -718,7 +718,7 @@ func (p *Proxy) GetProviders(w http.ResponseWriter, _ *http.Request) {
 			SessionOpenedAt: session.OpenedAt.Format(time.RFC3339),
 		})
 	}
-	err := json.NewEncoder(w).Encode(providers)
+	err := json.MarshalWrite(w, providers, responseJSON)
 	if err != nil {
 		slog.Error("Failed to encode providers", "error", err)
 	}
@@ -742,7 +742,7 @@ func (p *Proxy) GetInsurants(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(w).Encode(insurants)
+	err := json.MarshalWrite(w, insurants, responseJSON)
 	if err != nil {
 		slog.Error("Failed to encode insurants", "error", err)
 	}

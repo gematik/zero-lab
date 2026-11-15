@@ -23,7 +23,7 @@ package ti
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -214,14 +214,15 @@ func (i *Identity) SignJWT(ctx context.Context, header map[string]any, claims ma
 		case "x5c":
 			// The tool sets it from the certificate.
 		default:
-			encoded, err := json.Marshal(value)
+			encoded, err := json.Marshal(value, json.Deterministic(true))
 			if err != nil {
 				return "", fmt.Errorf("header %s: %w", name, err)
 			}
 			args = append(args, "--header", name+"="+string(encoded))
 		}
 	}
-	stdin, err := json.Marshal(claims)
+	// The tool signs these bytes; sorted members keep them the same for the same claims.
+	stdin, err := json.Marshal(claims, json.Deterministic(true))
 	if err != nil {
 		return "", fmt.Errorf("claims: %w", err)
 	}

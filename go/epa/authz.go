@@ -28,9 +28,10 @@ package epa
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -60,7 +61,7 @@ func (s *Session) GetNonce() (string, error) {
 	}
 
 	nonce := new(Nonce)
-	if err := json.NewDecoder(resp.Body).Decode(nonce); err != nil {
+	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), nonce); err != nil {
 		return "", fmt.Errorf("unmarshaling response: %w", err)
 	}
 
