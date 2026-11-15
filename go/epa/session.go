@@ -30,6 +30,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gematik/zero-lab/go/epa/vau"
@@ -315,7 +316,8 @@ func parseHTTPError(resp *http.Response) error {
 		return fmt.Errorf("reading response body: %w", err)
 	}
 
-	bodyStr := bodyData.String()
+	// The body becomes error text that the proxy's JSON answers carry, so it must be valid UTF-8.
+	bodyStr := strings.ToValidUTF8(bodyData.String(), "\uFFFD")
 
 	if bodyStr == "" {
 		bodyStr = http.StatusText(resp.StatusCode)

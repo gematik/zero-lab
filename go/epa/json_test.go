@@ -106,11 +106,11 @@ func TestServerRule28_AnAktensystemErrorIsReadStrictly(t *testing.T) {
 }
 
 // FuzzParseHTTPError feeds arbitrary bodies to the reader of an Aktensystem's error answer. Invariants: it never
-// panics and always returns an error, and a typed one holds valid UTF-8.
+// panics and always returns an error, its text is valid UTF-8, and a typed one holds valid UTF-8.
 func FuzzParseHTTPError(f *testing.F) {
 	for _, seed := range []string{
 		`{"errorCode":"a","errorDetail":"b"}`, ``, `null`, `[]`, `{"errorCode":1}`,
-		`{"errorCode":"a","errorCode":"b"}`, `{"ErrorCode":"a","ERRORDETAIL":"b"}`, "{\"errorCode\":\"a\xffb\"}",
+		`{"errorCode":"a","errorCode":"b"}`, `{"ErrorCode":"a","ERRORDETAIL":"b"}`, "{\"errorCode\":\"a\xffb\"}", "Gr\xfc\xdfe",
 	} {
 		f.Add([]byte(seed))
 	}
@@ -118,6 +118,9 @@ func FuzzParseHTTPError(f *testing.F) {
 		err := parseHTTPError(&http.Response{StatusCode: http.StatusBadRequest, Body: io.NopCloser(strings.NewReader(string(body)))})
 		if err == nil {
 			t.Fatal("no error")
+		}
+		if !utf8.ValidString(err.Error()) {
+			t.Fatalf("error text with invalid UTF-8: %q", err.Error())
 		}
 		var typed *ErrorType
 		if errors.As(err, &typed) && (!utf8.ValidString(typed.ErrorCode) || !utf8.ValidString(typed.ErrorDetail)) {
@@ -131,13 +134,51 @@ func FuzzParseHTTPError(f *testing.F) {
 func TestTheProxysAnswersKeepTheirShape(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeJSON(recorder, http.StatusOK, &InsurantInfo{InsurantID: "X000000001"})
-	const want = `{"insurantId":"X000000001","record":{"found":false},"providers":null,"entitlement":{"entitled":false}}`
+	const want = `{"insurantId":"X000000001","record":{"found":false},"providers":null,"entitlement":{"entitled":false}}` + "\n"
 	if got := recorder.Body.String(); got != want {
 		t.Errorf("wrote %s, want %s", got, want)
 	}
 	recorder = httptest.NewRecorder()
 	writeJSON(recorder, http.StatusCreated, map[string]any{"provider": 1, "insurantId": "X", "entitledAt": "t"})
-	if got := recorder.Body.String(); got != `{"entitledAt":"t","insurantId":"X","provider":1}` {
+	if got := recorder.Body.String(); got != `{"entitledAt":"t","insurantId":"X","provider":1}`+"\n" {
 		t.Errorf("wrote %s", got)
+	}
+}
+
+// An Aktensystem's error answer that is not UTF-8, here Latin-1, still leaves the proxy a complete JSON answer with
+// its status, both for the insurant's information and on the way into the VAU.
+func TestAnAktensystemErrorInLatin1KeepsTheAnswerJSON(t *testing.T) {
+	aktensystem := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, "Aktensystem nicht erreichbar: Gr\xfc\xdfe, \xe4")
+	}))
+	defer aktensystem.Close()
+	p := &Proxy{
+		records: map[string]PatientRecordMetadata{},
+		sessionManager: &sessionManager{
+			sessions: map[ProviderNumber]*Session{},
+			login: func(provider ProviderNumber) (*Session, error) {
+				return &Session{Client: &Client{ProviderNumber: provider, BaseURL: aktensystem.URL, HTTPClient: aktensystem.Client()}}, nil
+			},
+		},
+	}
+	for name, handle := range map[string]http.HandlerFunc{
+		"GET /insurants/{insurantID}": p.HandleInsurantInfo,
+		"into the VAU":                p.HandleForwardToVAUInsurant,
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.SetPathValue("insurantID", "X000000001")
+		req.SetPathValue("path", "x")
+		recorder := httptest.NewRecorder()
+		handle(recorder, req)
+		body := recorder.Body.Bytes()
+		var answer MultiProviderError
+		if recorder.Code != http.StatusBadGateway || !strings.HasSuffix(string(body), "\n") || json.Unmarshal(body, &answer) != nil {
+			t.Errorf("%s: %d %q", name, recorder.Code, body)
+			continue
+		}
+		if len(answer.Errors) != len(AllProviders) || !strings.Contains(answer.Errors[0].Description, "Gr\uFFFDe, \uFFFD") {
+			t.Errorf("%s: %+v", name, answer)
+		}
 	}
 }

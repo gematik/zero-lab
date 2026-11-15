@@ -23,6 +23,7 @@ package epa
 
 import (
 	"bytes"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -67,15 +68,25 @@ type InsurantInfo struct {
 	Entitlement InsurantEntitlementInfo  `json:"entitlement"`
 }
 
-// responseJSON writes the proxy's answers as they always were: a nil slice or map as null rather than [] and {}, and
-// a map's members sorted by name.
-var responseJSON = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true))
+// responseJSON writes the proxy's answers as they always were: a nil slice or map as null rather than [] and {}, a
+// map's members sorted by name, and invalid UTF-8 replaced by U+FFFD, since an answer can carry an Aktensystem's
+// error text and must not fail to encode for it.
+var responseJSON = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true),
+	jsontext.AllowInvalidUTF8(true))
 
+// writeJSON encodes body before it sends status, so a body that cannot be encoded becomes a 500 instead of status with
+// half a body. The newline ends the answer as it always has.
 func writeJSON(w http.ResponseWriter, status int, body any) {
+	data, err := json.Marshal(body, responseJSON)
+	if err != nil {
+		slog.Error("Failed to encode response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.MarshalWrite(w, body, responseJSON); err != nil {
-		slog.Error("Failed to encode response", "error", err)
+	if _, err := w.Write(append(data, '\n')); err != nil {
+		slog.Error("Failed to write response", "error", err)
 	}
 }
 

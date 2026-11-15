@@ -23,6 +23,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -165,14 +166,24 @@ func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo, prober *ti.P
 	return mux, nil
 }
 
-// responseJSON writes the answers as they always were: a nil slice or map as null rather than [] and {}, and a map's
-// members sorted by name.
-var responseJSON = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true))
+// responseJSON writes the answers as they always were: a nil slice or map as null rather than [] and {}, a map's
+// members sorted by name, and invalid UTF-8 replaced by U+FFFD, since an answer can carry an Aktensystem's error text
+// and must not fail to encode for it.
+var responseJSON = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true),
+	jsontext.AllowInvalidUTF8(true))
 
+// writeJSON encodes v before it answers, so a value that cannot be encoded becomes a 500 instead of a 200 with half a
+// body. The newline ends the answer as it always has.
 func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.MarshalWrite(w, v, responseJSON); err != nil {
+	data, err := json.Marshal(v, responseJSON)
+	if err != nil {
 		slog.Error("Failed to encode response", "error", err)
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write(append(data, '\n')); err != nil {
+		slog.Error("Failed to write response", "error", err)
 	}
 }
 
