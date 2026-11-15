@@ -36,14 +36,6 @@ import (
 	"github.com/gematik/zero-lab/go/openid"
 )
 
-// CodeChallengeMethod is a PKCE code_challenge_method (RFC 7636 §4.3).
-type CodeChallengeMethod string
-
-const (
-	// CodeChallengeMethodS256 is the only method this package sends.
-	CodeChallengeMethodS256 CodeChallengeMethod = "S256"
-)
-
 // RelyingPartyClient is an openid.Client for one OpenID provider of the federation; [RelyingParty.Client] creates it.
 // It is safe for concurrent use and may be cached: every call re-checks that the provider is on the master's IdP list
 // and that the documents it was resolved from are still valid, and resolves them anew from the store, or fetches them
@@ -159,6 +151,11 @@ var (
 //   - checked as OIDC Core 3.1.3.7 has it: issuer, audience, nonce of this login, lifetime (A_23049);
 //   - judged by its acr and amr (A_28484) and auth_time, and required to hold the claims the login asked for as
 //     essential (A_22860-02).
+//
+// The acr is taken when it is no lower than the lowest of the login's ACRValues, high when it names none. Asking for
+// gematik-ehealth-loa-high and -substantial thus admits substantial with or without the person's consent to it for
+// data of high protection need, which the host tells by the identity's Consent (ID token 2.0.0) or by amr
+// urn:telematik:auth:mEW (1.0.0).
 //
 // An unknown kid, or a version the IDP's statement does not list, refetches the IDP's statement and signed JWKS past
 // the store once (A_22861; A_23207 Hinweis 3): at most once a minute per IDP, with concurrent exchanges waiting for

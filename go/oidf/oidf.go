@@ -164,11 +164,6 @@ func (f *OpenidFederation) now() time.Time {
 	return time.Now()
 }
 
-// OpenidProvider names an OpenID provider by its issuer.
-type OpenidProvider struct {
-	Issuer string
-}
-
 // IdentityProviderInfo is one entry of the federation master's IdP list.
 type IdentityProviderInfo struct {
 	Issuer           string   `json:"iss"`
