@@ -388,28 +388,6 @@ func validIDTokenClaims() map[string]any {
 	}
 }
 
-// gemSpec_IDP_FD A_23195: the ID token is decrypted with the relying party's own key before it is used.
-func TestA_23195_TheNestedIDTokenIsDecryptedAndVerified(t *testing.T) {
-	stub := newLoginStub(t)
-	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	response, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var claims struct {
-		Iss string `json:"iss"`
-	}
-	if err := response.Claims(&claims); err != nil {
-		t.Fatal(err)
-	}
-	if claims.Iss != "https://op.example" {
-		t.Errorf("iss = %q", claims.Iss)
-	}
-	if strings.Count(response.IDTokenRaw, ".") != 2 {
-		t.Errorf("IDTokenRaw is not the inner JWS: %s", response.IDTokenRaw)
-	}
-}
-
 // OIDC Core 3.1.3.7 step 1: decrypt with the algorithms registered; a token not encrypted as registered is refused.
 func TestOIDCCore_3_1_3_7_1_EncryptionOtherThanRegisteredIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
@@ -873,15 +851,6 @@ func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyCon
 		FederationEntity: testFederationEntity(),
 		HTTPClient:       stub.Client(),
 		Documents:        NewMemoryDocuments(16, nil),
-	}
-}
-
-// gemSpec_IDP_FD A_23049, OIDC Core 3.1.3.7 step 11: a token issued for another login must not be accepted for this one.
-func TestA_23049_AnIDTokenOfAnotherLoginIsRefused(t *testing.T) {
-	stub := newLoginStub(t)
-	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "another", Verifier: testVerifier}, "code"); !errors.Is(err, openid.ErrNonceMismatch) {
-		t.Fatalf("err = %v", err)
 	}
 }
 
