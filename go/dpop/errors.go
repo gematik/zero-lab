@@ -22,6 +22,7 @@
 package dpop
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"net/http"
 	"strings"
@@ -74,10 +75,13 @@ func WriteTokenError(w http.ResponseWriter, e *Error) {
 	body, err := json.Marshal(struct {
 		Error       string `json:"error"`
 		Description string `json:"error_description,omitempty"`
-	}{e.Code, e.Description})
+	}{e.Code, e.Description}, jsontext.AllowInvalidUTF8(true))
 	if err != nil {
-		// Two strings cannot fail to marshal.
-		panic(err)
+		// With invalid UTF-8 replaced by U+FFFD, two strings do not fail to marshal; should they, the answer is a
+		// bare 500 rather than a panic in the server.
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

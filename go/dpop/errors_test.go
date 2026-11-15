@@ -110,6 +110,20 @@ func TestRFC9449_5_InvalidProofTokenError(t *testing.T) {
 	}
 }
 
+// Section 5: a description that is not UTF-8 still answers 400 with a complete error body, the invalid bytes replaced,
+// rather than taking the server down.
+func TestRFC9449_5_ATokenErrorWithInvalidUTF8StaysJSON(t *testing.T) {
+	w := httptest.NewRecorder()
+	WriteTokenError(w, proofError("proof from Gr\xfc\xdfe"))
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusBadRequest || body["error"] != CodeInvalidProof || body["error_description"] != "proof from Gr\uFFFD\uFFFDe" {
+		t.Fatalf("%d %q", w.Code, w.Body.String())
+	}
+}
+
 // Auth-param values are quoted-strings (RFC 9110 Section 5.6.4): quotes and backslashes are
 // escaped, control characters dropped, so no description can break the header.
 func TestRFC9110_5_6_4_ChallengeValuesAreQuotedStrings(t *testing.T) {
