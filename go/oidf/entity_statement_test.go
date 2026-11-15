@@ -79,8 +79,9 @@ func TestOIDF_EntityConfiguration_TheSigningKeyIsInJwks(t *testing.T) {
 	}
 }
 
-// Servers rule 17: a member added through Extra that would shadow a typed one, or is not JSON at all, makes the
-// statement say something other than its fields; signing refuses it instead of guessing which one counts.
+// Servers rule 17: a member added through Extra that would shadow a typed one, or is not JSON as RFC 7493 has it (with
+// a member name twice or invalid UTF-8), makes the statement say something other than its fields, or something its
+// readers take differently; signing refuses it instead of guessing which one counts.
 func TestServerRule17_AnExtraMemberThatShadowsATypedOneIsRefused(t *testing.T) {
 	for name, change := range map[string]func(*Metadata){
 		"openid_relying_party member": func(m *Metadata) {
@@ -103,6 +104,12 @@ func TestServerRule17_AnExtraMemberThatShadowsATypedOneIsRefused(t *testing.T) {
 		},
 		"invalid JSON": func(m *Metadata) {
 			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"added": json.RawMessage(`{"open":`)}
+		},
+		"duplicate member names": func(m *Metadata) {
+			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"added": json.RawMessage(`{"a":1,"a":2}`)}
+		},
+		"invalid UTF-8": func(m *Metadata) {
+			m.FederationEntity.Extra = map[string]json.RawMessage{"added": json.RawMessage("\"\xff\"")}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

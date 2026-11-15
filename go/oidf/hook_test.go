@@ -26,6 +26,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/go-jose/go-jose/v4"
@@ -186,5 +187,52 @@ func TestEntityStatementHook_AFailingHookFailsSigning(t *testing.T) {
 	rp.AddEntityStatementHook(func(*EntityStatement) error { return refused })
 	if signed, err := rp.SignEntityStatement(); !errors.Is(err, refused) || signed != nil {
 		t.Fatalf("signed %q, err = %v", signed, err)
+	}
+}
+
+// gemSpec_IDP_FD A_23034-02 Tabelle 4 and A_27505 ask for keywords and ti_features_supported, which may come from
+// RelyingPartyConfig.Hooks alone: they take part in New's first signing, and run before the hooks added later.
+func TestA_23034_02_RequiredMembersFromTheConfiguredHooksStart(t *testing.T) {
+	var order []string
+	rp := newTestRelyingParty(t, func(cfg *RelyingPartyConfig) {
+		cfg.RelyingParty.Keywords = nil
+		cfg.RelyingParty.TIFeaturesSupported = nil
+		cfg.Hooks = []func(*EntityStatement) error{func(es *EntityStatement) error {
+			order = append(order, "configured")
+			metadata := es.Metadata.OpenidRelyingParty
+			metadata.Keywords = []string{"product_type:hooked", "product_type_version:1.0.0"}
+			metadata.TIFeaturesSupported = &TIFeatures{IDTokenVersionSupported: []string{"1.0.0", "2.0.0"}}
+			return nil
+		}}
+	})
+	if !slices.Equal(rp.registered().idTokenVersions, []string{"1.0.0", "2.0.0"}) {
+		t.Errorf("registered versions %v", rp.registered().idTokenVersions)
+	}
+	rp.AddEntityStatementHook(func(es *EntityStatement) error {
+		order = append(order, "added")
+		if !slices.Contains(es.Metadata.OpenidRelyingParty.Keywords, "product_type:hooked") {
+			return errors.New("the configured hook has not run before")
+		}
+		return nil
+	})
+	order = nil
+	claims := signedClaims(t, rp)
+	if keywords, _ := member(claims, "metadata", "openid_relying_party", "keywords").([]any); !slices.Contains(keywords, any("product_type:hooked")) {
+		t.Errorf("keywords %v", keywords)
+	}
+	if !slices.Equal(order, []string{"configured", "added"}) {
+		t.Errorf("hooks ran in the order %v", order)
+	}
+
+	stub := newFederationStub(t)
+	cfg := testRelyingPartyConfig(t, stub)
+	cfg.RelyingParty.Keywords = nil
+	if _, err := New(t.Context(), cfg, newTestKeys(t)); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), "keywords") {
+		t.Errorf("without the hook: %v", err)
+	}
+	cfg = testRelyingPartyConfig(t, stub)
+	cfg.Hooks = []func(*EntityStatement) error{nil}
+	if _, err := New(t.Context(), cfg, newTestKeys(t)); err == nil || !strings.Contains(err.Error(), "hook is nil") {
+		t.Errorf("a nil hook: %v", err)
 	}
 }

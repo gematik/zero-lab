@@ -24,6 +24,7 @@ package oidf
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"io"
@@ -57,9 +58,11 @@ func (m *FederationEntityMetadata) MarshalJSON() ([]byte, error) {
 }
 
 // withExtra marshals the typed value of the object named where and adds the extra members. An extra member that
-// shadows a typed one, even one left out as empty, is an error, and so is one that is not valid JSON: what is signed
-// has to be what the typed fields say. Names are compared without case, as encoding/json matches them when it reads
-// the statement back.
+// shadows a typed one, even one left out as empty, is an error, and so is one that is not valid JSON as RFC 7493 has
+// it, with a member name twice or invalid UTF-8: what is signed has to be what the typed fields say, and read the same
+// by every member of the federation. This package reads names exactly, but names are compared without case here: a
+// member whose decoder matches names without case, as encoding/json v1 does, would take the extra member for the
+// typed one.
 func withExtra(value any, extra map[string]json.RawMessage, where string) ([]byte, error) {
 	data, err := json.Marshal(value)
 	if err != nil || len(extra) == 0 {
@@ -74,7 +77,7 @@ func withExtra(value any, extra map[string]json.RawMessage, where string) ([]byt
 		if slices.ContainsFunc(typed, func(member string) bool { return strings.EqualFold(member, name) }) {
 			return nil, fmt.Errorf("%w: %s member %q shadows a typed member", ErrEntityStatement, where, name)
 		}
-		if !json.Valid(raw) {
+		if !jsontext.Value(raw).IsValid() {
 			return nil, fmt.Errorf("%w: %s member %q is not valid JSON", ErrEntityStatement, where, name)
 		}
 		members[name] = raw

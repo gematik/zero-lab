@@ -48,7 +48,8 @@ var idTokenVersions = []string{"1.0.0", "2.0.0"}
 // checkStatement refuses a statement that others could not take for this relying party's entity configuration. Its
 // jwks holds the signing key only (gemSpec_IDP_FD A_23034-02 Tabelle 3: "nur die öffentlichen Schlüssel zu
 // Schlüsseln, mit den das Entity Statement signiert ist"), and its openid_relying_party metadata is as Tabelle 4 and
-// A_27505 require. The checks run after the hooks, so a hook may supply what the configuration leaves out.
+// A_27505 require. The checks run after the hooks, at every signing, so a hook may supply what the configuration leaves
+// out; for New's first signing, which only RelyingPartyConfig.Hooks take part in, such a member has to come from them.
 func (rp *RelyingParty) checkStatement(es *EntityStatement) error {
 	if es.Issuer == "" || es.Issuer != es.Subject {
 		return fmt.Errorf("%w: iss and sub differ", ErrEntityStatement)

@@ -105,6 +105,11 @@ type RelyingPartyConfig struct {
 	// programmatically, and required.
 	Documents Documents `yaml:"-"`
 
+	// Hooks are applied, in order, to a copy of the entity statement each time it is signed, from New's first signing
+	// on and before the hooks added by AddEntityStatementHook (see there). A member the statement is required to have
+	// may come from them. Not serialized; supplied programmatically.
+	Hooks []func(*EntityStatement) error `yaml:"-"`
+
 	// Logger receives the failures of Documents, which cost a fetch and nothing else, and the failures of signing the
 	// entity statement anew, after which the last one is served until it expires. Not serialized; supplied
 	// programmatically. When nil, such failures are dropped silently.
@@ -348,6 +353,9 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 	if cfg.Documents == nil {
 		return nil, errors.New("config validation failed: a store of federation documents is required")
 	}
+	if slices.ContainsFunc(cfg.Hooks, func(hook func(*EntityStatement) error) bool { return hook == nil }) {
+		return nil, errors.New("config validation failed: a hook is nil")
+	}
 	if err := keys.check(); err != nil {
 		return nil, err
 	}
@@ -356,7 +364,7 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 		return nil, err
 	}
 
-	rp := RelyingParty{cfg: cfg, keys: keys}
+	rp := RelyingParty{cfg: cfg, keys: keys, hooks: slices.Clone(cfg.Hooks)}
 	if rp.fedMaster, err = cfg.fedMasterEntityID(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
@@ -420,13 +428,17 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 	return &rp, nil
 }
 
-// AddEntityStatementHook registers a function applied, in registration order, to a copy of the entity statement each
-// time it is signed. A hook may change anything in the copy, add members through the Extra maps and whole entity
-// types through Metadata.Extra; the relying party's own statement stays as it is. iat, exp and authority_hints are
-// set after the hooks. A hook that returns an error fails the signing, and nothing half-built is signed. Hooks run
-// only when the relying party signs: at New, when the served statement is due for re-signing, and on Refresh. The
-// statement served next is signed with the new hook; a host that wants a failing hook to stop its start calls Refresh
-// after adding it.
+// AddEntityStatementHook registers a function applied to a copy of the entity statement each time it is signed, after
+// RelyingPartyConfig.Hooks and the hooks added before it. A hook may change anything in the copy, add members through
+// the Extra maps and whole entity types through Metadata.Extra; the relying party's own statement stays as it is. iss,
+// sub, iat, exp and authority_hints are set after the hooks, and the statement is checked after them. A hook that
+// returns an error fails the signing, and nothing half-built is signed.
+//
+// Hooks run only when the relying party signs: at New, on Refresh, and when a request finds the served statement due
+// for signing anew, which a hook added since makes it. Logins are checked against the statement served, the redirect
+// URIs, scope and ID token versions it registers, so a host calls Refresh after adding a hook: what the hook adds is
+// served and taken from then on, and a hook that fails is the host's error rather than a log entry. A member the
+// statement cannot do without belongs in RelyingPartyConfig.Hooks, since New checks the statement it signs first.
 func (rp *RelyingParty) AddEntityStatementHook(h func(*EntityStatement) error) {
 	rp.hooksMu.Lock()
 	rp.hooks = append(rp.hooks, h)
