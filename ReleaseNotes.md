@@ -1,5 +1,157 @@
 # Release Notes
 
+# Release 2026-11-15: encoding/json/v2 across the Go modules
+
+Every module below reads and writes JSON with encoding/json/v2 and requires go 1.27.0 (TASK-323). Where
+JSON comes from outside, a member named twice, a member name in another case and invalid UTF-8 are refused,
+where v1 kept the last duplicate, folded case and replaced bad bytes (servers.md rule 28). Formats that are
+ours refuse unknown members; someone else's (OAuth, OIDC, JOSE, gematik's) still ignore them. Signed, hashed
+and compared output is written with sorted members and stays byte-identical to v1's; `<`, `>` and `&` are no
+longer escaped in other output, which is the same JSON. go/pdp stays on v1 and is not released: zeta-pdp-go
+replaces it.
+
+Verified for all of them, on main at 38962403 (code identical to 8c7d770b):
+- `just check` across all Go modules passed on 8c7d770b; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`. Dependencies were bumped and tidied on 62a5f58a; nothing newer since.
+- OpenID Federation (`just oidf-test` and `TestNewAtALiveFederationMaster`) against
+  https://app-ref.federationmaster.de; kv on Postgres (Postgres 17); idpd SMC-B, idpd IDP certificates
+  (against a reference bundle from `ti pki trust export --env ref`) and idpd trust download; ePA connect
+  against provider 2 of the reference environment (VAU, authorization, record status, consent): all passed
+  on 2026-11-15. Provider 1 was not tried. ePA entitlement was waived by the maintainer: it needs the VSDM
+  key, and connect already shows the Aktensystem's answers decoded under exact member names.
+
+# Release go/openid v0.55.0
+
+### breaking
+- `Login.Claims` is a `jsontext.Value` (was `json.RawMessage`).
+- `providers` no longer logs the providers it builds; the host logs them (TASK-332).
+
+### changes
+- encoding/json/v2: `TokenResponse.Claims` refuses a member twice, invalid UTF-8 and names in another case.
+
+# Release go/oidf v0.53.0
+
+### breaking
+- The `Extra` maps of `Metadata`, `OpenIDRelyingPartyMetadata` and `FederationEntityMetadata` hold
+  `jsontext.Value` (was `json.RawMessage`).
+
+### changes
+- encoding/json/v2; the signed entity statement and signed JWKS are written with one set of options, sorted
+  and escaped as before, and a test pins their bytes.
+
+# Release go/dpop v1.0.0-beta.3
+
+### security
+- A proof whose header or payload names a member twice, or is not UTF-8, is refused
+  (`invalid_dpop_proof`); before, a claim named twice in the payload was accepted with the last value. Member
+  names match exactly.
+
+### fixed
+- `WriteTokenError` answers when a description is not UTF-8, where it would have panicked under v2.
+
+# Release go/nonce v0.24.0
+
+### changes
+- go 1.27.0.
+
+# Release go/kv v0.3.0
+
+### changes
+- go 1.27.0.
+
+# Release go/brainpool v1.4.0
+
+### changes
+- encoding/json/v2: JWKs and tokens refuse a member twice, invalid UTF-8 and names in another case; JOSE
+  headers and claims are written with sorted members, as before. go 1.27.0.
+
+# Release go/pkcs12 v1.0.0-rc.4
+
+### changes
+- go 1.27.0; the conformance corpus is read with encoding/json/v2.
+
+# Release go/tipki v0.32.0
+
+The first tag since v0.31.1, carrying the TLS checks, the trust download and the OCSP responder rules
+(TASK-288).
+
+### breaking
+- OCSP asks only about the end entity, and a responder is trusted as TUC_PKI_006 says: one only the
+  verified TSL names is accepted as `tsl_listed` with the warning `ocsp_responder_not_rfc6960`.
+  `SkipSubCARevocation` and `ResponderAuthorization.CA` are gone (TASK-270).
+- The warning `issued_before_ca_expiry` is `ca_expired` (TASK-270).
+
+### added
+- `titls`: the ti profile's TLS server check (spec/pki-validation), a web profile, a `tls.Config` per
+  profile, a bounded verdict cache, and `NewWebHTTPClient` for hosts (TASK-98). The web profile accepts RSA
+  2048 to 2999 bits with `key_phased_out` and a missing revocation status with `revocation_unavailable`,
+  and does not reuse such a verdict (TASK-282).
+- `fetch`: TSL download and refresh for every environment (TASK-98.4).
+- `OCSPChecker` bounds its result cache and the responders it rests (TASK-234).
+
+### changes
+- A path that cannot be built is `chain_incomplete` whatever its links are signed with (TLSV-020, TASK-233).
+- encoding/json/v2: the bundle reader still refuses unknown members and now names no member it refuses;
+  roots.json, gematik's format, ignores unknown members.
+
+# Release go/idpd v0.2.0
+
+### breaking
+- `NewClient` takes the host's HTTP client; there is no default (TASK-98.5).
+- The IDP-Dienst kind no longer logs the providers it builds; the host logs them (TASK-332).
+
+### changes
+- The TLS to the IDP-Dienst is checked on the web profile, and trust material can be downloaded with
+  `tipki/fetch` (TASK-98).
+- encoding/json/v2: a response is exactly one JSON value; a member twice and invalid UTF-8 are refused.
+
+# Release go/epa v0.26.0
+
+### breaking
+- An Aktensystem is reached only under a configured TLS verification; zero-epa uses the ti profile over its
+  own TSL (TASK-98.5). Configuration such as `EPA_TI_BIN` is read in `cmd/` and handed in (TASK-89).
+
+### added
+- VAU-nonPU-Tracing outside production, and no plaintext in the request log (A_24477, A_27671, TASK-216).
+
+### changes
+- encoding/json/v2. The Aktensystem's answers are read within 1 MiB; the entitle body within 256 bytes,
+  unknown members refused. An Aktensystem error page that is not UTF-8 keeps the proxy's answer JSON.
+
+# Release go/pep v0.28.0
+
+### breaking
+- Enforcer policies (also zaddy's configuration) refuse unknown members, so a misspelled member stops the
+  start instead of being ignored.
+- Without `WithSlogger` nothing is logged; the enforcers log through the context's logger (TASK-332).
+
+### security
+- Access token claims and JWK sets refuse a member twice, nested ones too, and invalid UTF-8; a token with
+  `exp` twice is refused. Session cookie claims refuse unknown members.
+
+# Release go/pep/proxy v0.4.0
+
+### breaking
+- `Config.Logger` and `PDPConfig.Logger` receive the proxy's events; nil logs nothing, where the default
+  logger was used (TASK-332). zero-pep-proxy passes its logger and logs the configured providers itself.
+- Session records refuse unknown members; records written before still open. A later new member needs a
+  staged rollout, or older replicas treat those sessions as absent.
+
+### fixed
+- A return target that is not UTF-8 falls back to `/` instead of failing the login start.
+- `writeJSON` answers 500 when a value cannot be encoded, instead of an empty body.
+
+# Release go/zaddy v0.8.0
+
+### changes
+- Caddy v2.11.9; pep v0.28.0, so the enforcer configuration refuses unknown members.
+
+# Release go/metsubushi v0.3.0
+
+### added
+- `GET /` answers the `/api/info` JSON unless `Accept` names `text/html`, which gets the page; both carry
+  `Vary: Accept` (TASK-336).
+
 # Release go/pdp v0.24.0
 
 ### breaking
