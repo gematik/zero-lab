@@ -1,10 +1,10 @@
 ---
 id: TASK-317
 title: 'oidf: key files are read by the host, not the library'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T20:52:00Z'
-updated_date: '2026-11-15T09:10:00Z'
+updated_date: '2026-11-15T11:13:00Z'
 labels:
   - oidf
   - go
@@ -21,5 +21,11 @@ NewRelyingParty reads PEM and JWK key files and accepts an inline private JWK in
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 oidf reads no file; the hosts load the keys and call New; configuration carries no private key
+- [x] #1 oidf reads no file; the hosts load the keys and call New; configuration carries no private key
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+oidf reads no file and takes no inline private JWK: Kind takes the host's key loader for KeyFiles (key_pem_path, cert_pem_path, kid, YAML shape unchanged), zero-pdp and zero-pep-proxy load one PEM key per file. Breaking: NewRelyingParty and KeyConfig removed, Kind's signature, jwk/jwk_path gone, RSA refused, pdp Config.OIDFKeys. Merged at d8f24089.
+<!-- SECTION:FINAL_SUMMARY:END -->

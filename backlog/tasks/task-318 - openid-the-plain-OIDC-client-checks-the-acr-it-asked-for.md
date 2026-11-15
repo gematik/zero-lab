@@ -1,10 +1,10 @@
 ---
 id: TASK-318
 title: 'openid: the plain OIDC client checks the acr it asked for'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T20:52:00Z'
-updated_date: '2026-11-15T09:10:00Z'
+updated_date: '2026-11-15T11:13:00Z'
 labels:
   - openid
   - go
@@ -20,5 +20,11 @@ Since TASK-315 an openid.Login carries ACRValues, and AuthorizationQuery sends t
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 An ID token from the plain OIDC client with an acr other than one asked for is refused when ACRValues were set
+- [x] #1 An ID token from the plain OIDC client with an acr other than one asked for is refused when ACRValues were set
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+openid IDTokenChecks.ACRValues: the plain OIDC client refuses an acr it did not ask for (exact match, ErrACRNotRequested). Merged at d8f24089.
+<!-- SECTION:FINAL_SUMMARY:END -->

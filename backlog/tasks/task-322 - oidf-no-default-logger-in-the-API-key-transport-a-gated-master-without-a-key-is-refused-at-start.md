@@ -3,10 +3,10 @@ id: TASK-322
 title: >-
   oidf: no default logger in the API key transport; a gated master without a key
   is refused at start
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-15T06:17:00Z'
-updated_date: '2026-11-15T09:10:00Z'
+updated_date: '2026-11-15T11:13:00Z'
 labels:
   - oidf
   - go
@@ -22,5 +22,11 @@ AddAPIKeyTransport (go/oidf/api_key.go:53) writes through the default slog on ev
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 oidf writes nothing through the default logger; a gated master without an API key is refused at construction, with a test
+- [x] #1 oidf writes nothing through the default logger; a gated master without an API key is refused at construction, with a test
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+No default logger in oidf; a gated development master without an API key is refused at construction (ErrAPIKeyRequired), before any request. Merged at d8f24089.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-326
 title: 'pkcs12/legacy: a wrong password on a file without MAC is sometimes accepted'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-15T09:01:00Z'
-updated_date: '2026-11-15T09:10:00Z'
+updated_date: '2026-11-15T11:13:00Z'
 labels:
   - pkcs12
   - go
@@ -20,6 +20,12 @@ TestConformance/wrong-password-no-mac (der and ber) failed once in the full just
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A wrong password on a file without MAC fails with decryption_failed or malformed in every case, shown by a test that decodes with the wrong password many times or with a fixed salt that yields valid padding
-- [ ] #2 The decrypted bag contents are parsed strictly before anything is returned
+- [x] #1 A wrong password on a file without MAC fails with decryption_failed or malformed in every case, shown by a test that decodes with the wrong password many times or with a fixed salt that yields valid padding
+- [x] #2 The decrypted bag contents are parsed strictly before anything is returned
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/pkcs12 and legacy return a decrypted or plain key only when it is one strict DER PrivateKeyInfo (RFC 5958), so a wrong password without MAC never yields a key; spec P12-041 says so, with corpus cases keybag-not-privatekeyinfo and keybag-ber-inside. Merged at d8f24089.
+<!-- SECTION:FINAL_SUMMARY:END -->

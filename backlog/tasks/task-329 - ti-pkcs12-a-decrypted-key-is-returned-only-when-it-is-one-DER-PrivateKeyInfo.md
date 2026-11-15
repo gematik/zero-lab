@@ -1,9 +1,10 @@
 ---
 id: TASK-329
 title: 'ti-pkcs12: a decrypted key is returned only when it is one DER PrivateKeyInfo'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-15T09:24:00Z'
+updated_date: '2026-11-15T11:13:00Z'
 labels:
   - rust
   - pkcs12
@@ -20,6 +21,12 @@ Found while fixing TASK-326 in go/pkcs12: rust/ti-pkcs12/src/lib.rs (~487 shroud
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A wrong password on a file without MAC never yields a key, shown by a test that forces valid padding (as Go's TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey does)
-- [ ] #2 Decrypted key bags are checked as one DER PrivateKeyInfo before they are returned, with a fuzz target
+- [x] #1 A wrong password on a file without MAC never yields a key, shown by a test that forces valid padding (as Go's TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey does)
+- [x] #2 Decrypted key bags are checked as one DER PrivateKeyInfo before they are returned, with a fuzz target
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-pkcs12 holds decrypted and plain key bags to the same strict PrivateKeyInfo check; a plain key bag is normalised from BER in every layer first (new ber.rs, a port of Go's, with a ber_to_der fuzz target); intermediate key buffers are zeroized. Edge-case parity with Go is TASK-334, shared BER gaps TASK-335. Merged at d8f24089.
+<!-- SECTION:FINAL_SUMMARY:END -->

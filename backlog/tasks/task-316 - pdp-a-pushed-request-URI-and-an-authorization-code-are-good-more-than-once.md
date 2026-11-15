@@ -1,10 +1,10 @@
 ---
 id: TASK-316
 title: 'pdp: a pushed request URI and an authorization code are good more than once'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T20:20:00Z'
-updated_date: '2026-11-15T09:10:00Z'
+updated_date: '2026-11-15T11:13:00Z'
 labels: []
 dependencies: []
 ordinal: 331000
@@ -24,5 +24,11 @@ RFC 6749 Section 4.1.2 asks that a code is used once and that a second use is de
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A request_uri and a code are refused at their second use, in a test through the HTTP handlers; the fields are cleared, or the indexes are not written again, when they are consumed
+- [x] #1 A request_uri and a code are refused at their second use, in a test through the HTTP handlers; the fields are cleared, or the indexes are not written again, when they are consumed
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The authorization endpoint clears session.RequestURI and the token endpoint session.Code right after their Take, so the next save does not index them again; tests through the HTTP handlers, also across replicas, fail without the fix. Token revocation on reuse is TASK-330, the refresh-token race TASK-331. Merged at d8f24089.
+<!-- SECTION:FINAL_SUMMARY:END -->
