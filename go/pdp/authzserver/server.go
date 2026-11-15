@@ -25,6 +25,7 @@
 package authzserver
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -141,7 +142,9 @@ func New(cfg Config) (*Server, error) {
 
 	s.sessionStore = cfg.Sessions
 
-	s.initRelyingParty(cfg)
+	if err := s.initRelyingParty(cfg); err != nil {
+		return nil, err
+	}
 
 	s.nonceService, err = nonce.New(cfg.NonceKeys, nonceServicePurpose, defaultNonceTTL, cfg.NonceRedemptions, nonce.WithClock(s.now))
 	if err != nil {
@@ -229,8 +232,12 @@ func (s *Server) initProducts(cfg Config) error {
 	return nil
 }
 
-// initRelyingParty configures the optional OpenID Federation relying party.
-func (s *Server) initRelyingParty(cfg Config) {
+// relyingPartyRefreshTimeout bounds the signing of the entity statement with the products' redirect URIs at the start.
+const relyingPartyRefreshTimeout = 10 * time.Second
+
+// initRelyingParty configures the optional OpenID Federation relying party. The statement is signed again with the
+// hook at once, so that one that cannot be signed stops the start (servers.md rule 17).
+func (s *Server) initRelyingParty(cfg Config) error {
 	s.oidfRelyingParty = cfg.RelyingParty
 
 	// Inject the products' oidc_redirect_uri into the served entity statement so the federation accepts the
@@ -255,7 +262,14 @@ func (s *Server) initRelyingParty(cfg Config) {
 			}
 			return nil
 		})
+		// New takes no context; the bound keeps a hung signer from holding up the start forever.
+		ctx, cancel := context.WithTimeout(context.Background(), relyingPartyRefreshTimeout)
+		defer cancel()
+		if err := s.oidfRelyingParty.Refresh(ctx); err != nil {
+			return fmt.Errorf("sign the entity statement with the products' redirect URIs: %w", err)
+		}
 	}
+	return nil
 }
 
 // MetadataEndpoint serves the authorization server metadata document (RFC 8414).

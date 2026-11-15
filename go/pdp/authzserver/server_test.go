@@ -38,6 +38,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/oidf"
 )
 
 const (
@@ -87,6 +88,20 @@ func newTestServer(t *testing.T) (*Server, *jose.JSONWebKey) {
 		t.Fatalf("New: %v", err)
 	}
 	return server, signKey
+}
+
+// Servers rule 17: the entity statement is signed again with the products' redirect URIs at the start, and a
+// relying party that cannot sign it stops the start.
+func TestServerRule17_ARelyingPartyThatCannotSignStopsTheStart(t *testing.T) {
+	cfg := Config{
+		Issuer:       testIssuer,
+		SigningKey:   &SigningKey{Signer: newP256(t), KeyID: "test-server-key"},
+		Products:     []Product{{ProductID: testProductID, RedirectURIs: []string{"https://rp.example.com/callback"}, Scopes: []string{testScope}}},
+		RelyingParty: &oidf.RelyingParty{},
+	}
+	if _, err := New(withTestStores(t, cfg)); err == nil || !strings.Contains(err.Error(), "sign the entity statement") {
+		t.Errorf("err = %v", err)
+	}
 }
 
 func jwkToMap(t *testing.T, key *jose.JSONWebKey) map[string]any {
