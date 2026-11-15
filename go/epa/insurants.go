@@ -197,6 +197,9 @@ const maxEntitleBodyBytes = 256
 // errEntitleBody is an entitle request's body refused.
 var errEntitleBody = errors.New("entitle body refused")
 
+// errEntitleBodyTooLarge is an entitle request's body refused for its size.
+var errEntitleBodyTooLarge = fmt.Errorf("%w: larger than %d bytes", errEntitleBody, maxEntitleBodyBytes)
+
 // entitleProvider reads the optional body {"provider": n} of an entitle request; an empty body names none. The format
 // is the proxy's own, so a member it does not know is refused, as are a member named twice and invalid UTF-8.
 func entitleProvider(body io.Reader) (ProviderNumber, error) {
@@ -205,7 +208,7 @@ func entitleProvider(body io.Reader) (ProviderNumber, error) {
 		return 0, fmt.Errorf("%w: unreadable", errEntitleBody)
 	}
 	if len(data) > maxEntitleBodyBytes {
-		return 0, fmt.Errorf("%w: larger than %d bytes", errEntitleBody, maxEntitleBodyBytes)
+		return 0, errEntitleBodyTooLarge
 	}
 	if len(bytes.Trim(data, " \t\r\n")) == 0 {
 		return 0, nil

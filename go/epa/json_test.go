@@ -44,7 +44,7 @@ func TestServerRule28_AnEntitleBodyIsReadStrictly(t *testing.T) {
 		"another case":        {`{"Provider":1}`, json.ErrUnknownName},
 		"an unknown member":   {`{"provider":1,"insurant":"X"}`, json.ErrUnknownName},
 		"invalid UTF-8":       {"{\"provider\":1,\"\xff\":2}", nil},
-		"larger than a bound": {`{"provider":1}` + strings.Repeat(" ", maxEntitleBodyBytes), nil},
+		"larger than a bound": {`{"provider":1}` + strings.Repeat(" ", maxEntitleBodyBytes), errEntitleBodyTooLarge},
 	} {
 		_, err := entitleProvider(strings.NewReader(test.body))
 		if !errors.Is(err, errEntitleBody) || test.want != nil && !errors.Is(err, test.want) {
