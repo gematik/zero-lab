@@ -47,6 +47,7 @@ func (s *loginStub) withPAR(t *testing.T) (pushed *atomic.Int64, form *atomic.Po
 			return
 		}
 		form.Store(&r.PostForm)
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		fmt.Fprint(w, `{"request_uri":"urn:r","expires_in":60}`)
 	}))
@@ -222,4 +223,327 @@ func FuzzClaimsRequest(f *testing.F) {
 			t.Fatal("names lost a claim")
 		}
 	})
+}
+
+// countingTransport counts the requests that leave through it.
+type countingTransport struct {
+	requests atomic.Int64
+	next     http.RoundTripper
+}
+
+func (c *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	c.requests.Add(1)
+	return c.next.RoundTrip(r)
+}
+
+// answering points the stub provider's PAR and token endpoints at handler and counts every request the client sends.
+func (s *loginStub) answering(t *testing.T, handler http.HandlerFunc) *countingTransport {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	counting := &countingTransport{next: server.Client().Transport}
+	s.client.rp.httpClient = &http.Client{Transport: counting}
+	s.metadata().PushedAuthorizationRequestEndpoint = server.URL + "/par"
+	s.metadata().TokenEndpoint = server.URL + "/token"
+	return counting
+}
+
+// answer writes body with status and content type.
+func answer(status int, contentType, body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		if contentType != "" {
+			w.Header().Set("Content-Type", contentType)
+		}
+		w.WriteHeader(status)
+		fmt.Fprint(w, body)
+	}
+}
+
+func TestOWASP_InputValidation_AuthorizationCode(t *testing.T) {
+	stub := newLoginStub(t)
+	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
+	counting := stub.answering(t, answer(http.StatusOK, "application/json", `{}`))
+	for name, code := range map[string]string{
+		"empty": "", "overlong": strings.Repeat("c", 2049), "CRLF": "c\r\nX: y", "LF": "c\nX: y", "NUL": "c\x00",
+		"tab": "c\td", "non-ASCII": "cöde", "invalid UTF-8": "c\xff", "overlong UTF-8": "c\xc0\xaf", "bidi": "c\u202ed",
+		"zero-width": "c\u200bd",
+	} {
+		if _, _, err := stub.client.ExchangeIdentity(t.Context(), nLogin(), code); !errors.Is(err, openid.ErrAuthorizationCode) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if n := counting.requests.Load(); n != 0 {
+		t.Fatalf("%d refused codes reached the IDP", n)
+	}
+}
+
+// RFC 9700 section 4.1.3: "the authorization server MUST ensure that the redirect URI [...] exactly matches one of the
+// registered redirect URIs". The IDP compares; the relying party sends nothing it would have to refuse, so a code is
+// never sent toward a URI nobody registered.
+func TestRFC9700_4_1_3_TheRedirectURIIsComparedExactly(t *testing.T) {
+	stub := newLoginStub(t)
+	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
+	counting := stub.answering(t, answer(http.StatusCreated, "application/json", `{"request_uri":"urn:r","expires_in":60}`))
+	for name, uri := range map[string]string{
+		"a trailing slash":     "https://rp.example/cb/",
+		"another case":         "https://RP.example/cb",
+		"a prefix":             "https://rp.example/c",
+		"an extension":         "https://rp.example/cb/evil",
+		"a query":              "https://rp.example/cb?x=1",
+		"a fragment":           "https://rp.example/cb#x",
+		"percent-encoded":      "https://rp.example/%63b",
+		"a dot segment":        "https://rp.example/x/../cb",
+		"a port":               "https://rp.example:443/cb",
+		"http":                 "http://rp.example/cb",
+		"user info":            "https://rp.example@evil.example/cb",
+		"javascript":           "javascript:alert(1)",
+		"data":                 "data:text/html,x",
+		"CRLF":                 "https://rp.example/cb\r\n",
+		"trailing NUL":         "https://rp.example/cb\x00",
+		"zero-width":           "https://rp.example/cb\u200b",
+		"another registration": "https://other.example/cb",
+	} {
+		login := validLogin()
+		login.RedirectURI = uri
+		if _, err := stub.client.AuthenticationURL(t.Context(), login); !errors.Is(err, ErrRedirectURINotRegistered) {
+			t.Errorf("PAR, %s: %v", name, err)
+		}
+		if _, _, err := stub.client.ExchangeIdentity(t.Context(), login, "code"); !errors.Is(err, ErrRedirectURINotRegistered) {
+			t.Errorf("token request, %s: %v", name, err)
+		}
+	}
+	if n := counting.requests.Load(); n != 0 {
+		t.Fatalf("%d requests with an unregistered redirect URI reached the IDP", n)
+	}
+	login := validLogin()
+	login.RedirectURI = "https://rp.example/cb"
+	if _, err := stub.client.AuthenticationURL(t.Context(), login); err != nil {
+		t.Fatalf("the registered URI: %v", err)
+	}
+}
+
+// The redirect URIs a host's hook adds to the statement at signing are registered as soon as the statement carrying
+// them is served, and only then: the IDP fetches the served one.
+func TestRFC9700_4_1_3_TheRedirectURIsAreThoseOfTheServedStatement(t *testing.T) {
+	stub := newFederationStub(t)
+	rp, err := New(t.Context(), testRelyingPartyConfig(t, stub), newTestKeys(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const product = "https://product.example/cb"
+	configured := rp.registeredRedirectURIs()
+	if checkRedirectURI(configured[0], configured) != nil || checkRedirectURI(product, configured) == nil {
+		t.Fatalf("before the hook: %v", configured)
+	}
+	rp.AddEntityStatementHook(func(es *EntityStatement) error {
+		es.Metadata.OpenidRelyingParty.RedirectURIs = append(es.Metadata.OpenidRelyingParty.RedirectURIs, product)
+		return nil
+	})
+	if checkRedirectURI(product, rp.registeredRedirectURIs()) == nil {
+		t.Fatal("registered before a statement carrying it is served")
+	}
+	if err := rp.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkRedirectURI(product, rp.registeredRedirectURIs()); err != nil {
+		t.Fatalf("after signing: %v", err)
+	}
+}
+
+func TestOWASP_InputValidation_EntityIdentifier(t *testing.T) {
+	for name, iss := range map[string]string{
+		"empty":                     "",
+		"overlong":                  "https://op.example/" + strings.Repeat("a", 2048),
+		"http":                      "http://op.example",
+		"no host":                   "https:///x",
+		"an upper-case scheme":      "HTTPS://op.example",
+		"an upper-case host":        "https://OP.example",
+		"user info":                 "https://user@op.example",
+		"a query":                   "https://op.example?x",
+		"a fragment":                "https://op.example#x",
+		"a dot-dot segment":         "https://op.example/a/../b",
+		"a dot segment":             "https://op.example/./b",
+		"a trailing dot-dot":        "https://op.example/..",
+		"percent-encoded slash":     "https://op.example/a%2fb",
+		"percent-encoded backslash": "https://op.example/a%5Cb",
+		"percent-encoded at":        "https://op.example%40evil.example",
+		"percent-encoded hash":      "https://op.example/a%23b",
+		"double encoding":           "https://op.example/a%252fb",
+		"a backslash":               "https://op.example\\@evil.example",
+		"CRLF":                      "https://op.example\r\nX: y",
+		"NUL":                       "https://op.example\x00",
+		"a space":                   "https://op .example",
+		"non-ASCII host":            "https://öp.example",
+		"invalid UTF-8":             "https://op.example/\xff",
+		"bidi":                      "https://op.example/\u202e",
+		"zero-width":                "https://op\u200b.example",
+		"javascript":                "javascript:alert(1)",
+		"data":                      "data:text/html,x",
+		"file":                      "file:///etc/passwd",
+		"an empty port":             "https://op.example:",
+		"a port of letters":         "https://op.example:ab",
+		"an IPv6 literal":           "https://[::1]",
+	} {
+		if err := checkEntityIdentifier(iss); !errors.Is(err, ErrEntityIdentifier) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for _, iss := range []string{"https://op.example", "https://op.example/tenant", "https://op.example:8443/a-b_c~d", "https://127.0.0.1:4443/op", "https://op.example/"} {
+		if err := checkEntityIdentifier(iss); err != nil {
+			t.Errorf("%q: %v", iss, err)
+		}
+	}
+}
+
+func TestOWASP_InputValidation_PARResponse(t *testing.T) {
+	for name, body := range map[string]string{
+		"no request_uri":            `{"expires_in":60}`,
+		"empty request_uri":         `{"request_uri":"","expires_in":60}`,
+		"overlong request_uri":      `{"request_uri":"urn:` + strings.Repeat("r", 509) + `","expires_in":60}`,
+		"request_uri with CRLF":     `{"request_uri":"urn:r\r\nX: y","expires_in":60}`,
+		"request_uri with a space":  `{"request_uri":"urn:r s","expires_in":60}`,
+		"request_uri with bidi":     `{"request_uri":"urn:r\u202e","expires_in":60}`,
+		"request_uri http":          `{"request_uri":"http://op.example/r","expires_in":60}`,
+		"request_uri javascript":    `{"request_uri":"javascript:alert(1)","expires_in":60}`,
+		"request_uri data":          `{"request_uri":"data:text/html,x","expires_in":60}`,
+		"request_uri file":          `{"request_uri":"file:///etc/passwd","expires_in":60}`,
+		"request_uri in upper case": `{"request_uri":"URN:r","expires_in":60}`,
+		"request_uri a number":      `{"request_uri":1,"expires_in":60}`,
+		"https with user info":      `{"request_uri":"https://u@op.example/r","expires_in":60}`,
+		"https with a fragment":     `{"request_uri":"https://op.example/r#x","expires_in":60}`,
+		"no expires_in":             `{"request_uri":"urn:r"}`,
+		"expires_in zero":           `{"request_uri":"urn:r","expires_in":0}`,
+		"expires_in of 601":         `{"request_uri":"urn:r","expires_in":601}`,
+		"expires_in negative":       `{"request_uri":"urn:r","expires_in":-1}`,
+		"expires_in an exponent":    `{"request_uri":"urn:r","expires_in":6e1}`,
+		"expires_in a fraction":     `{"request_uri":"urn:r","expires_in":60.5}`,
+		"expires_in huge":           `{"request_uri":"urn:r","expires_in":1e400}`,
+		"expires_in a string":       `{"request_uri":"urn:r","expires_in":"60"}`,
+		"request_uri named twice":   `{"request_uri":"urn:r","request_uri":"urn:s","expires_in":60}`,
+		"request_uri in other case": `{"REQUEST_URI":"urn:r","expires_in":60}`,
+		"deeply nested":             `{"request_uri":"urn:r","expires_in":60,"x":` + strings.Repeat("[", 9) + strings.Repeat("]", 9) + `}`,
+		"not UTF-8":                 "{\"request_uri\":\"urn:r\",\"expires_in\":60,\"x\":\"\xff\"}",
+	} {
+		if _, err := parsePARResponse([]byte(body)); !errors.Is(err, ErrPARResponse) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for _, body := range []string{
+		`{"request_uri":"urn:ietf:params:oauth:request_uri:6esc_11ACC5bwc014ltc14eY22c","expires_in":60}`,
+		`{"request_uri":"https://op.example/r/1","expires_in":600,"unknown":{"x":1}}`,
+	} {
+		if _, err := parsePARResponse([]byte(body)); err != nil {
+			t.Errorf("%s: %v", body, err)
+		}
+	}
+}
+
+// RFC 9126 section 2.2 answers a PAR with 201 and a JSON body; RFC 6749 section 5.1 a token request with 200 and one.
+// Anything else is refused before the body is read, and the ID token has to be a JWE before go-jose parses it.
+func TestServerRule28_AResponseIsCheckedBeforeItIsRead(t *testing.T) {
+	for name, c := range map[string]struct {
+		par  bool
+		h    http.HandlerFunc
+		want error
+	}{
+		"PAR with 200":             {true, answer(http.StatusOK, "application/json", `{"request_uri":"urn:r","expires_in":60}`), openid.ErrErrorResponse},
+		"PAR as HTML":              {true, answer(http.StatusCreated, "text/html", `{"request_uri":"urn:r","expires_in":60}`), openid.ErrResponseContentType},
+		"PAR without a type":       {true, answer(http.StatusCreated, "", `{"request_uri":"urn:r","expires_in":60}`), openid.ErrResponseContentType},
+		"token with 201":           {false, answer(http.StatusCreated, "application/json", `{"token_type":"Bearer"}`), openid.ErrErrorResponse},
+		"token as text":            {false, answer(http.StatusOK, "text/plain", `{"token_type":"Bearer"}`), openid.ErrResponseContentType},
+		"token in Latin-1":         {false, answer(http.StatusOK, "application/json; charset=iso-8859-1", `{"token_type":"Bearer"}`), openid.ErrResponseContentType},
+		"token without id_token":   {false, answer(http.StatusOK, "application/json", `{"token_type":"Bearer"}`), openid.ErrTokenResponse},
+		"token with a JWS":         {false, answer(http.StatusOK, "application/json", `{"token_type":"Bearer","id_token":"eyJhbGciOiJub25lIn0.e30."}`), openid.ErrTokenResponse},
+		"token with six parts":     {false, answer(http.StatusOK, "application/json", `{"token_type":"Bearer","id_token":"a.b.c.d.e.f"}`), openid.ErrTokenResponse},
+		"token type mac":           {false, answer(http.StatusOK, "application/json", `{"token_type":"mac","id_token":"a.b.c.d.e"}`), openid.ErrTokenResponse},
+		"error as HTML":            {false, answer(http.StatusBadRequest, "text/html", `<h1>no</h1>`), openid.ErrResponseContentType},
+		"an error without error":   {false, answer(http.StatusBadRequest, "application/json", `{"error_description":"x"}`), openid.ErrErrorResponse},
+		"a JWE header named twice": {false, answer(http.StatusOK, "application/json", `{"token_type":"Bearer","id_token":"eyJhbGciOiJFQ0RILUVTIiwiYWxnIjoiZGlyIn0..aXY.Y2lwaGVy.dGFn"}`), openid.ErrProtectedHeader},
+	} {
+		stub := newLoginStub(t)
+		stub.answering(t, c.h)
+		var err error
+		if c.par {
+			_, err = stub.client.AuthenticationURL(t.Context(), validLogin())
+		} else {
+			_, _, err = stub.client.ExchangeIdentity(t.Context(), nLogin(), "code")
+		}
+		if !errors.Is(err, c.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestOWASP_InputValidation_ErrorResponse(t *testing.T) {
+	refusal := func(body string) *Error {
+		t.Helper()
+		var oidcErr *Error
+		if err := parseErrorResponse(&openid.Response{Status: 400, ContentType: "application/json", Body: []byte(body)}); !errors.As(err, &oidcErr) {
+			t.Fatalf("%s: %v", body, err)
+		}
+		return oidcErr
+	}
+	got := refusal(`{"error":"invalid_request","error_description":"bad <b>state</b>","error_uri":"javascript:alert(1)","gematik_code":"2004","gematik_uuid":"u-1","gematik_timestamp":1700000000,"operation":"AUTHORIZE"}`)
+	if *got != (Error{ErrorCode: "invalid_request", Description: "bad <b>state</b>", GematikCode: "2004", GematikUUID: "u-1", GematikTimestamp: 1700000000, Operation: "AUTHORIZE"}) {
+		t.Errorf("%+v", got)
+	}
+	if got := refusal(`{"error":"invalid_request","errorDescription":"camel"}`); got.Description != "camel" {
+		t.Errorf("errorDescription stands in for a missing error_description: %+v", got)
+	}
+	for name, member := range map[string]string{
+		"CRLF": `"a\r\nb"`, "NUL": `"a\u0000b"`, "bidi": `"a\u202eb"`, "non-ASCII": `"ä"`, "a quote": `"a\"b"`,
+		"overlong": `"` + strings.Repeat("a", 257) + `"`, "a number": `1`, "an object": `{}`,
+	} {
+		got := refusal(`{"error":"x","error_description":` + member + `,"errorDescription":` + member + `,"gematik_code":` + member + `,"gematik_uuid":` + member + `,"operation":` + member + `,"gematik_timestamp":"1"}`)
+		if *got != (Error{ErrorCode: "x"}) {
+			t.Errorf("%s: kept %+v, dropped is right", name, got)
+		}
+	}
+	for name, body := range map[string]string{
+		"no error": `{"error_description":"x"}`, "error with CRLF": `{"error":"a\r\nb"}`, "error overlong": `{"error":"` + strings.Repeat("e", 65) + `"}`,
+		"error named twice": `{"error":"a","error":"b"}`, "not JSON": `invalid_request`, "error in other case": `{"Error":"a"}`,
+	} {
+		if err := parseErrorResponse(&openid.Response{Status: 400, ContentType: "application/json", Body: []byte(body)}); !errors.Is(err, openid.ErrErrorResponse) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// Server rule 14 and servers.md rule 28: an error names the field and the reason, never the value refused, which may
+// come from a request or a response and must not reach a log line.
+func TestServerRule14_ARefusedValueIsNotInTheError(t *testing.T) {
+	const marker = "MARKER-0123456789"
+	stub := newLoginStub(t)
+	counting := stub.answering(t, answer(http.StatusOK, "application/json", `{}`))
+	login := validLogin()
+	errs := map[string]error{}
+	_, _, errs["code"] = stub.client.ExchangeIdentity(t.Context(), nLogin(), marker+"\r\n")
+	login.RedirectURI = "https://" + marker + ".example/cb"
+	_, errs["redirect_uri"] = stub.client.AuthenticationURL(t.Context(), login)
+	login = validLogin()
+	login.State = marker + "."
+	_, errs["state"] = stub.client.AuthenticationURL(t.Context(), login)
+	login = validLogin()
+	login.Scopes = []string{"openid", marker}
+	_, errs["scope"] = stub.client.AuthenticationURL(t.Context(), login)
+	errs["entity identifier"] = checkEntityIdentifier("https://" + marker + ".example/%2f")
+	errs["federation URL"] = checkFederationURL("http://" + marker + ".example")
+	rp := &RelyingParty{}
+	_, errs["idp_iss"] = rp.Client(t.Context(), "https://"+marker+".example/..")
+	_, errs["PAR response"] = parsePARResponse([]byte(`{"request_uri":"javascript:` + marker + `","expires_in":60}`))
+	_, errs["token response"] = openid.ParseTokenResponse([]byte(`{"token_type":"` + marker + `"}`))
+	errs["error response"] = parseErrorResponse(&openid.Response{Status: 400, ContentType: "application/json", Body: []byte(`{"error":"` + marker + `\n"}`)})
+	_, errs["duplicate member"] = parsePARResponse([]byte(`{"` + marker + `":1,"` + marker + `":2}`))
+	for field, err := range errs {
+		if err == nil {
+			t.Errorf("%s: accepted", field)
+			continue
+		}
+		if strings.Contains(err.Error(), marker) {
+			t.Errorf("%s: the error holds the value: %v", field, err)
+		}
+	}
+	if n := counting.requests.Load(); n != 0 {
+		t.Fatalf("%d refused requests reached the IDP", n)
+	}
 }

@@ -24,6 +24,8 @@ package oidf
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // UserType is a value of gematik's user_type_supported claim: the kind of user a provider authenticates.
@@ -139,10 +141,13 @@ type FederationEntityMetadata struct {
 	Extra map[string]json.RawMessage `json:"-"`
 }
 
+// parseEntityStatement reads a verified statement's payload with encoding/json/v2 (servers.md rule 28): bounded, of
+// UTF-8, without a member named twice and by the members' exact names. Members it does not know are ignored, since
+// the federation's formats are open to extension.
 func parseEntityStatement(payload []byte) (*EntityStatement, error) {
 	var es EntityStatement
-	if err := json.Unmarshal(payload, &es); err != nil {
-		return nil, fmt.Errorf("unable to unmarshal entity statement: %w", err)
+	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &es); err != nil {
+		return nil, fmt.Errorf("unable to read entity statement: %w", err)
 	}
 	return &es, nil
 }

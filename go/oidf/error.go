@@ -22,12 +22,19 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
-	"io"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
 
-// Error is an OAuth 2.0 error response (RFC 6749 §5.2) with the members gematik's IDPs add to it.
+// maxGematikMemberBytes bounds the members gematik's IDPs add to an error response.
+const maxGematikMemberBytes = 64
+
+// Error is an OAuth 2.0 error response (RFC 6749 §5.2) with the members gematik's IDPs add to it. Each text member
+// holds NQSCHAR only, within its bound, or is empty: what came otherwise was dropped. The text is data for the host,
+// to log as a field, never to put into HTML or a header.
 type Error struct {
 	Operation        string `json:"operation"`
 	ErrorCode        string `json:"error"`
@@ -35,11 +42,10 @@ type Error struct {
 	GematikTimestamp int64  `json:"gematik_timestamp,omitempty"`
 	GematikUUID      string `json:"gematik_uuid,omitempty"`
 	GematikCode      string `json:"gematik_code,omitempty"`
-	// BadDescription captures error_description sent in camelCase ("errorDescription"), which some IDPs
-	// return in violation of RFC 6749. parseErrorResponse folds it into Description.
-	BadDescription string `json:"errorDescription,omitempty"`
 }
 
+// Error puts the members into its text: parseErrorResponse let only bounded printable ASCII through, which cannot
+// break the log line it ends up in.
 func (e *Error) Error() string {
 	s := fmt.Sprintf("%s: %s", e.ErrorCode, e.Description)
 	if e.GematikCode != "" {
@@ -51,17 +57,55 @@ func (e *Error) Error() string {
 	return s
 }
 
-// parseErrorResponse decodes an RFC 6749 error from the HTTP response body. source is the IDP URL the body came from.
-// A description sent in camelCase ("errorDescription") is still surfaced in Description. The body stays out of the error
-// when it does not decode, since it comes from outside and may echo what the provider was sent.
-func parseErrorResponse(body io.Reader, source string) error {
-	raw, _ := io.ReadAll(io.LimitReader(body, 8192))
-	var oidcErr Error
-	if err := json.Unmarshal(raw, &oidcErr); err != nil {
-		return fmt.Errorf("unable to decode error from %s: %w", source, err)
+// parseErrorResponse reads the error response of an IDP or a federation member (servers.md rule 28): it has to be
+// declared as JSON, and its error as [openid.ParseErrorResponse] holds it, or the response is refused with
+// [openid.ErrErrorResponse] and the status alone. A description sent in camelCase ("errorDescription"), which some
+// IDPs return in violation of RFC 6749, stands in for a missing error_description. The gematik members are dropped
+// when they are not NQSCHAR within maxGematikMemberBytes, like the description. Nothing of the body reaches the error
+// otherwise, since it comes from outside and may echo what the provider was sent.
+func parseErrorResponse(response *openid.Response) error {
+	refused := func(err error) error {
+		return fmt.Errorf("status %d: %w", response.Status, err)
 	}
-	if oidcErr.Description == "" && oidcErr.BadDescription != "" {
-		oidcErr.Description = oidcErr.BadDescription
+	if err := response.CheckJSON(); err != nil {
+		return refused(fmt.Errorf("%w: %w", openid.ErrErrorResponse, err))
 	}
-	return &oidcErr
+	standard, err := openid.ParseErrorResponse(response.Body)
+	if err != nil {
+		return refused(err)
+	}
+	var gematik struct {
+		Operation      jsontext.Value `json:"operation"`
+		Timestamp      jsontext.Value `json:"gematik_timestamp"`
+		UUID           jsontext.Value `json:"gematik_uuid"`
+		Code           jsontext.Value `json:"gematik_code"`
+		BadDescription jsontext.Value `json:"errorDescription"`
+	}
+	// openid.ParseErrorResponse checked the body's bounds already.
+	if err := json.Unmarshal(response.Body, &gematik); err != nil {
+		return refused(fmt.Errorf("%w: a member is not of its type", openid.ErrErrorResponse))
+	}
+	oidcErr := &Error{
+		ErrorCode:   standard.Code,
+		Description: standard.Description,
+		Operation:   errorText(gematik.Operation, maxGematikMemberBytes),
+		GematikUUID: errorText(gematik.UUID, maxGematikMemberBytes),
+		GematikCode: errorText(gematik.Code, maxGematikMemberBytes),
+	}
+	if oidcErr.Description == "" {
+		oidcErr.Description = errorText(gematik.BadDescription, openid.MaxErrorDescriptionBytes)
+	}
+	if json.Unmarshal(gematik.Timestamp, &oidcErr.GematikTimestamp) != nil || oidcErr.GematikTimestamp < 0 {
+		oidcErr.GematikTimestamp = 0
+	}
+	return oidcErr
+}
+
+// errorText is the member raw if it is a string of NQSCHAR within most bytes, and "" otherwise.
+func errorText(raw jsontext.Value, most int) string {
+	var value string
+	if json.Unmarshal(raw, &value) != nil || !openid.IsErrorText(value, most) {
+		return ""
+	}
+	return value
 }

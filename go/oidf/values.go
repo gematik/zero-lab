@@ -22,10 +22,12 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"slices"
 	"strings"
 	"unicode"
@@ -63,7 +65,7 @@ func checkText(value string, most int) error {
 
 // textMember reads the member name of an object as text within most bytes. A member that is absent or null is not
 // present; one of another type is an error.
-func textMember(members map[string]json.RawMessage, name string, most int) (value string, present bool, err error) {
+func textMember(members map[string]jsontext.Value, name string, most int) (value string, present bool, err error) {
 	raw, ok := members[name]
 	if !ok || string(raw) == "null" {
 		return "", false, nil
@@ -123,27 +125,13 @@ func checkACRValues(values []string) error {
 	return nil
 }
 
-// grantedScopes reads the scope of a token response, space-separated scope-tokens of NQCHAR (RFC 6749 section 3.3);
-// without one, the scopes asked for were granted (section 5.1).
-func grantedScopes(scope string, asked []string) ([]string, error) {
+// grantedScopes reads the scope of a token response, which openid.ParseTokenResponse held to space-separated
+// scope-tokens of NQCHAR (RFC 6749 section 3.3); without one, the scopes asked for were granted (section 5.1).
+func grantedScopes(scope string, asked []string) []string {
 	if scope == "" {
-		return slices.Clone(asked), nil
+		return slices.Clone(asked)
 	}
-	if len(scope) > maxTextBytes {
-		return nil, fmt.Errorf("%w: the granted scope is longer than %d bytes", ErrIdentityClaim, maxTextBytes)
-	}
-	scopes := strings.Split(scope, " ")
-	for _, token := range scopes {
-		if token == "" {
-			return nil, fmt.Errorf("%w: the granted scope has an empty token", ErrIdentityClaim)
-		}
-		for _, c := range []byte(token) {
-			if c != 0x21 && (c < 0x23 || c > 0x7e || c == 0x5c) {
-				return nil, fmt.Errorf("%w: the granted scope has a character outside NQCHAR", ErrIdentityClaim)
-			}
-		}
-	}
-	return scopes, nil
+	return strings.Split(scope, " ")
 }
 
 // checkLogin refuses the values of a login the relying party would send badly, before any request is made. scopes are
@@ -227,7 +215,7 @@ func (r claimsRequest) names() []string {
 // parseClaimsRequest reads a claims parameter. Each claim is null or an object whose essential, if present, is a
 // boolean (OIDC Core 5.5.1); value and values are the IDP's to judge. Members other than id_token and userinfo are
 // ignored, as OIDC Core 5.5 has it. openid.AuthorizationQuery holds the parameter to its size and shape bounds.
-func parseClaimsRequest(raw json.RawMessage) (claimsRequest, error) {
+func parseClaimsRequest(raw jsontext.Value) (claimsRequest, error) {
 	var request claimsRequest
 	if len(raw) == 0 {
 		return request, nil
@@ -235,9 +223,9 @@ func parseClaimsRequest(raw json.RawMessage) (claimsRequest, error) {
 	if len(raw) > openid.MaxClaimsBytes {
 		return request, fmt.Errorf("%w: larger than %d bytes", ErrClaimsRequest, openid.MaxClaimsBytes)
 	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &members); err != nil || members == nil {
-		return request, fmt.Errorf("%w: not a JSON object", ErrClaimsRequest)
+	var members map[string]jsontext.Value
+	if err := openid.UnmarshalObject(raw, openid.ClaimsDepth, openid.ClaimsMembers, &members); err != nil {
+		return request, fmt.Errorf("%w: not a JSON object within bounds", ErrClaimsRequest)
 	}
 	var err error
 	if request.idToken, err = claimsMember(members["id_token"]); err != nil {
@@ -250,11 +238,11 @@ func parseClaimsRequest(raw json.RawMessage) (claimsRequest, error) {
 }
 
 // claimsMember maps each claim of an id_token or userinfo member to whether it is essential.
-func claimsMember(raw json.RawMessage) (map[string]bool, error) {
+func claimsMember(raw jsontext.Value) (map[string]bool, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return nil, nil
 	}
-	var claims map[string]json.RawMessage
+	var claims map[string]jsontext.Value
 	if err := json.Unmarshal(raw, &claims); err != nil || claims == nil {
 		return nil, errors.New("not an object")
 	}
@@ -264,7 +252,7 @@ func claimsMember(raw json.RawMessage) (map[string]bool, error) {
 			essential[name] = false
 			continue
 		}
-		var members map[string]json.RawMessage
+		var members map[string]jsontext.Value
 		if err := json.Unmarshal(value, &members); err != nil || members == nil {
 			return nil, errors.New("a claim is neither null nor an object")
 		}
@@ -279,4 +267,126 @@ func claimsMember(raw json.RawMessage) (map[string]bool, error) {
 		}
 	}
 	return essential, nil
+}
+
+// ErrRedirectURINotRegistered is a redirect URI that is not byte for byte one the relying party registered.
+var ErrRedirectURINotRegistered = errors.New("redirect_uri not registered")
+
+// checkRedirectURI takes a redirect URI equal to one of registered, compared as strings: no normalisation of case,
+// percent-encoding or trailing slash, no prefix match (RFC 9700 section 4.1.3). The IDP compares it with the
+// redirect_uris of the statement it fetched, so a URI the statement lacks would be refused there; refusing it here
+// keeps a login's code from being sent where nobody registered.
+func checkRedirectURI(uri string, registered []string) error {
+	if uri == "" || !slices.Contains(registered, uri) {
+		return ErrRedirectURINotRegistered
+	}
+	return nil
+}
+
+// ErrEntityIdentifier is an entity identifier, an IDP's issuer usually from a request's idp_iss, that is refused
+// before anything is fetched at or about it.
+var ErrEntityIdentifier = errors.New("entity identifier refused")
+
+// checkEntityIdentifier takes an entity identifier (OpenID Federation 1.1 section 1.2) a fetch can be built from by
+// appending a path: an https URL of at most maxEntityIdentifierBytes printable ASCII characters with a host of
+// lowercase letters, digits, dots and hyphens and an optional port, without user info, query or fragment, without
+// '.' or '..' segments, without '\' and without '%'. A '%' is refused outright rather than only before an encoded
+// '/', '\', '?', '#' or '@': no issuer of the federation uses one, and so double encoding cannot slip through either.
+// The admission compares it byte for byte with the IdP list, so nothing is normalised.
+func checkEntityIdentifier(iss string) error {
+	if iss == "" || len(iss) > maxEntityIdentifierBytes {
+		return fmt.Errorf("%w: not 1 to %d characters", ErrEntityIdentifier, maxEntityIdentifierBytes)
+	}
+	for _, c := range []byte(iss) {
+		if c <= 0x20 || c >= 0x7f || c == '%' || c == '\\' || c == '?' || c == '#' || c == '@' {
+			return fmt.Errorf("%w: a character outside its grammar", ErrEntityIdentifier)
+		}
+	}
+	rest, found := strings.CutPrefix(iss, "https://")
+	if !found {
+		return fmt.Errorf("%w: not https", ErrEntityIdentifier)
+	}
+	host, path, _ := strings.Cut(rest, "/")
+	if !isHost(host) {
+		return fmt.Errorf("%w: no host of lowercase letters, digits, dots and hyphens", ErrEntityIdentifier)
+	}
+	for segment := range strings.SplitSeq(path, "/") {
+		if segment == "." || segment == ".." {
+			return fmt.Errorf("%w: a dot segment", ErrEntityIdentifier)
+		}
+	}
+	return nil
+}
+
+// isHost reports whether host is a name of lowercase letters, digits, dots and hyphens, or an IPv4 address, with an
+// optional port of digits.
+func isHost(host string) bool {
+	name, port, hasPort := strings.Cut(host, ":")
+	if name == "" || hasPort && (port == "" || len(port) > 5 || strings.Trim(port, "0123456789") != "") {
+		return false
+	}
+	for _, c := range []byte(name) {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '.' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// Bounds of a PAR response (RFC 9126 section 2.2).
+const (
+	maxRequestURIBytes = 512
+	// maxPARLifetime bounds expires_in: a pushed request is used within seconds, and RFC 9126 section 2.2 names 60
+	// as an example.
+	maxPARLifetime = 600
+)
+
+// ErrPARResponse is a PAR response refused before its request_uri is used.
+var ErrPARResponse = errors.New("PAR response refused")
+
+// pushedAuthorizationResponse is a PAR response (RFC 9126 section 2.2).
+type pushedAuthorizationResponse struct {
+	RequestURI string `json:"request_uri"`
+	ExpiresIn  int64  `json:"expires_in"`
+}
+
+// parsePARResponse reads a PAR response with encoding/json/v2, members ignored that it does not name, and takes a
+// request_uri of 1 to maxRequestURIBytes printable ASCII characters that is a urn: URI or an https URL with a host
+// and neither user info nor fragment, and an expires_in of 1 to maxPARLifetime seconds. The request_uri goes into the
+// authorization URL the browser is sent to, so nothing else may pass.
+func parsePARResponse(body []byte) (pushedAuthorizationResponse, error) {
+	var pushed pushedAuthorizationResponse
+	if err := openid.UnmarshalObject(body, openid.ResponseDepth, openid.ResponseMembers, &pushed); err != nil {
+		return pushed, fmt.Errorf("%w: %w", ErrPARResponse, err)
+	}
+	if err := checkRequestURI(pushed.RequestURI); err != nil {
+		return pushed, err
+	}
+	if pushed.ExpiresIn < 1 || pushed.ExpiresIn > maxPARLifetime {
+		return pushed, fmt.Errorf("%w: expires_in is not 1 to %d", ErrPARResponse, maxPARLifetime)
+	}
+	return pushed, nil
+}
+
+func checkRequestURI(uri string) error {
+	if uri == "" || len(uri) > maxRequestURIBytes {
+		return fmt.Errorf("%w: request_uri is not 1 to %d characters", ErrPARResponse, maxRequestURIBytes)
+	}
+	for _, c := range []byte(uri) {
+		if c <= 0x20 || c >= 0x7f {
+			return fmt.Errorf("%w: request_uri holds a character outside printable ASCII", ErrPARResponse)
+		}
+	}
+	parsed, err := url.Parse(uri)
+	if err != nil {
+		return fmt.Errorf("%w: request_uri is no URI", ErrPARResponse)
+	}
+	switch {
+	// The prefixes are compared as sent: url.Parse would lowercase a scheme in upper case.
+	case strings.HasPrefix(uri, "urn:") && parsed.Opaque != "":
+		return nil
+	case strings.HasPrefix(uri, "https://") && parsed.Hostname() != "" && parsed.User == nil && !strings.Contains(uri, "#"):
+		return nil
+	}
+	return fmt.Errorf("%w: request_uri is neither a urn: URI nor an https URL", ErrPARResponse)
 }

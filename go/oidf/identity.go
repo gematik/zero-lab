@@ -22,14 +22,14 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/gematik/zero-lab/go/openid"
 )
@@ -205,12 +205,9 @@ func parseIdentity(payload []byte, issuer, version string) (*Identity, error) {
 	if len(payload) > maxIDTokenPayloadBytes {
 		return nil, fmt.Errorf("%w: the payload is larger than %d bytes", ErrIdentityClaim, maxIDTokenPayloadBytes)
 	}
-	if !utf8.Valid(payload) {
-		return nil, fmt.Errorf("%w: the payload is not UTF-8", ErrIdentityClaim)
-	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &members); err != nil || members == nil {
-		return nil, fmt.Errorf("%w: the payload is no JSON object", ErrIdentityClaim)
+	var members map[string]jsontext.Value
+	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &members); err != nil {
+		return nil, fmt.Errorf("%w: the payload is no JSON object of UTF-8 and distinct names", ErrIdentityClaim)
 	}
 	identity := &Identity{Issuer: issuer, IDTokenVersion: version}
 	subject, present, err := textMember(members, "sub", maxTextBytes)
@@ -255,7 +252,7 @@ func parseIdentity(payload []byte, issuer, version string) (*Identity, error) {
 // signalMember reads a custom claim of version 2.0.0. gemSpec_IDP_Sek gives the values ("den Wert loa-substantial
 // ergänzen", "auf den Wert silent gesetzt") but no JSON type, so a string or an array of at most most strings is taken,
 // and nothing else.
-func signalMember(raw json.RawMessage, most int) ([]string, error) {
+func signalMember(raw jsontext.Value, most int) ([]string, error) {
 	if len(raw) == 0 {
 		return nil, nil
 	}
@@ -266,7 +263,7 @@ func signalMember(raw json.RawMessage, most int) ([]string, error) {
 		}
 		return []string{single}, nil
 	}
-	var list []json.RawMessage
+	var list []jsontext.Value
 	if err := json.Unmarshal(raw, &list); err != nil || list == nil {
 		return nil, errors.New("is neither text nor a list of text")
 	}
@@ -285,11 +282,11 @@ func signalMember(raw json.RawMessage, most int) ([]string, error) {
 }
 
 // amrMember reads amr, a JSON array of strings (OIDC Core 2), of at least one and at most maxAMREntries methods.
-func amrMember(raw json.RawMessage) ([]string, error) {
+func amrMember(raw jsontext.Value) ([]string, error) {
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("%w: missing", ErrAMR)
 	}
-	var methods []json.RawMessage
+	var methods []jsontext.Value
 	if err := json.Unmarshal(raw, &methods); err != nil || len(methods) == 0 {
 		return nil, fmt.Errorf("%w: no array of methods", ErrAMR)
 	}
@@ -311,7 +308,7 @@ func amrMember(raw json.RawMessage) ([]string, error) {
 }
 
 // authTimeMember reads auth_time, a NumericDate (OIDC Core 2), as openid reads exp.
-func authTimeMember(raw json.RawMessage) (time.Time, error) {
+func authTimeMember(raw jsontext.Value) (time.Time, error) {
 	var seconds *float64
 	if err := json.Unmarshal(raw, &seconds); err != nil || seconds == nil {
 		return time.Time{}, fmt.Errorf("%w: no number", ErrAuthTime)
@@ -342,8 +339,8 @@ func checkIdentity(identity *Identity, payload []byte, login openid.Login, clien
 	if rank < lowestRankAsked(login.ACRValues) {
 		return fmt.Errorf("%w: lower than asked for", ErrACR)
 	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &members); err != nil {
+	var members map[string]jsontext.Value
+	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &members); err != nil {
 		return fmt.Errorf("%w: the payload is no JSON object", ErrIdentityClaim)
 	}
 	if raw, ok := members["iat"]; !ok || string(raw) == "null" {
@@ -372,7 +369,7 @@ func checkIdentity(identity *Identity, payload []byte, login openid.Login, clien
 
 // checkAuthorizedParty holds azp to OIDC Core 3.1.3.7 steps 4 and 5. openid's checks have read aud as a string or an
 // array of strings already.
-func checkAuthorizedParty(members map[string]json.RawMessage, clientID string) error {
+func checkAuthorizedParty(members map[string]jsontext.Value, clientID string) error {
 	var audiences []string
 	if err := json.Unmarshal(members["aud"], &audiences); err != nil {
 		audiences = nil

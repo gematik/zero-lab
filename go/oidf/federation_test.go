@@ -114,6 +114,7 @@ func newFederationStub(t *testing.T) *federationStub {
 		if token := stub.idToken.Load(); token != nil {
 			idToken = *token
 		}
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": idToken})
 	})
 	mux.HandleFunc("/elsewhere", func(http.ResponseWriter, *http.Request) { stub.redirected.Add(1) })
@@ -324,12 +325,15 @@ func newLoginStub(t *testing.T) *loginStub {
 			keys:       Keys{Decrypt: ecdhKey(t, stub.encKey), DecryptKID: "enc"},
 			httpClient: server.Client(),
 			entityStatement: &EntityStatement{
-				Subject:  "https://rp.example",
-				Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{Scope: defaultMetadataScope}},
+				Subject: "https://rp.example",
+				Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{
+					Scope: defaultMetadataScope, RedirectURIs: []string{"https://rp.example/cb"},
+				}},
 			},
 		},
-		issuer: "https://op.example",
-		scopes: defaultOPScopes,
+		issuer:      "https://op.example",
+		scopes:      defaultOPScopes,
+		redirectURI: "https://rp.example/cb",
 	}
 	metadata := &OpenIDProviderMetadata{Issuer: "https://op.example", TokenEndpoint: server.URL}
 	stub.client.current.Store(&provider{
@@ -774,6 +778,7 @@ func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 	var refuse atomic.Bool
 	stub := newLoginStub(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		if refuse.Load() {
 			w.WriteHeader(http.StatusBadRequest)
 			fmt.Fprint(w, refusal)

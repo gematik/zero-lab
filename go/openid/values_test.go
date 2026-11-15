@@ -165,7 +165,7 @@ func TestOWASP_InputValidation_ErrorResponse(t *testing.T) {
 	}
 	for name, description := range map[string]string{
 		"CRLF": `a\r\nb`, "NUL": `a\u0000b`, "bidi": `a\u202eb`, "not ASCII": "ä", "markup quote": `\"<b>`,
-		"overlong": strings.Repeat("a", maxErrorDescriptionBytes+1), "a number": "",
+		"overlong": strings.Repeat("a", MaxErrorDescriptionBytes+1), "a number": "",
 	} {
 		body := `{"error":"invalid_grant","error_description":"` + description + `","error_uri":"javascript:alert(1)"}`
 		if name == "a number" {

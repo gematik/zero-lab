@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"unicode/utf8"
 )
 
 // Bounds of the request values a login may carry. They travel in a URL or a PAR form, where providers cap the size,
@@ -35,10 +36,10 @@ import (
 const (
 	// MaxClaimsBytes bounds the claims request parameter.
 	MaxClaimsBytes = 4096
-	// maxClaimsDepth bounds the nesting of objects and arrays in the claims parameter; OIDC Core 5.5 needs three.
-	maxClaimsDepth = 5
-	// maxClaimsMembers bounds the members of all objects of the claims parameter together.
-	maxClaimsMembers = 64
+	// ClaimsDepth bounds the nesting of objects and arrays in the claims parameter; OIDC Core 5.5 needs three.
+	ClaimsDepth = 5
+	// ClaimsMembers bounds the members of all objects of the claims parameter together.
+	ClaimsMembers = 64
 	// maxScopes and maxACRValues bound how many values a request names.
 	maxScopes    = 16
 	maxACRValues = 8
@@ -61,7 +62,7 @@ func checkClaimsParameter(claims []byte) error {
 	if len(claims) > MaxClaimsBytes {
 		return fmt.Errorf("%w: larger than %d bytes", ErrClaimsParameter, MaxClaimsBytes)
 	}
-	if err := checkJSONObject(claims, maxClaimsDepth, maxClaimsMembers); err != nil {
+	if err := checkJSONObject(claims, ClaimsDepth, ClaimsMembers); err != nil {
 		return fmt.Errorf("%w: %w", ErrClaimsParameter, err)
 	}
 	return nil
@@ -98,6 +99,10 @@ func CheckJSONObject(data []byte, depth, members int) error {
 // checkJSONObject walks the tokens with jsontext, whose decoder refuses invalid UTF-8 and duplicate names by
 // default. Its errors quote the input, so they are replaced by a reason.
 func checkJSONObject(data []byte, maxDepth, maxMembers int) error {
+	// jsontext refuses invalid UTF-8 too; checked first only to say so.
+	if !utf8.Valid(data) {
+		return errors.New("not UTF-8")
+	}
 	decoder := jsontext.NewDecoder(bytes.NewReader(data))
 	if decoder.PeekKind() != '{' {
 		return errors.New("not a JSON object")
@@ -161,9 +166,9 @@ func checkTokens(refused error, values []string, most int, unique bool) error {
 const (
 	// maxAuthorizationCodeBytes bounds the code a callback hands over; providers issue far shorter ones.
 	maxAuthorizationCodeBytes = 2048
-	// maxErrorCodeBytes and maxErrorDescriptionBytes bound the text of an error response (RFC 6749 section 5.2).
+	// maxErrorCodeBytes and MaxErrorDescriptionBytes bound the text of an error response (RFC 6749 section 5.2).
 	maxErrorCodeBytes        = 64
-	maxErrorDescriptionBytes = 256
+	MaxErrorDescriptionBytes = 256
 	// MaxIDTokenBytes bounds the ID token of a token response, signed or signed and encrypted.
 	MaxIDTokenBytes = 16 << 10
 	// maxBearerBytes bounds an access or refresh token; a provider's own token format decides their length.
@@ -219,7 +224,7 @@ func IsErrorText(value string, most int) bool {
 
 // ParseErrorResponse reads an OAuth error response (RFC 6749 section 5.2). Its error has to be NQSCHAR of at most
 // maxErrorCodeBytes, or the whole response is refused. An error_description outside its grammar or longer than
-// maxErrorDescriptionBytes is dropped rather than refusing the response: the request failed either way, and the code
+// MaxErrorDescriptionBytes is dropped rather than refusing the response: the request failed either way, and the code
 // still says why. error_uri is never read, since a host could otherwise be made to link to wherever a provider says.
 func ParseErrorResponse(body []byte) (*Error, error) {
 	var wire struct {
@@ -234,7 +239,7 @@ func ParseErrorResponse(body []byte) (*Error, error) {
 		return nil, fmt.Errorf("%w: error is not 1 to %d characters of NQSCHAR", ErrErrorResponse, maxErrorCodeBytes)
 	}
 	description, ok := stringValue(wire.Description)
-	if !ok || !IsErrorText(description, maxErrorDescriptionBytes) {
+	if !ok || !IsErrorText(description, MaxErrorDescriptionBytes) {
 		description = ""
 	}
 	return &Error{Code: code, Description: description}, nil

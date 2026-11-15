@@ -474,9 +474,16 @@ func (rp *RelyingParty) SignEntityStatement() ([]byte, error) {
 }
 
 func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
+	signed, _, err := rp.signStatement(now)
+	return signed, err
+}
+
+// signStatement signs the statement with the hooks applied and returns the redirect_uris it registers, which are
+// the ones logins are held to while it is served.
+func (rp *RelyingParty) signStatement(now time.Time) (signed []byte, redirectURIs []string, err error) {
 	es, err := rp.statementWithHooks()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	issuedAt := now.Add(-statementBackdate)
 	// An entity configuration names its entity as issuer and subject (OpenID Federation 1.1 section 3); a hook
@@ -486,13 +493,16 @@ func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
 	es.ExpiresAt = issuedAt.Add(maxStatementLifetime).Unix()
 	es.AuthorityHints = []string{rp.fedMaster}
 	if err := rp.checkStatement(es); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	payload, err := json.Marshal(es)
 	if err != nil {
-		return nil, fmt.Errorf("marshal entity statement: %w", err)
+		return nil, nil, fmt.Errorf("marshal entity statement: %w", err)
 	}
-	return rp.signPayload("entity-statement+jwt", payload)
+	if signed, err = rp.signPayload("entity-statement+jwt", payload); err != nil {
+		return nil, nil, err
+	}
+	return signed, slices.Clone(es.Metadata.OpenidRelyingParty.RedirectURIs), nil
 }
 
 // signedJwksClaims keep the shape registered parties get today: a whole JWK Set under "keys", so the array sits at
@@ -558,11 +568,6 @@ func (rp *RelyingParty) signPayload(typ string, payload []byte) ([]byte, error) 
 	return []byte(compact), nil
 }
 
-type pushedAuthorizationResponse struct {
-	RequestURI string `json:"request_uri"`
-	ExpiresIn  int    `json:"expires_in"`
-}
-
 // ErrIDPNotAdmitted is an issuer that is not on the federation master's signed IdP list.
 var ErrIDPNotAdmitted = errors.New("identity provider not admitted")
 
@@ -599,7 +604,7 @@ func (rp *RelyingParty) Client(ctx context.Context, issuer string) (*RelyingPart
 // fetched from the master only.
 func (rp *RelyingParty) admit(ctx context.Context, issuer string) error {
 	if err := checkEntityIdentifier(issuer); err != nil {
-		return fmt.Errorf("%w: the issuer is no entity identifier", ErrIDPNotAdmitted)
+		return fmt.Errorf("%w: %w", ErrIDPNotAdmitted, err)
 	}
 	idps, err := rp.federation.FetchIdpList(ctx)
 	if err != nil {
@@ -926,6 +931,19 @@ func (rp *RelyingParty) idTokenVersions() []string {
 		return supportedVersions(nil)
 	}
 	return supportedVersions(rp.entityStatement.Metadata.OpenidRelyingParty.TIFeaturesSupported)
+}
+
+// registeredRedirectURIs are the redirect_uris of the statement served now, hooks applied, which is what an IDP
+// fetches and compares a login's redirect_uri with; a host's hook may add some to what the configuration names. A
+// relying party that serves nothing yet, built by a test without New, holds logins to its own statement's.
+func (rp *RelyingParty) registeredRedirectURIs() []string {
+	if statement := rp.statement.Load(); statement != nil {
+		return statement.redirectURIs
+	}
+	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
+		return nil
+	}
+	return rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs
 }
 
 // registeredScope is the scope of the relying party's openid_relying_party metadata, the scopes a login may ask for.

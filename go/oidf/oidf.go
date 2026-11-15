@@ -26,7 +26,8 @@ package oidf
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -36,7 +37,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 
@@ -69,30 +69,30 @@ func refuseRedirect(*http.Request, []*http.Request) error {
 	return errRedirectRefused
 }
 
-// checkFederationURL lets through what a federation document may send a fetch to: an https URL, with a host and no
-// credentials. It holds tests too, whose stubs serve TLS, so that no plain path exists to be left open.
+// errFederationURL is a URL a fetch is refused for. It names no URL: one may come from a request.
+var errFederationURL = errors.New("federation URL refused")
+
+// checkFederationURL lets through what a federation document may send a fetch to: an https URL of at most
+// maxEntityIdentifierBytes printable ASCII characters, with a host and no credentials or fragment. It holds tests too,
+// whose stubs serve TLS, so that no plain path exists to be left open.
 func checkFederationURL(location string) error {
+	if len(location) > maxEntityIdentifierBytes {
+		return fmt.Errorf("%w: longer than %d characters", errFederationURL, maxEntityIdentifierBytes)
+	}
+	for _, c := range []byte(location) {
+		if c <= 0x20 || c >= 0x7f {
+			return fmt.Errorf("%w: a character outside printable ASCII", errFederationURL)
+		}
+	}
 	parsed, err := url.Parse(location)
 	if err != nil {
-		return fmt.Errorf("%q is no URL", location)
+		return fmt.Errorf("%w: no URL", errFederationURL)
 	}
-	if parsed.Scheme != "https" || parsed.Host == "" || parsed.Hostname() == "" {
-		return fmt.Errorf("%q is not an https URL", location)
+	if !strings.HasPrefix(location, "https://") || parsed.Host == "" || parsed.Hostname() == "" {
+		return fmt.Errorf("%w: not an https URL", errFederationURL)
 	}
-	if parsed.User != nil || parsed.Fragment != "" {
-		return fmt.Errorf("%q has credentials or a fragment", location)
-	}
-	return nil
-}
-
-// checkEntityIdentifier is checkFederationURL for an entity identifier, which comes without a query since a path is
-// appended to it. The issuer asked for comes from the request's idp_iss.
-func checkEntityIdentifier(iss string) error {
-	if err := checkFederationURL(iss); err != nil {
-		return err
-	}
-	if strings.Contains(iss, "?") {
-		return fmt.Errorf("%q has a query", iss)
+	if parsed.User != nil || strings.Contains(location, "#") {
+		return fmt.Errorf("%w: credentials or a fragment", errFederationURL)
 	}
 	return nil
 }
@@ -284,11 +284,7 @@ func (f *OpenidFederation) fetch(ctx context.Context, location string) ([]byte, 
 		return nil, err
 	}
 	if response.StatusCode != http.StatusOK {
-		var oidcErr Error
-		if err := json.Unmarshal(body, &oidcErr); err != nil || oidcErr.ErrorCode == "" {
-			return nil, fmt.Errorf("http error %d", response.StatusCode)
-		}
-		return nil, fmt.Errorf("http error %d: %w", response.StatusCode, &oidcErr)
+		return nil, parseErrorResponse(&openid.Response{Status: response.StatusCode, ContentType: response.Header.Get("Content-Type"), Body: body})
 	}
 	return body, nil
 }
@@ -407,16 +403,12 @@ func (f *OpenidFederation) keep(ctx context.Context, location string, signed, pa
 // expiresAt reads exp of a verified payload, if it is an integer number of seconds.
 func expiresAt(payload []byte) (time.Time, bool) {
 	var claims struct {
-		ExpiresAt *json.Number `json:"exp"`
+		ExpiresAt *int64 `json:"exp"`
 	}
-	if err := json.Unmarshal(payload, &claims); err != nil || claims.ExpiresAt == nil {
+	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &claims); err != nil || claims.ExpiresAt == nil {
 		return time.Time{}, false
 	}
-	seconds, err := claims.ExpiresAt.Int64()
-	if err != nil {
-		return time.Time{}, false
-	}
-	return time.Unix(seconds, 0), true
+	return time.Unix(*claims.ExpiresAt, 0), true
 }
 
 // report hands a failure of the document store to the logger, if there is one.
@@ -436,7 +428,7 @@ func (f *OpenidFederation) masterEntity(ctx context.Context) (*FederationEntityM
 			return nil, err
 		}
 		if es.Issuer != f.fedMasterURL || es.Subject != f.fedMasterURL {
-			return nil, fmt.Errorf("the master's statement names iss %q and sub %q, not %q", es.Issuer, es.Subject, f.fedMasterURL)
+			return nil, errors.New("the master's statement names another iss or sub than the master")
 		}
 		if es.Metadata == nil || es.Metadata.FederationEntity == nil {
 			return nil, errors.New("no federation entity found in master entity statement")
@@ -444,7 +436,7 @@ func (f *OpenidFederation) masterEntity(ctx context.Context) (*FederationEntityM
 		return es, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("the master's entity statement from '%s': %w", location, err)
+		return nil, fmt.Errorf("the master's entity statement: %w", err)
 	}
 	return es.Metadata.FederationEntity, nil
 }
@@ -460,13 +452,13 @@ func (f *OpenidFederation) FetchIdpList(ctx context.Context) ([]IdentityProvider
 		var claims struct {
 			Issuer string `json:"iss"`
 		}
-		if err := json.Unmarshal(payload, &claims); err != nil || claims.Issuer != f.fedMasterURL {
+		if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &claims); err != nil || claims.Issuer != f.fedMasterURL {
 			return nil, errors.New("the IdP list is not the master's: iss names another")
 		}
 		return parseIdpList(payload)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("idp list from '%s': %w", entity.IdpListEndpoint, err)
+		return nil, fmt.Errorf("the IdP list: %w", err)
 	}
 	return idps, nil
 }
@@ -479,17 +471,14 @@ const maxIdps = 512
 // asks for; the informational members are text within bounds. Members are read by their exact names. An entry that
 // does not hold refuses the whole list: the master signed it, and a list read in part would admit by accident.
 func parseIdpList(payload []byte) ([]IdentityProviderInfo, error) {
-	if !utf8.Valid(payload) {
-		return nil, errors.New("the IdP list is not UTF-8")
-	}
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &members); err != nil {
+	var members map[string]jsontext.Value
+	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &members); err != nil {
 		return nil, fmt.Errorf("the IdP list: %w", err)
 	}
 	if err := requireExpiry(payload); err != nil {
 		return nil, fmt.Errorf("the IdP list: %w", err)
 	}
-	var entries []map[string]json.RawMessage
+	var entries []map[string]jsontext.Value
 	raw, ok := members["idp_entity"]
 	if !ok {
 		return nil, errors.New("the IdP list has no idp_entity")
@@ -511,7 +500,7 @@ func parseIdpList(payload []byte) ([]IdentityProviderInfo, error) {
 	return idps, nil
 }
 
-func parseIdpEntry(entry map[string]json.RawMessage) (IdentityProviderInfo, error) {
+func parseIdpEntry(entry map[string]jsontext.Value) (IdentityProviderInfo, error) {
 	var idp IdentityProviderInfo
 	if entry == nil {
 		return idp, errors.New("not an object")
@@ -546,7 +535,7 @@ func parseIdpEntry(entry map[string]json.RawMessage) (IdentityProviderInfo, erro
 // userTypeMember reads user_type_supported, which Tabelle 8 types [string] and masters have served as a string; a
 // list of one is read as that one, a longer list as none, since IdentityProviderInfo holds one. None is harmless while
 // nothing filters by user type (TASK-297).
-func userTypeMember(entry map[string]json.RawMessage) (UserType, error) {
+func userTypeMember(entry map[string]jsontext.Value) (UserType, error) {
 	raw, ok := entry["user_type_supported"]
 	if !ok || string(raw) == "null" {
 		return "", nil
@@ -579,7 +568,7 @@ func (f *OpenidFederation) FetchEntityStatement(ctx context.Context, iss string)
 // past the store.
 func (f *OpenidFederation) entityStatement(ctx context.Context, iss string, fresh bool) (*EntityStatement, error) {
 	if err := checkEntityIdentifier(iss); err != nil {
-		return nil, fmt.Errorf("issuer: %w", err)
+		return nil, err
 	}
 	entity, err := f.masterEntity(ctx)
 	if err != nil {
@@ -597,15 +586,15 @@ func (f *OpenidFederation) entityStatement(ctx context.Context, iss string, fres
 			return nil, err
 		}
 		if es.Jwks == nil {
-			return nil, fmt.Errorf("the master's statement about '%s' vouches for no keys", iss)
+			return nil, errors.New("the master's statement about the issuer vouches for no keys")
 		}
 		if es.Issuer != f.fedMasterURL || es.Subject != iss {
-			return nil, fmt.Errorf("asked the master about '%s', its statement names iss %q and sub %q", iss, es.Issuer, es.Subject)
+			return nil, errors.New("the master's statement about the issuer names another iss or sub")
 		}
 		return es, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", location, err)
+		return nil, fmt.Errorf("the master's statement about the issuer: %w", err)
 	}
 
 	selfSigned, err := document(ctx, f, iss+"/.well-known/openid-federation", fresh, fromMaster.Jwks.Keys, memberKeys, func(payload []byte) (*EntityStatement, error) {
@@ -614,12 +603,12 @@ func (f *OpenidFederation) entityStatement(ctx context.Context, iss string, fres
 			return nil, err
 		}
 		if es.Issuer != iss || es.Subject != iss {
-			return nil, fmt.Errorf("the statement of '%s' names iss %q and sub %q", iss, es.Issuer, es.Subject)
+			return nil, errors.New("the issuer's statement names another iss or sub")
 		}
 		return es, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", iss, err)
+		return nil, fmt.Errorf("the issuer's entity statement: %w", err)
 	}
 	return selfSigned, nil
 }
@@ -656,7 +645,7 @@ func (f *OpenidFederation) signedJwks(ctx context.Context, op *EntityStatement, 
 		return jwks, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to fetch jwks from '%s': %w", jwksURL, err)
+		return nil, fmt.Errorf("the signed JWKS: %w", err)
 	}
 	return jwks, nil
 }
@@ -664,8 +653,8 @@ func (f *OpenidFederation) signedJwks(ctx context.Context, op *EntityStatement, 
 // requireExpiry refuses a signed key set without exp. The federation specification leaves exp optional, while server
 // rule 15 makes it mandatory here: without one, a key set an OP has since replaced could be replayed for ever.
 func requireExpiry(payload []byte) error {
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &members); err != nil {
+	var members map[string]jsontext.Value
+	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &members); err != nil {
 		return err
 	}
 	if _, ok := members["exp"]; !ok {

@@ -22,14 +22,13 @@
 package oidf
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/go-jose/go-jose/v4"
@@ -71,8 +70,10 @@ func (c *RelyingPartyClient) provider() *provider {
 
 // AuthenticationURL pushes the authorization request (PAR) and gives the URL that carries its request_uri. The login's
 // values are checked before anything is sent: state and nonce, the code_verifier, scopes within the scope the relying
-// party registered, which the IDP compares the request against, acr values, and claims the IDP lists in its
-// claims_supported if it lists any (gemSpec_IDP_Sek A_24403).
+// party registered, which the IDP compares the request against, acr values, claims the IDP lists in its
+// claims_supported if it lists any (gemSpec_IDP_Sek A_24403), and the redirect URI, byte for byte one the relying
+// party's served statement registers (RFC 9700 section 4.1.3). The PAR response has to come with status 201 and be
+// declared as JSON before it is read (RFC 9126 section 2.2).
 func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid.Login) (string, error) {
 	form, err := openid.AuthorizationQuery(c.rp.ClientID(), c.redirectURI, c.scopes, login)
 	if err != nil {
@@ -86,21 +87,26 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 	if err := checkLogin(login, scopes, c.rp.registeredScope(), current.metadata.ClaimsSupported); err != nil {
 		return "", err
 	}
+	if err := checkRedirectURI(login.RedirectFor(c.redirectURI), c.rp.registeredRedirectURIs()); err != nil {
+		return "", err
+	}
 	if len(login.ACRValues) == 0 {
 		form.Set("acr_values", LoAHigh)
 	}
 
-	endpoint := current.metadata.PushedAuthorizationRequestEndpoint
-	response, err := openid.PostForm(ctx, c.rp.httpClient, endpoint, form)
+	response, err := openid.PostForm(ctx, c.rp.httpClient, current.metadata.PushedAuthorizationRequestEndpoint, form)
 	if err != nil {
 		return "", fmt.Errorf("unable to do PAR request: %w", err)
 	}
 	if response.Status != http.StatusCreated {
-		return "", fmt.Errorf("PAR: unexpected status %d: %w", response.Status, parseErrorResponse(bytes.NewReader(response.Body), endpoint))
+		return "", fmt.Errorf("PAR: %w", parseErrorResponse(response))
 	}
-	var pushed pushedAuthorizationResponse
-	if err := json.Unmarshal(response.Body, &pushed); err != nil {
-		return "", fmt.Errorf("unable to read PAR response body: %w", err)
+	if err := response.CheckJSON(); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrPARResponse, err)
+	}
+	pushed, err := parsePARResponse(response.Body)
+	if err != nil {
+		return "", err
 	}
 
 	params := url.Values{}
@@ -137,6 +143,10 @@ var (
 // the store once (A_22861; A_23207 Hinweis 3): at most once a minute per IDP, with concurrent exchanges waiting for
 // the refetch in flight, and from the store when the minute has not passed. A signature that does not verify under a
 // known kid refetches nothing. A provider's refusal is returned as *Error.
+//
+// Before the token request leaves, the code is held to RFC 6749 Appendix A.11 and the redirect URI to the ones the
+// served statement registers, as for the authorization request. The response has to come with status 200, be declared
+// as JSON and hold an ID token in compact JWE form before anything parses it.
 func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.Login, code string) (*Identity, *openid.TokenResponse, error) {
 	if err := checkStateOrNonce(ErrNonce, login.Nonce); err != nil {
 		return nil, nil, err
@@ -144,10 +154,17 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 	if err := checkVerifier(login.Verifier); err != nil {
 		return nil, nil, err
 	}
+	if err := openid.CheckAuthorizationCode(code); err != nil {
+		return nil, nil, err
+	}
+	redirectURI := login.RedirectFor(c.redirectURI)
+	if err := checkRedirectURI(redirectURI, c.rp.registeredRedirectURIs()); err != nil {
+		return nil, nil, err
+	}
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
-	form.Set("redirect_uri", login.RedirectFor(c.redirectURI))
+	form.Set("redirect_uri", redirectURI)
 	form.Set("client_id", c.rp.ClientID())
 	form.Set("code_verifier", login.Verifier)
 
@@ -157,15 +174,18 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 		return nil, nil, fmt.Errorf("unable to do token request: %w", err)
 	}
 	if response.Status != http.StatusOK {
-		var oidcErr Error
-		if err := json.Unmarshal(response.Body, &oidcErr); err != nil {
-			return nil, nil, fmt.Errorf("unable to decode error: %w", err)
-		}
-		return nil, nil, &oidcErr
+		return nil, nil, fmt.Errorf("token request: %w", parseErrorResponse(response))
+	}
+	if err := response.CheckJSON(); err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", openid.ErrTokenResponse, err)
 	}
 	tokenResponse, err := openid.ParseTokenResponse(response.Body)
 	if err != nil {
 		return nil, nil, err
+	}
+	// The relying party registers an encrypted ID token (id_token_encrypted_response_alg), so only a JWE will do.
+	if tokenResponse.IDTokenRaw == "" || strings.Count(tokenResponse.IDTokenRaw, ".") != 4 {
+		return nil, nil, fmt.Errorf("%w: id_token is no compact JWE", openid.ErrTokenResponse)
 	}
 
 	signed, version, err := c.decryptIDToken(tokenResponse.IDTokenRaw)
@@ -198,9 +218,7 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 	if len(login.Scopes) > 0 {
 		asked = login.Scopes
 	}
-	if identity.Scopes, err = grantedScopes(tokenResponse.Scope, asked); err != nil {
-		return nil, nil, err
-	}
+	identity.Scopes = grantedScopes(tokenResponse.Scope, asked)
 	return identity, tokenResponse, nil
 }
 
@@ -209,9 +227,13 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 // KeyAgreement, the key the header's kid names (A_23195). It returns the signed token and the version its protected
 // header names.
 func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, string, error) {
+	if err := openid.CheckProtectedHeader(raw); err != nil {
+		return nil, "", err
+	}
 	encrypted, err := jose.ParseEncryptedCompact(raw, []jose.KeyAlgorithm{jose.ECDH_ES}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
-		return nil, "", err
+		// go-jose's message quotes the header's alg and enc, which come from outside.
+		return nil, "", fmt.Errorf("%w: no compact JWE of ECDH-ES and A256GCM", ErrIDTokenEncryption)
 	}
 	// go-jose reports every failure of the key as one cryptographic error, so the kid is checked here as well to say why.
 	if kid := encrypted.Header.KeyID; kid != "" && kid != c.rp.keys.DecryptKID {
@@ -276,9 +298,12 @@ func (c *RelyingPartyClient) checkVersion(ctx context.Context, current *provider
 // the id_token_signed_response_alg the relying party registers. A kid the JWKS does not name refetches it once
 // (A_22861).
 func (c *RelyingPartyClient) verifyIDToken(ctx context.Context, current *provider, signed []byte, refetched *bool) ([]byte, error) {
+	if err := openid.CheckProtectedHeader(string(signed)); err != nil {
+		return nil, err
+	}
 	parsed, err := jose.ParseSignedCompact(string(signed), []jose.SignatureAlgorithm{jose.ES256})
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse token: %w", err)
+		return nil, errors.New("unable to parse token: no compact JWS signed with ES256")
 	}
 	kid := parsed.Signatures[0].Protected.KeyID
 	if kid != "" && len(current.jwks.Key(kid)) == 0 {

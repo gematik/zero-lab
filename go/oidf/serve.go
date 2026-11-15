@@ -59,6 +59,8 @@ type served struct {
 	issuedAt  time.Time
 	expiresAt time.Time
 	refreshAt time.Time
+	// redirectURIs are those the statement registers; none for the signed JWKS.
+	redirectURIs []string
 }
 
 func newServed(body []byte, now time.Time) *served {
@@ -96,7 +98,7 @@ func (rp *RelyingParty) signBoth(ctx context.Context) (statement, jwks *served, 
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	signedStatement, err := rp.signEntityStatement(now)
+	signedStatement, redirectURIs, err := rp.signStatement(now)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -107,7 +109,9 @@ func (rp *RelyingParty) signBoth(ctx context.Context) (statement, jwks *served, 
 	if err != nil {
 		return nil, nil, err
 	}
-	return newServed(signedStatement, now), newServed(signedJwks, now), nil
+	statement = newServed(signedStatement, now)
+	statement.redirectURIs = redirectURIs
+	return statement, newServed(signedJwks, now), nil
 }
 
 // Refresh signs the entity statement and the signed JWK Set anew and serves them from now on. A host calls it when what
