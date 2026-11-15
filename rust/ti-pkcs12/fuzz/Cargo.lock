@@ -395,6 +395,7 @@ dependencies = [
 name = "ti-pkcs12-fuzz"
 version = "0.0.0"
 dependencies = [
+ "der",
  "libfuzzer-sys",
  "ti-pkcs12",
 ]

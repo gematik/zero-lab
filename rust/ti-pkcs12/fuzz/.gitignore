@@ -2,5 +2,5 @@
 /corpus
 /artifacts
 /coverage
-# Generated from spec/pkcs12 by `just fuzz-ti-pkcs12`.
-/seeds
+# Generated from spec/pkcs12 by `just fuzz-ti-pkcs12`; the ber_to_der seeds are committed.
+/seeds/decode

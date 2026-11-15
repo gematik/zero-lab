@@ -15,10 +15,19 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4.13"
 ti-pkcs12 = { path = ".." }
+# Already in ti-pkcs12's tree; the target reads the output back with it.
+der = "0.8.3"
 
 [[bin]]
 name = "decode"
 path = "fuzz_targets/decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ber_to_der"
+path = "fuzz_targets/ber_to_der.rs"
 test = false
 doc = false
 bench = false

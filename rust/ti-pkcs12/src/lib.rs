@@ -59,6 +59,19 @@ mod kdf;
 mod mac;
 mod pbes2;
 
+// Public for the fuzz targets only; not an API of this crate.
+#[doc(hidden)]
+pub mod fuzz {
+    /// The BER to DER normalisation of P12-002 that a plain keyBag goes through.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::Error::Malformed`] for input that is not one BER element.
+    pub fn ber_to_der(bytes: &[u8]) -> Result<Vec<u8>, crate::Error> {
+        Ok(crate::ber::to_der(bytes)?.to_vec())
+    }
+}
+
 use core::fmt;
 
 use der::Decode;
@@ -502,7 +515,8 @@ fn collect(
             oids::KEY_BAG => {
                 // P12-002: BER inside the PrivateKeyInfo is normalised before P12-041
                 // checks it as DER, as for every other layer of the file.
-                let pkcs8 = Zeroizing::new(ber::to_der(&der::Encode::to_der(&bag.value)?)?);
+                let outer = Zeroizing::new(der::Encode::to_der(&bag.value)?);
+                let pkcs8 = ber::to_der(&outer)?;
                 asn1::check_private_key_info(&pkcs8)?;
                 p12.keys.push(KeyBag {
                     pkcs8,
