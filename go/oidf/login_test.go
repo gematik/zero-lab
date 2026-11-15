@@ -32,6 +32,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -366,5 +367,78 @@ func TestIDPSek_TheIdentityCarriesTheClaimsOfTheScopesAskedFor(t *testing.T) {
 	if identity.Personal != want || identity.Profession != "" {
 		p := identity.Personal
 		t.Errorf("sub %q id %q given %q family %q birthdate %q display %q, profession %q", p.Subject, p.ID, p.GivenName, p.FamilyName, p.Birthdate, p.DisplayName, identity.Profession)
+	}
+}
+
+// fakeClock is a clock a test moves forward, shared by the federation and the relying party.
+type fakeClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+// registeredAt is registered with the federation and the relying party judging at clock.
+func registeredAt(t *testing.T, clock *fakeClock) (*oidftest.Federation, *oidf.RelyingPartyClient) {
+	t.Helper()
+	federation := oidftest.New(t, oidftest.WithClock(clock.Now))
+	rp := relyingParty(t, federation, newKeys(t), func(cfg *oidf.RelyingPartyConfig) { cfg.Clock = clock.Now })
+	federation.RegisterRelyingParty(rp.ClientID(), rp.SignEntityStatement)
+	client, err := rp.Client(t.Context(), federation.IDP().Issuer())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return federation, client
+}
+
+// gemSpec_IDP_FedMaster Tabelle 8, servers.md rule 2: a client a host keeps re-checks the IdP list on every call, so an
+// IDP the master unlisted is refused once the list kept from before has expired, before anything is sent to it.
+func TestFedMaster_IdPList_AKeptClientRefusesAnIDPUnlistedSince(t *testing.T) {
+	clock := &fakeClock{now: time.Now()}
+	federation, client := registeredAt(t, clock)
+	if _, _, err := login(t, federation, client); err != nil {
+		t.Fatal(err)
+	}
+	federation.IDP().Unlist()
+	clock.advance(2 * time.Hour)
+	sent := federation.Requests("/idp/par") + federation.Requests("/idp/token")
+	if _, err := client.AuthenticationURL(t.Context(), newLogin()); !errors.Is(err, oidf.ErrIDPNotAdmitted) {
+		t.Fatalf("AuthenticationURL: %v", err)
+	}
+	if _, _, err := client.ExchangeIdentity(t.Context(), newLogin(), "code"); !errors.Is(err, oidf.ErrIDPNotAdmitted) {
+		t.Fatalf("ExchangeIdentity: %v", err)
+	}
+	if n := federation.Requests("/idp/par") + federation.Requests("/idp/token"); n != sent {
+		t.Errorf("%d requests reached the unlisted IDP", n-sent)
+	}
+}
+
+// Servers rule 15: a client a host keeps does not log in with a signed JWKS past its exp; it fetches the IDP's
+// documents anew once the kept ones have expired, and costs no fetch before.
+func TestServerRule15_AKeptClientRefetchesAnExpiredSignedJWKS(t *testing.T) {
+	clock := &fakeClock{now: time.Now()}
+	federation, client := registeredAt(t, clock)
+	if _, _, err := login(t, federation, client); err != nil {
+		t.Fatal(err)
+	}
+	if n := federation.Requests("/idp/jwks"); n != 1 {
+		t.Fatalf("the signed JWKS fetched %d times", n)
+	}
+	clock.advance(2 * time.Hour)
+	if _, _, err := login(t, federation, client); err != nil {
+		t.Fatal(err)
+	}
+	if n := federation.Requests("/idp/jwks"); n != 2 {
+		t.Fatalf("the signed JWKS fetched %d times after it expired, want 2", n)
 	}
 }

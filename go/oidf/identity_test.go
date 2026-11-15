@@ -60,17 +60,17 @@ type federatedLogin struct {
 func newFederatedLogin(t *testing.T) *federatedLogin {
 	t.Helper()
 	login := &federatedLogin{stub: newFederationStub(t), encKey: newTestKey(t)}
-	login.rp = login.stub.relyingParty(t)
-	login.rp.keys = Keys{Decrypt: ecdhKey(t, login.encKey), DecryptKID: "enc"}
-	metadata := login.rp.entityStatement.Metadata.OpenidRelyingParty
-	metadata.Scope = defaultMetadataScope
-	metadata.TIFeaturesSupported = &TIFeatures{IDTokenVersionSupported: []string{"1.0.0", "2.0.0"}}
-	login.rp.cfg.Clock = func() time.Time {
-		if now := login.now.Load(); now != nil {
-			return *now
+	keys := newTestKeys(t)
+	keys.Decrypt, keys.DecryptKID = ecdhKey(t, login.encKey), "enc"
+	login.rp = login.stub.relyingPartyWith(t, keys, func(cfg *RelyingPartyConfig) {
+		cfg.RelyingParty.TIFeaturesSupported = &TIFeatures{IDTokenVersionSupported: []string{"1.0.0", "2.0.0"}}
+		cfg.Clock = func() time.Time {
+			if now := login.now.Load(); now != nil {
+				return *now
+			}
+			return time.Now()
 		}
-		return time.Now()
-	}
+	})
 	client, err := login.rp.Client(t.Context(), login.stub.URL+"/op")
 	if err != nil {
 		t.Fatal(err)
@@ -365,11 +365,16 @@ func TestIDPSek_TheIdentityCarriesACRAndAMR(t *testing.T) {
 	}
 }
 
-// RFC 6749 section 5.1: the scopes granted are the response's scope, the ones asked for when it names none.
+// RFC 6749 section 5.1: the scopes granted are the response's scope, the ones asked for when it names none. An IDP
+// grants part of what was asked for, never more: a scope the response names beyond that is not the identity's.
 func TestRFC6749_5_1_TheIdentityCarriesTheScopesGranted(t *testing.T) {
 	for scope, want := range map[string]string{
 		"":                                  "openid urn:telematik:display_name",
-		"openid urn:telematik:versicherter": "openid urn:telematik:versicherter",
+		"openid":                            "openid",
+		"urn:telematik:display_name openid": "urn:telematik:display_name openid",
+		"openid urn:telematik:versicherter": "openid",
+		"urn:telematik:versicherter":        "",
+		"openid openid":                     "openid",
 	} {
 		stub := newLoginStub(t)
 		stub.idToken = stub.nestedToken(t, validIDTokenClaims())
@@ -527,7 +532,7 @@ func TestA_22861_ConcurrentLoginsDuringARotationRefetchOnce(t *testing.T) {
 }
 
 // inMemory carries a client's requests to the federation stub's handler inside the test, so that a synctest bubble
-// holds everything that waits; through serve, a test can hold or fail a request.
+// holds everything that waits; through serve, when set, a test can hold or fail a request.
 type inMemory struct {
 	handler http.Handler
 	serve   func(w http.ResponseWriter, r *http.Request, next http.Handler)
@@ -535,6 +540,10 @@ type inMemory struct {
 
 func (m inMemory) RoundTrip(r *http.Request) (*http.Response, error) {
 	recorder := httptest.NewRecorder()
+	if m.serve == nil {
+		m.handler.ServeHTTP(recorder, r)
+		return recorder.Result(), nil
+	}
 	m.serve(recorder, r, m.handler)
 	return recorder.Result(), nil
 }
@@ -687,7 +696,13 @@ func TestA_23207_AVersionNeitherSideListsIsRefused(t *testing.T) {
 	if n := login.refetches(); n != 1 {
 		t.Fatalf("%d refetches", n)
 	}
-	login.rp.entityStatement.Metadata.OpenidRelyingParty.TIFeaturesSupported = nil
+	login.rp.AddEntityStatementHook(func(es *EntityStatement) error {
+		es.Metadata.OpenidRelyingParty.TIFeaturesSupported = &TIFeatures{IDTokenVersionSupported: []string{"1.0.0"}}
+		return nil
+	})
+	if err := login.rp.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	for _, version := range []any{"2.0.0", "3.0.0", 2} {
 		login.issue(t, login.stub.jwksKey, "idtoken", login.claims(), map[string]any{"version": version})
 		if _, err := login.exchange(t, nLogin()); !errors.Is(err, ErrIDTokenVersion) {

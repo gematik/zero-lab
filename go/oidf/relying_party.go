@@ -482,6 +482,8 @@ func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
 type registration struct {
 	redirectURIs []string
 	scope        string
+	// idTokenVersions are the versions of its ti_features_supported.
+	idTokenVersions []string
 }
 
 // signStatement signs the statement with the hooks applied and returns what it registers.
@@ -508,7 +510,11 @@ func (rp *RelyingParty) signStatement(now time.Time) (signed []byte, registered 
 		return nil, registration{}, err
 	}
 	metadata := es.Metadata.OpenidRelyingParty
-	return signed, registration{redirectURIs: slices.Clone(metadata.RedirectURIs), scope: metadata.Scope}, nil
+	return signed, registration{
+		redirectURIs:    slices.Clone(metadata.RedirectURIs),
+		scope:           metadata.Scope,
+		idTokenVersions: slices.Clone(supportedVersions(metadata.TIFeaturesSupported)),
+	}, nil
 }
 
 // signedJwksClaims keep the shape registered parties get today: a whole JWK Set under "keys", so the array sits at
@@ -948,37 +954,15 @@ func (rp *RelyingParty) mayRefetchLocked(issuer string) bool {
 	return true
 }
 
-// idTokenVersions are the ID token versions the relying party publishes in its ti_features_supported.
-func (rp *RelyingParty) idTokenVersions() []string {
-	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
-		return supportedVersions(nil)
-	}
-	return supportedVersions(rp.entityStatement.Metadata.OpenidRelyingParty.TIFeaturesSupported)
-}
-
-// registeredRedirectURIs are the redirect_uris of the statement served now, hooks applied, which is what an IDP
-// fetches and compares a login's redirect_uri with; a host's hook may add some to what the configuration names. A
-// relying party that serves nothing yet, built by a test without New, holds logins to its own statement's.
-func (rp *RelyingParty) registeredRedirectURIs() []string {
+// registered is what the statement served now registers, hooks applied: the redirect_uris an IDP compares a login's
+// redirect_uri with, which a host's hook may add to, the scope a login may ask for and the ID token versions of its
+// ti_features_supported. A relying party that serves nothing, which is one not built by New, registers nothing, and
+// every login is refused.
+func (rp *RelyingParty) registered() registration {
 	if statement := rp.statement.Load(); statement != nil {
-		return statement.registered.redirectURIs
+		return statement.registered
 	}
-	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
-		return nil
-	}
-	return rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs
-}
-
-// registeredScope is the scope of the served statement's openid_relying_party metadata, hooks applied, the scopes a
-// login may ask for. A relying party that serves nothing yet holds logins to its own statement's.
-func (rp *RelyingParty) registeredScope() string {
-	if statement := rp.statement.Load(); statement != nil {
-		return statement.registered.scope
-	}
-	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
-		return ""
-	}
-	return rp.entityStatement.Metadata.OpenidRelyingParty.Scope
+	return registration{}
 }
 
 // ClientID returns the entity identifier, which is the OIDF client_id.

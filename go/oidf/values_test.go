@@ -26,7 +26,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync/atomic"
@@ -35,12 +34,11 @@ import (
 	"github.com/gematik/zero-lab/go/openid"
 )
 
-// withPAR points the stub provider's PAR endpoint at a server that counts the requests reaching it and keeps the last
-// form.
+// withPAR makes the stub provider's PAR endpoint count the requests reaching it and keep the last form.
 func (s *loginStub) withPAR(t *testing.T) (pushed *atomic.Int64, form *atomic.Pointer[url.Values]) {
 	t.Helper()
 	pushed, form = new(atomic.Int64), new(atomic.Pointer[url.Values])
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s.endpoints = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pushed.Add(1)
 		if err := r.ParseForm(); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -50,10 +48,7 @@ func (s *loginStub) withPAR(t *testing.T) (pushed *atomic.Int64, form *atomic.Po
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		fmt.Fprint(w, `{"request_uri":"urn:r","expires_in":60}`)
-	}))
-	t.Cleanup(server.Close)
-	s.client.rp.httpClient = server.Client()
-	s.metadata().PushedAuthorizationRequestEndpoint = server.URL
+	})
 	return pushed, form
 }
 
@@ -152,7 +147,9 @@ func TestServerRule17_AConfiguredScopeThatIsNotRegisteredIsRefused(t *testing.T)
 func TestA_24403_AClaimTheIDPDoesNotSupportIsNotAskedFor(t *testing.T) {
 	stub := newLoginStub(t)
 	pushed, form := stub.withPAR(t)
-	stub.metadata().ClaimsSupported = []string{"urn:telematik:claims:id", "amr"}
+	stub.publish(t, func(metadata map[string]any) {
+		metadata["claims_supported"] = []string{"urn:telematik:claims:id", "amr"}
+	}, keySetOf(stub.sigKey, "k"))
 	login := validLogin()
 	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:email":{"essential":true}}}`)
 	if _, err := stub.client.AuthenticationURL(t.Context(), login); !errors.Is(err, ErrClaimNotSupported) {
@@ -172,7 +169,7 @@ func TestA_24403_AClaimTheIDPDoesNotSupportIsNotAskedFor(t *testing.T) {
 	if got := form.Load().Get("claims"); got != string(login.Claims) {
 		t.Errorf("claims = %q", got)
 	}
-	stub.metadata().ClaimsSupported = nil
+	stub.publish(t, nil, keySetOf(stub.sigKey, "k"))
 	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:email":null}}`)
 	if _, err := stub.client.AuthenticationURL(t.Context(), login); err != nil {
 		t.Errorf("an IDP that lists none: %v", err)
@@ -236,15 +233,13 @@ func (c *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return c.next.RoundTrip(r)
 }
 
-// answering points the stub provider's PAR and token endpoints at handler and counts every request the client sends.
+// answering makes handler answer the stub provider's PAR and token endpoints and counts every request the client
+// sends them.
 func (s *loginStub) answering(t testing.TB, handler http.HandlerFunc) *countingTransport {
 	t.Helper()
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-	counting := &countingTransport{next: server.Client().Transport}
-	s.client.rp.httpClient = &http.Client{Transport: counting}
-	s.metadata().PushedAuthorizationRequestEndpoint = server.URL + "/par"
-	s.metadata().TokenEndpoint = server.URL + "/token"
+	s.endpoints = handler
+	counting := &countingTransport{next: s.transport}
+	s.client.rp.httpClient = &http.Client{Transport: counting, CheckRedirect: refuseRedirect}
 	return counting
 }
 
@@ -331,7 +326,7 @@ func TestRFC9700_4_1_3_TheRedirectURIsAreThoseOfTheServedStatement(t *testing.T)
 		t.Fatal(err)
 	}
 	const product = "https://product.example/cb"
-	configured := rp.registeredRedirectURIs()
+	configured := rp.registered().redirectURIs
 	if checkRedirectURI(configured[0], configured) != nil || checkRedirectURI(product, configured) == nil {
 		t.Fatalf("before the hook: %v", configured)
 	}
@@ -339,13 +334,13 @@ func TestRFC9700_4_1_3_TheRedirectURIsAreThoseOfTheServedStatement(t *testing.T)
 		es.Metadata.OpenidRelyingParty.RedirectURIs = append(es.Metadata.OpenidRelyingParty.RedirectURIs, product)
 		return nil
 	})
-	if checkRedirectURI(product, rp.registeredRedirectURIs()) == nil {
+	if checkRedirectURI(product, rp.registered().redirectURIs) == nil {
 		t.Fatal("registered before a statement carrying it is served")
 	}
 	if err := rp.Refresh(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := checkRedirectURI(product, rp.registeredRedirectURIs()); err != nil {
+	if err := checkRedirectURI(product, rp.registered().redirectURIs); err != nil {
 		t.Fatalf("after signing: %v", err)
 	}
 }

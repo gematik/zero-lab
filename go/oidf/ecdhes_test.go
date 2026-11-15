@@ -105,7 +105,7 @@ func selfSignedCertificate(t testing.TB, key *ecdsa.PrivateKey) tls.Certificate 
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}
 }
 
-func newTestKeys(t *testing.T) Keys {
+func newTestKeys(t testing.TB) Keys {
 	t.Helper()
 	return Keys{
 		Sign: hsmSigner{newTestKey(t)}, SignKID: "sign-kid",
@@ -141,7 +141,7 @@ func TestKeysRule1_AnHSMSignerSignsTheStatement(t *testing.T) {
 func TestA_23194_TheIDTokenIsDecryptedThroughKeyAgreement(t *testing.T) {
 	stub := newLoginStub(t)
 	calls := new(atomic.Int64)
-	stub.client.rp.keys = Keys{Decrypt: hsmAgreement{ecdhKey(t, stub.encKey), calls}, DecryptKID: "enc"}
+	stub.client.rp.keys.Decrypt = hsmAgreement{ecdhKey(t, stub.encKey), calls}
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err != nil {
 		t.Fatal(err)

@@ -184,8 +184,7 @@ func FuzzRedirectURI(f *testing.F) {
 	}, hostileStrings...) {
 		f.Add(seed)
 	}
-	stub := newLoginStub(f)
-	stub.client.rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs = registered
+	stub := newLoginStubWith(f, func(cfg *RelyingPartyConfig) { cfg.RelyingParty.RedirectURIs = registered })
 	counting := stub.answering(f, answer(http.StatusCreated, "application/json", `{"request_uri":"urn:r","expires_in":60}`))
 	f.Fuzz(func(t *testing.T, uri string) {
 		login := validLogin()

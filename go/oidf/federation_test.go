@@ -55,7 +55,7 @@ func newTestKey(t testing.TB) *ecdsa.PrivateKey {
 	return key
 }
 
-func signJWS(t *testing.T, key *ecdsa.PrivateKey, kid string, claims any) string {
+func signJWS(t testing.TB, key *ecdsa.PrivateKey, kid string, claims any) string {
 	t.Helper()
 	payload, err := json.Marshal(claims)
 	if err != nil {
@@ -307,7 +307,10 @@ func TestFetchIdpListRefusesListWithoutIdpEntity(t *testing.T) {
 	}
 }
 
-// loginStub is a federated provider's token endpoint for RelyingPartyClient.ExchangeForIdentity.
+// loginStub is a relying party built by New and a client of the federated provider https://op.example, whose
+// federation, master https://fedmaster.example included, is served in memory. The provider's PAR endpoint answers
+// with a request_uri and its token endpoint with idToken and scope, until a test hands the endpoints a handler of its
+// own.
 type loginStub struct {
 	client  *RelyingPartyClient
 	encKey  *ecdsa.PrivateKey
@@ -315,47 +318,127 @@ type loginStub struct {
 	idToken string
 	// scope is the scope of the token response.
 	scope string
+
+	masterKey, opKey *ecdsa.PrivateKey
+	// endpoints answers the provider's PAR and token endpoints when set.
+	endpoints http.Handler
+	// opStatement and signedJwks are what the provider publishes; publish signs them anew.
+	opStatement, signedJwks string
+	transport               inMemory
 }
 
-func newLoginStub(t testing.TB) *loginStub {
-	t.Helper()
-	stub := &loginStub{encKey: newTestKey(t), sigKey: newTestKey(t)}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+const (
+	loginStubMaster = "https://fedmaster.example"
+	loginStubOP     = "https://op.example"
+)
+
+func newLoginStub(tb testing.TB) *loginStub {
+	tb.Helper()
+	return newLoginStubWith(tb, nil)
+}
+
+// newLoginStubWith builds the loginStub's relying party with its config changed first.
+func newLoginStubWith(tb testing.TB, change func(*RelyingPartyConfig)) *loginStub {
+	tb.Helper()
+	stub := &loginStub{encKey: newTestKey(tb), sigKey: newTestKey(tb), masterKey: newTestKey(tb), opKey: newTestKey(tb)}
+	lifetime := func(claims map[string]any) map[string]any {
+		claims["iat"] = time.Now().Unix()
+		claims["exp"] = time.Now().Add(time.Hour).Unix()
+		return claims
+	}
+	masterStatement := signJWS(tb, stub.masterKey, "master", lifetime(map[string]any{
+		"iss": loginStubMaster, "sub": loginStubMaster,
+		"metadata": map[string]any{"federation_entity": map[string]any{
+			"federation_fetch_endpoint": loginStubMaster + "/fetch", "idp_list_endpoint": loginStubMaster + "/idps",
+		}},
+	}))
+	fetchStatement := signJWS(tb, stub.masterKey, "master", lifetime(map[string]any{
+		"iss": loginStubMaster, "sub": loginStubOP, "jwks": keySetOf(stub.opKey, "op"),
+	}))
+	idpList := signJWS(tb, stub.masterKey, "master", lifetime(map[string]any{
+		"iss":        loginStubMaster,
+		"idp_entity": []map[string]any{{"iss": loginStubOP, "organization_name": "OP", "logo_uri": "", "pkv": false, "user_type_supported": "IP"}},
+	}))
+	stub.publish(tb, nil, keySetOf(stub.sigKey, "k"))
+
+	mux := http.NewServeMux()
+	serve := func(pattern string, body func() string) {
+		mux.HandleFunc(pattern, func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, body()) })
+	}
+	serve("GET fedmaster.example/.well-known/openid-federation", func() string { return masterStatement })
+	serve("GET fedmaster.example/fetch", func() string { return fetchStatement })
+	serve("GET fedmaster.example/idps", func() string { return idpList })
+	serve("GET op.example/.well-known/openid-federation", func() string { return stub.opStatement })
+	serve("GET op.example/jwks", func() string { return stub.signedJwks })
+	mux.HandleFunc("POST op.example/", func(w http.ResponseWriter, r *http.Request) {
+		if stub.endpoints != nil {
+			stub.endpoints.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/par" {
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, `{"request_uri":"urn:r","expires_in":60}`)
+			return
+		}
 		response := map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken}
 		if stub.scope != "" {
 			response["scope"] = stub.scope
 		}
-		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(response)
-	}))
-	t.Cleanup(server.Close)
-	stub.client = &RelyingPartyClient{
-		rp: &RelyingParty{
-			keys:       Keys{Decrypt: ecdhKey(t, stub.encKey), DecryptKID: "enc"},
-			httpClient: server.Client(),
-			entityStatement: &EntityStatement{
-				Subject: "https://rp.example",
-				Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{
-					Scope: defaultMetadataScope, RedirectURIs: []string{"https://rp.example/cb"},
-				}},
-			},
-		},
-		issuer:      "https://op.example",
-		scopes:      defaultOPScopes,
-		redirectURI: "https://rp.example/cb",
-	}
-	metadata := &OpenIDProviderMetadata{Issuer: "https://op.example", TokenEndpoint: server.URL}
-	stub.client.current.Store(&provider{
-		op:       &EntityStatement{Issuer: "https://op.example", Metadata: &Metadata{OpenidProvider: metadata}},
-		metadata: metadata,
-		jwks:     keySetOf(stub.sigKey, "k"),
 	})
+	stub.transport = inMemory{handler: mux}
+
+	master := &Jwk{Key: &keySetOf(stub.masterKey, "master").Keys[0]}
+	cfg := &RelyingPartyConfig{
+		Subject:          "https://rp.example",
+		FedMasterURL:     loginStubMaster,
+		FedMasterJWK:     master,
+		RelyingParty:     testRelyingPartyMetadata(),
+		FederationEntity: testFederationEntity(),
+		HTTPClient:       &http.Client{Transport: stub.transport},
+		Documents:        NewMemoryDocuments(16, nil),
+	}
+	if change != nil {
+		change(cfg)
+	}
+	keys := newTestKeys(tb)
+	keys.Decrypt, keys.DecryptKID = ecdhKey(tb, stub.encKey), "enc"
+	rp, err := New(tb.Context(), cfg, keys)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	// New layers mutual TLS onto a network transport; the provider's endpoints are served in memory as well.
+	rp.httpClient = &http.Client{Transport: stub.transport, CheckRedirect: refuseRedirect}
+	if stub.client, err = rp.Client(tb.Context(), loginStubOP); err != nil {
+		tb.Fatal(err)
+	}
 	return stub
 }
 
-// metadata is the stub provider's openid_provider metadata, for a test to point its endpoints elsewhere.
-func (s *loginStub) metadata() *OpenIDProviderMetadata {
-	return s.client.provider().metadata
+// publish makes the provider publish its openid_provider metadata, changed by change, and jwks as its signed JWKS. The
+// relying party's store is emptied, so that its next call reads what was published.
+func (s *loginStub) publish(tb testing.TB, change func(metadata map[string]any), jwks *jose.JSONWebKeySet) {
+	tb.Helper()
+	metadata := map[string]any{
+		"issuer":                                loginStubOP,
+		"signed_jwks_uri":                       loginStubOP + "/jwks",
+		"authorization_endpoint":                loginStubOP + "/auth",
+		"pushed_authorization_request_endpoint": loginStubOP + "/par",
+		"token_endpoint":                        loginStubOP + "/token",
+	}
+	if change != nil {
+		change(metadata)
+	}
+	now := time.Now()
+	s.opStatement = signJWS(tb, s.opKey, "op", map[string]any{
+		"iss": loginStubOP, "sub": loginStubOP, "iat": now.Unix(), "exp": now.Add(time.Hour).Unix(),
+		"jwks": keySetOf(s.opKey, "op"), "metadata": map[string]any{"openid_provider": metadata},
+	})
+	s.signedJwks = signJWS(tb, s.opKey, "op", map[string]any{"iat": now.Unix(), "exp": now.Add(time.Hour).Unix(), "keys": jwks.Keys})
+	if s.client != nil {
+		s.client.rp.federation.documents = NewMemoryDocuments(16, nil)
+	}
 }
 
 func encryptForTest(t testing.TB, recipient any, alg jose.KeyAlgorithm, enc jose.ContentEncryption, plaintext string) string {
@@ -497,18 +580,32 @@ func (s *federationStub) opClaims(overrides map[string]any) map[string]any {
 	return claims
 }
 
+// relyingParty is a relying party of the stub's federation, built by New.
 func (s *federationStub) relyingParty(t *testing.T) *RelyingParty {
 	t.Helper()
-	return &RelyingParty{
-		cfg:        &RelyingPartyConfig{},
-		fedMaster:  s.URL,
-		federation: s.federation(t),
-		httpClient: s.Client(),
-		entityStatement: &EntityStatement{
-			Subject:  "https://rp.example",
-			Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{RedirectURIs: []string{"https://rp.example/cb"}}},
-		},
+	return s.relyingPartyWith(t, newTestKeys(t), nil)
+}
+
+// relyingPartyWith builds a relying party of the stub's federation with keys and the config changed first.
+func (s *federationStub) relyingPartyWith(t *testing.T, keys Keys, change func(*RelyingPartyConfig)) *RelyingParty {
+	t.Helper()
+	cfg := &RelyingPartyConfig{
+		Subject:          "https://rp.example",
+		FedMasterURL:     s.URL,
+		FedMasterJWK:     &Jwk{Key: &keySetOf(s.masterKey, "master").Keys[0]},
+		RelyingParty:     testRelyingPartyMetadata(),
+		FederationEntity: testFederationEntity(),
+		HTTPClient:       s.Client(),
+		Documents:        NewMemoryDocuments(16, nil),
 	}
+	if change != nil {
+		change(cfg)
+	}
+	rp, err := New(t.Context(), cfg, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rp
 }
 
 func TestOIDF_10_2_AMasterStatementNamingAnotherMasterIsRefused(t *testing.T) {
@@ -764,7 +861,7 @@ func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 	refusal := fmt.Sprintf(`{"error":"invalid_request","errorDescription":"state %s nonce %s verifier %s code %s"}`, state, nonce, verifier, code)
 	var refuse atomic.Bool
 	stub := newLoginStub(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	stub.endpoints = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if refuse.Load() {
 			w.WriteHeader(http.StatusBadRequest)
@@ -778,11 +875,7 @@ func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 		default:
 			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": token, "token_type": "Bearer", "id_token": stub.idToken})
 		}
-	}))
-	defer server.Close()
-	stub.client.rp.httpClient = server.Client()
-	stub.metadata().TokenEndpoint = server.URL + "/token"
-	stub.metadata().PushedAuthorizationRequestEndpoint = server.URL + "/par"
+	})
 	claims := validIDTokenClaims()
 	claims["nonce"] = nonce
 	stub.idToken = stub.nestedToken(t, claims)
@@ -913,7 +1006,7 @@ func TestRFC8725_3_1_AMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlgIsRefused(t *
 
 func TestRFC7517_4_4_AnIDTokenIsVerifiedWithAKeyWithoutAlg(t *testing.T) {
 	stub := newLoginStub(t)
-	withoutAlg(stub.client.provider().jwks)
+	stub.publish(t, nil, withoutAlg(keySetOf(stub.sigKey, "k")))
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err != nil {
 		t.Fatal(err)

@@ -127,12 +127,19 @@ func checkACRValues(values []string) error {
 }
 
 // grantedScopes reads the scope of a token response, which openid.ParseTokenResponse held to space-separated
-// scope-tokens of NQCHAR (RFC 6749 section 3.3); without one, the scopes asked for were granted (section 5.1).
+// scope-tokens of NQCHAR (RFC 6749 section 3.3); without one, the scopes asked for were granted (section 5.1). An IDP
+// may grant part of what was asked for, never more: a scope it names beyond that is not granted.
 func grantedScopes(scope string, asked []string) []string {
 	if scope == "" {
 		return slices.Clone(asked)
 	}
-	return strings.Split(scope, " ")
+	granted := []string{}
+	for name := range strings.SplitSeq(scope, " ") {
+		if slices.Contains(asked, name) && !slices.Contains(granted, name) {
+			granted = append(granted, name)
+		}
+	}
+	return granted
 }
 
 // checkLogin refuses the values of a login the relying party would send badly, before any request is made. scopes are

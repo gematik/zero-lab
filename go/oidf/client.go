@@ -45,7 +45,9 @@ const (
 )
 
 // RelyingPartyClient is an openid.Client for one OpenID provider of the federation; [RelyingParty.Client] creates it.
-// It is safe for concurrent use.
+// It is safe for concurrent use and may be cached: every call re-checks that the provider is on the master's IdP list
+// and that the documents it was resolved from are still valid, and resolves them anew from the store, or fetches them
+// once the kept ones no longer verify.
 type RelyingPartyClient struct {
 	rp          *RelyingParty
 	issuer      string
@@ -68,8 +70,24 @@ func (c *RelyingPartyClient) provider() *provider {
 	return c.current.Load()
 }
 
-// AuthenticationURL pushes the authorization request (PAR) and gives the URL that carries its request_uri. The login's
-// values are checked before anything is sent: state and nonce, the code_verifier, scopes within the scope the relying
+// resolve judges the provider anew for one call: admitted by the master's IdP list (gemSpec_IDP_FedMaster Tabelle 8),
+// and its statement and signed JWKS verified along the chain from the trust anchor. Documents come from the store while
+// they verify, so a call costs no fetch until the kept ones expire.
+func (c *RelyingPartyClient) resolve(ctx context.Context) (*provider, error) {
+	if err := c.rp.admit(ctx, c.issuer); err != nil {
+		return nil, err
+	}
+	resolved, err := c.rp.resolveProvider(ctx, c.issuer, false)
+	if err != nil {
+		return nil, err
+	}
+	c.current.Store(resolved)
+	return resolved, nil
+}
+
+// AuthenticationURL pushes the authorization request (PAR) and gives the URL that carries its request_uri. The
+// provider is judged anew first (see [RelyingPartyClient]). The login's values are checked before anything is sent to
+// it: state and nonce, the code_verifier, scopes within the scope the relying
 // party registered, which the IDP compares the request against, acr values, claims the IDP lists in its
 // claims_supported if it lists any (gemSpec_IDP_Sek A_24403), and the redirect URI, byte for byte one the relying
 // party's served statement registers (RFC 9700 section 4.1.3). The PAR response has to come with status 201 and be
@@ -83,11 +101,14 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 	if len(login.Scopes) > 0 {
 		scopes = login.Scopes
 	}
-	current := c.provider()
-	if err := checkLogin(login, scopes, c.rp.registeredScope(), current.metadata.ClaimsSupported); err != nil {
+	current, err := c.resolve(ctx)
+	if err != nil {
 		return "", err
 	}
-	if err := checkRedirectURI(login.RedirectFor(c.redirectURI), c.rp.registeredRedirectURIs()); err != nil {
+	if err := checkLogin(login, scopes, c.rp.registered().scope, current.metadata.ClaimsSupported); err != nil {
+		return "", err
+	}
+	if err := checkRedirectURI(login.RedirectFor(c.redirectURI), c.rp.registered().redirectURIs); err != nil {
 		return "", err
 	}
 	if len(login.ACRValues) == 0 {
@@ -145,7 +166,8 @@ var (
 // known kid refetches nothing. A provider's refusal is returned as *Error.
 //
 // Before the token request leaves, the code is held to RFC 6749 Appendix A.11 and the redirect URI to the ones the
-// served statement registers, as for the authorization request. The response has to come with status 200, be declared
+// served statement registers, as for the authorization request, and the provider is judged anew (see
+// [RelyingPartyClient]). The response has to come with status 200, be declared
 // as JSON and hold an ID token in compact JWE form before anything parses it.
 func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.Login, code string) (*Identity, *openid.TokenResponse, error) {
 	if err := checkStateOrNonce(ErrNonce, login.Nonce); err != nil {
@@ -158,7 +180,7 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 		return nil, nil, err
 	}
 	redirectURI := login.RedirectFor(c.redirectURI)
-	if err := checkRedirectURI(redirectURI, c.rp.registeredRedirectURIs()); err != nil {
+	if err := checkRedirectURI(redirectURI, c.rp.registered().redirectURIs); err != nil {
 		return nil, nil, err
 	}
 	form := url.Values{}
@@ -168,7 +190,10 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 	form.Set("client_id", c.rp.ClientID())
 	form.Set("code_verifier", login.Verifier)
 
-	current := c.provider()
+	current, err := c.resolve(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
 	response, err := openid.PostForm(ctx, c.rp.httpClient, current.metadata.TokenEndpoint, form)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to do token request: %w", err)
@@ -278,7 +303,7 @@ func supportedVersions(features *TIFeatures) []string {
 // statement kept is outdated (A_23207 Hinweis 3), so the statement is refetched once. It returns the provider as
 // resolved after that.
 func (c *RelyingPartyClient) checkVersion(ctx context.Context, current *provider, version string, refetched *bool) (*provider, error) {
-	if !slices.Contains(c.rp.idTokenVersions(), version) {
+	if !slices.Contains(c.rp.registered().idTokenVersions, version) {
 		return nil, fmt.Errorf("%w: the relying party does not publish it", ErrIDTokenVersion)
 	}
 	if slices.Contains(supportedVersions(current.metadata.TIFeaturesSupported), version) {

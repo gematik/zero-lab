@@ -195,3 +195,22 @@ func TestBuildMetadataFillsTheDefaultsAConfigOmits(t *testing.T) {
 		t.Errorf("defaults not applied: %+v", md)
 	}
 }
+
+// Internal invariant: a relying party not built by New serves no statement, so it registers no redirect URI, scope or
+// ID token version a login could be held to, and every login is refused; it does not sign either.
+func TestServerRule17_ARelyingPartyNotBuiltByNewRefusesEveryLogin(t *testing.T) {
+	rp := literalRelyingParty(t, newTestKey(t))
+	registered := rp.registered()
+	if len(registered.redirectURIs) != 0 || registered.scope != "" || len(registered.idTokenVersions) != 0 {
+		t.Errorf("registered %+v", registered)
+	}
+	if err := checkRedirectURI("https://rp.example/cb", registered.redirectURIs); !errors.Is(err, ErrRedirectURINotRegistered) {
+		t.Errorf("redirect URI: %v", err)
+	}
+	if err := checkLogin(validLogin(), []string{"openid"}, registered.scope, nil); !errors.Is(err, ErrScopeNotRegistered) {
+		t.Errorf("scope: %v", err)
+	}
+	if err := (&RelyingParty{}).Refresh(t.Context()); err == nil || !strings.Contains(err.Error(), "not built by New") {
+		t.Errorf("Refresh: %v", err)
+	}
+}
