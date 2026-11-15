@@ -384,6 +384,13 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 		Jwks:     &Jwks{Keys: statementKeys},
 	}
 	rp.relyingPartyKeys = relyingPartyKeys
+	// The scopes asked for by default have to be registered, or every login would be refused (servers.md rule 17).
+	registered := strings.Fields(rp.entityStatement.Metadata.OpenidRelyingParty.Scope)
+	for _, scope := range cfg.Scopes {
+		if !slices.Contains(registered, scope) {
+			return nil, fmt.Errorf("config validation failed: %w: scopes holds one that relying_party.scope lacks", ErrScopeNotRegistered)
+		}
+	}
 	if cfg.RelyingParty.SignedJwksURI == "" {
 		rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
 	}
@@ -830,6 +837,14 @@ func transportWithClientCertificate(rt http.RoundTripper, certificate func(*tls.
 // Federation returns the client of this relying party's federation master.
 func (rp *RelyingParty) Federation() *OpenidFederation {
 	return rp.federation
+}
+
+// registeredScope is the scope of the relying party's openid_relying_party metadata, the scopes a login may ask for.
+func (rp *RelyingParty) registeredScope() string {
+	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
+		return ""
+	}
+	return rp.entityStatement.Metadata.OpenidRelyingParty.Scope
 }
 
 // ClientID returns the entity identifier, which is the OIDF client_id.

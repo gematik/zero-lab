@@ -61,7 +61,9 @@ type Metadata struct {
 
 // OpenIDProviderMetadata is the openid_provider metadata of an identity provider.
 type OpenIDProviderMetadata struct {
-	AuthorizationEndpoint                 string   `json:"authorization_endpoint"`
+	AuthorizationEndpoint string `json:"authorization_endpoint"`
+	// ClaimsSupported are the claims the IDP can put into an ID token (gemSpec_IDP_Sek A_24403).
+	ClaimsSupported                       []string `json:"claims_supported"`
 	ClientRegistrationTypesSupported      []string `json:"client_registration_types_supported"`
 	GrantTypesSupported                   []string `json:"grant_types_supported"`
 	IDTokenEncryptionAlgValuesSupported   []string `json:"id_token_encryption_alg_values_supported"`

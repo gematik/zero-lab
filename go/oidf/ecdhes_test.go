@@ -146,7 +146,7 @@ func TestA_23194_TheIDTokenIsDecryptedThroughKeyAgreement(t *testing.T) {
 	calls := new(atomic.Int64)
 	stub.client.rp.keys = Keys{Decrypt: hsmAgreement{ecdhKey(t, stub.encKey), calls}, DecryptKID: "enc"}
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err != nil {
+	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err != nil {
 		t.Fatal(err)
 	}
 	if n := calls.Load(); n != 1 {
@@ -170,7 +170,7 @@ func TestA_23195_AnIDTokenForAnotherKIDIsRefused(t *testing.T) {
 		if stub.idToken, err = object.CompactSerialize(); err != nil {
 			t.Fatal(err)
 		}
-		_, err = stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code")
+		_, err = stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code")
 		if accept && err != nil {
 			t.Errorf("kid %q: %v", kid, err)
 		}
@@ -417,7 +417,7 @@ func TestA_28484_AnACRThatIsNotCheckedYetIsNotAskedFor(t *testing.T) {
 		"high or a lower level": {defaultACRValue, "gematik-ehealth-loa-substantial"},
 		"an unknown class":      {"urn:example:loa"},
 	} {
-		if _, err := stub.client.AuthenticationURL(t.Context(), openid.Login{State: "s", Nonce: "n", Verifier: "v", ACRValues: acr}); !errors.Is(err, ErrACRValues) {
+		if _, err := stub.client.AuthenticationURL(t.Context(), openid.Login{State: "s", Nonce: "n", Verifier: testVerifier, ACRValues: acr}); !errors.Is(err, ErrACRValues) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -425,7 +425,7 @@ func TestA_28484_AnACRThatIsNotCheckedYetIsNotAskedFor(t *testing.T) {
 		t.Fatalf("%d requests reached the IDP", n)
 	}
 	for _, acr := range [][]string{nil, {defaultACRValue}} {
-		if _, err := stub.client.AuthenticationURL(t.Context(), openid.Login{State: "s", Nonce: "n", Verifier: "v", ACRValues: acr}); err != nil {
+		if _, err := stub.client.AuthenticationURL(t.Context(), openid.Login{State: "s", Nonce: "n", Verifier: testVerifier, ACRValues: acr}); err != nil {
 			t.Errorf("%v: %v", acr, err)
 		}
 	}

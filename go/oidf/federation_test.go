@@ -76,6 +76,9 @@ func signJWS(t *testing.T, key *ecdsa.PrivateKey, kid string, claims any) string
 	return compact
 }
 
+// testVerifier is a code_verifier as RFC 7636 section 4.1 has it.
+const testVerifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+
 func keySetOf(key *ecdsa.PrivateKey, kid string) *jose.JSONWebKeySet {
 	return &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: key.Public(), KeyID: kid, Algorithm: "ES256", Use: "sig"}}}
 }
@@ -300,11 +303,15 @@ func newLoginStub(t *testing.T) *loginStub {
 	t.Cleanup(server.Close)
 	stub.client = &RelyingPartyClient{
 		rp: &RelyingParty{
-			keys:            Keys{Decrypt: ecdhKey(t, stub.encKey), DecryptKID: "enc"},
-			httpClient:      server.Client(),
-			entityStatement: &EntityStatement{Subject: "https://rp.example"},
+			keys:       Keys{Decrypt: ecdhKey(t, stub.encKey), DecryptKID: "enc"},
+			httpClient: server.Client(),
+			entityStatement: &EntityStatement{
+				Subject:  "https://rp.example",
+				Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{Scope: defaultMetadataScope}},
+			},
 		},
 		issuer: "https://op.example",
+		scopes: defaultOPScopes,
 	}
 	metadata := &OpenIDProviderMetadata{Issuer: "https://op.example", TokenEndpoint: server.URL}
 	stub.client.current.Store(&provider{
@@ -350,7 +357,7 @@ func validIDTokenClaims() map[string]any {
 func TestA_23195_TheNestedIDTokenIsDecryptedAndVerified(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	response, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code")
+	response, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,7 +387,7 @@ func TestOIDCCore_3_1_3_7_1_EncryptionOtherThanRegisteredIsRefused(t *testing.T)
 	} {
 		t.Run(name, func(t *testing.T) {
 			stub.idToken = token
-			if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
+			if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -391,7 +398,7 @@ func TestOIDCCore_3_1_3_7_1_EncryptionOtherThanRegisteredIsRefused(t *testing.T)
 func TestA_23195_ATokenEncryptedForAnotherRecipientIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = encryptForTest(t, newTestKey(t).Public(), jose.ECDH_ES, jose.A256GCM, signJWS(t, stub.sigKey, "k", validIDTokenClaims()))
-	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
+	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err == nil {
 		t.Error("accepted")
 	}
 }
@@ -413,7 +420,7 @@ func TestA_23049_AnIDTokenThatDoesNotHoldIsRefused(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			stub.idToken = token
-			if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
+			if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err == nil {
 				t.Error("accepted")
 			}
 		})
@@ -732,7 +739,7 @@ func TestLoadCertBytesFromPemNamesTheFileWithoutAMissingError(t *testing.T) {
 // from outside.
 func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 	const (
-		state, nonce, verifier = "state-value", "nonce-value", "verifier-value"
+		state, nonce, verifier = "state-value", "nonce-value", "verifier-value-0123456789abcdefghijklmnopqrstuvwxyz"
 		code, requestURI       = "code-value", "urn:request-uri-value"
 		token                  = "access-token-value"
 	)
@@ -836,7 +843,7 @@ func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyCon
 func TestA_23049_AnIDTokenOfAnotherLoginIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "another", Verifier: "verifier"}, "code"); !errors.Is(err, openid.ErrNonceMismatch) {
+	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "another", Verifier: testVerifier}, "code"); !errors.Is(err, openid.ErrNonceMismatch) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -902,7 +909,7 @@ func TestRFC7517_4_4_AnIDTokenIsVerifiedWithAKeyWithoutAlg(t *testing.T) {
 	stub := newLoginStub(t)
 	withoutAlg(stub.client.provider().jwks)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
-	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err != nil {
+	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err != nil {
 		t.Fatal(err)
 	}
 }
