@@ -1,9 +1,10 @@
 ---
 id: TASK-305
 title: 'kv: replace a value only if it is still the one read (compare-and-swap)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-13T06:39:00Z'
+updated_date: '2026-11-15T14:12:00Z'
 labels: []
 dependencies: []
 ordinal: 320000
@@ -20,3 +21,9 @@ A caller that keeps state which must move forward atomically across replicas, su
 - [ ] #1 Of two replicas that replace the same value at once, exactly one succeeds
 - [ ] #2 Works through NewSealed
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shipped in kv v0.2.0: Swapper replaces a value only while it is still the one read, in memory, Postgres and through NewSealed.
+<!-- SECTION:FINAL_SUMMARY:END -->

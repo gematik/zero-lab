@@ -3,9 +3,10 @@ id: TASK-332
 title: >-
   Go libraries: no logging on the default logger in openid/providers, pep and
   pep/proxy
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T09:53:00Z'
+updated_date: '2026-11-15T14:12:00Z'
 labels:
   - go
   - pep

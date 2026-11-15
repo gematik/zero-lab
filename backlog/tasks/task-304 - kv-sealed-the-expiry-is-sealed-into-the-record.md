@@ -1,9 +1,10 @@
 ---
 id: TASK-304
 title: 'kv sealed: the expiry is sealed into the record'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-13T06:39:00Z'
+updated_date: '2026-11-15T14:12:00Z'
 labels: []
 dependencies: []
 ordinal: 319000
@@ -21,3 +22,9 @@ NewSealed binds a record to its key and purpose, but when it ends is a column of
 - [ ] #2 A record without expiry (ttl 0) still opens
 - [ ] #3 Records sealed before the change still open, or the format version says they do not and the release notes say so
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Shipped in kv v0.2.0: WithSealedExpiry seals the expiry into the record (format 2); format 1 records still open.
+<!-- SECTION:FINAL_SUMMARY:END -->
