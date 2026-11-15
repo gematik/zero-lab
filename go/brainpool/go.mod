@@ -2,4 +2,4 @@ module github.com/gematik/zero-lab/go/brainpool
 
 go 1.26.4
 
-require golang.org/x/crypto v0.58.0
+require golang.org/x/crypto v0.59.0

@@ -124,7 +124,7 @@ func TestKeysRule1_AnHSMSignerSignsTheStatement(t *testing.T) {
 	if _, err := openid.VerifyJWS(signed, keySetOf(key, "sign-kid"), trustAnchorKeys); err != nil {
 		t.Fatal(err)
 	}
-	object, err := jose.ParseSigned(string(signed), []jose.SignatureAlgorithm{jose.ES256})
+	object, err := jose.ParseSignedCompact(string(signed), []jose.SignatureAlgorithm{jose.ES256})
 	if err != nil {
 		t.Fatal(err)
 	}

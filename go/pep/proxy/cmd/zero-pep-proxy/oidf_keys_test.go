@@ -313,7 +313,7 @@ func checkFederation(t *testing.T, federation providers.Federation, keys [3]*ecd
 // finds the ID token key under its thumbprint and the client certificate as x5c.
 func checkPublishedKeys(t *testing.T, signed []byte, keys [3]*ecdsa.PrivateKey, certificate []byte) {
 	t.Helper()
-	object, err := jose.ParseSigned(string(signed), []jose.SignatureAlgorithm{jose.ES256})
+	object, err := jose.ParseSignedCompact(string(signed), []jose.SignatureAlgorithm{jose.ES256})
 	if err != nil {
 		t.Fatal(err)
 	}

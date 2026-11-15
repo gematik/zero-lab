@@ -4,4 +4,4 @@ go 1.27.0
 
 require github.com/gematik/zero-lab/go/brainpool v1.3.0
 
-require golang.org/x/crypto v0.58.0 // indirect
+require golang.org/x/crypto v0.59.0 // indirect

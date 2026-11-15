@@ -4,5 +4,5 @@ go 1.27.0
 
 require (
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.2
-	github.com/go-jose/go-jose/v4 v4.1.6
+	github.com/go-jose/go-jose/v4 v4.1.9
 )
