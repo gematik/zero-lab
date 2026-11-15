@@ -23,7 +23,6 @@ package proxy
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -229,9 +228,7 @@ func wantsHTML(r *http.Request) bool {
 }
 
 func respondGatewayJSON(w http.ResponseWriter, status int, code, desc string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "error_description": desc})
+	writeJSON(w, status, map[string]string{"error": code, "error_description": desc})
 }
 
 type injectionCtxKey struct{}

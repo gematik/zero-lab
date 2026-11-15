@@ -25,7 +25,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -64,7 +64,7 @@ func reportIntegrity(record string, err error) error {
 
 // Save implements proxy.SessionStore.
 func (k kvSessions) Save(ctx context.Context, s *proxy.Session, ttl time.Duration) error {
-	record, err := json.Marshal(s) //nolint:gosec // the command seals a persistent store: zero-pep-proxy refuses to start without the key
+	record, err := json.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
@@ -88,8 +88,14 @@ func (k kvSessions) Load(ctx context.Context, id string) (*proxy.Session, error)
 	if !found {
 		return nil, proxy.ErrSessionNotFound
 	}
+	return decodeSession(data)
+}
+
+// decodeSession reads a session record. Only zero-pep-proxy writes it, so a member it does not name is refused with
+// the rest of what server rule 28 refuses; a replica older than the record's writer treats the session as absent.
+func decodeSession(data []byte) (*proxy.Session, error) {
 	var s proxy.Session
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := json.Unmarshal(data, &s, json.RejectUnknownMembers(true)); err != nil {
 		return nil, fmt.Errorf("unmarshal session: %w", err)
 	}
 	return &s, nil

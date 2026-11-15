@@ -23,7 +23,7 @@ package proxy
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -169,7 +169,7 @@ func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string
 		}
 		claims["nonce"] = nonce
 	}
-	payload, err := json.Marshal(claims)
+	payload, err := json.Marshal(claims, json.Deterministic(true))
 	if err != nil {
 		return "", fmt.Errorf("encode client_assertion claims: %w", err)
 	}
@@ -216,9 +216,10 @@ func (b *pdpBackend) fetchNonce(ctx context.Context) (string, error) {
 }
 
 // decodeBounded decodes a JSON response of the authorization server within maxASResponseBytes: a longer one is cut off,
-// which the decoder takes for what it is.
+// which the decoder takes for what it is. Members the response adds are ignored, as OAuth requires (RFC 6749
+// Section 5.1); a member named twice or a string that is not UTF-8 refuses it (server rule 28).
 func decodeBounded(body io.Reader, into any) error {
-	return json.NewDecoder(io.LimitReader(body, maxASResponseBytes)).Decode(into)
+	return json.UnmarshalRead(io.LimitReader(body, maxASResponseBytes), into)
 }
 
 // IsLocalHTTP reports whether rawURL is plain http on this machine by name or loopback address, the one place where

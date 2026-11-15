@@ -23,7 +23,7 @@ package proxy
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"sync"
 	"time"
 )
@@ -45,7 +45,7 @@ func newMemorySessions() *memorySessions {
 }
 
 func (m *memorySessions) Save(_ context.Context, s *Session, ttl time.Duration) error {
-	record, err := json.Marshal(s) //nolint:gosec // the record stays in the memory of the test, as a store would hold it
+	record, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}

@@ -28,7 +28,7 @@ package proxy
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"html/template"
@@ -411,10 +411,17 @@ func (s *Server) handleUserinfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "identity": sess.Identity})
 }
 
+// writeJSON sends v with status, or a bare 500 when v cannot be encoded rather than status with an empty body. Map
+// members are sorted, so the same value is always the same body.
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	body, err := json.Marshal(v, json.Deterministic(true))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(append(body, '\n'))
 }
 
 // handleCallback is the redirect_uri: it completes the login (by OAuth state) and returns to rd. The
