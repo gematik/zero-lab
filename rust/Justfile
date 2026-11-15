@@ -62,11 +62,22 @@ cli-targets mode="build":
     targets=(x86_64-unknown-linux-musl x86_64-pc-windows-gnu)
     native=()
     if [[ "$(uname -s)" == Darwin ]]; then native=(aarch64-apple-darwin); fi
+    # Every target is built by the host's compiler. rust-toolchain.toml names only
+    # "stable", which moves, so a linux-gnu "stable" updated for cross can be a newer
+    # release than the host's. cross derives its container toolchain from the name of the
+    # host's, so RUSTUP_TOOLCHAIN=<version> selects <version>-x86_64-unknown-linux-gnu.
+    read -r release commit < <(rustc -vV | awk '/^release:/ {r = $2} /^commit-hash:/ {c = $2} END {print r, c}')
+    [[ "$release" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || { echo "the host's rustc is $release, not a stable release" >&2; exit 1; }
+    export RUSTUP_TOOLCHAIN="$release"
+    rustup toolchain add "$release" --profile minimal --component clippy >/dev/null
     # cross runs a Linux toolchain inside its container; rustup refuses to install one on
     # a non-Linux host unless forced, and cross 0.2.5 does not force it.
     if [[ "$(uname -s)" != Linux ]]; then
-        rustup toolchain add stable-x86_64-unknown-linux-gnu --profile minimal --force-non-host >/dev/null
+        rustup toolchain add "$release-x86_64-unknown-linux-gnu" --profile minimal --force-non-host \
+            --component clippy --target "$(IFS=,; echo "${targets[*]}")" >/dev/null
     fi
+    echo "==> rustc $release ($commit)"
     # cross's images are amd64 only; elsewhere (Apple silicon) Docker runs them emulated.
     if [[ "$(uname -m)" != x86_64 ]]; then
         export CROSS_CONTAINER_OPTS="${CROSS_CONTAINER_OPTS:-} --platform linux/amd64"
@@ -95,6 +106,11 @@ cli-targets mode="build":
             CARGO_TARGET_DIR="$out" cross build --release --locked -p ti-cli --target "$t"
         fi
         ext=""; [[ "$t" == *windows* ]] && ext=".exe"
+        # std's panic locations carry the commit of the compiler that built it as
+        # /rustc/<hash>/, so the binary itself says which release it came from.
+        built=$({ LC_ALL=C grep -aoE '/rustc/[0-9a-f]{40}/' "$out/$t/release/$bin$ext" || true; } | sort -u)
+        [[ "$built" == "/rustc/$commit/" ]] \
+            || { echo "$t: built by ${built:-an unknown rustc}, not rustc $release ($commit)" >&2; exit 1; }
         cp "$out/$t/release/$bin$ext" "target/dist/$bin-$version-$t$ext"
         echo "target/dist/$bin-$version-$t$ext"
     done

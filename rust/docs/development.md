@@ -165,6 +165,7 @@ names the trigger for removing it.
 | --- | --- | --- |
 | `rsa = "=0.10.0-rc.19"`, a release candidate | the only `rsa` line on the current RustCrypto stack (`crypto-bigint` 0.7, `sha2` 0.11); 0.9 would pull in a second, older stack | `rsa` 0.10 is released: switch to `"0.10"` |
 | ti releases carry unsigned `SHA256SUMS` | signing was deferred; the checksums catch broken downloads and Homebrew pins them in the formula, but a replaced release could replace them too | a release key exists: sign `SHA256SUMS` in `just release` and verify it in `publish-brew` |
+| The Windows binary is linked in cross's unreleased `main` image, pinned by digest in `Cross.toml`, while cross itself stays 0.2.5 | std for `x86_64-pc-windows-gnu` links `-lsynchronization` from Rust 1.100; the 0.2.5 image's MinGW (Ubuntu 18.04) lacks it, the `main` image's (Ubuntu 24.04, mingw-w64 11) has it, and cross has made no release since 0.2.5 | cross releases a version whose image has the library: move `CROSS` and the image to it |
 | RUSTSEC-2023-0071 ignored (`deny.toml`, `.cargo/audit.toml`) | the Marvin attack targets RSA private-key operations; `ti-pki` only verifies, on public data | a patched `rsa` is released |
 | The TSL signer CA does not change at run time: `spec/tsl-xmldsig` part E (TSLSIG-061 – 068: an anchor announced in the TSL becoming active at its `StatusStartingTime`, and the fallback through roots.json) is not implemented. `TrustConfig::tsl_signer_anchors` is a list; a `TSLServiceCertChange` the TSL announces is reported as the warning `tsl_anchor_announced` (shown by ti), and a release adds the CA to `anchors::TSL_SIGNER_CAS_*` | gematik changes the TSL signer CA rarely (GEM.TSL-CA3 runs until 2028-05-25) and announces it weeks ahead; adding it to the list in a release is simple and auditable, while part E needs persisted announcements re-verified on load, a roots.json path with its own profile, age and OCSP checks, and signed test TSLs | an installation must follow an anchor change without a release |
 | The TSL admits no CA on its own; of its per-CA metadata only the status, the certificate types and the OCSP services decide | the TSL is verified (`spec/tsl-xmldsig`), but a CA from it is kept only if a root from the A_28419 walk signed it. From a CA's entry, ti-pki uses its status as the CA's standing (TUC_PKI_018 step 5: in accord, or revoked with its `StatusStartingTime`, Tab_PKI_271: `ca_revoked_in_tsl`, `issued_before_ca_revocation`; VALID-008: no responder is asked about a CA) and the certificate types it may issue (TUC_PKI_007: `cert_type_ca_not_authorized`, also when the entry lists none), which makes a CA one for components, SMC-B, eGK or HBA; provider names and the other metadata decide nothing. For OCSP responders see the next row | the TSL becomes a trust source of its own, admitting CAs no walked root signed |
@@ -463,7 +464,11 @@ one crate with binaries. A release takes two commands from `main`:
    `just jwz-recheck`, because `Cargo.toml` changed (only the browser stamp hashes a manifest,
    so a bump reruns that one, a few minutes); when `ti-cli` is in
    it, `just cli-targets` builds the three binaries into `target/dist` with their
-   `SHA256SUMS`. One commit `release: <crate> X.Y.Z, …`, one tag `rust/<crate>/vX.Y.Z`
+   `SHA256SUMS`, all three with the host's compiler: the release `rustc -vV` reports in
+   `rust/` (`rust-toolchain.toml` says only `stable`), exported as `RUSTUP_TOOLCHAIN`, so
+   cross uses that release's `x86_64-unknown-linux-gnu` toolchain and never a newer
+   `stable`; a nightly or beta host stops the build, and a binary whose std names another
+   compiler commit (`/rustc/<hash>/`) stops it before it reaches `target/dist`. One commit `release: <crate> X.Y.Z, …`, one tag `rust/<crate>/vX.Y.Z`
    per crate. A failure or Ctrl-C after the gate undoes the bumps.
 2. **`just publish X.Y.Z [OWNER]`** (the `ti-cli` version): `git push --atomic origin
    main` with every crate tag of the release commit, `gh release create` with the

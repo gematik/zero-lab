@@ -1,0 +1,7 @@
+# cross 0.2.5's Windows image (Ubuntu 18.04) has a MinGW without libsynchronization.a,
+# which std for x86_64-pc-windows-gnu links from Rust 1.100. cross has made no release
+# since 0.2.5; its main image (Ubuntu 24.04, mingw-w64 11) has the library and still sets
+# the linker through its own environment, which cross 0.2.5 relies on. Pinned by digest
+# because :main moves; move the pin, or back to a release tag, when cross releases again.
+[target.x86_64-pc-windows-gnu]
+image = "ghcr.io/cross-rs/x86_64-pc-windows-gnu:main@sha256:faf3c23e786ee681c32737331d76ef1a29d4c1d26f5c219ebd335a3f60d22629"
