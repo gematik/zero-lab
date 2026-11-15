@@ -468,53 +468,19 @@ func (l *federatedLogin) rotate(t *testing.T) *ecdsa.PrivateKey {
 	return rotated
 }
 
-// gate holds every request for path until release is called; entered receives one value per request held.
-func (s *federationStub) gate(path string) (entered <-chan struct{}, release func()) {
-	arrived, open := make(chan struct{}, 16), make(chan struct{})
-	handler := s.Config.Handler
-	s.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == path {
-			arrived <- struct{}{}
-			<-open
-		}
-		handler.ServeHTTP(w, r)
-	})
-	var once sync.Once
-	return arrived, func() { once.Do(func() { close(open) }) }
-}
-
-// overlap starts the exchanges of first and second so that second meets the new kid while the refetch first started
-// is held at the provider's JWKS: it returns once second waits for that refetch, and fails the test if second fetches
-// itself or gives up instead.
-func (l *federatedLogin) overlap(firstCtx context.Context, t *testing.T, first, second *RelyingPartyClient) (firstErr, secondErr <-chan error, release func()) {
-	t.Helper()
-	entered, release := l.stub.gate("/op/jwks")
-	t.Cleanup(release)
-	waiting := make(chan struct{}, 1)
-	l.rp.waitingForRefetch = func() { waiting <- struct{}{} }
-	exchange := func(ctx context.Context, client *RelyingPartyClient) <-chan error {
-		result := make(chan error, 1)
-		go func() {
-			_, _, err := client.ExchangeIdentity(ctx, nLogin(), "code")
-			result <- err
-		}()
-		return result
-	}
-	firstErr = exchange(firstCtx, first)
-	<-entered
-	secondErr = exchange(t.Context(), second)
-	select {
-	case <-waiting:
-	case <-entered:
-		t.Fatal("the second exchange fetched the JWKS itself")
-	case err := <-secondErr:
-		t.Fatalf("the second exchange did not wait for the refetch: %v", err)
-	}
-	return firstErr, secondErr, release
+// exchangeAsync runs an exchange of client in a goroutine of its own and gives its result.
+func exchangeAsync(ctx context.Context, client *RelyingPartyClient) <-chan error {
+	result := make(chan error, 1)
+	go func() {
+		_, _, err := client.ExchangeIdentity(ctx, nLogin(), "code")
+		result <- err
+	}()
+	return result
 }
 
 // gemSpec_IDP_FD A_22861 during a key rotation: concurrent logins that meet the new kid wait for the one refetch in
-// flight, and both succeed. The refetch is held until the second login waits for it, so the two overlap.
+// flight, and both succeed. The refetch is held at the provider's JWKS until the second login waits for it, so the two
+// overlap.
 func TestA_22861_ConcurrentLoginsDuringARotationRefetchOnce(t *testing.T) {
 	login := newFederatedLogin(t)
 	login.issue(t, login.rotate(t), "rotated", login.claims(), nil)
@@ -522,16 +488,42 @@ func TestA_22861_ConcurrentLoginsDuringARotationRefetchOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstErr, secondErr, release := login.overlap(t.Context(), t, login.client, other)
-	release()
-	for _, result := range []<-chan error{firstErr, secondErr} {
-		if err := <-result; err != nil {
-			t.Error(err)
+	now := time.Now()
+	synctest.Test(t, func(t *testing.T) {
+		held := make(chan struct{})
+		// Released on a failure too, so that the bubble ends with the test.
+		release := sync.OnceFunc(func() { close(held) })
+		defer release()
+		var jwksFetches atomic.Int64
+		login.inBubble(now, func(w http.ResponseWriter, r *http.Request, next http.Handler) {
+			if r.URL.Path == "/op/jwks" {
+				jwksFetches.Add(1)
+				<-held
+			}
+			next.ServeHTTP(w, r)
+		})
+		first := exchangeAsync(t.Context(), login.client)
+		synctest.Wait()
+		second := exchangeAsync(t.Context(), other)
+		synctest.Wait()
+		select {
+		case err := <-second:
+			t.Fatalf("the second login did not wait for the refetch: %v", err)
+		default:
 		}
-	}
-	if n := login.refetches(); n != 1 {
-		t.Errorf("%d refetches", n)
-	}
+		if n := jwksFetches.Load(); n != 1 {
+			t.Fatalf("%d fetches of the JWKS while the refetch is held", n)
+		}
+		release()
+		for _, result := range []<-chan error{first, second} {
+			if err := <-result; err != nil {
+				t.Error(err)
+			}
+		}
+		if n := login.refetches(); n != 1 {
+			t.Errorf("%d refetches", n)
+		}
+	})
 }
 
 // inMemory carries a client's requests to the federation stub's handler inside the test, so that a synctest bubble
@@ -602,18 +594,10 @@ func TestA_22861_TheRefetchOutlivesTheLoginThatStartedIt(t *testing.T) {
 			}
 			next.ServeHTTP(w, r)
 		})
-		exchange := func(ctx context.Context, client *RelyingPartyClient) <-chan error {
-			result := make(chan error, 1)
-			go func() {
-				_, _, err := client.ExchangeIdentity(ctx, nLogin(), "code")
-				result <- err
-			}()
-			return result
-		}
 		leaderCtx, cancel := context.WithCancel(t.Context())
-		leader := exchange(leaderCtx, login.client)
+		leader := exchangeAsync(leaderCtx, login.client)
 		synctest.Wait()
-		waiter := exchange(t.Context(), other)
+		waiter := exchangeAsync(t.Context(), other)
 		synctest.Wait()
 		cancel()
 		synctest.Wait()

@@ -38,6 +38,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-jose/go-jose/v4"
 
@@ -409,5 +410,50 @@ func TestServeSignedJwksVerifiesAndKeepsItsShape(t *testing.T) {
 	}
 	if len(claims.Keys.Keys) != 2 || claims.Keys.Keys[0]["kid"] != "enc-kid" || claims.Keys.Keys[1]["kid"] != "client-kid" {
 		t.Errorf("keys = %+v", claims.Keys)
+	}
+}
+
+// gemSpec_IDP_FD A_23196 allows a relying party EC keys on P-256 only, and keys rule 1 publishes no private key part:
+// a signed JWKS that would hold another key is not signed.
+func TestA_23196_ASignedJWKSWithAKeyOtherThanAPublicP256KeyIsRefused(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := newTestKey(t)
+	for name, c := range map[string]struct {
+		key  jose.JSONWebKey
+		want string
+	}{
+		"RSA":     {jose.JSONWebKey{Key: rsaKey.Public(), KeyID: "rsa"}, "no P-256 key"},
+		"P-384":   {jose.JSONWebKey{Key: p384.Public(), KeyID: "p384"}, "no P-256 key"},
+		"private": {jose.JSONWebKey{Key: private, KeyID: "private"}, "private key"},
+	} {
+		rp := literalRelyingParty(t, newTestKey(t))
+		rp.relyingPartyKeys.Keys = append(rp.relyingPartyKeys.Keys, c.key)
+		if _, err := rp.signJwks(time.Now()); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// A signed JWKS too large for a member to take is not signed. Internal invariant of signing, servers.md rule 2.
+func TestServerRule2_ASignedJWKSLargerThanItsBoundIsRefused(t *testing.T) {
+	rp := literalRelyingParty(t, newTestKey(t))
+	public := rp.relyingPartyKeys.Keys[0]
+	// A public P-256 JWK takes more than 100 bytes.
+	for len(rp.relyingPartyKeys.Keys)*100 <= maxStatementBytes {
+		rp.relyingPartyKeys.Keys = append(rp.relyingPartyKeys.Keys, public)
+	}
+	if _, err := rp.signJwks(time.Now()); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), "more than") {
+		t.Errorf("err = %v", err)
+	}
+	rp.relyingPartyKeys.Keys = rp.relyingPartyKeys.Keys[:1]
+	if _, err := rp.signJwks(time.Now()); err != nil {
+		t.Errorf("one key: %v", err)
 	}
 }

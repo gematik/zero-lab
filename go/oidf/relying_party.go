@@ -194,9 +194,6 @@ type RelyingParty struct {
 	refetchedAt map[string]time.Time
 	// refetching holds the refetch in flight, by issuer.
 	refetching map[string]*refetchFlight
-	// waitingForRefetch, when set, is called as an exchange starts waiting for a refetch in flight; tests use it to
-	// know that exchanges overlap.
-	waitingForRefetch func()
 
 	// retryAt, in Unix nanoseconds, is when a request may try again after a failed signing; zero after a success.
 	// Written only by the holder of the signing token.
@@ -895,9 +892,6 @@ func (rp *RelyingParty) refetchProvider(ctx context.Context, issuer string) (*pr
 	switch {
 	case inFlight:
 		rp.refetchMu.Unlock()
-		if rp.waitingForRefetch != nil {
-			rp.waitingForRefetch()
-		}
 	case !rp.mayRefetchLocked(issuer):
 		rp.refetchMu.Unlock()
 		return rp.resolveProvider(ctx, issuer, false)
