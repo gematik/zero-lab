@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-15T07:36:00Z'
+updated_date: '2026-11-15T08:28:00Z'
 labels: []
 dependencies: []
 ordinal: 338000
@@ -35,3 +36,9 @@ The JOSE library keeps its own JSON reader; what it parses (JWS headers) is outs
 - [ ] #2 No module imports encoding/json v1; every module is on go 1.27
 - [ ] #3 Each module's fuzz seeds have a member twice, a name in another case and invalid UTF-8, and the readers refuse them
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+From the final review of TASK-315: the hosts still re-read the verified ID token with v1 through openid.TokenResponse.Claims (pdp nonce check and introspection, pep sess.Identity), while oidf judged the same payload with v2. They should take oidf's ExchangeIdentity / Identity instead.
+<!-- SECTION:NOTES:END -->
