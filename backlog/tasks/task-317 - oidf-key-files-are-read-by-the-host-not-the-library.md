@@ -1,9 +1,10 @@
 ---
 id: TASK-317
 title: 'oidf: key files are read by the host, not the library'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T20:52:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels:
   - oidf
   - go

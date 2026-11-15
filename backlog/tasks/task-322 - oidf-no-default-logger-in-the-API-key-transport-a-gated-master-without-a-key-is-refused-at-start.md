@@ -3,9 +3,10 @@ id: TASK-322
 title: >-
   oidf: no default logger in the API key transport; a gated master without a key
   is refused at start
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T06:17:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels:
   - oidf
   - go

@@ -1,9 +1,10 @@
 ---
 id: TASK-326
 title: 'pkcs12/legacy: a wrong password on a file without MAC is sometimes accepted'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T09:01:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels:
   - pkcs12
   - go

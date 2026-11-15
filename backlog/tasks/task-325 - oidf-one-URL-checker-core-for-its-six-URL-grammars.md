@@ -1,9 +1,10 @@
 ---
 id: TASK-325
 title: 'oidf: one URL checker core for its six URL grammars'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T08:28:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels:
   - oidf
   - go

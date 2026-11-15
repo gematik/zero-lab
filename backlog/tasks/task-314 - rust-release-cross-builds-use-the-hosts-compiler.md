@@ -1,9 +1,10 @@
 ---
 id: TASK-314
 title: 'rust release: cross builds use the host''s compiler'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T18:26:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels: []
 dependencies: []
 ordinal: 329000

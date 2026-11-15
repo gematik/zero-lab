@@ -1,9 +1,10 @@
 ---
 id: TASK-318
 title: 'openid: the plain OIDC client checks the acr it asked for'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T20:52:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels:
   - openid
   - go

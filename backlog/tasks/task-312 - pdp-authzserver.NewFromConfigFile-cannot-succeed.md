@@ -1,9 +1,10 @@
 ---
 id: TASK-312
 title: 'pdp: authzserver.NewFromConfigFile cannot succeed'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T15:21:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels: []
 dependencies: []
 ordinal: 327000

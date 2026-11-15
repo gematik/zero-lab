@@ -1,9 +1,10 @@
 ---
 id: TASK-316
 title: 'pdp: a pushed request URI and an authorization code are good more than once'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T20:20:00Z'
+updated_date: '2026-11-15T09:10:00Z'
 labels: []
 dependencies: []
 ordinal: 331000
