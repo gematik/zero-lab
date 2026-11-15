@@ -121,7 +121,7 @@ vuln: (_each_check "go run " + GOVULNCHECK + " ./...")
 
 # go.mod and go.sum as `go mod tidy` leaves them, with sums matching what was downloaded;
 # openid and oidf carry no TI trust path in their module graph, and base libraries compile no
-# format dependency (decision-13)
+# format dependency (decision-13); no package imports a test federation or fake
 mod-check: (_each_check "go mod tidy -diff && go mod verify")
     #!/usr/bin/env bash
     set -uo pipefail
@@ -136,6 +136,12 @@ mod-check: (_each_check "go mod tidy -diff && go mod verify")
         found=$(cd "$dir" && GOWORK=off go list -deps ./... | grep -E 'yaml')
         if [ -n "$found" ]; then echo "$dir compiles: $found"; fail=1; fi
         if grep -qE 'yaml' "$dir/go.mod"; then echo "$dir/go.mod names yaml"; fail=1; fi
+    done
+    # Test federations and fakes are test code: no package a module builds imports one, so none
+    # is compiled into an image (servers.md rule 17). Deps is what a package compiles, tests left out.
+    for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
+        found=$(cd "$dir" && go list -f '{{{{.ImportPath}}: {{{{join .Deps " "}}' ./... | grep -vE '/(oidftest|epatest): ' | grep -E '/(oidftest|epatest)( |$)' | cut -d: -f1)
+        if [ -n "$found" ]; then echo "$dir compiles a test package into: $found"; fail=1; fi
     done
     exit $fail
 
