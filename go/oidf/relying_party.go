@@ -194,6 +194,9 @@ type RelyingParty struct {
 	refetchedAt map[string]time.Time
 	// refetching holds the refetch in flight, by issuer.
 	refetching map[string]*refetchFlight
+	// waitingForRefetch, when set, is called as an exchange starts waiting for a refetch in flight; tests use it to
+	// know that exchanges overlap.
+	waitingForRefetch func()
 
 	// retryAt, in Unix nanoseconds, is when a request may try again after a failed signing; zero after a success.
 	// Written only by the holder of the signing token.
@@ -856,6 +859,9 @@ func (rp *RelyingParty) Federation() *OpenidFederation {
 	return rp.federation
 }
 
+// refetchTimeout bounds a refetch, which runs past the context of the exchange that started it.
+const refetchTimeout = 30 * time.Second
+
 // refetchInterval is how long after a refetch of an IDP's documents past the store another one is refused: an ID token
 // is the IDP's to send, but anyone can send a token with a made-up kid, and each would otherwise cost the federation
 // three fetches.
@@ -872,10 +878,17 @@ type refetchFlight struct {
 // refetchInterval; an exchange that finds one in flight waits for it as long as its context lets it. When the limiter
 // refuses, or the refetch it waited for failed, it resolves from the store, which costs no fetch while the kept
 // documents verify and holds what a refetch within the minute kept.
+//
+// The refetch serves every exchange waiting for it, so it runs on a context of its own, bounded by refetchTimeout,
+// and does not end with the exchange that started it. A refetch that failed does not count against the minute: it
+// kept nothing a later exchange could use.
 func (rp *RelyingParty) refetchProvider(ctx context.Context, issuer string) (*provider, error) {
 	rp.refetchMu.Lock()
 	if call, inFlight := rp.refetching[issuer]; inFlight {
 		rp.refetchMu.Unlock()
+		if rp.waitingForRefetch != nil {
+			rp.waitingForRefetch()
+		}
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -902,7 +915,14 @@ func (rp *RelyingParty) refetchProvider(ctx context.Context, issuer string) (*pr
 		rp.refetchMu.Unlock()
 		close(call.done)
 	}()
-	call.resolved, call.err = rp.resolveProvider(ctx, issuer, true)
+	refetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refetchTimeout)
+	defer cancel()
+	call.resolved, call.err = rp.resolveProvider(refetchCtx, issuer, true)
+	if call.err != nil {
+		rp.refetchMu.Lock()
+		delete(rp.refetchedAt, issuer)
+		rp.refetchMu.Unlock()
+	}
 	return call.resolved, call.err
 }
 

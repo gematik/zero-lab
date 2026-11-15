@@ -262,28 +262,37 @@ func TestFederationSignedJwksToleratesSurroundingWhitespace(t *testing.T) {
 // The clock is 90 seconds ahead when a statement is judged: an iat that far ahead passes, and an exp that near does not.
 func TestFederationJudgesStatementsNinetySecondsAhead(t *testing.T) {
 	stub := newFederationStub(t)
+	hour := time.Now().Add(time.Hour).Unix()
 	for _, tc := range []struct {
 		name   string
 		claims map[string]any
-		accept bool
+		// want is why the list is refused, nil when it is taken; reason is the message of a refusal without sentinel.
+		want   error
+		reason string
 	}{
-		{"exp beyond the tolerance", map[string]any{"exp": time.Now().Add(2 * statementClockTolerance).Unix()}, true},
-		{"exp within the tolerance", map[string]any{"exp": time.Now().Add(statementClockTolerance / 2).Unix()}, false},
-		{"iat within the tolerance", map[string]any{"iat": time.Now().Add(statementClockTolerance / 2).Unix(), "exp": time.Now().Add(time.Hour).Unix()}, true},
-		{"iat beyond the tolerance", map[string]any{"iat": time.Now().Add(2 * statementClockTolerance).Unix()}, false},
-		{"nbf beyond the tolerance", map[string]any{"nbf": time.Now().Add(2 * statementClockTolerance).Unix()}, false},
-		{"no exp", map[string]any{}, false},
+		{"exp beyond the tolerance", map[string]any{"exp": time.Now().Add(2 * statementClockTolerance).Unix()}, nil, ""},
+		{"exp within the tolerance", map[string]any{"exp": time.Now().Add(statementClockTolerance / 2).Unix()}, openid.ErrTokenExpired, ""},
+		{"iat within the tolerance", map[string]any{"iat": time.Now().Add(statementClockTolerance / 2).Unix(), "exp": hour}, nil, ""},
+		{"iat beyond the tolerance", map[string]any{"iat": time.Now().Add(2 * statementClockTolerance).Unix(), "exp": hour}, openid.ErrTokenIssuedInFuture, ""},
+		{"nbf beyond the tolerance", map[string]any{"nbf": time.Now().Add(2 * statementClockTolerance).Unix(), "exp": hour}, openid.ErrTokenNotYetValid, ""},
+		{"no exp", map[string]any{}, nil, "has to state its exp"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.claims["idp_entity"] = []any{}
 			tc.claims["iss"] = stub.URL
 			stub.idpList = signJWS(t, stub.masterKey, "master", tc.claims)
 			_, err := stub.federation(t).FetchIdpList(t.Context())
-			if tc.accept && err != nil {
+			switch {
+			case tc.want != nil:
+				if !errors.Is(err, tc.want) {
+					t.Errorf("err = %v, want %v", err, tc.want)
+				}
+			case tc.reason != "":
+				if err == nil || !strings.Contains(err.Error(), tc.reason) {
+					t.Errorf("err = %v, want %q", err, tc.reason)
+				}
+			case err != nil:
 				t.Errorf("refused: %v", err)
-			}
-			if !tc.accept && err == nil {
-				t.Error("accepted")
 			}
 		})
 	}

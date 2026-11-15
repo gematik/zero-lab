@@ -23,16 +23,20 @@ package oidf
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
@@ -215,18 +219,18 @@ func TestOIDCCore_2_AnAuthTimeThatIsAskedForOrPresentIsChecked(t *testing.T) {
 	for name, c := range map[string]struct {
 		authTime any
 		claims   json.RawMessage
-		want     error
+		reason   string
 	}{
-		"missing, asked for":    {nil, askedFor, ErrAuthTime},
-		"a string":              {"1700000000", nil, ErrAuthTime},
-		"ahead":                 {time.Now().Add(2 * time.Minute).Unix(), nil, ErrAuthTime},
-		"past year 9999":        {1e15, nil, ErrAuthTime},
-		"negative":              {-1, nil, ErrAuthTime},
-		"null":                  {json.RawMessage("null"), nil, ErrAuthTime},
-		"an object":             {map[string]any{}, nil, ErrAuthTime},
-		"a fraction ahead":      {float64(time.Now().Add(90*time.Second).UnixMilli()) / 1000, nil, ErrAuthTime},
-		"missing, not asked":    {nil, nil, nil},
-		"within the skew ahead": {time.Now().Add(30 * time.Second).Unix(), askedFor, nil},
+		"missing, asked for":    {nil, askedFor, "missing although asked for"},
+		"a string":              {"1700000000", nil, "no number"},
+		"null":                  {json.RawMessage("null"), nil, "no number"},
+		"an object":             {map[string]any{}, nil, "no number"},
+		"ahead":                 {time.Now().Add(2 * time.Minute).Unix(), nil, "ahead of the clock"},
+		"a fraction ahead":      {float64(time.Now().Add(90*time.Second).UnixMilli()) / 1000, nil, "ahead of the clock"},
+		"past year 9999":        {1e15, nil, "out of range"},
+		"negative":              {-1, nil, "out of range"},
+		"missing, not asked":    {nil, nil, ""},
+		"within the skew ahead": {time.Now().Add(30 * time.Second).Unix(), askedFor, ""},
 	} {
 		stub := newLoginStub(t)
 		claims := validIDTokenClaims()
@@ -239,8 +243,8 @@ func TestOIDCCore_2_AnAuthTimeThatIsAskedForOrPresentIsChecked(t *testing.T) {
 		login := nLogin()
 		login.Claims = c.claims
 		_, _, err := stub.client.ExchangeIdentity(t.Context(), login, "code")
-		if c.want == nil && err != nil || c.want != nil && !errors.Is(err, c.want) {
-			t.Errorf("%s: %v", name, err)
+		if c.reason == "" && err != nil || c.reason != "" && (!errors.Is(err, ErrAuthTime) || !strings.HasSuffix(err.Error(), c.reason)) {
+			t.Errorf("%s: %v, want %q", name, err, c.reason)
 		}
 	}
 }
@@ -462,8 +466,53 @@ func (l *federatedLogin) rotate(t *testing.T) *ecdsa.PrivateKey {
 	return rotated
 }
 
+// gate holds every request for path until release is called; entered receives one value per request held.
+func (s *federationStub) gate(path string) (entered <-chan struct{}, release func()) {
+	arrived, open := make(chan struct{}, 16), make(chan struct{})
+	handler := s.Config.Handler
+	s.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == path {
+			arrived <- struct{}{}
+			<-open
+		}
+		handler.ServeHTTP(w, r)
+	})
+	var once sync.Once
+	return arrived, func() { once.Do(func() { close(open) }) }
+}
+
+// overlap starts the exchanges of first and second so that second meets the new kid while the refetch first started
+// is held at the provider's JWKS: it returns once second waits for that refetch, and fails the test if second fetches
+// itself or gives up instead.
+func (l *federatedLogin) overlap(firstCtx context.Context, t *testing.T, first, second *RelyingPartyClient) (firstErr, secondErr <-chan error, release func()) {
+	t.Helper()
+	entered, release := l.stub.gate("/op/jwks")
+	t.Cleanup(release)
+	waiting := make(chan struct{}, 1)
+	l.rp.waitingForRefetch = func() { waiting <- struct{}{} }
+	exchange := func(ctx context.Context, client *RelyingPartyClient) <-chan error {
+		result := make(chan error, 1)
+		go func() {
+			_, _, err := client.ExchangeIdentity(ctx, nLogin(), "code")
+			result <- err
+		}()
+		return result
+	}
+	firstErr = exchange(firstCtx, first)
+	<-entered
+	secondErr = exchange(t.Context(), second)
+	select {
+	case <-waiting:
+	case <-entered:
+		t.Fatal("the second exchange fetched the JWKS itself")
+	case err := <-secondErr:
+		t.Fatalf("the second exchange did not wait for the refetch: %v", err)
+	}
+	return firstErr, secondErr, release
+}
+
 // gemSpec_IDP_FD A_22861 during a key rotation: concurrent logins that meet the new kid wait for the one refetch in
-// flight, and both succeed.
+// flight, and both succeed. The refetch is held until the second login waits for it, so the two overlap.
 func TestA_22861_ConcurrentLoginsDuringARotationRefetchOnce(t *testing.T) {
 	login := newFederatedLogin(t)
 	login.issue(t, login.rotate(t), "rotated", login.claims(), nil)
@@ -471,19 +520,60 @@ func TestA_22861_ConcurrentLoginsDuringARotationRefetchOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	errs := make(chan error, 2)
-	for _, client := range []*RelyingPartyClient{login.client, other} {
-		go func() {
-			_, _, err := client.ExchangeIdentity(t.Context(), nLogin(), "code")
-			errs <- err
-		}()
-	}
-	for range 2 {
-		if err := <-errs; err != nil {
+	firstErr, secondErr, release := login.overlap(t.Context(), t, login.client, other)
+	release()
+	for _, result := range []<-chan error{firstErr, secondErr} {
+		if err := <-result; err != nil {
 			t.Error(err)
 		}
 	}
 	if n := login.refetches(); n != 1 {
+		t.Errorf("%d refetches", n)
+	}
+}
+
+// gemSpec_IDP_FD A_22861: the refetch serves every login waiting for it, so the login that started it hanging up
+// ends neither the refetch nor the others; a later login within the minute takes what it kept.
+func TestA_22861_TheRefetchOutlivesTheLoginThatStartedIt(t *testing.T) {
+	login := newFederatedLogin(t)
+	login.issue(t, login.rotate(t), "rotated", login.claims(), nil)
+	other, err := login.rp.Client(t.Context(), login.stub.URL+"/op")
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaderCtx, cancel := context.WithCancel(t.Context())
+	firstErr, secondErr, release := login.overlap(leaderCtx, t, login.client, other)
+	cancel()
+	release()
+	if err := <-secondErr; err != nil {
+		t.Fatalf("the waiting login: %v", err)
+	}
+	if err := <-firstErr; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("the login that hung up: %v", err)
+	}
+	if _, err := login.exchange(t, nLogin()); err != nil {
+		t.Fatalf("a later login: %v", err)
+	}
+	if n := login.refetches(); n != 1 {
+		t.Errorf("%d refetches", n)
+	}
+}
+
+// A refetch that failed keeps nothing, so it does not count against the minute: the next login refetches.
+func TestA_22861_AFailedRefetchDoesNotBlockTheMinute(t *testing.T) {
+	login := newFederatedLogin(t)
+	rotated := login.rotate(t)
+	login.issue(t, rotated, "rotated", login.claims(), nil)
+	signedJwks := login.stub.signedJwks
+	login.stub.signedJwks = "not a JWS"
+	if _, err := login.exchange(t, nLogin()); !errors.Is(err, ErrIDTokenKey) {
+		t.Fatalf("err = %v", err)
+	}
+	login.stub.signedJwks = signedJwks
+	if _, err := login.exchange(t, nLogin()); err != nil {
+		t.Fatalf("the login after the failed refetch: %v", err)
+	}
+	if n := login.refetches(); n != 2 {
 		t.Errorf("%d refetches", n)
 	}
 }
@@ -655,8 +745,10 @@ func FuzzIdentity(f *testing.F) {
 			identity.ACR, identity.Interactive,
 		}
 		texts = append(append(texts, identity.AMR...), identity.Consent...)
+		// An oracle of the test's own: unicode.In over the categories, where checkText asks IsControl and In apart.
+		refused := func(r rune) bool { return unicode.In(r, unicode.Cc, unicode.Cf, unicode.Zl, unicode.Zp) }
 		for _, text := range texts {
-			if !utf8.ValidString(text) || len(text) > maxTextBytes || strings.ContainsFunc(text, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+			if !utf8.ValidString(text) || len(text) > maxTextBytes || strings.ContainsFunc(text, refused) {
 				t.Fatalf("accepted %q", text)
 			}
 		}
