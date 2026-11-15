@@ -1,10 +1,10 @@
 ---
 id: TASK-315
 title: 'oidf: what a ZETA guard needs to be a relying party of the TI federation'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T20:17:00Z'
-updated_date: '2026-11-15T09:05:00Z'
+updated_date: '2026-11-15T13:46:00Z'
 labels:
   - oidf
   - go
@@ -43,7 +43,7 @@ Not needed by zeta-pdp-go: decryption on brainpool (TASK-299; the schema asks P-
 - [x] #5 ID token claims are typed; a lower acr than asked for is refused; an IDP that is not on the master's IdP list or not an openid_provider is refused
 - [x] #6 An exported test federation with a sektoral IDP exists
 - [x] #7 The entity statement and signed JWKS are signed once and served as bytes, re-signed on age or change
-- [ ] #8 A tag of go/oidf carries it
+- [x] #8 A tag of go/oidf carries it
 - [x] #9 Every request value to and from the IDP is validated against an allowlist before use (OWASP input validation: reject, never repair; errors name the field, not the value); fuzz targets with nasty-input seeds cover each entry point
 <!-- AC:END -->
 
@@ -73,4 +73,12 @@ Full plan: ~/.claude/plans/cheerful-tickling-bear.md
 - State towards a sektoral IDP must be short and of the base64url alphabet. Measured on 2026-11-14 with pushed requests as a registered relying party of the reference federation: BMS and T-Systems IDPs refuse a state of 513 characters and take 512; IBM takes 8192. gematik/ref-idp-server has the same bound for its own endpoint (IdpController: state and nonce ^[_\-a-zA-Z0-9]{1,512}$, code_verifier at most 128), and its test suite says the bound comes from RISE's concept, not from a requirement. All three IDPs return a short random request_uri (27 to 60 characters) that lasts 90 seconds.
 
 2026-11-15: merged to main (1fc214c7), repinned (a01d0b31), full just check green on main. Open: AC #8, the tags, after the maintainer's just oidf-test and a live TK login.
+
+Released 2026-11-15: openid v0.54.0, oidf v0.52.0, pkcs12 v1.0.0-rc.3, pep/proxy v0.3.0. Gated: just oidf-test and TestNewAtALiveFederationMaster against app-ref, kv on Postgres, PDP e2e locally (OIDF statement checks against the rathole config), live TK RU2 login on zerobin (0.3.0-dev.51a0bb8). pdp not tagged yet: PDP HITL outstanding.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/oidf v0.52.0 (with openid v0.54.0) is a relying party of the TI federation that a ZETA guard builds on: keys as functions (Signer, ECDH KeyAgreement, tls.Certificate), a host-wired store of verified federation documents, admission by the master IdP list, typed Identity with acr/amr checks, statement signed once and served as bytes, rule-28 input validation with fuzz targets, oidftest. pep/proxy v0.3.0 carries it; live TK RU2 login passed on zerobin. pdp tag waits for the PDP HITL.
+<!-- SECTION:FINAL_SUMMARY:END -->
