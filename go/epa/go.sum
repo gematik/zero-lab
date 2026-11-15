@@ -3,10 +3,10 @@ github.com/cloudflare/circl v1.6.5/go.mod h1:h5LNyxAc5nTue9DS5jT+48en2PSDYt3zdGn
 github.com/cpuguy83/go-md2man/v2 v2.0.6/go.mod h1:oOW0eioCTA6cOiMLiUPZOpcVxMig6NIQQ7OS05n1F4g=
 github.com/fxamacker/cbor/v2 v2.10.0 h1:HVF3T5vYwLqO81ebPirWEPNv2SMrUMD3HLnKgEr6uWE=
 github.com/fxamacker/cbor/v2 v2.10.0/go.mod h1:uSwlToFuT9BZAKRxxVm3qQC8DR4tlWl7D6pf20iRYH4=
-github.com/gematik/zero-lab/go/brainpool v1.3.0 h1:kWMyWb/5ejO0lSTQVwpErgJs+dsjciDJdE0lhTeBXrA=
-github.com/gematik/zero-lab/go/brainpool v1.3.0/go.mod h1:EMQjrqhwXLBEgvc68iReaNdgHKc7hD4G8Ieh5kugF4c=
-github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261115134413-b776f8821290 h1:oKi4amOGYCaYn+9LaUsOG2S6L0xAhrWVlUMueHR8E0w=
-github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261115134413-b776f8821290/go.mod h1:piTtdNyIRlFJiKkkyrXheVkg1Wd93m6E1zfQkyi1ZMQ=
+github.com/gematik/zero-lab/go/brainpool v1.3.1-0.20261115135804-98986bff37eb h1:wjCRWxOP/H9QQY4G5LxOYBFxqSf/U/FhRi1Sj6j+hjs=
+github.com/gematik/zero-lab/go/brainpool v1.3.1-0.20261115135804-98986bff37eb/go.mod h1:eaDEJ7KS+7Ga7x0IFFnrwqWJwFhnWHs/qYse6vjrqko=
+github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261115135804-98986bff37eb h1:uufRKrFX5yYMVxZtgfZ8qyl5IXSv6N5reuYbPhEuSsA=
+github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261115135804-98986bff37eb/go.mod h1:+bjprhKNLDfuszVkqnd1UJRzUTzGe+8QUrdU2wOXmxQ=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=

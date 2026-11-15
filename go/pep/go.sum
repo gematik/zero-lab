@@ -1,4 +1,4 @@
-github.com/gematik/zero-lab/go/dpop v1.0.0-beta.2 h1:9FcTI+EGqv2J+XcOyxKF2ALG46qgkvUpiqEoXoKKTnE=
-github.com/gematik/zero-lab/go/dpop v1.0.0-beta.2/go.mod h1:8Z/vsJQw1lkmqhNOZW4UGTCpL+8ixx/bjG0T4ReoDuc=
+github.com/gematik/zero-lab/go/dpop v1.0.0-beta.2.0.20261115135804-98986bff37eb h1:ysQQDKkoFl4pjnLQOp4KNUOD+Tk4AXaMLZ/nb6D1OBg=
+github.com/gematik/zero-lab/go/dpop v1.0.0-beta.2.0.20261115135804-98986bff37eb/go.mod h1:r7onca0S7sWaAYsvGdwNQDkR6AUrZYhMzuhueQrQa9o=
 github.com/go-jose/go-jose/v4 v4.1.9 h1:pKfeQkig1NmgK4hJrZYXLEYURXfoJB61Larw0uIW4gY=
 github.com/go-jose/go-jose/v4 v4.1.9/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
