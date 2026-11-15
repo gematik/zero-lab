@@ -163,7 +163,8 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   - `r.URL.RawPath` and `EscapedPath()` checked, so `ServeMux`'s path cleaning never turns
     a non-canonical path into a match.
   - `url.Values` read through a helper that refuses a repeated key.
-  - `encoding/json/v2` only; no module imports `encoding/json`. Its defaults refuse a
+  - `encoding/json/v2` only; no module imports `encoding/json`, except `go/pdp`, which
+    zeta-pdp-go replaces and which stays on v1 until then. Its defaults refuse a
     member named twice and invalid UTF-8, and match names exactly, where v1 keeps the last
     duplicate, replaces bad UTF-8 and folds case. `json.RejectUnknownMembers(true)` where
     the format is ours; someone else's format (OAuth, OIDC, JOSE, gematik APIs) ignores
