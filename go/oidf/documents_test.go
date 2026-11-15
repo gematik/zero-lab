@@ -95,6 +95,17 @@ func (c *fetchCounter) count(path string) int {
 	return c.counts[path]
 }
 
+// total is the number of requests counted, on every path.
+func (c *fetchCounter) total() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	total := 0
+	for _, n := range c.counts {
+		total += n
+	}
+	return total
+}
+
 func (s *federationStub) countFetches() *fetchCounter {
 	counter := &fetchCounter{counts: make(map[string]int)}
 	handler := s.Config.Handler

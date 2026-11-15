@@ -59,8 +59,8 @@ type served struct {
 	issuedAt  time.Time
 	expiresAt time.Time
 	refreshAt time.Time
-	// redirectURIs are those the statement registers; none for the signed JWKS.
-	redirectURIs []string
+	// registered is what the statement registers; nothing for the signed JWKS.
+	registered registration
 }
 
 func newServed(body []byte, now time.Time) *served {
@@ -98,7 +98,7 @@ func (rp *RelyingParty) signBoth(ctx context.Context) (statement, jwks *served, 
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	signedStatement, redirectURIs, err := rp.signStatement(now)
+	signedStatement, registered, err := rp.signStatement(now)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -110,7 +110,7 @@ func (rp *RelyingParty) signBoth(ctx context.Context) (statement, jwks *served, 
 		return nil, nil, err
 	}
 	statement = newServed(signedStatement, now)
-	statement.redirectURIs = redirectURIs
+	statement.registered = registered
 	return statement, newServed(signedJwks, now), nil
 }
 

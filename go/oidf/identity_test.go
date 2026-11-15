@@ -30,11 +30,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -532,8 +534,58 @@ func TestA_22861_ConcurrentLoginsDuringARotationRefetchOnce(t *testing.T) {
 	}
 }
 
-// gemSpec_IDP_FD A_22861: the refetch serves every login waiting for it, so the login that started it hanging up
-// ends neither the refetch nor the others; a later login within the minute takes what it kept.
+// inMemory carries a client's requests to the federation stub's handler inside the test, so that a synctest bubble
+// holds everything that waits; through serve, a test can hold or fail a request.
+type inMemory struct {
+	handler http.Handler
+	serve   func(w http.ResponseWriter, r *http.Request, next http.Handler)
+}
+
+func (m inMemory) RoundTrip(r *http.Request) (*http.Response, error) {
+	recorder := httptest.NewRecorder()
+	m.serve(recorder, r, m.handler)
+	return recorder.Result(), nil
+}
+
+// inBubble prepares a login for a synctest bubble: the clocks stand at now, taken outside the bubble when the
+// documents were signed, as the bubble's clock starts in 2000, and the relying party's requests go through serve.
+func (l *federatedLogin) inBubble(now time.Time, serve func(w http.ResponseWriter, r *http.Request, next http.Handler)) {
+	l.now.Store(&now)
+	l.rp.federation.clock = func() time.Time { return now }
+	transport := inMemory{handler: l.stub.Config.Handler, serve: serve}
+	l.rp.httpClient = &http.Client{Transport: transport}
+	l.rp.federation.httpClient = &http.Client{Transport: transport, CheckRedirect: refuseRedirect}
+}
+
+// gemSpec_IDP_FD A_22861 asks for one refetch: with the federation failing, the logins of a minute that meet an
+// unknown kid ask it once, and the store serves them meanwhile.
+func TestA_22861_AFailingFederationIsAskedOnceAMinute(t *testing.T) {
+	login := newFederatedLogin(t)
+	login.issue(t, login.rotate(t), "rotated", login.claims(), nil)
+	now := time.Now()
+	synctest.Test(t, func(t *testing.T) {
+		var federationRequests atomic.Int64
+		login.inBubble(now, func(w http.ResponseWriter, r *http.Request, next http.Handler) {
+			if r.Method == http.MethodGet {
+				federationRequests.Add(1)
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+		for range 5 {
+			if _, err := login.exchange(t, nLogin()); !errors.Is(err, ErrIDTokenKey) {
+				t.Fatalf("err = %v", err)
+			}
+		}
+		if n := federationRequests.Load(); n != 1 {
+			t.Errorf("%d requests to the federation for 5 logins in the minute", n)
+		}
+	})
+}
+
+// gemSpec_IDP_FD A_22861: the refetch serves every login waiting for it, so the login that started it returns as
+// soon as it hangs up, while the refetch goes on for the others, and a later login takes what it kept.
 func TestA_22861_TheRefetchOutlivesTheLoginThatStartedIt(t *testing.T) {
 	login := newFederatedLogin(t)
 	login.issue(t, login.rotate(t), "rotated", login.claims(), nil)
@@ -541,41 +593,49 @@ func TestA_22861_TheRefetchOutlivesTheLoginThatStartedIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leaderCtx, cancel := context.WithCancel(t.Context())
-	firstErr, secondErr, release := login.overlap(leaderCtx, t, login.client, other)
-	cancel()
-	release()
-	if err := <-secondErr; err != nil {
-		t.Fatalf("the waiting login: %v", err)
-	}
-	if err := <-firstErr; err != nil && !errors.Is(err, context.Canceled) {
-		t.Fatalf("the login that hung up: %v", err)
-	}
-	if _, err := login.exchange(t, nLogin()); err != nil {
-		t.Fatalf("a later login: %v", err)
-	}
-	if n := login.refetches(); n != 1 {
-		t.Errorf("%d refetches", n)
-	}
-}
-
-// A refetch that failed keeps nothing, so it does not count against the minute: the next login refetches.
-func TestA_22861_AFailedRefetchDoesNotBlockTheMinute(t *testing.T) {
-	login := newFederatedLogin(t)
-	rotated := login.rotate(t)
-	login.issue(t, rotated, "rotated", login.claims(), nil)
-	signedJwks := login.stub.signedJwks
-	login.stub.signedJwks = "not a JWS"
-	if _, err := login.exchange(t, nLogin()); !errors.Is(err, ErrIDTokenKey) {
-		t.Fatalf("err = %v", err)
-	}
-	login.stub.signedJwks = signedJwks
-	if _, err := login.exchange(t, nLogin()); err != nil {
-		t.Fatalf("the login after the failed refetch: %v", err)
-	}
-	if n := login.refetches(); n != 2 {
-		t.Errorf("%d refetches", n)
-	}
+	now := time.Now()
+	synctest.Test(t, func(t *testing.T) {
+		held := make(chan struct{})
+		login.inBubble(now, func(w http.ResponseWriter, r *http.Request, next http.Handler) {
+			if r.URL.Path == "/op/jwks" {
+				<-held
+			}
+			next.ServeHTTP(w, r)
+		})
+		exchange := func(ctx context.Context, client *RelyingPartyClient) <-chan error {
+			result := make(chan error, 1)
+			go func() {
+				_, _, err := client.ExchangeIdentity(ctx, nLogin(), "code")
+				result <- err
+			}()
+			return result
+		}
+		leaderCtx, cancel := context.WithCancel(t.Context())
+		leader := exchange(leaderCtx, login.client)
+		synctest.Wait()
+		waiter := exchange(t.Context(), other)
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+		select {
+		case err := <-leader:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("the login that hung up: %v", err)
+			}
+		default:
+			t.Fatal("the login that hung up still waits for the refetch")
+		}
+		close(held)
+		if err := <-waiter; err != nil {
+			t.Fatalf("the waiting login: %v", err)
+		}
+		if _, err := login.exchange(t, nLogin()); err != nil {
+			t.Fatalf("a later login: %v", err)
+		}
+		if n := login.refetches(); n != 1 {
+			t.Errorf("%d refetches", n)
+		}
+	})
 }
 
 // gemSpec_IDP_FD A_22861: a client resolved before a refetch, meeting the new kid within the minute after it, takes

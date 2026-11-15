@@ -388,12 +388,20 @@ func TestOWASP_InputValidation_EntityIdentifier(t *testing.T) {
 		"a trailing dot":            "https://op.example.",
 		"a label with a hyphen end": "https://op-.example",
 		"a label of 64":             "https://" + strings.Repeat("a", 64) + ".example",
+		"markup in the path":        "https://op.example/<script>",
+		"an empty segment":          "https://op.example//x",
+		"a trailing slash":          "https://op.example/",
+		"port 0":                    "https://op.example:0",
+		"port 99999":                "https://op.example:99999",
+		"port 65536":                "https://op.example:65536",
+		"a port with a leading 0":   "https://op.example:0443",
+		"a quote in the path":       "https://op.example/a\"b",
 	} {
 		if err := checkEntityIdentifier(iss); !errors.Is(err, ErrEntityIdentifier) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	for _, iss := range []string{"https://op.example", "https://op.example/tenant", "https://op.example:8443/a-b_c~d", "https://127.0.0.1:4443/op", "https://op.example/"} {
+	for _, iss := range []string{"https://op.example", "https://op.example/tenant", "https://op.example:8443/a-b_c~d", "https://127.0.0.1:4443/op", "https://op.example:65535/a:b;c=d"} {
 		if err := checkEntityIdentifier(iss); err != nil {
 			t.Errorf("%q: %v", iss, err)
 		}

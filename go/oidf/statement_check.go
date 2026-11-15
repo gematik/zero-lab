@@ -91,6 +91,11 @@ func checkRelyingPartyMetadata(metadata *OpenIDRelyingPartyMetadata) error {
 			return err
 		}
 	}
+	for _, uri := range metadata.RedirectURIs {
+		if err := checkRegisteredRedirectURI(uri); err != nil {
+			return err
+		}
+	}
 	if !informationalName.MatchString(metadata.ClientName) {
 		return fmt.Errorf("%w: client_name is not as Tabelle 4 allows", ErrEntityStatement)
 	}
@@ -109,6 +114,33 @@ func checkRelyingPartyMetadata(metadata *OpenIDRelyingPartyMetadata) error {
 		return fmt.Errorf("%w: contacts lack a support address", ErrEntityStatement)
 	}
 	return checkTIFeatures(metadata.TIFeaturesSupported)
+}
+
+// maxRedirectURIBytes bounds a redirect URI the relying party registers.
+const maxRedirectURIBytes = 2048
+
+// checkRegisteredRedirectURI holds a redirect URI of the statement to gemSpec_IDP_FD A_27585: "alle im Entity
+// Statement unter dem Claim "redirect_uris" aufgeführten URIs: gültige HTTPS-URLs sind, keinen query part enthalten,
+// keinen fragment part enthalten, keine Nutzer-spezifischen Anmeldeinformationen enthalten." Beyond that, it is
+// printable ASCII within maxRedirectURIBytes, since logins compare it byte for byte.
+func checkRegisteredRedirectURI(uri string) error {
+	if len(uri) > maxRedirectURIBytes {
+		return fmt.Errorf("%w: a redirect_uri is longer than %d characters", ErrEntityStatement, maxRedirectURIBytes)
+	}
+	for _, c := range []byte(uri) {
+		if c <= 0x20 || c >= 0x7f {
+			return fmt.Errorf("%w: a redirect_uri holds a character outside printable ASCII", ErrEntityStatement)
+		}
+	}
+	rest, found := strings.CutPrefix(uri, "https://")
+	host, _, _ := strings.Cut(rest, "/")
+	if !found || host == "" || strings.HasPrefix(host, ":") {
+		return fmt.Errorf("%w: a redirect_uri is no https URL with a host (A_27585)", ErrEntityStatement)
+	}
+	if strings.ContainsAny(uri, "?#") || strings.Contains(host, "@") {
+		return fmt.Errorf("%w: a redirect_uri has a query, a fragment or user info (A_27585)", ErrEntityStatement)
+	}
+	return nil
 }
 
 // checkTIFeatures refuses a ti_features_supported member that names no ID token version, one A_27505 does not allow,

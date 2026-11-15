@@ -22,7 +22,9 @@
 package oidf
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -162,30 +164,42 @@ func TestFedMaster_StatementURI_BuildsTheRelyingParty(t *testing.T) {
 	}
 }
 
-// gemSpec_IDP_FedMaster Tabelle 8: the list states its exp, every entry names its issuer as an entity identifier, and
-// a list that does not hold is refused whole.
+// gemSpec_IDP_FedMaster Tabelle 8: the list states its exp and holds an idp_entity array, or it is refused whole; an
+// entry whose issuer is no entity identifier, or whose members are not as Tabelle 8 has them, is excluded and the
+// others kept.
 func TestFedMaster_TheIdPListIsReadStrictly(t *testing.T) {
 	const exp = `"exp":4102444800,`
 	for name, c := range map[string]struct{ payload, reason string }{
-		"no exp":              {`{"idp_entity":[]}`, "has to state its exp"},
-		"no idp_entity":       {`{` + exp + `"iss":"https://m.example"}`, "has no idp_entity"},
-		"idp_entity null":     {`{` + exp + `"idp_entity":null}`, "no array of objects"},
-		"an entry not object": {`{` + exp + `"idp_entity":["https://op.example"]}`, "no array of objects"},
-		"no iss":              {`{` + exp + `"idp_entity":[{"organization_name":"x"}]}`, "iss is no text"},
-		"iss not https":       {`{` + exp + `"idp_entity":[{"iss":"http://op.example"}]}`, "iss is no entity identifier"},
-		"iss with a query":    {`{` + exp + `"idp_entity":[{"iss":"https://op.example?x"}]}`, "iss is no entity identifier"},
-		"iss in another case": {`{` + exp + `"idp_entity":[{"ISS":"https://op.example"}]}`, "iss is no text"},
-		"a name with a CR":    {`{` + exp + `"idp_entity":[{"iss":"https://op.example","organization_name":"a\rb"}]}`, "organization_name: holds a control"},
-		"a name with RLO":     {`{` + exp + `"idp_entity":[{"iss":"https://op.example","organization_name":"a\u202eb"}]}`, "organization_name: holds a control or format"},
-		"pkv not boolean":     {`{` + exp + `"idp_entity":[{"iss":"https://op.example","pkv":"no"}]}`, "pkv is no boolean"},
-		"user type a number":  {`{` + exp + `"idp_entity":[{"iss":"https://op.example","user_type_supported":1}]}`, "neither text nor a list"},
-		"not UTF-8":           {"{" + exp + "\"idp_entity\":[{\"iss\":\"https://op.example\",\"organization_name\":\"\xff\"}]}", "not UTF-8"},
+		"no exp":            {`{"idp_entity":[]}`, "has to state its exp"},
+		"no idp_entity":     {`{` + exp + `"iss":"https://m.example"}`, "has no idp_entity"},
+		"idp_entity null":   {`{` + exp + `"idp_entity":null}`, "no array"},
+		"idp_entity object": {`{` + exp + `"idp_entity":{}}`, "no array"},
+		"too many entries":  {`{` + exp + `"idp_entity":[` + strings.Repeat(`{},`, maxIdps) + `{}]}`, "more than"},
+		"not UTF-8":         {"{" + exp + "\"idp_entity\":[{\"iss\":\"https://op.example\",\"organization_name\":\"\xff\"}]}", "not UTF-8"},
+		"a member twice":    {`{` + exp + `"idp_entity":[],"idp_entity":[]}`, "named twice"},
 	} {
-		if _, err := parseIdpList([]byte(c.payload)); err == nil || !strings.Contains(err.Error(), c.reason) {
+		if _, _, err := parseIdpList([]byte(c.payload)); err == nil || !strings.Contains(err.Error(), c.reason) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	idps, err := parseIdpList([]byte(`{` + exp + `"idp_entity":[{"iss":"https://op.example","organization_name":"Kasse","logo_uri":"https://op.example/l.png","pkv":true,"user_type_supported":["IP"]}]}`))
+	const good = `{"iss":"https://good.example"}`
+	for name, entry := range map[string]string{
+		"an entry not object": `"https://op.example"`,
+		"no iss":              `{"organization_name":"x"}`,
+		"iss not https":       `{"iss":"http://op.example"}`,
+		"iss with a query":    `{"iss":"https://op.example?x"}`,
+		"iss in another case": `{"ISS":"https://op.example"}`,
+		"a name with a CR":    `{"iss":"https://op.example","organization_name":"a\rb"}`,
+		"a name with RLO":     `{"iss":"https://op.example","organization_name":"a\u202eb"}`,
+		"pkv not boolean":     `{"iss":"https://op.example","pkv":"no"}`,
+		"user type a number":  `{"iss":"https://op.example","user_type_supported":1}`,
+	} {
+		idps, excluded, err := parseIdpList([]byte(`{` + exp + `"idp_entity":[` + entry + `,` + good + `]}`))
+		if err != nil || excluded != 1 || len(idps) != 1 || idps[0].Issuer != "https://good.example" {
+			t.Errorf("%s: %+v, %d excluded, %v", name, idps, excluded, err)
+		}
+	}
+	idps, _, err := parseIdpList([]byte(`{` + exp + `"idp_entity":[{"iss":"https://op.example","organization_name":"Kasse","logo_uri":"https://op.example/l.png","pkv":true,"user_type_supported":["IP"]}]}`))
 	if err != nil || len(idps) != 1 || idps[0].Issuer != "https://op.example" || !idps[0].IsPkv || idps[0].UserType != UserTypeIP {
 		t.Fatalf("%+v, %v", idps, err)
 	}
@@ -211,7 +225,7 @@ func FuzzIdpList(f *testing.F) {
 	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"javascript:alert(1)"}],"idp_entity":[]}`))
 	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"https://a@op.example"},{"iss":1e999}]}`))
 	f.Fuzz(func(t *testing.T, payload []byte) {
-		idps, err := parseIdpList(payload)
+		idps, _, err := parseIdpList(payload)
 		if err != nil {
 			if len(payload) >= 16 && strings.Contains(err.Error(), string(payload)) {
 				t.Fatalf("the error holds the input: %v", err)
@@ -232,4 +246,50 @@ func FuzzIdpList(f *testing.F) {
 			}
 		}
 	})
+}
+
+// An entry outside the grammar is excluded, not the list: the good issuer is admitted, the excluded one never, and the
+// list stays kept. The operator learns how many entries were excluded, never what they held.
+func TestFedMaster_IdPList_AnEntryOutsideTheGrammarIsExcluded(t *testing.T) {
+	stub := newFederationStub(t)
+	bad := stub.URL + "/bad"
+	stub.idpList = signJWS(t, stub.masterKey, "master", map[string]any{
+		"iss": stub.URL, "iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(),
+		"idp_entity": []any{map[string]any{"iss": bad, "organization_name": "a\r\nb"}, map[string]any{"iss": stub.URL + "/op"}},
+	})
+	var logs bytes.Buffer
+	rp := stub.relyingParty(t)
+	rp.federation = stub.federationWith(t, WithDocuments(NewMemoryDocuments(16, nil)), WithLogger(slog.New(slog.NewTextHandler(&logs, nil))))
+	fetches := stub.countFetches()
+	if _, err := rp.Client(t.Context(), stub.URL+"/op"); err != nil {
+		t.Fatalf("the good issuer: %v", err)
+	}
+	if _, err := rp.Client(t.Context(), bad); !errors.Is(err, ErrIDPNotAdmitted) {
+		t.Fatalf("the excluded issuer: %v", err)
+	}
+	if n := fetches.count("/idps"); n > 1 {
+		t.Errorf("the list was fetched %d times for two logins", n)
+	}
+	if !strings.Contains(logs.String(), "excluded=1") || strings.Contains(logs.String(), "/bad") || strings.Count(logs.String(), "excluded=") != 1 {
+		t.Errorf("logged:\n%s", logs.String())
+	}
+}
+
+// Servers rule 2: an idp_iss outside the grammar of an entity identifier is refused before any request leaves, the
+// IdP list's included.
+func TestServerRule2_ARefusedIssuerMakesNoRequest(t *testing.T) {
+	stub := newFederationStub(t)
+	rp := stub.relyingParty(t)
+	fetches := stub.countFetches()
+	for _, issuer := range []string{
+		stub.URL + "/op/../op", stub.URL + "/%6fp", stub.URL + "//op", stub.URL + "/op\r\n", "javascript:alert(1)",
+		strings.Replace(stub.URL, "127.0.0.1", "127.0.0.1.", 1) + "/op",
+	} {
+		if _, err := rp.Client(t.Context(), issuer); !errors.Is(err, ErrIDPNotAdmitted) || !errors.Is(err, ErrEntityIdentifier) {
+			t.Errorf("%q: %v", issuer, err)
+		}
+	}
+	if n := fetches.total(); n != 0 {
+		t.Fatalf("%d requests for refused issuers", n)
+	}
 }

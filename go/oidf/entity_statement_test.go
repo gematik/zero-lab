@@ -227,6 +227,38 @@ func TestA_23034_02_ARelyingPartyWithoutTheRequiredMembersIsRefused(t *testing.T
 	})
 }
 
+// gemSpec_IDP_FD A_27585: every redirect_uri of the statement is a valid https URL without query, fragment or user
+// information. A hook that adds one outside that is caught at signing like the configuration.
+func TestA_27585_TheRedirectURIsAreHTTPSWithoutQueryFragmentOrUserInfo(t *testing.T) {
+	for name, uri := range map[string]string{
+		"http":            "http://rp.example/cb",
+		"no scheme":       "rp.example/cb",
+		"an empty host":   "https:///cb",
+		"only a port":     "https://:443/cb",
+		"a query":         "https://rp.example/cb?x=1",
+		"a fragment":      "https://rp.example/cb#x",
+		"user info":       "https://user@rp.example/cb",
+		"non-ASCII":       "https://rp.example/cö",
+		"a control":       "https://rp.example/cb\n",
+		"a space":         "https://rp.example/c b",
+		"overlong":        "https://rp.example/" + strings.Repeat("a", 2048),
+		"javascript":      "javascript:alert(1)",
+		"an upper scheme": "HTTPS://rp.example/cb",
+	} {
+		t.Run(name, func(t *testing.T) {
+			refusedBy(t, func(es *EntityStatement) {
+				es.Metadata.OpenidRelyingParty.RedirectURIs = append(es.Metadata.OpenidRelyingParty.RedirectURIs, uri)
+			}, "redirect_uri")
+		})
+	}
+	rp := newTestRelyingParty(t, func(cfg *RelyingPartyConfig) {
+		cfg.RelyingParty.RedirectURIs = []string{"https://rp.example/cb", "https://rp.example:8443/a/b-c_d~e"}
+	})
+	if _, err := rp.SignEntityStatement(); err != nil {
+		t.Errorf("valid redirect URIs: %v", err)
+	}
+}
+
 // The Wertebereich of Tabelle 4 names umlauts and ß beside ASCII word characters.
 func TestA_23034_02_UmlautsAndSharpSAreInTheWertebereich(t *testing.T) {
 	rp := newTestRelyingParty(t, func(cfg *RelyingPartyConfig) {

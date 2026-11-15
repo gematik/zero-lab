@@ -26,6 +26,7 @@ package oidf
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -36,6 +37,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -142,6 +144,8 @@ type OpenidFederation struct {
 
 	mu       sync.Mutex
 	inflight map[string]*flight
+	// excludedReported is the digest of the last IdP list whose excluded entries were reported.
+	excludedReported atomic.Pointer[[sha256.Size]byte]
 }
 
 // flight is one fetch of a document that concurrent callers wait for instead of fetching it too. It carries the
@@ -455,7 +459,11 @@ func (f *OpenidFederation) FetchIdpList(ctx context.Context) ([]IdentityProvider
 		if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &claims); err != nil || claims.Issuer != f.fedMasterURL {
 			return nil, errors.New("the IdP list is not the master's: iss names another")
 		}
-		return parseIdpList(payload)
+		idps, excluded, err := parseIdpList(payload)
+		if err == nil && excluded > 0 {
+			f.reportExcluded(ctx, payload, excluded)
+		}
+		return idps, err
 	})
 	if err != nil {
 		return nil, fmt.Errorf("the IdP list: %w", err)
@@ -466,38 +474,59 @@ func (f *OpenidFederation) FetchIdpList(ctx context.Context) ([]IdentityProvider
 // maxIdps bounds the entries of the IdP list; the federation has a few dozen.
 const maxIdps = 512
 
-// parseIdpList reads the idp_entity member of the master's verified IdP list (gemSpec_IDP_FedMaster Tabelle 8). Every
-// entry needs an iss that is an entity identifier, since admission compares it byte for byte with the issuer a login
-// asks for; the informational members are text within bounds. Members are read by their exact names. An entry that
-// does not hold refuses the whole list: the master signed it, and a list read in part would admit by accident.
-func parseIdpList(payload []byte) ([]IdentityProviderInfo, error) {
+// parseIdpList reads the idp_entity member of the master's verified IdP list (gemSpec_IDP_FedMaster Tabelle 8). The
+// list as a whole is refused when it is no JSON object within bounds, states no exp, has no idp_entity array or more
+// than maxIdps entries. An entry outside the grammar is excluded and the rest kept: every entry needs an iss that is
+// an entity identifier, and its informational members text within bounds. Excluding is rejection, not repair: the
+// master signed the whole list, admission compares issuers byte for byte, and an excluded issuer is never admitted.
+// excluded counts the entries left out, for the operator; what they held is not reported.
+func parseIdpList(payload []byte) (idps []IdentityProviderInfo, excluded int, err error) {
 	var members map[string]jsontext.Value
 	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &members); err != nil {
-		return nil, fmt.Errorf("the IdP list: %w", err)
+		return nil, 0, fmt.Errorf("the IdP list: %w", err)
 	}
 	if err := requireExpiry(payload); err != nil {
-		return nil, fmt.Errorf("the IdP list: %w", err)
+		return nil, 0, fmt.Errorf("the IdP list: %w", err)
 	}
-	var entries []map[string]jsontext.Value
+	var entries []jsontext.Value
 	raw, ok := members["idp_entity"]
 	if !ok {
-		return nil, errors.New("the IdP list has no idp_entity")
+		return nil, 0, errors.New("the IdP list has no idp_entity")
 	}
 	if err := json.Unmarshal(raw, &entries); err != nil || entries == nil {
-		return nil, errors.New("the IdP list's idp_entity is no array of objects")
+		return nil, 0, errors.New("the IdP list's idp_entity is no array")
 	}
 	if len(entries) > maxIdps {
-		return nil, fmt.Errorf("the IdP list has more than %d entries", maxIdps)
+		return nil, 0, fmt.Errorf("the IdP list has more than %d entries", maxIdps)
 	}
-	idps := make([]IdentityProviderInfo, 0, len(entries))
-	for i, entry := range entries {
+	idps = make([]IdentityProviderInfo, 0, len(entries))
+	for _, raw := range entries {
+		var entry map[string]jsontext.Value
+		if json.Unmarshal(raw, &entry) != nil {
+			excluded++
+			continue
+		}
 		idp, err := parseIdpEntry(entry)
 		if err != nil {
-			return nil, fmt.Errorf("the IdP list's entry %d: %w", i, err)
+			excluded++
+			continue
 		}
 		idps = append(idps, idp)
 	}
-	return idps, nil
+	return idps, excluded, nil
+}
+
+// reportExcluded tells the logger, if there is one, how many entries of the IdP list were excluded, once per list:
+// the list is judged on every admission.
+func (f *OpenidFederation) reportExcluded(ctx context.Context, payload []byte, excluded int) {
+	if f.logger == nil {
+		return
+	}
+	sum := sha256.Sum256(payload)
+	if previous := f.excludedReported.Swap(&sum); previous != nil && *previous == sum {
+		return
+	}
+	f.logger.WarnContext(ctx, "entries of the IdP list excluded for being outside their grammar", "excluded", excluded)
 }
 
 func parseIdpEntry(entry map[string]jsontext.Value) (IdentityProviderInfo, error) {

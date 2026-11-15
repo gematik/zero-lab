@@ -361,7 +361,8 @@ func checkIdentity(identity *Identity, payload []byte, login openid.Login, clien
 	}
 	for name, essential := range request.idToken {
 		if raw, ok := members[name]; essential && (!ok || string(raw) == "null") {
-			return fmt.Errorf("%w: %s", ErrEssentialClaim, name)
+			// The caller knows what it asked for; the claim's name comes from the login's claims parameter.
+			return ErrEssentialClaim
 		}
 	}
 	return nil

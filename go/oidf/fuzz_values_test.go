@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -131,18 +132,24 @@ func FuzzLoginValues(f *testing.F) {
 	})
 }
 
-// FuzzEntityIdentifier feeds arbitrary issuers to checkEntityIdentifier. What it accepts is an https URL whose host
-// an oracle of its own takes, with no character outside its grammar and no dot segment.
+// identifierOracle is the grammar of an entity identifier written apart from checkEntityIdentifier: labels of 1 to 63
+// lowercase letters, digits and inner hyphens, a port without a leading zero, and non-empty segments of pchar
+// without '%' and '@'. The port's upper bound and the dot segments are checked beside it.
+var identifierOracle = regexp.MustCompile(`^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*(:([1-9][0-9]{0,4}))?((/[A-Za-z0-9._~!$&'()*+,;=:-]+)*)$`)
+
+// FuzzEntityIdentifier feeds arbitrary issuers to checkEntityIdentifier. What it accepts matches identifierOracle,
+// with a port up to 65535 and no dot segment; a refusal names no input.
 func FuzzEntityIdentifier(f *testing.F) {
 	for _, seed := range append([]string{
 		"https://op.example", "https://op.example/tenant", "https://127.0.0.1:8443/op", "https://op.example/a/../b",
 		"https://op.example/a%2fb", "https://op.example%40evil.example", "https://op.example\\@evil.example",
 		"https://user@op.example", "https://op.example?x", "https://op.example#x", "HTTPS://OP.EXAMPLE", "http://op.example",
 		"https://op.example/\u202e", "https://op.example\r\n", "https://op.example/" + strings.Repeat("a", 2048),
+		"https://op.example/<script>", "https://op.example//x", "https://op.example:0", "https://op.example:99999",
+		"https://op-.example", "https://op..example", "https://op.example.",
 	}, hostileStrings...) {
 		f.Add(seed)
 	}
-	identifier := regexp.MustCompile(`^https://[a-z0-9.-]+(:[0-9]{1,5})?(/[!-~]*)?$`)
 	f.Fuzz(func(t *testing.T, iss string) {
 		err := checkEntityIdentifier(iss)
 		if err != nil {
@@ -151,11 +158,17 @@ func FuzzEntityIdentifier(f *testing.F) {
 			}
 			return
 		}
-		if len(iss) > maxEntityIdentifierBytes || !identifier.MatchString(iss) || strings.ContainsAny(iss, `%\?#@`) {
+		match := identifierOracle.FindStringSubmatch(iss)
+		if len(iss) > maxEntityIdentifierBytes || match == nil {
 			t.Fatalf("accepted %q", iss)
 		}
-		if slices.Contains(strings.Split(iss, "/"), "..") || slices.Contains(strings.Split(iss, "/"), ".") {
-			t.Fatalf("accepted a dot segment: %q", iss)
+		if port, err := strconv.Atoi(match[5]); match[5] != "" && (err != nil || port > 65535) {
+			t.Fatalf("accepted the port of %q", iss)
+		}
+		for segment := range strings.SplitSeq(match[6], "/") {
+			if segment == "." || segment == ".." {
+				t.Fatalf("accepted a dot segment: %q", iss)
+			}
 		}
 	})
 }

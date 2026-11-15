@@ -29,6 +29,7 @@ import (
 	"maps"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -288,42 +289,49 @@ func checkRedirectURI(uri string, registered []string) error {
 var ErrEntityIdentifier = errors.New("entity identifier refused")
 
 // checkEntityIdentifier takes an entity identifier (OpenID Federation 1.1 section 1.2) a fetch can be built from by
-// appending a path: an https URL of at most maxEntityIdentifierBytes printable ASCII characters with a host name
-// as isHost takes it and an optional port, without user info, query or fragment, without
-// '.' or '..' segments, without '\' and without '%'. A '%' is refused outright rather than only before an encoded
-// '/', '\', '?', '#' or '@': no issuer of the federation uses one, and so double encoding cannot slip through either.
-// The admission compares it byte for byte with the IdP list, so nothing is normalised.
+// appending a path: an https URL of at most maxEntityIdentifierBytes characters with a host name as isHost takes it,
+// an optional port of 1 to 65535 without a leading zero, and a path of non-empty segments of RFC 3986 pchar without
+// '%' and '@', none of them '.' or '..'. So it has no user info, query or fragment, no '\' and no percent-encoding:
+// no issuer of the federation uses one, and so neither an encoded '/' nor double encoding can slip through. The
+// admission compares it byte for byte with the IdP list, so nothing is normalised.
 func checkEntityIdentifier(iss string) error {
 	if iss == "" || len(iss) > maxEntityIdentifierBytes {
 		return fmt.Errorf("%w: not 1 to %d characters", ErrEntityIdentifier, maxEntityIdentifierBytes)
-	}
-	for _, c := range []byte(iss) {
-		if c <= 0x20 || c >= 0x7f || c == '%' || c == '\\' || c == '?' || c == '#' || c == '@' {
-			return fmt.Errorf("%w: a character outside its grammar", ErrEntityIdentifier)
-		}
 	}
 	rest, found := strings.CutPrefix(iss, "https://")
 	if !found {
 		return fmt.Errorf("%w: not https", ErrEntityIdentifier)
 	}
-	host, path, _ := strings.Cut(rest, "/")
+	host, path, hasPath := strings.Cut(rest, "/")
 	if !isHost(host) {
-		return fmt.Errorf("%w: no host name in lowercase", ErrEntityIdentifier)
+		return fmt.Errorf("%w: no host name in lowercase with a port of 1 to 65535", ErrEntityIdentifier)
+	}
+	if !hasPath {
+		return nil
 	}
 	for segment := range strings.SplitSeq(path, "/") {
-		if segment == "." || segment == ".." {
-			return fmt.Errorf("%w: a dot segment", ErrEntityIdentifier)
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("%w: an empty or dot segment", ErrEntityIdentifier)
+		}
+		if strings.ContainsFunc(segment, func(r rune) bool { return !isPathChar(r) }) {
+			return fmt.Errorf("%w: a character outside its grammar", ErrEntityIdentifier)
 		}
 	}
 	return nil
 }
 
+// isPathChar reports whether r is an RFC 3986 pchar other than '%' and '@': unreserved, sub-delims or ':'.
+func isPathChar(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("-._~!$&'()*+,;=:", r)
+}
+
 // isHost reports whether host is a name of labels of lowercase letters, digits and inner hyphens, 1 to 63 characters
 // each and separated by single dots (RFC 1123 section 2.1), which takes IPv4 addresses too, with an optional port of
-// digits. A trailing dot, an empty label and upper case are refused: the host is compared as it stands.
+// 1 to 65535 without a leading zero. A trailing dot, an empty label and upper case are refused: the host is compared
+// as it stands.
 func isHost(host string) bool {
 	name, port, hasPort := strings.Cut(host, ":")
-	if name == "" || hasPort && (port == "" || len(port) > 5 || strings.Trim(port, "0123456789") != "") {
+	if name == "" || hasPort && !isPort(port) {
 		return false
 	}
 	for label := range strings.SplitSeq(name, ".") {
@@ -337,6 +345,14 @@ func isHost(host string) bool {
 		}
 	}
 	return true
+}
+
+func isPort(port string) bool {
+	if port == "" || len(port) > 5 || port[0] == '0' || strings.Trim(port, "0123456789") != "" {
+		return false
+	}
+	number, err := strconv.Atoi(port)
+	return err == nil && number <= 65535
 }
 
 // Bounds of a PAR response (RFC 9126 section 2.2).

@@ -481,12 +481,17 @@ func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
 	return signed, err
 }
 
-// signStatement signs the statement with the hooks applied and returns the redirect_uris it registers, which are
-// the ones logins are held to while it is served.
-func (rp *RelyingParty) signStatement(now time.Time) (signed []byte, redirectURIs []string, err error) {
+// registration is what a signed statement registers that logins are held to while it is served.
+type registration struct {
+	redirectURIs []string
+	scope        string
+}
+
+// signStatement signs the statement with the hooks applied and returns what it registers.
+func (rp *RelyingParty) signStatement(now time.Time) (signed []byte, registered registration, err error) {
 	es, err := rp.statementWithHooks()
 	if err != nil {
-		return nil, nil, err
+		return nil, registration{}, err
 	}
 	issuedAt := now.Add(-statementBackdate)
 	// An entity configuration names its entity as issuer and subject (OpenID Federation 1.1 section 3); a hook
@@ -496,16 +501,17 @@ func (rp *RelyingParty) signStatement(now time.Time) (signed []byte, redirectURI
 	es.ExpiresAt = issuedAt.Add(maxStatementLifetime).Unix()
 	es.AuthorityHints = []string{rp.fedMaster}
 	if err := rp.checkStatement(es); err != nil {
-		return nil, nil, err
+		return nil, registration{}, err
 	}
 	payload, err := json.Marshal(es)
 	if err != nil {
-		return nil, nil, fmt.Errorf("marshal entity statement: %w", err)
+		return nil, registration{}, fmt.Errorf("marshal entity statement: %w", err)
 	}
 	if signed, err = rp.signPayload("entity-statement+jwt", payload); err != nil {
-		return nil, nil, err
+		return nil, registration{}, err
 	}
-	return signed, slices.Clone(es.Metadata.OpenidRelyingParty.RedirectURIs), nil
+	metadata := es.Metadata.OpenidRelyingParty
+	return signed, registration{redirectURIs: slices.Clone(metadata.RedirectURIs), scope: metadata.Scope}, nil
 }
 
 // signedJwksClaims keep the shape registered parties get today: a whole JWK Set under "keys", so the array sits at
@@ -879,51 +885,54 @@ type refetchFlight struct {
 // refuses, or the refetch it waited for failed, it resolves from the store, which costs no fetch while the kept
 // documents verify and holds what a refetch within the minute kept.
 //
-// The refetch serves every exchange waiting for it, so it runs on a context of its own, bounded by refetchTimeout,
-// and does not end with the exchange that started it. A refetch that failed does not count against the minute: it
-// kept nothing a later exchange could use.
+// The refetch serves every exchange waiting for it, the one that started it included, so it runs in a goroutine of
+// its own on a context bounded by refetchTimeout, and always ends. Each exchange waits for it as long as its own
+// context lets it. A refetch that failed still counts against the minute: A_22861 asks for one refetch, and the store
+// serves meanwhile.
 func (rp *RelyingParty) refetchProvider(ctx context.Context, issuer string) (*provider, error) {
 	rp.refetchMu.Lock()
-	if call, inFlight := rp.refetching[issuer]; inFlight {
+	call, inFlight := rp.refetching[issuer]
+	switch {
+	case inFlight:
 		rp.refetchMu.Unlock()
 		if rp.waitingForRefetch != nil {
 			rp.waitingForRefetch()
 		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-call.done:
-		}
-		if call.err == nil {
-			return call.resolved, nil
-		}
-		return rp.resolveProvider(ctx, issuer, false)
-	}
-	if !rp.mayRefetchLocked(issuer) {
+	case !rp.mayRefetchLocked(issuer):
 		rp.refetchMu.Unlock()
 		return rp.resolveProvider(ctx, issuer, false)
+	default:
+		call = &refetchFlight{done: make(chan struct{}), err: errors.New("the refetch did not finish")}
+		if rp.refetching == nil {
+			rp.refetching = make(map[string]*refetchFlight)
+		}
+		rp.refetching[issuer] = call
+		rp.refetchMu.Unlock()
+		go rp.refetch(context.WithoutCancel(ctx), issuer, call)
 	}
-	call := &refetchFlight{done: make(chan struct{}), err: errors.New("the refetch did not finish")}
-	if rp.refetching == nil {
-		rp.refetching = make(map[string]*refetchFlight)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-call.done:
 	}
-	rp.refetching[issuer] = call
-	rp.refetchMu.Unlock()
+	if call.err == nil {
+		return call.resolved, nil
+	}
+	return rp.resolveProvider(ctx, issuer, false)
+}
+
+// refetch resolves the documents of issuer past the store for everyone waiting on call, within refetchTimeout, and
+// releases them.
+func (rp *RelyingParty) refetch(ctx context.Context, issuer string, call *refetchFlight) {
+	ctx, cancel := context.WithTimeout(ctx, refetchTimeout)
+	defer cancel()
 	defer func() {
 		rp.refetchMu.Lock()
 		delete(rp.refetching, issuer)
 		rp.refetchMu.Unlock()
 		close(call.done)
 	}()
-	refetchCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), refetchTimeout)
-	defer cancel()
-	call.resolved, call.err = rp.resolveProvider(refetchCtx, issuer, true)
-	if call.err != nil {
-		rp.refetchMu.Lock()
-		delete(rp.refetchedAt, issuer)
-		rp.refetchMu.Unlock()
-	}
-	return call.resolved, call.err
+	call.resolved, call.err = rp.resolveProvider(ctx, issuer, true)
 }
 
 // mayRefetchLocked reports whether the documents of issuer may be refetched past the store now, and if so counts the
@@ -958,7 +967,7 @@ func (rp *RelyingParty) idTokenVersions() []string {
 // relying party that serves nothing yet, built by a test without New, holds logins to its own statement's.
 func (rp *RelyingParty) registeredRedirectURIs() []string {
 	if statement := rp.statement.Load(); statement != nil {
-		return statement.redirectURIs
+		return statement.registered.redirectURIs
 	}
 	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
 		return nil
@@ -966,8 +975,12 @@ func (rp *RelyingParty) registeredRedirectURIs() []string {
 	return rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs
 }
 
-// registeredScope is the scope of the relying party's openid_relying_party metadata, the scopes a login may ask for.
+// registeredScope is the scope of the served statement's openid_relying_party metadata, hooks applied, the scopes a
+// login may ask for. A relying party that serves nothing yet holds logins to its own statement's.
 func (rp *RelyingParty) registeredScope() string {
+	if statement := rp.statement.Load(); statement != nil {
+		return statement.registered.scope
+	}
 	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
 		return ""
 	}
