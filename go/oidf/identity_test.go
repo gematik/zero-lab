@@ -25,7 +25,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/ecdsa"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -217,15 +218,15 @@ func TestA_28484_TheAMRIsAListOfMethods(t *testing.T) {
 // OIDC Core 2 and 5.5: auth_time is required when the login asks for it in its claims request; when present it is a
 // NumericDate no further ahead of the clock than the skew.
 func TestOIDCCore_2_AnAuthTimeThatIsAskedForOrPresentIsChecked(t *testing.T) {
-	askedFor := json.RawMessage(`{"id_token":{"auth_time":null}}`)
+	askedFor := jsontext.Value(`{"id_token":{"auth_time":null}}`)
 	for name, c := range map[string]struct {
 		authTime any
-		claims   json.RawMessage
+		claims   jsontext.Value
 		reason   string
 	}{
 		"missing, asked for":    {nil, askedFor, "missing although asked for"},
 		"a string":              {"1700000000", nil, "no number"},
-		"null":                  {json.RawMessage("null"), nil, "no number"},
+		"null":                  {jsontext.Value("null"), nil, "no number"},
 		"an object":             {map[string]any{}, nil, "no number"},
 		"ahead":                 {time.Now().Add(2 * time.Minute).Unix(), nil, "ahead of the clock"},
 		"a fraction ahead":      {float64(time.Now().Add(90*time.Second).UnixMilli()) / 1000, nil, "ahead of the clock"},
@@ -404,18 +405,18 @@ func TestA_22860_02_AnEssentialClaimMissingIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	login := nLogin()
-	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:id":{"essential":true}}}`)
+	login.Claims = jsontext.Value(`{"id_token":{"urn:telematik:claims:id":{"essential":true}}}`)
 	if _, _, err := stub.client.ExchangeIdentity(t.Context(), login, "code"); !errors.Is(err, ErrEssentialClaim) {
 		t.Fatalf("err = %v", err)
 	}
-	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:id":null,"urn:telematik:claims:email":{"essential":false}},"userinfo":{"x":{"essential":true}}}`)
+	login.Claims = jsontext.Value(`{"id_token":{"urn:telematik:claims:id":null,"urn:telematik:claims:email":{"essential":false}},"userinfo":{"x":{"essential":true}}}`)
 	if _, _, err := stub.client.ExchangeIdentity(t.Context(), login, "code"); err != nil {
 		t.Fatalf("not essential: %v", err)
 	}
 	claims := validIDTokenClaims()
 	claims[claimID] = "X123456789"
 	stub.idToken = stub.nestedToken(t, claims)
-	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:id":{"essential":true}}}`)
+	login.Claims = jsontext.Value(`{"id_token":{"urn:telematik:claims:id":{"essential":true}}}`)
 	if _, _, err := stub.client.ExchangeIdentity(t.Context(), login, "code"); err != nil {
 		t.Fatalf("present: %v", err)
 	}
@@ -789,7 +790,7 @@ func FuzzIdentity(f *testing.F) {
 	f.Add([]byte(`{"sub":"s","acr":"gematik-ehealth-loa-high","amr":["a",null,1],"auth_time":-1,"urn:telematik:claims:display_name":{"x":1}}`))
 	f.Add([]byte(`{"sub":"s","sub":"t","acr":"gematik-ehealth-loa-high","amr":["\u202e"],"auth_time":253402300799.9}`))
 	f.Add([]byte(`{"sub":"s","acr":"gematik-ehealth-loa-substantial","amr":["a"],"iat":1,"aud":["x","y"],"azp":"x","urn:telematik:auth:consent":["loa-substantial"],"urn:telematik:auth:interactive":"silent"}`))
-	login := openid.Login{Nonce: "n", Verifier: testVerifier, ACRValues: []string{LoAHigh, LoASubstantial}, Claims: json.RawMessage(`{"id_token":{"auth_time":{"essential":true}}}`)}
+	login := openid.Login{Nonce: "n", Verifier: testVerifier, ACRValues: []string{LoAHigh, LoASubstantial}, Claims: jsontext.Value(`{"id_token":{"auth_time":{"essential":true}}}`)}
 	f.Fuzz(func(t *testing.T, payload []byte) {
 		identity, err := parseIdentity(payload, "https://op.example", "1.0.0")
 		if err != nil {

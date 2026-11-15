@@ -22,7 +22,7 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"fmt"
 
 	"github.com/gematik/zero-lab/go/openid"
@@ -53,12 +53,12 @@ type EntityStatement struct {
 
 // Metadata is the metadata claim of an entity statement, one member per entity type.
 type Metadata struct {
-	OpenidRelyingParty *OpenIDRelyingPartyMetadata `json:"openid_relying_party,omitempty"`
-	OpenidProvider     *OpenIDProviderMetadata     `json:"openid_provider,omitempty"`
-	FederationEntity   *FederationEntityMetadata   `json:"federation_entity,omitempty"`
+	OpenidRelyingParty *OpenIDRelyingPartyMetadata `json:"openid_relying_party,omitzero"`
+	OpenidProvider     *OpenIDProviderMetadata     `json:"openid_provider,omitzero"`
+	FederationEntity   *FederationEntityMetadata   `json:"federation_entity,omitzero"`
 	// Extra holds further entity types of a statement this relying party publishes, by their member name. It is
 	// written beside the typed members and never filled from a parsed statement.
-	Extra map[string]json.RawMessage `json:"-"`
+	Extra map[string]jsontext.Value `json:"-"`
 }
 
 // OpenIDProviderMetadata is the openid_provider metadata of an identity provider.
@@ -97,7 +97,7 @@ type OpenIDProviderMetadata struct {
 // of gemSpec_IDP_FD A_23034-02 Tabelle 4. It carries either jwks or signed_jwks_uri, not both.
 type OpenIDRelyingPartyMetadata struct {
 	SignedJwksURI                      string      `json:"signed_jwks_uri,omitempty"`
-	Jwks                               *Jwks       `json:"jwks,omitempty"`
+	Jwks                               *Jwks       `json:"jwks,omitzero"`
 	OrganizationName                   string      `json:"organization_name"`
 	ClientName                         string      `json:"client_name"`
 	LogoURI                            string      `json:"logo_uri,omitempty"`
@@ -117,7 +117,7 @@ type OpenIDRelyingPartyMetadata struct {
 	TIFeaturesSupported                *TIFeatures `json:"ti_features_supported"`
 	// Extra holds further members by name. It is written beside the typed members and never filled from a parsed
 	// statement.
-	Extra map[string]json.RawMessage `json:"-"`
+	Extra map[string]jsontext.Value `json:"-"`
 }
 
 // TIFeatures is the ti_features_supported member, the versions of the TI federation's features a relying party
@@ -138,7 +138,7 @@ type FederationEntityMetadata struct {
 	IdpListEndpoint         string   `json:"idp_list_endpoint,omitempty"`
 	// Extra holds further members by name. It is written beside the typed members and never filled from a parsed
 	// statement.
-	Extra map[string]json.RawMessage `json:"-"`
+	Extra map[string]jsontext.Value `json:"-"`
 }
 
 // parseEntityStatement reads a verified statement's payload with encoding/json/v2 (servers.md rule 28): bounded, of

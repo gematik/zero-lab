@@ -23,7 +23,6 @@ package idpd
 
 import (
 	"fmt"
-	"log/slog"
 
 	"github.com/gematik/zero-lab/go/openid/providers"
 )
@@ -53,7 +52,6 @@ func Kind(adjust func(*ClientConfig)) providers.Kind {
 				return providers.Built{}, fmt.Errorf("[%d] (%s): %w", i, config.ClientID, err)
 			}
 			built.Providers = append(built.Providers, client.Provider())
-			slog.Info("configured openid provider", "type", TypeIDPD, "name", config.Name, "issuer", client.Issuer())
 		}
 		return built, nil
 	}

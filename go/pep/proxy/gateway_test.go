@@ -27,7 +27,8 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -138,7 +139,7 @@ func TestGatewayLongestPrefixMatch(t *testing.T) {
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/", Upstream: "http://app"},
 		{PathPrefix: "/api", Upstream: "http://rs"},
-	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(nil), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +154,7 @@ func TestGatewayLongestPrefixMatch(t *testing.T) {
 func TestGatewayUnauthenticatedBranch(t *testing.T) {
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/", Upstream: "http://app:8080", Inject: InjectIdentity, Gate: GateSession},
-	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(nil), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +192,7 @@ func TestGatewayIdentityInjection(t *testing.T) {
 	sess := &Session{Identity: map[string]any{"sub": "u-1", "preferred_username": "alice"}}
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/app", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSession, StripPrefix: true},
-	}, gatewayDeps{currentSession: staticSession(sess), backend: &fakeBackend{}})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(sess), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +232,7 @@ func TestTLSV001_AnHTTPSUpstreamGoesThroughTheHostsTransportOnly(t *testing.T) {
 	defer upstream.Close()
 	routes := []Route{{PathPrefix: "/public", Upstream: upstream.URL, Gate: GateNone}}
 	deps := func(transport http.RoundTripper) gatewayDeps {
-		return gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, transport: transport}
+		return gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(nil), backend: &fakeBackend{}, transport: transport}
 	}
 
 	if _, err := newGateway(routes, deps(nil)); err == nil || !strings.Contains(err.Error(), "https upstream") {
@@ -267,7 +268,7 @@ func TestGatewayUnprotectedPassthrough(t *testing.T) {
 
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/public", Upstream: upstream.URL, Gate: GateNone},
-	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(nil), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +317,7 @@ func TestGatewayScopeGate(t *testing.T) {
 	routes := []Route{{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSession, Scope: "admin"}}
 
 	allowed := &Session{Identity: map[string]any{"sub": "u1", "scope": "read admin"}}
-	gw, err := newGateway(routes, gatewayDeps{currentSession: staticSession(allowed), backend: &fakeBackend{}})
+	gw, err := newGateway(routes, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(allowed), backend: &fakeBackend{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +328,7 @@ func TestGatewayScopeGate(t *testing.T) {
 
 	reached = false
 	denied := &Session{Identity: map[string]any{"sub": "u1", "scope": "read"}}
-	gw2, _ := newGateway(routes, gatewayDeps{currentSession: staticSession(denied), backend: &fakeBackend{}})
+	gw2, _ := newGateway(routes, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(denied), backend: &fakeBackend{}})
 	rec := httptest.NewRecorder()
 	gw2.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/x", nil))
 	if reached {
@@ -355,7 +356,7 @@ func TestGatewayDPoPInjection(t *testing.T) {
 	backend := &dpopTestBackend{pdp: &pdpBackend{signer: sessionKeySigner{}}}
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/api", Upstream: upstream.URL, Inject: InjectDPoP, Gate: GateSession, StripPrefix: true},
-	}, gatewayDeps{currentSession: staticSession(sess), backend: backend})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(sess), backend: backend})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +386,7 @@ func TestGatewaySnapshotGate(t *testing.T) {
 
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSnapshot},
-	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}, revocations: NewMemoryRevocations(nil)})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}, revocations: NewMemoryRevocations(nil)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +422,7 @@ func snapshotGatewayFor(t *testing.T, sid string, revocations Revocations) (*Gat
 	t.Cleanup(upstream.Close)
 	gw, err := newGateway([]Route{
 		{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSnapshot},
-	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}, revocations: revocations})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{key}, revocations: revocations})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +459,7 @@ func TestServerRule16_AGatewayRevocationCheckThatFailsDenies(t *testing.T) {
 func TestServerRule17_ASnapshotRouteWithoutRevocationsIsRefused(t *testing.T) {
 	_, err := newGateway([]Route{
 		{PathPrefix: "/", Upstream: "http://rs", Inject: InjectIdentity, Gate: GateSnapshot},
-	}, gatewayDeps{currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{bytes.Repeat([]byte{3}, 32)}})
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(nil), backend: &fakeBackend{}, cookieName: "SID", snapshotKeys: [][]byte{bytes.Repeat([]byte{3}, 32)}})
 	if err == nil || !strings.Contains(err.Error(), "revocations") {
 		t.Fatalf("err = %v", err)
 	}

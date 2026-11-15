@@ -23,7 +23,7 @@ package openid
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -69,7 +69,7 @@ func TestRFC7636_4_3_AuthorizationQuerySendsPKCEAndNeverTheVerifier(t *testing.T
 
 func TestOIDCCore_5_5_TheClaimsParameterIsAJSONObject(t *testing.T) {
 	claims := `{"id_token":{"acr":{"essential":true}}}`
-	query, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: json.RawMessage(claims)})
+	query, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: jsontext.Value(claims)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestOIDCCore_5_5_TheClaimsParameterIsAJSONObject(t *testing.T) {
 		"not json":       `{id_token}`,
 		"larger than 4K": tooLarge,
 	} {
-		_, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: json.RawMessage(claims)})
+		_, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: jsontext.Value(claims)})
 		if !errors.Is(err, ErrClaimsParameter) {
 			t.Errorf("%s: %v", name, err)
 		}
@@ -176,7 +176,7 @@ func TestOIDCCore_5_5_TheClaimsParameterIsBounded(t *testing.T) {
 		"invalid UTF-8":                {"{\"a\":\"\xff\"}", false},
 		"members in an array":          {`{"a":[{"b":1},{"b":2}]}`, true},
 	} {
-		_, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: json.RawMessage(tc.claims)})
+		_, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: jsontext.Value(tc.claims)})
 		if tc.accept && err != nil {
 			t.Errorf("%s: %v", name, err)
 		}

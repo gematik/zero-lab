@@ -25,7 +25,8 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
@@ -217,4 +218,43 @@ func TestUnmarshalTokenResponseKeepsTheRawIDToken(t *testing.T) {
 	if response.IDTokenRaw != "b" || response.AccessToken != "a" || response.ExpiresIn != 300 {
 		t.Errorf("%+v", response)
 	}
+}
+
+// The IDP-Dienst's token response names a member twice, carries invalid UTF-8 or names a member in another case: the
+// first two are refused, and the third is not taken for the member, so no ID token is read from it.
+func TestServerRule28_ATokenResponseIsReadStrictly(t *testing.T) {
+	for name, test := range map[string]struct {
+		body string
+		want error
+	}{
+		"a member twice": {`{"id_token":"a","id_token":"b"}`, jsontext.ErrDuplicateName},
+		"invalid UTF-8":  {"{\"id_token\":\"a\xffb\"}", nil},
+	} {
+		_, err := unmarshalTokenResponse(strings.NewReader(test.body))
+		if err == nil || test.want != nil && !errors.Is(err, test.want) || test.want == nil && !strings.Contains(err.Error(), "invalid UTF-8") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	response, err := unmarshalTokenResponse(strings.NewReader(`{"ID_TOKEN":"a","Access_Token":"b"}`))
+	if err != nil || response.IDTokenRaw != "" || response.AccessToken != "" {
+		t.Errorf("members in another case were read: %+v %v", response, err)
+	}
+}
+
+// FuzzUnmarshalTokenResponse feeds arbitrary bodies to the token response reader. Invariants: it never panics, and a
+// refusal does not quote the body.
+func FuzzUnmarshalTokenResponse(f *testing.F) {
+	for _, seed := range []string{
+		`{"access_token":"a","id_token":"b","expires_in":300,"token_type":"Bearer"}`, `{}`, `[]`, `null`, ``,
+		`{"id_token":"a","id_token":"b"}`, `{"ID_TOKEN":"a","Access_Token":"b"}`, "{\"id_token\":\"a\xffb\"}",
+		`{"expires_in":1e999}`, `{"expires_in":"300"}`, `{"id_token":"a"} {}`,
+	} {
+		f.Add([]byte(seed))
+	}
+	f.Fuzz(func(t *testing.T, body []byte) {
+		_, err := unmarshalTokenResponse(strings.NewReader(string(body)))
+		if err != nil && len(body) >= 16 && strings.Contains(err.Error(), string(body)) {
+			t.Fatalf("the error quotes the body: %v", err)
+		}
+	})
 }

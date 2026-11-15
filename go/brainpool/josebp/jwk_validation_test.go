@@ -23,9 +23,13 @@ package josebp
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"
@@ -132,5 +136,56 @@ func TestUnmarshalJWKRejectsMismatchedCurveForPrivateScalar(t *testing.T) {
 	}
 	if priv.D.Sign() == 0 {
 		t.Fatal("private scalar not set")
+	}
+}
+
+// requireJSONRefused asserts that err refuses flawed for its flaw: a member named twice or
+// invalid UTF-8 by the decoder, a member in another case by the check that misses it.
+func requireJSONRefused(t *testing.T, flawed flawedJSON, err error, missing string) {
+	t.Helper()
+	var syntactic *jsontext.SyntacticError
+	switch {
+	case err == nil:
+		t.Fatal("accepted")
+	case strings.Contains(flawed.name, "member twice"):
+		if !errors.Is(err, jsontext.ErrDuplicateName) {
+			t.Fatalf("got %v, want a duplicate name", err)
+		}
+	case strings.Contains(flawed.name, "not UTF-8"):
+		if !errors.As(err, &syntactic) || !strings.Contains(syntactic.Error(), "invalid UTF-8") {
+			t.Fatalf("got %v, want invalid UTF-8", err)
+		}
+	case strings.Contains(flawed.name, "in another case"):
+		if !strings.Contains(err.Error(), missing) {
+			t.Fatalf("got %v, want %q", err, missing)
+		}
+	default:
+		t.Fatalf("no expectation for %q", flawed.name)
+	}
+}
+
+// Server rule 28: a JWK that names a member twice or is not UTF-8 is refused, not read with
+// the last member winning, and "KTY" is not kty.
+func TestServerRule28_AFlawedJWKIsRefused(t *testing.T) {
+	for _, flawed := range flawedJWKs() {
+		t.Run(flawed.name, func(t *testing.T) {
+			var jwk JSONWebKey
+			requireJSONRefused(t, flawed, json.Unmarshal(flawed.data, &jwk), "unsupported key type")
+		})
+	}
+}
+
+// Server rule 28: a token whose header or payload names a member twice, in any object, or is
+// not UTF-8 is refused, though its signature verifies; "ALG" is not alg.
+func TestServerRule28_AFlawedTokenIsRefused(t *testing.T) {
+	key, err := ecdsa.GenerateKey(brainpool.P256r1(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flawed := range flawedTokens(key) {
+		t.Run(flawed.name, func(t *testing.T) {
+			_, err := ParseToken(flawed.data, withECDSAPublicKey(&key.PublicKey))
+			requireJSONRefused(t, flawed, err, "missing alg header")
+		})
 	}
 }

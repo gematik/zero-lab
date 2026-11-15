@@ -24,6 +24,7 @@ package main
 import (
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -57,6 +58,7 @@ func pdpBackendFromEnv(publicURL string, client *http.Client) proxy.Backend {
 		SigningKey:  signingKey,
 		RedirectURI: redirect,
 		HTTPClient:  client,
+		Logger:      slog.Default(),
 	}
 	if s := os.Getenv("PEP_SCOPES"); s != "" {
 		cfg.Scopes = strings.Fields(s)

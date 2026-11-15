@@ -22,7 +22,7 @@
 package proxy
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -50,11 +50,12 @@ type gatewayContext struct {
 	state *gatewayState
 	deny  func(pep.Context, pep.Error)
 	now   func() time.Time
+	log   *slog.Logger
 }
 
-func newGatewayContext(w http.ResponseWriter, r *http.Request, now func() time.Time) *gatewayContext {
+func newGatewayContext(w http.ResponseWriter, r *http.Request, now func() time.Time, log *slog.Logger) *gatewayContext {
 	st := &gatewayState{}
-	c := &gatewayContext{w: w, r: r, state: st, now: now}
+	c := &gatewayContext{w: w, r: r, state: st, now: now, log: log}
 	c.deny = func(_ pep.Context, err pep.Error) {
 		st.denied = true
 		st.denyErr = err
@@ -66,7 +67,7 @@ func (c *gatewayContext) Writer() http.ResponseWriter { return c.w }
 func (c *gatewayContext) Request() *http.Request      { return c.r }
 func (c *gatewayContext) Deny(err pep.Error)          { c.deny(c, err) }
 func (c *gatewayContext) Now() time.Time              { return c.now() }
-func (c *gatewayContext) Slogger() *slog.Logger       { return slog.Default() }
+func (c *gatewayContext) Slogger() *slog.Logger       { return c.log }
 func (c *gatewayContext) SetClaims(raw []byte)        { c.state.claimsRaw = raw }
 
 // WithDeny clones the context but shares the state, so claims/session a gate sets remain visible to the

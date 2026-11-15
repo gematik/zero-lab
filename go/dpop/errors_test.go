@@ -22,7 +22,7 @@
 package dpop
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -107,6 +107,20 @@ func TestRFC9449_5_InvalidProofTokenError(t *testing.T) {
 	}
 	if w.Code != http.StatusBadRequest || body["error"] != CodeInvalidProof || w.Header().Get(NonceHeaderName) != "" {
 		t.Fatalf("%d %v %v", w.Code, body, w.Header())
+	}
+}
+
+// Section 5: a description that is not UTF-8 still answers 400 with a complete error body, the invalid bytes replaced,
+// rather than taking the server down.
+func TestRFC9449_5_ATokenErrorWithInvalidUTF8StaysJSON(t *testing.T) {
+	w := httptest.NewRecorder()
+	WriteTokenError(w, proofError("proof from Gr\xfc\xdfe"))
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusBadRequest || body["error"] != CodeInvalidProof || body["error_description"] != "proof from Gr\uFFFD\uFFFDe" {
+		t.Fatalf("%d %q", w.Code, w.Body.String())
 	}
 }
 

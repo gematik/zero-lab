@@ -23,7 +23,7 @@ package titls
 
 import (
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"

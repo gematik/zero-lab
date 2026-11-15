@@ -25,7 +25,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/brainpool"

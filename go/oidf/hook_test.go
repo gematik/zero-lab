@@ -23,7 +23,8 @@ package oidf
 
 import (
 	"crypto"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"slices"
 	"strings"
@@ -126,10 +127,10 @@ func TestEntityStatementHook(t *testing.T) {
 		metadata.Keywords = append(metadata.Keywords, "added")
 		metadata.Contacts = append(metadata.Contacts, "added@rp.example")
 		if metadata.Extra == nil {
-			metadata.Extra = map[string]json.RawMessage{}
+			metadata.Extra = map[string]jsontext.Value{}
 		}
-		metadata.Extra["added"] = json.RawMessage(`true`)
-		es.Metadata.Extra = map[string]json.RawMessage{"added_entity_type": json.RawMessage(`{}`)}
+		metadata.Extra["added"] = jsontext.Value(`true`)
+		es.Metadata.Extra = map[string]jsontext.Value{"added_entity_type": jsontext.Value(`{}`)}
 		return nil
 	})
 
@@ -157,11 +158,11 @@ func TestEntityStatementHook(t *testing.T) {
 func TestEntityStatementHook_AddsAWholeEntityType(t *testing.T) {
 	rp := newTestRelyingParty(t, nil)
 	rp.AddEntityStatementHook(func(es *EntityStatement) error {
-		es.Metadata.Extra = map[string]json.RawMessage{
-			"oauth_authorization_server": json.RawMessage(`{"issuer":"https://rp.example","grant_types_supported":["authorization_code"]}`),
+		es.Metadata.Extra = map[string]jsontext.Value{
+			"oauth_authorization_server": jsontext.Value(`{"issuer":"https://rp.example","grant_types_supported":["authorization_code"]}`),
 		}
-		es.Metadata.OpenidRelyingParty.Extra = map[string]json.RawMessage{"added_member": json.RawMessage(`"value"`)}
-		es.Metadata.FederationEntity.Extra = map[string]json.RawMessage{"added_member": json.RawMessage(`1`)}
+		es.Metadata.OpenidRelyingParty.Extra = map[string]jsontext.Value{"added_member": jsontext.Value(`"value"`)}
+		es.Metadata.FederationEntity.Extra = map[string]jsontext.Value{"added_member": jsontext.Value(`1`)}
 		return nil
 	})
 	claims := signedClaims(t, rp)

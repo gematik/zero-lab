@@ -22,12 +22,14 @@
 package dpop
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -35,6 +37,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -197,10 +200,11 @@ func (v *Verifier) Verify(ctx context.Context, header http.Header, req Request) 
 	if !isToken68(raw) {
 		return nil, proofError("DPoP header is not a single token68 value")
 	}
-	// Check 7 before parsing, so the refusal names it: go-jose also refuses an embedded
-	// private key, but without saying why.
-	if headerHasPrivateKey(raw) {
-		return nil, proofError("DPoP proof jwk contains a private key")
+	// Checks 2 and 7 on the header before parsing, so the refusal names them: go-jose also
+	// refuses a member named twice, invalid UTF-8 and an embedded private key, but without
+	// saying why.
+	if err := checkHeader(raw); err != nil {
+		return nil, err
 	}
 	// Check 5 is enforced by go-jose while parsing: only the configured algorithms, all
 	// asymmetric, are accepted; none never is.
@@ -290,27 +294,45 @@ func (v *Verifier) Verify(ctx context.Context, header http.Header, req Request) 
 // 6.4.1; RFC 8037 Section 2).
 var privateKeyMembers = []string{"d", "p", "q", "dp", "dq", "qi", "oth", "k"}
 
-// headerHasPrivateKey reports whether the jwk in the protected header of the compact JWS raw
-// has a private key member (Section 4.3, check 7). A header that does not decode is left to
-// the parser, which refuses it.
-func headerHasPrivateKey(raw string) bool {
+// checkHeader checks the protected header of the compact JWS raw before go-jose parses it: it
+// is valid UTF-8 without a member named twice (check 2), and its jwk has no private key member
+// (check 7). A header that does not decode is left to the parser, which refuses it.
+func checkHeader(raw string) error {
 	segment, _, _ := strings.Cut(raw, ".")
 	decoded, err := base64.RawURLEncoding.DecodeString(segment)
 	if err != nil {
-		return false
+		return nil
+	}
+	if err := checkJSON("header", decoded); err != nil {
+		return err
 	}
 	var header struct {
-		JWK map[string]json.RawMessage `json:"jwk"`
+		JWK map[string]jsontext.Value `json:"jwk"`
 	}
 	if json.Unmarshal(decoded, &header) != nil {
-		return false
+		return nil
 	}
 	for _, member := range privateKeyMembers {
 		if _, ok := header.JWK[member]; ok {
-			return true
+			return proofError("DPoP proof jwk contains a private key")
 		}
 	}
-	return false
+	return nil
+}
+
+// checkJSON refuses a header or payload that is not valid UTF-8 or names a member twice in
+// any of its objects. RFC 7515 Section 4 and RFC 7519 Section 4 let a parser keep the last of
+// two members instead, as encoding/json v1 did, but another parser may keep the first, so a
+// duplicate is refused (servers.md rule 28). Other syntax errors are left to the decoder that
+// follows.
+func checkJSON(part string, data []byte) error {
+	if !utf8.Valid(data) {
+		return proofError("DPoP proof " + part + " is not UTF-8")
+	}
+	if _, err := jsontext.NewDecoder(bytes.NewReader(data)).ReadValue(); errors.Is(err, jsontext.ErrDuplicateName) {
+		return proofError("DPoP proof " + part + " names a member twice")
+	}
+	return nil
 }
 
 // replayID identifies a proof for the [Replays]: the jti "in the context of the target URI"
@@ -342,10 +364,13 @@ type parsedClaims struct {
 	ATH, Nonce      string
 }
 
-// parseClaims reads the claims of Section 4.2 with exact member names: encoding/json would
-// match "HTU" to a field tagged htu, so the payload is read as a map first.
+// parseClaims reads the claims of Section 4.2 with exact member names; the payload is read as
+// a map first, so a claim that is present but not of its type can be told from a missing one.
 func parseClaims(payload []byte) (parsedClaims, error) {
-	var members map[string]json.RawMessage
+	if err := checkJSON("payload", payload); err != nil {
+		return parsedClaims{}, err
+	}
+	var members map[string]jsontext.Value
 	if err := json.Unmarshal(payload, &members); err != nil {
 		return parsedClaims{}, proofError("DPoP proof payload is not a JSON object")
 	}
@@ -385,7 +410,7 @@ func parseClaims(payload []byte) (parsedClaims, error) {
 	return c, nil
 }
 
-func stringMember(members map[string]json.RawMessage, name string) (string, bool) {
+func stringMember(members map[string]jsontext.Value, name string) (string, bool) {
 	raw, ok := members[name]
 	if !ok {
 		return "", false

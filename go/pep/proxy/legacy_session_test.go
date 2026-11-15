@@ -24,7 +24,8 @@ package proxy
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,12 +49,12 @@ type legacySession struct {
 	SID         string         `json:"sid"`
 	Identity    map[string]any `json:"identity"`
 	DPoPKeys    []struct {
-		Note string          `json:"note"`
-		JWK  json.RawMessage `json:"jwk"`
-		JKT  string          `json:"jkt"`
+		Note string         `json:"note"`
+		JWK  jsontext.Value `json:"jwk"`
+		JKT  string         `json:"jkt"`
 	} `json:"dpop_keys"`
-	ClientSigningJWK json.RawMessage `json:"client_signing_jwk"`
-	ClientAssertion  string          `json:"client_assertion"`
+	ClientSigningJWK jsontext.Value `json:"client_signing_jwk"`
+	ClientAssertion  string         `json:"client_assertion"`
 }
 
 func readLegacySession(t *testing.T) legacySession {
@@ -153,7 +154,7 @@ func TestPublicJWKIsNotASessionDPoPKey(t *testing.T) {
 
 func memberNames(t *testing.T, raw []byte) []string {
 	t.Helper()
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	if err := json.Unmarshal(raw, &members); err != nil {
 		t.Fatal(err)
 	}

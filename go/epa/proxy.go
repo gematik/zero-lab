@@ -24,7 +24,6 @@ package epa
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -635,16 +634,7 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 		slog.Error("Failed to find record", "error", err)
 		mperr := &MultiProviderError{}
 		if errors.As(err, &mperr) {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadGateway)
-			errBytes, err := json.Marshal(mperr)
-			if err != nil {
-				http.Error(w, fmt.Sprintf("failed to marshal error: %v", err), http.StatusInternalServerError)
-				return
-			}
-			if _, err := w.Write(errBytes); err != nil {
-				slog.Error("Failed to write provider errors", "error", err)
-			}
+			writeJSON(w, http.StatusBadGateway, mperr)
 			return
 		}
 		http.Error(w, fmt.Sprintf("failed to find record: %v", err), http.StatusBadGateway)
@@ -689,12 +679,7 @@ func (p *Proxy) HandleProxyInfo(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to get proxy info: %v", err), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(info)
-	if err != nil {
-		slog.Error("Failed to encode proxy info", "error", err)
-		return
-	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 // GetProviders answers with the providers whose session can be opened.
@@ -704,7 +689,6 @@ func (p *Proxy) GetProviders(w http.ResponseWriter, _ *http.Request) {
 		BaseURL         string         `json:"baseURL"`
 		SessionOpenedAt string         `json:"sessionOpenedAt"`
 	}
-	w.Header().Set("Content-Type", "application/json")
 	providers := make([]Provider, 0, len(AllProviders))
 	for _, providerNumber := range AllProviders {
 		session, err := p.sessionManager.GetSession(providerNumber)
@@ -718,10 +702,7 @@ func (p *Proxy) GetProviders(w http.ResponseWriter, _ *http.Request) {
 			SessionOpenedAt: session.OpenedAt.Format(time.RFC3339),
 		})
 	}
-	err := json.NewEncoder(w).Encode(providers)
-	if err != nil {
-		slog.Error("Failed to encode providers", "error", err)
-	}
+	writeJSON(w, http.StatusOK, providers)
 }
 
 // GetInsurants answers with the insurants the proxy has cached.
@@ -732,7 +713,6 @@ func (p *Proxy) GetInsurants(w http.ResponseWriter, _ *http.Request) {
 		InsurantID     string `json:"insurantID"`
 		ProviderNumber int    `json:"providerNumber"`
 	}
-	w.Header().Set("Content-Type", "application/json")
 	insurants := make([]InsurantModel, 0, len(p.records))
 	for _, record := range p.records {
 		insurants = append(insurants, InsurantModel{
@@ -740,12 +720,7 @@ func (p *Proxy) GetInsurants(w http.ResponseWriter, _ *http.Request) {
 			ProviderNumber: int(record.Provider),
 		})
 	}
-
-	w.WriteHeader(http.StatusOK)
-	err := json.NewEncoder(w).Encode(insurants)
-	if err != nil {
-		slog.Error("Failed to encode insurants", "error", err)
-	}
+	writeJSON(w, http.StatusOK, insurants)
 }
 
 // copyAndPrepareHeaders copies headers from src to dst, while

@@ -28,7 +28,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log/slog"
@@ -181,7 +181,9 @@ func TestServeReSignsAfterRefreshAfter(t *testing.T) {
 		t.Fatalf("not signed anew after refreshAfter: %d signatures", fixture.signer.count.Load())
 	}
 	issuedAt := func(signed []byte) int64 {
-		var claims struct{ Iat int64 }
+		var claims struct {
+			Iat int64 `json:"iat"`
+		}
 		if err := json.Unmarshal(unverifiedPayload(t, signed), &claims); err != nil {
 			t.Fatal(err)
 		}
@@ -445,7 +447,9 @@ func TestRFC9111_TheResponseIsCachedUntilTheNextSigning(t *testing.T) {
 	if got := recorder.Header().Get("Content-Length"); got != strconv.Itoa(len(body)) {
 		t.Errorf("Content-Length = %s", got)
 	}
-	var claims struct{ Iat int64 }
+	var claims struct {
+		Iat int64 `json:"iat"`
+	}
 	if err := json.Unmarshal(unverifiedPayload(t, body), &claims); err != nil {
 		t.Fatal(err)
 	}

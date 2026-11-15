@@ -23,7 +23,7 @@ package proxy
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"strings"
@@ -93,7 +93,7 @@ func (s *snapshotter) mint(sid string, identity map[string]any) (string, error) 
 	now := s.now()
 	payload, err := json.Marshal(snapshotClaims{
 		SID: sid, Identity: identity, IssuedAt: now.Unix(), Expiry: now.Add(s.ttl).Unix(),
-	})
+	}, json.Deterministic(true))
 	if err != nil {
 		return "", err
 	}

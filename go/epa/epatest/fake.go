@@ -28,7 +28,7 @@ package epatest
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 
 	"github.com/gematik/zero-lab/go/epa/ti"
 )
@@ -53,8 +53,8 @@ func (f *Identity) SignJWT(_ context.Context, header map[string]any, claims map[
 	}
 	f.SignHeader = append(f.SignHeader, header)
 	f.Signed = append(f.Signed, claims)
-	h, _ := json.Marshal(header)
-	c, _ := json.Marshal(claims)
+	h, _ := json.Marshal(header, json.Deterministic(true))
+	c, _ := json.Marshal(claims, json.Deterministic(true))
 	enc := base64.RawURLEncoding.EncodeToString
 	return enc(h) + "." + enc(c) + ".fake", nil
 }

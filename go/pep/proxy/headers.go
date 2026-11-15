@@ -23,7 +23,7 @@ package proxy
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"strings"
 )
@@ -90,7 +90,7 @@ func encodeIdentity(identity map[string]any) string {
 	if len(identity) == 0 {
 		return ""
 	}
-	b, err := json.Marshal(identity)
+	b, err := json.Marshal(identity, json.Deterministic(true))
 	if err != nil {
 		return ""
 	}

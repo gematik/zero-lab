@@ -30,16 +30,22 @@ import (
 
 // FuzzVerify feeds arbitrary DPoP header values to the verifier. Invariants: it never panics,
 // every refusal is an *Error with a code, and nothing but the RFC example is accepted at its
-// request and time.
+// request and time. The seeds include proofs for that request and time whose JSON names a
+// member twice, is not UTF-8 or names a member in another case (servers.md rule 28).
 func FuzzVerify(f *testing.F) {
 	for _, seed := range []string{rfcFigure2Proof, rfcFigure7Proof, rfcFigure13Proof, "", "a.b.c", "e30.e30.", "=="} {
 		f.Add(seed)
 	}
-	v, err := NewVerifier(Config{Clock: fixedClock(time.Unix(1562262616, 0))})
+	issued := time.Unix(1562262616, 0)
+	req := Request{Method: "POST", URI: "https://server.example.com/token"}
+	claims := map[string]any{"jti": "e1j3V_bKic8-LAEB", "htm": req.Method, "htu": req.URI, "iat": issued.Unix()}
+	for _, p := range newTestKey(f).flawedProofs(f, claims) {
+		f.Add(p.proof)
+	}
+	v, err := NewVerifier(Config{Clock: fixedClock(issued)})
 	if err != nil {
 		f.Fatal(err)
 	}
-	req := Request{Method: "POST", URI: "https://server.example.com/token"}
 	f.Fuzz(func(t *testing.T, value string) {
 		h := http.Header{}
 		h.Set(HeaderName, value)

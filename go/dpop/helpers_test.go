@@ -28,9 +28,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,7 +57,7 @@ type testKey struct {
 	jwk     map[string]any
 }
 
-func newTestKey(t *testing.T) testKey {
+func newTestKey(t testing.TB) testKey {
 	t.Helper()
 	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -94,9 +95,16 @@ func validClaims() map[string]any {
 
 // sign builds a compact JWS from header and claims and signs it ES256 with k, without the
 // package's own code, so tests can produce proofs the package would never create.
-func (k testKey) sign(t *testing.T, header, claims map[string]any) string {
+func (k testKey) sign(t testing.TB, header, claims map[string]any) string {
 	t.Helper()
-	input := encodeSegment(t, header) + "." + encodeSegment(t, claims)
+	return k.signSegments(t, encodeSegment(t, header), encodeSegment(t, claims))
+}
+
+// signSegments signs the base64url header and payload segments as they are, so tests can
+// sign JSON that no encoder writes.
+func (k testKey) signSegments(t testing.TB, header, payload string) string {
+	t.Helper()
+	input := header + "." + payload
 	digest := sha256.Sum256([]byte(input))
 	der, err := ecdsa.SignASN1(rand.Reader, k.private, digest[:])
 	if err != nil {
@@ -109,13 +117,50 @@ func (k testKey) sign(t *testing.T, header, claims map[string]any) string {
 	return input + "." + base64.RawURLEncoding.EncodeToString(sig)
 }
 
-func encodeSegment(t *testing.T, v map[string]any) string {
+func encodeSegment(t testing.TB, v map[string]any) string {
 	t.Helper()
 	raw, err := json.Marshal(v)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+// flawedProof is a proof whose JSON no encoder writes, and the refusal it gets.
+type flawedProof struct {
+	name, proof, description string
+}
+
+// flawedProofs are proofs by k of claims, otherwise valid, whose header or payload names a
+// member twice, at the top or nested, is not UTF-8, or names a member in another case.
+func (k testKey) flawedProofs(t testing.TB, claims map[string]any) []flawedProof {
+	t.Helper()
+	header := string(mustMarshal(t, k.header()))
+	payload := string(mustMarshal(t, claims))
+	jwk := string(mustMarshal(t, k.jwk))
+	jti, _ := claims["jti"].(string)
+	proof := func(header, payload string) string {
+		return k.signSegments(t, base64.RawURLEncoding.EncodeToString([]byte(header)), base64.RawURLEncoding.EncodeToString([]byte(payload)))
+	}
+	return []flawedProof{
+		{"header member twice", proof(`{"typ":"dpop+jwt",`+header[1:], payload), "DPoP proof header names a member twice"},
+		{"jwk member twice", proof(`{"typ":"dpop+jwt","alg":"ES256","jwk":{"kty":"EC",`+jwk[1:]+`}`, payload), "DPoP proof header names a member twice"},
+		{"header not UTF-8", proof(`{"x":"`+"\xff"+`",`+header[1:], payload), "DPoP proof header is not UTF-8"},
+		{"header member in another case", proof(strings.Replace(header, `"typ"`, `"TYP"`, 1), payload), "DPoP proof typ is not dpop+jwt"},
+		{"claim twice", proof(header, `{"jti":"`+jti+`",`+payload[1:]), "DPoP proof payload names a member twice"},
+		{"nested member twice", proof(header, `{"x":{"a":1,"a":1},`+payload[1:]), "DPoP proof payload names a member twice"},
+		{"payload not UTF-8", proof(header, `{"x":"`+"\xff"+`",`+payload[1:]), "DPoP proof payload is not UTF-8"},
+		{"claim in another case", proof(header, strings.Replace(payload, `"jti"`, `"JTI"`, 1)), "DPoP proof has no jti"},
+	}
+}
+
+func mustMarshal(t testing.TB, v any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 // withProof is a request header carrying proof as its DPoP header.

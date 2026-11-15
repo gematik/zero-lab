@@ -25,7 +25,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"log"
 	"net/http"
@@ -48,10 +48,10 @@ func TestTLSV001TheProgramsClientCarriesTheProviders(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/j" {
-			_ = json.NewEncoder(w).Encode(keys)
+			_ = json.MarshalWrite(w, keys)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{
+		_ = json.MarshalWrite(w, map[string]string{
 			"issuer":                 server.URL,
 			"authorization_endpoint": server.URL + "/a",
 			"token_endpoint":         server.URL + "/t",

@@ -24,7 +24,7 @@ package tipki
 import (
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"os"

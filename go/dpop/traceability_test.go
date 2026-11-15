@@ -119,7 +119,7 @@ var requirements = []requirement{
 		"TestRFC9449_4_3_12_AccessTokenMustBeBoundToTheProofKey", "TestRFC9449_Figure13_ProtectedResourceProofVerifies",
 	}},
 	{"5", `If the DPoP proof is invalid, the authorization server issues an error response per Section 5.2 of [RFC6749] with invalid_dpop_proof as the value of the error parameter.`, []string{
-		"TestRFC9449_5_InvalidProofTokenError", "TestRFC9449_Figure7_RefreshProofVerifies",
+		"TestRFC9449_5_InvalidProofTokenError", "TestRFC9449_5_ATokenErrorWithInvalidUTF8StaysJSON", "TestRFC9449_Figure7_RefreshProofVerifies",
 	}},
 	{"6.1", `The value of the jkt member MUST be the base64url encoding ... of the JWK SHA-256 Thumbprint ... of the DPoP public key`, []string{
 		"TestRFC9449_6_1_ThumbprintIsTheJWKSHA256Thumbprint", "TestRFC9449_Figure2_ExampleProofVerifies",

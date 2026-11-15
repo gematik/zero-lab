@@ -26,7 +26,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -111,7 +111,7 @@ func newFederationStub(t *testing.T) *federationStub {
 			idToken = *token
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": idToken})
+		_ = json.MarshalWrite(w, map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": idToken})
 	})
 	mux.HandleFunc("/elsewhere", func(http.ResponseWriter, *http.Request) { stub.redirected.Add(1) })
 	mux.HandleFunc("/redirecting", func(w http.ResponseWriter, r *http.Request) {
@@ -381,7 +381,7 @@ func newLoginStubWith(tb testing.TB, change func(*RelyingPartyConfig)) *loginStu
 		if stub.scope != "" {
 			response["scope"] = stub.scope
 		}
-		_ = json.NewEncoder(w).Encode(response)
+		_ = json.MarshalWrite(w, response)
 	})
 	stub.transport = inMemory{handler: mux}
 
@@ -857,7 +857,7 @@ func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			fmt.Fprintf(w, `{"request_uri":%q,"expires_in":60}`, requestURI)
 		default:
-			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": token, "token_type": "Bearer", "id_token": stub.idToken})
+			_ = json.MarshalWrite(w, map[string]any{"access_token": token, "token_type": "Bearer", "id_token": stub.idToken})
 		}
 	})
 	claims := validIDTokenClaims()

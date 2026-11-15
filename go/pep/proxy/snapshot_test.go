@@ -30,6 +30,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/go-jose/go-jose/v4"
 )
 
 func writeKeyFile(t *testing.T, name string) string {
@@ -155,5 +157,33 @@ func TestForwardAuth_SnapshotFastPath(t *testing.T) {
 	s.Handler().ServeHTTP(rec2, newReq())
 	if rec2.Code != http.StatusUnauthorized {
 		t.Fatalf("revoked snapshot = %d, want 401", rec2.Code)
+	}
+}
+
+// The sealed payload is the same bytes for the same session, with the identity's members in order, as v1 wrote it.
+func TestSnapshotPayloadIsDeterministic(t *testing.T) {
+	snap, err := newSnapshotter(writeKeyFile(t, "key"), "", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap.now = func() time.Time { return time.Unix(1_800_000_000, 0) }
+	identity := map[string]any{"sub": "u", "acr": "a", "given_name": "g", "family_name": "f", "org": map[string]any{"z": 1.0, "a": 2.0}}
+	const want = `{"sid":"s","id":{"acr":"a","family_name":"f","given_name":"g","org":{"a":2,"z":1},"sub":"u"},"iat":1800000000,"exp":1800003600}`
+	for range 20 {
+		token, err := snap.mint("s", identity)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sealed, err := jose.ParseEncryptedCompact(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, err := sealed.Decrypt(snap.encKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(payload); got != want {
+			t.Fatalf("payload = %s, want %s", got, want)
+		}
 	}
 }
