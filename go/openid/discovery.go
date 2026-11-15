@@ -22,7 +22,8 @@
 package openid
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,35 +50,39 @@ type DiscoveryDocument struct {
 // https://login.microsoftonline.com/{tenantid}/v2.0, which no ID token carries, so verifying an ID token against it
 // could never succeed either; a single tenant's document names itself, with the tenant as its GUID, and that GUID is
 // what the configuration has to hold.
-func FetchDiscoveryDocument(issuer string, httpClient *http.Client) (*DiscoveryDocument, error) {
+func FetchDiscoveryDocument(ctx context.Context, issuer string, httpClient *http.Client) (*DiscoveryDocument, error) {
 	if err := requireHTTPS("issuer", issuer); err != nil {
 		return nil, err
 	}
 	// Section 4.1: a terminating / is removed before the path is appended, and stays part of the issuer.
 	location := strings.TrimSuffix(issuer, "/") + "/.well-known/openid-configuration"
-	resp, err := httpClient.Get(location)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, location, nil)
+	if err != nil {
+		return nil, errors.New("discovery document: no request can be built for the issuer")
+	}
+	resp, err := httpClient.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get discovery document: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%s: discovery document status %d", location, resp.StatusCode)
+		return nil, fmt.Errorf("discovery document status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("%s: unable to read discovery document: %w", location, err)
+		return nil, errors.New("discovery document: unable to read the body")
 	}
 	if len(body) > maxResponseBytes {
-		return nil, fmt.Errorf("%s: discovery document larger than %d bytes", location, maxResponseBytes)
+		return nil, fmt.Errorf("discovery document larger than %d bytes", maxResponseBytes)
 	}
 
 	var doc DiscoveryDocument
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return nil, fmt.Errorf("%s: unable to decode discovery document: %w", location, err)
+	if err := UnmarshalObject(body, PayloadDepth, PayloadMembers, &doc); err != nil {
+		return nil, fmt.Errorf("discovery document: %w", err)
 	}
 	if doc.Issuer != issuer {
-		return nil, fmt.Errorf("%s: discovery document names the issuer %q, configured is %q", location, doc.Issuer, issuer)
+		return nil, errors.New("discovery document names another issuer than the configured one")
 	}
 	for name, endpoint := range map[string]string{
 		"authorization_endpoint": doc.AuthorizationEndpoint,
@@ -90,7 +95,7 @@ func FetchDiscoveryDocument(issuer string, httpClient *http.Client) (*DiscoveryD
 			continue
 		}
 		if err := requireHTTPS(name, endpoint); err != nil {
-			return nil, fmt.Errorf("%s: %w", location, err)
+			return nil, fmt.Errorf("discovery document: %w", err)
 		}
 	}
 
@@ -102,7 +107,7 @@ func FetchDiscoveryDocument(issuer string, httpClient *http.Client) (*DiscoveryD
 func requireHTTPS(name, raw string) error {
 	parsed, err := url.Parse(raw)
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
-		return fmt.Errorf("%s must be an https URL, is %q", name, raw)
+		return fmt.Errorf("%s must be an https URL", name)
 	}
 	return nil
 }

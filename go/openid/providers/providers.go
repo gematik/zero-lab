@@ -32,9 +32,13 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/gematik/zero-lab/go/openid"
 )
+
+// startTimeout bounds what building one provider may wait for its discovery document and keys.
+const startTimeout = 30 * time.Second
 
 // Info describes a provider for a chooser.
 type Info struct {
@@ -147,7 +151,11 @@ func OIDC(decode Decode, env Env) (Built, error) {
 		if err := config.Validate(); err != nil {
 			return Built{}, fmt.Errorf("[%d]: %w", i, err)
 		}
-		client, err := openid.NewClient(config)
+		// Build runs at start-up and hands no context down; the bound keeps a provider that does not answer from
+		// holding the start for longer than one fetch may take.
+		ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
+		client, err := openid.NewClient(ctx, config)
+		cancel()
 		if err != nil {
 			return Built{}, fmt.Errorf("[%d] (%s): %w", i, config.Issuer, err)
 		}

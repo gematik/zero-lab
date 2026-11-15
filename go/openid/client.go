@@ -80,7 +80,7 @@ func (c *client) now() time.Time {
 
 // NewClient fetches the provider's discovery document and signing keys and returns a client for it, so the
 // provider has to be reachable.
-func NewClient(cfg Config) (Client, error) {
+func NewClient(ctx context.Context, cfg Config) (Client, error) {
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
@@ -91,13 +91,13 @@ func NewClient(cfg Config) (Client, error) {
 	}
 
 	var err error
-	c.discoveryDocument, err = FetchDiscoveryDocument(cfg.Issuer, httpClient)
+	c.discoveryDocument, err = FetchDiscoveryDocument(ctx, cfg.Issuer, httpClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch discovery document: %w", err)
 	}
 
 	c.keyCache = newKeySetCache(c.discoveryDocument.JwksURI, httpClient)
-	if _, err := c.keyCache.keySet(context.Background(), ""); err != nil {
+	if _, err := c.keyCache.keySet(ctx, ""); err != nil {
 		return nil, fmt.Errorf("failed to fetch signing keys: %w", err)
 	}
 

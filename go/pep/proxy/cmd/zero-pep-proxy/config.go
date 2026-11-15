@@ -79,7 +79,9 @@ func providersFromEnv(publicURL string, httpClient *http.Client) *providers.Set 
 			}
 			skew = d
 		}
-		client, err := openid.NewClient(openid.Config{
+		// Start-up, before any request: the bound keeps a provider that does not answer from holding it.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		client, err := openid.NewClient(ctx, openid.Config{
 			Issuer:         issuer,
 			ClientID:       os.Getenv("PEP_OIDC_CLIENT_ID"),
 			ClientSecret:   openid.NewSecretString(os.Getenv("PEP_OIDC_CLIENT_SECRET")),
@@ -90,6 +92,7 @@ func providersFromEnv(publicURL string, httpClient *http.Client) *providers.Set 
 			AcceptableSkew: skew,
 			HTTPClient:     httpClient,
 		})
+		cancel()
 		if err != nil {
 			log.Fatalf("create oidc client: %v", err)
 		}

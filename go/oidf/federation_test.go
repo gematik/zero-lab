@@ -937,7 +937,7 @@ func TestRFC8725_3_1_AMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlgIsRefused(t *
 	if stub.opStatement, err = object.CompactSerialize(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stub.federation(t).FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil || !strings.Contains(err.Error(), "cannot verify ES384") {
+	if _, err := stub.federation(t).FetchEntityStatement(t.Context(), stub.URL+"/op"); err == nil || !strings.Contains(err.Error(), "of another type or curve than the token's alg needs") {
 		t.Errorf("not refused for its algorithm: %v", err)
 	}
 }

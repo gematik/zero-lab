@@ -31,7 +31,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/go-jose/go-jose/v4"
@@ -57,8 +56,9 @@ var verificationAlgorithms = []jose.SignatureAlgorithm{
 // of its x and y, or an RSA key below 2048 bits is refused.
 func ParseKey(data []byte) (*jose.JSONWebKey, error) {
 	key := new(jose.JSONWebKey)
+	// go-jose's messages may quote the key's members, which come from outside.
 	if err := json.Unmarshal(data, key); err != nil {
-		return nil, err
+		return nil, errors.New("not a JWK of a known type, on its curve")
 	}
 	var modulusBits int
 	switch k := key.Key.(type) {
@@ -126,18 +126,15 @@ func ParseKeySet(data []byte) (*jose.JSONWebKeySet, error) {
 		return nil, fmt.Errorf("JWK Set: %d keys, at most %d are accepted", len(entries), maxKeysInSet)
 	}
 	set := &jose.JSONWebKeySet{Keys: make([]jose.JSONWebKey, 0, len(entries))}
-	var lastErr error
-	for i, entry := range entries {
+	for _, entry := range entries {
 		key, err := ParseKey(entry)
 		if err != nil {
-			slog.Warn("leaving out a JWK that cannot be used", "index", i, "error", err)
-			lastErr = err
 			continue
 		}
 		set.Keys = append(set.Keys, *key)
 	}
 	if len(entries) > 0 && len(set.Keys) == 0 {
-		return nil, fmt.Errorf("JWK Set: no usable key: %w", lastErr)
+		return nil, errors.New("JWK Set: no usable key")
 	}
 	return set, nil
 }
@@ -236,7 +233,7 @@ func candidateKeys(keys *jose.JSONWebKeySet, kid string, alg jose.SignatureAlgor
 
 func keyFits(key *jose.JSONWebKey, alg jose.SignatureAlgorithm, options VerifyOptions) error {
 	if key.Use != "" && key.Use != "sig" {
-		return fmt.Errorf("marked use=%q, not for signatures", key.Use)
+		return errors.New("marked for another use than signatures")
 	}
 	switch {
 	case key.Algorithm == "":
@@ -244,10 +241,10 @@ func keyFits(key *jose.JSONWebKey, alg jose.SignatureAlgorithm, options VerifyOp
 			return errors.New("states no alg")
 		}
 	case key.Algorithm != string(alg):
-		return fmt.Errorf("states alg %s, the token names %s", key.Algorithm, alg)
+		return errors.New("states another alg than the token names")
 	}
 	if !publicKeyFits(key.Key, alg) {
-		return fmt.Errorf("a %T cannot verify %s", key.Key, alg)
+		return errors.New("is of another type or curve than the token's alg needs")
 	}
 	return nil
 }

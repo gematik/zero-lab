@@ -46,7 +46,7 @@ type opStub struct {
 
 // OpenID Connect Discovery 1.0 section 3: every location in the document is https.
 func TestOIDCDiscovery_3_RefusesAnythingButHTTPS(t *testing.T) {
-	if _, err := FetchDiscoveryDocument("http://op.example", http.DefaultClient); err == nil || !strings.Contains(err.Error(), "issuer must be an https URL") {
+	if _, err := FetchDiscoveryDocument(t.Context(), "http://op.example", http.DefaultClient); err == nil || !strings.Contains(err.Error(), "issuer must be an https URL") {
 		t.Errorf("an http issuer: %v", err)
 	}
 	for _, field := range []string{"authorization_endpoint", "token_endpoint", "jwks_uri", "userinfo_endpoint", "revocation_endpoint"} {
@@ -62,7 +62,7 @@ func TestOIDCDiscovery_3_RefusesAnythingButHTTPS(t *testing.T) {
 				})
 			}))
 			defer server.Close()
-			_, err := FetchDiscoveryDocument(server.URL, server.Client())
+			_, err := FetchDiscoveryDocument(t.Context(), server.URL, server.Client())
 			if err == nil || !strings.Contains(err.Error(), field+" must be an https URL") {
 				t.Errorf("err = %v", err)
 			}
@@ -97,7 +97,7 @@ func newOPStub(t *testing.T) *opStub {
 
 func (s *opStub) client(t *testing.T) Client {
 	t.Helper()
-	client, err := NewClient(Config{
+	client, err := NewClient(t.Context(), Config{
 		Issuer:       s.URL,
 		ClientID:     "client",
 		ClientSecret: NewSecretString("secret"),
@@ -174,7 +174,7 @@ func TestNewClientFailsWhenTheKeySetCannotBeFetched(t *testing.T) {
 	})
 	server = httptest.NewTLSServer(mux)
 	defer server.Close()
-	_, err := NewClient(Config{Issuer: server.URL, HTTPClient: server.Client()})
+	_, err := NewClient(t.Context(), Config{Issuer: server.URL, HTTPClient: server.Client()})
 	if err == nil || !strings.Contains(err.Error(), "failed to fetch signing keys") {
 		t.Errorf("err = %v", err)
 	}
@@ -214,9 +214,9 @@ func TestOIDCDiscovery_4_3_ADocumentNamingAnotherIssuerIsRefused(t *testing.T) {
 	server := serveDiscovery(t, http.StatusOK, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{Issuer: "https://evil.example", JwksURI: base + "/jwks"}
 	})
-	_, err := NewClient(Config{Issuer: server.URL, HTTPClient: server.Client()})
-	if err == nil || !strings.Contains(err.Error(), "https://evil.example") {
-		t.Errorf("err = %v", err)
+	_, err := NewClient(t.Context(), Config{Issuer: server.URL, HTTPClient: server.Client()})
+	if err == nil || !strings.Contains(err.Error(), "another issuer") || strings.Contains(err.Error(), "evil.example") {
+		t.Errorf("err = %v: refused for the issuer, without quoting what the document names", err)
 	}
 }
 
@@ -224,7 +224,7 @@ func TestOIDCDiscovery_4_3_ADocumentWithoutAnIssuerIsRefused(t *testing.T) {
 	server := serveDiscovery(t, http.StatusOK, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{JwksURI: base + "/jwks"}
 	})
-	if _, err := NewClient(Config{Issuer: server.URL, HTTPClient: server.Client()}); err == nil {
+	if _, err := NewClient(t.Context(), Config{Issuer: server.URL, HTTPClient: server.Client()}); err == nil {
 		t.Error("accepted")
 	}
 }
@@ -235,7 +235,7 @@ func TestOIDCDiscovery_4_3_EntrasTenantPlaceholderIsRefusedLikeAnyOtherIssuer(t 
 	server := serveDiscovery(t, http.StatusOK, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{Issuer: "https://login.microsoftonline.com/{tenantid}/v2.0", JwksURI: base + "/jwks"}
 	})
-	if _, err := NewClient(Config{Issuer: server.URL + "/common/v2.0", HTTPClient: server.Client()}); err == nil {
+	if _, err := NewClient(t.Context(), Config{Issuer: server.URL + "/common/v2.0", HTTPClient: server.Client()}); err == nil {
 		t.Error("accepted")
 	}
 }
@@ -245,7 +245,7 @@ func TestOIDCDiscovery_4_2_AFailureStatusIsRefusedHoweverItsBodyReads(t *testing
 	server := serveDiscovery(t, http.StatusServiceUnavailable, func(base string) DiscoveryDocument {
 		return DiscoveryDocument{Issuer: base, JwksURI: base + "/jwks"}
 	})
-	if _, err := NewClient(Config{Issuer: server.URL, HTTPClient: server.Client()}); err == nil {
+	if _, err := NewClient(t.Context(), Config{Issuer: server.URL, HTTPClient: server.Client()}); err == nil {
 		t.Error("accepted")
 	}
 }
@@ -265,7 +265,7 @@ func TestOIDCDiscovery_4_1_AnIssuerWithATrailingSlashIsFetchedWithoutItAndCompar
 		}
 	}))
 	defer server.Close()
-	client, err := NewClient(Config{Issuer: server.URL + "/", HTTPClient: server.Client()})
+	client, err := NewClient(t.Context(), Config{Issuer: server.URL + "/", HTTPClient: server.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +284,7 @@ func TestDiscoveryReadsNoMoreThanItsBound(t *testing.T) {
 		fmt.Fprint(w, `"}`)
 	}))
 	defer server.Close()
-	_, err := NewClient(Config{Issuer: server.URL, HTTPClient: server.Client()})
+	_, err := NewClient(t.Context(), Config{Issuer: server.URL, HTTPClient: server.Client()})
 	if err == nil || !strings.Contains(err.Error(), "larger than") {
 		t.Errorf("err = %v", err)
 	}
@@ -339,7 +339,7 @@ func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 	defer stub.Close()
 
 	logs := captureDebugLogs(t)
-	client, err := NewClient(Config{Issuer: stub.URL, ClientID: "client", ClientSecret: NewSecretString(secret), RedirectURI: "https://rp.example/cb", Scopes: []string{"openid"}, HTTPClient: stub.Client()})
+	client, err := NewClient(t.Context(), Config{Issuer: stub.URL, ClientID: "client", ClientSecret: NewSecretString(secret), RedirectURI: "https://rp.example/cb", Scopes: []string{"openid"}, HTTPClient: stub.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
