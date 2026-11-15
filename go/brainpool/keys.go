@@ -124,5 +124,5 @@ func privateKeyFromScalar(curve elliptic.Curve, scalar []byte) (*ecdsa.PrivateKe
 	if err != nil {
 		return nil, err
 	}
-	return &ecdsa.PrivateKey{PublicKey: ecdsa.PublicKey{Curve: curve, X: x, Y: y}, D: d}, nil
+	return &ecdsa.PrivateKey{Curve: curve, X: x, Y: y, D: d}, nil
 }
