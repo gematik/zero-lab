@@ -88,6 +88,13 @@ func captureDebugLogs(t *testing.T) *bytes.Buffer {
 // the state the provider has to send back.
 func pendingLogin(t *testing.T, server *Server, assertion string, op *fakeOP) (opState string) {
 	t.Helper()
+	authorize(t, server, pushRequest(t, server, assertion, op))
+	return op.login.State
+}
+
+// pushRequest registers op as the default provider and pushes the authorization request, as a client does.
+func pushRequest(t *testing.T, server *Server, assertion string, op *fakeOP) (requestURI string) {
+	t.Helper()
 	server.providers.Add(providers.Provider{Issuer: testOPIssuer, Client: op})
 	server.defaultIDPIss = testOPIssuer
 
@@ -102,12 +109,21 @@ func pendingLogin(t *testing.T, server *Server, assertion string, op *fakeOP) (o
 	if err := json.Unmarshal(pushed.Body.Bytes(), &par); err != nil {
 		t.Fatal(err)
 	}
-	authorize := httptest.NewRecorder()
-	server.handle(server.AuthorizationEndpoint).ServeHTTP(authorize, httptest.NewRequest(http.MethodGet, "/auth?"+url.Values{"request_uri": {par.RequestURI}}.Encode(), nil))
-	if authorize.Code != http.StatusFound {
-		t.Fatalf("authorize = %d: %s", authorize.Code, authorize.Body)
+	return par.RequestURI
+}
+
+func authorizeRequest(requestURI string) *http.Request {
+	return httptest.NewRequest(http.MethodGet, "/auth?"+url.Values{"request_uri": {requestURI}}.Encode(), nil)
+}
+
+// authorize follows the request_uri to the provider, as a browser does.
+func authorize(t *testing.T, server *Server, requestURI string) {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	server.handle(server.AuthorizationEndpoint).ServeHTTP(rec, authorizeRequest(requestURI))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("authorize = %d: %s", rec.Code, rec.Body)
 	}
-	return op.login.State
 }
 
 // sessionOfState reads a pending login's session without consuming its state, as the callback does.
@@ -164,7 +180,9 @@ func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 	server, signKey := newTestServer(t)
 	op := &fakeOP{}
 	parAssertion := signClientAssertion(t, server, signKey, nil)
-	opState := pendingLogin(t, server, parAssertion, op)
+	requestURI := pushRequest(t, server, parAssertion, op)
+	authorize(t, server, requestURI)
+	opState := op.login.State
 	session := sessionOfState(t, server, opState)
 
 	const opCode = "op-code-value"
@@ -193,7 +211,7 @@ func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 		t.Fatalf("the login went unlogged:\n%s", logs)
 	}
 	assertNoneInLog(t, logs, parAssertion, assertion, "st-123", testCodeChallenge, testCodeVerifier,
-		session.ID, session.RequestURI, session.AuthnClientSession.ID,
+		session.ID, requestURI, session.AuthnClientSession.ID,
 		op.login.State, op.login.Nonce, op.login.Verifier, opCode, "op-access-token-value", "op-refresh-token-value",
 		clientCode, tokens.AccessToken, tokens.RefreshToken)
 }
@@ -243,6 +261,55 @@ func TestRFC9700_2_1_TheStateOfAnOPCallbackIsSingleUse(t *testing.T) {
 	if issued.Code != http.StatusOK {
 		t.Fatalf("the first callback's code stopped working: %d: %s", issued.Code, issued.Body)
 	}
+}
+
+// clientCode completes a pending login at the callback and returns the code the client receives.
+func clientCode(t *testing.T, server *Server, opState string) string {
+	t.Helper()
+	done := callback(server, url.Values{"state": {opState}, "code": {"op-code-value"}})
+	if done.Code != http.StatusFound {
+		t.Fatalf("callback = %d: %s", done.Code, done.Body)
+	}
+	location, err := url.Parse(done.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return location.Query().Get("code")
+}
+
+// RFC 9126 Section 7.3: a request_uri is one-time use, also after /auth saved the session it names.
+func TestRFC9126_7_3_ARequestURIIsRefusedAtItsSecondUse(t *testing.T) {
+	server, signKey := newTestServer(t)
+	requestURI := pushRequest(t, server, signClientAssertion(t, server, signKey, nil), &fakeOP{})
+	authorize(t, server, requestURI)
+
+	err := server.AuthorizationEndpoint(httptest.NewRecorder(), authorizeRequest(requestURI))
+	assertTokenError(t, err, "invalid_request", "invalid or expired request_uri")
+}
+
+// RFC 6749 Section 4.1.2: a code is used once and its second use is denied, also after the token endpoint saved the
+// session it named.
+func TestRFC6749_4_1_2_ACodeIsRefusedAtItsSecondUse(t *testing.T) {
+	server, signKey := newTestServer(t)
+	code := clientCode(t, server, pendingLogin(t, server, signClientAssertion(t, server, signKey, nil), &fakeOP{}))
+
+	if err := server.TokenEndpoint(httptest.NewRecorder(), authorizationCodeRequest(t, signClientAssertion(t, server, signKey, nil), code)); err != nil {
+		t.Fatalf("first use: %v", err)
+	}
+	err := server.TokenEndpoint(httptest.NewRecorder(), authorizationCodeRequest(t, signClientAssertion(t, server, signKey, nil), code))
+	assertTokenError(t, err, "invalid_grant", "invalid or expired code")
+}
+
+// RFC 6749 Section 4.1.2: the second use is denied at another replica too.
+func TestRFC6749_4_1_2_ACodeIsRefusedAtItsSecondUseAcrossReplicas(t *testing.T) {
+	a, b, signKey := replicas(t, newTestStores(t))
+	code := clientCode(t, a, pendingLogin(t, a, signClientAssertion(t, a, signKey, nil), &fakeOP{}))
+
+	if err := a.TokenEndpoint(httptest.NewRecorder(), authorizationCodeRequest(t, signClientAssertion(t, a, signKey, nil), code)); err != nil {
+		t.Fatalf("first use: %v", err)
+	}
+	err := b.TokenEndpoint(httptest.NewRecorder(), authorizationCodeRequest(t, signClientAssertion(t, b, signKey, nil), code))
+	assertTokenError(t, err, "invalid_grant", "invalid or expired code")
 }
 
 // A request that is no answer of the provider does not end the login it names.

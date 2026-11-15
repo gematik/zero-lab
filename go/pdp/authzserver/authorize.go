@@ -141,6 +141,8 @@ func (s *Server) AuthorizationEndpoint(w http.ResponseWriter, r *http.Request) e
 	if err != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "invalid or expired request_uri")
 	}
+	// RFC 9126 Section 7.3: the request_uri is one-time use. Saving the session below would otherwise index it again.
+	session.RequestURI = ""
 	client, cerr := s.clientsRegistry.GetClient(session.ClientID)
 	if cerr != nil {
 		return oauthErr(http.StatusBadRequest, "invalid_request", cerr.Error())

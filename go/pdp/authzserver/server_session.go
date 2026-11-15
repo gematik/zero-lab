@@ -61,7 +61,8 @@ var ErrSessionNotFound = errors.New("session not found")
 // SessionStore persists sessions and finds them by their lookup values. The lookups by authentication state,
 // request_uri and code consume the value, so each answers once even under concurrent requests (RFC 9126
 // Section 4, RFC 6749 Section 4.1.2, RFC 9700 Section 2.1). Save writes a session and all its lookup values
-// at once, so a lookup never resolves a half-written session. A session without ExpiresAt is kept for
+// at once, so a lookup never resolves a half-written session; it indexes every lookup value the session holds, so
+// a caller clears a consumed value before it saves the session again. A session without ExpiresAt is kept for
 // [DefaultSessionTTL]. RefreshToken arrives as a hash already; the other lookup values are secrets that an
 // implementation keeps out of anything it stores in the clear.
 type SessionStore interface {

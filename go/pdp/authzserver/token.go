@@ -270,6 +270,8 @@ func (s *Server) tokenEndpointAuthorizationCode(w http.ResponseWriter, r *http.R
 	if err != nil {
 		return serverError("unable to redeem the code", err, code)
 	}
+	// RFC 6749 Section 4.1.2: the code is used once. Saving the session below would otherwise index it again.
+	session.Code = ""
 
 	if session.ClientID != client.ClientID {
 		return oauthErr(http.StatusBadRequest, "invalid_request", "client_id mismatch")
