@@ -247,7 +247,7 @@ func TestPostFormReturnsStatusAndBody(t *testing.T) {
 }
 
 func TestParseTokenResponseToleratesExpiresInAsAString(t *testing.T) {
-	for _, body := range []string{`{"access_token":"a","expires_in":3600}`, `{"access_token":"a","expires_in":"3600"}`} {
+	for _, body := range []string{`{"access_token":"a","token_type":"Bearer","expires_in":3600}`, `{"access_token":"a","token_type":"Bearer","expires_in":"3600"}`} {
 		response, err := ParseTokenResponse([]byte(body))
 		if err != nil {
 			t.Fatalf("%s: %v", body, err)

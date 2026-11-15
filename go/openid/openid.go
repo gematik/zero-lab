@@ -33,11 +33,12 @@ import (
 	"strings"
 )
 
-// Error is an OAuth 2.0 error response (RFC 6749 §5.2).
+// Error is an OAuth 2.0 error response (RFC 6749 §5.2). One read by [ParseErrorResponse] holds NQSCHAR only, so
+// Error may put the description into its text: it is bounded printable ASCII, safe in a log line, and still data for
+// the host, never markup. error_uri is not kept.
 type Error struct {
 	Code        string `json:"error"`
 	Description string `json:"error_description"`
-	URI         string `json:"error_uri,omitempty"`
 }
 
 func (e Error) Error() string {

@@ -23,7 +23,8 @@ package openid
 
 import (
 	"crypto/subtle"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -33,6 +34,12 @@ import (
 
 // maxNumericDate is 9999-12-31T23:59:59Z, the last instant a time claim is read as.
 const maxNumericDate = 253402300799
+
+// PayloadDepth and PayloadMembers bound the claims of a token or a signed document, checked before they are decoded.
+const (
+	PayloadDepth   = 16
+	PayloadMembers = 4096
+)
 
 // Why a token's claims are refused.
 var (
@@ -110,19 +117,16 @@ type claims struct {
 	issuedAt  *time.Time
 }
 
-// parseClaims reads members by their exact names, since encoding/json would match a struct field case-insensitively
-// and take "ISS" for the issuer.
+// parseClaims reads members by their exact names, and refuses a claim named twice (RFC 7519 section 4), through
+// UnmarshalObject.
 func parseClaims(payload []byte) (*claims, error) {
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &members); err != nil {
+	var members map[string]jsontext.Value
+	if err := UnmarshalObject(payload, PayloadDepth, PayloadMembers, &members); err != nil {
 		return nil, fmt.Errorf("token claims: %w", err)
 	}
-	if members == nil {
-		return nil, errors.New("token claims: not an object")
-	}
+	var err error
 
 	var c claims
-	var err error
 	if raw, ok := members["iss"]; ok {
 		issuer, err := stringClaim(raw)
 		if err != nil {
@@ -159,7 +163,7 @@ func parseClaims(payload []byte) (*claims, error) {
 	return &c, nil
 }
 
-func stringClaim(raw json.RawMessage) (string, error) {
+func stringClaim(raw jsontext.Value) (string, error) {
 	var value *string
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return "", err
@@ -171,7 +175,7 @@ func stringClaim(raw json.RawMessage) (string, error) {
 }
 
 // audienceClaim reads the single string or array of strings RFC 7519 section 4.1.3 allows.
-func audienceClaim(raw json.RawMessage) ([]string, error) {
+func audienceClaim(raw jsontext.Value) ([]string, error) {
 	if single, err := stringClaim(raw); err == nil {
 		return []string{single}, nil
 	}
@@ -194,7 +198,7 @@ func audienceClaim(raw json.RawMessage) ([]string, error) {
 
 // numericDateClaim keeps a fractional second, as RFC 7519 section 2 allows one, so that the comparisons do not move
 // an expiry or a start by rounding.
-func numericDateClaim(raw json.RawMessage) (time.Time, error) {
+func numericDateClaim(raw jsontext.Value) (time.Time, error) {
 	var seconds *float64
 	if err := json.Unmarshal(raw, &seconds); err != nil {
 		return time.Time{}, err

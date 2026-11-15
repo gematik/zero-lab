@@ -23,7 +23,6 @@ package openid
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -118,6 +117,9 @@ func (c *client) AuthenticationURL(_ context.Context, login Login) (string, erro
 }
 
 func (c *client) Exchange(ctx context.Context, login Login, code string) (*TokenResponse, error) {
+	if err := CheckAuthorizationCode(code); err != nil {
+		return nil, err
+	}
 	form := url.Values{}
 	form.Set("client_id", c.cfg.ClientID)
 	form.Set("client_secret", c.cfg.ClientSecret.Value())
@@ -130,10 +132,13 @@ func (c *client) Exchange(ctx context.Context, login Login, code string) (*Token
 	if err != nil {
 		return nil, fmt.Errorf("unable to exchange code for token: %w", err)
 	}
+	if err := response.CheckJSON(); err != nil {
+		return nil, fmt.Errorf("token response status %d: %w", response.Status, err)
+	}
 	if response.Status != http.StatusOK {
-		oidcErr := new(Error)
-		if err := json.Unmarshal(response.Body, oidcErr); err != nil {
-			return nil, fmt.Errorf("unable to decode error: %w", err)
+		oidcErr, err := ParseErrorResponse(response.Body)
+		if err != nil {
+			return nil, fmt.Errorf("token response status %d: %w", response.Status, err)
 		}
 		return nil, oidcErr
 	}

@@ -311,7 +311,12 @@ func newLoginStub(t *testing.T) *loginStub {
 	t.Helper()
 	stub := &loginStub{encKey: newTestKey(t), sigKey: newTestKey(t)}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken, "scope": stub.scope})
+		response := map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken}
+		if stub.scope != "" {
+			response["scope"] = stub.scope
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(response)
 	}))
 	t.Cleanup(server.Close)
 	stub.client = &RelyingPartyClient{

@@ -152,3 +152,14 @@ func TestOIDCCore_3_1_3_7_IDTokenChecksBindTheTokenToTheLogin(t *testing.T) {
 		}
 	}
 }
+
+// RFC 7519 section 4: "The Claim Names within a JWT Claims Set MUST be unique; JWT parsers MUST either reject JWTs
+// with duplicate Claim Names or use a JSON parser that returns only the lexically last duplicate member name".
+// encoding/json would keep the last; another reader of the same token the first, so it is refused.
+func TestRFC7519_4_AClaimNamedTwiceIsRefused(t *testing.T) {
+	payload := []byte(`{"iss":"https://op","aud":"c","nonce":"n","exp":4102444800,"iss":"https://evil"}`)
+	checks := IDTokenChecks{Issuer: "https://evil", ClientID: "c", Nonce: "n", Now: time.Unix(0, 0)}
+	if err := checks.Validate(payload); !errors.Is(err, ErrJSON) {
+		t.Errorf("%v", err)
+	}
+}

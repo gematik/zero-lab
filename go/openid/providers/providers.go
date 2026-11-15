@@ -156,7 +156,7 @@ func OIDC(decode Decode, env Env) (Built, error) {
 			name = "OpenID Connect"
 		}
 		built.Providers = append(built.Providers, Provider{
-			Info:   Info{Issuer: client.Issuer(), Name: name, LogoURI: config.LogoURI, Type: TypeOIDC},
+			Issuer: client.Issuer(), Name: name, LogoURI: config.LogoURI, Type: TypeOIDC,
 			Client: client,
 		})
 		slog.Info("configured openid provider", "type", TypeOIDC, "name", name, "issuer", client.Issuer())

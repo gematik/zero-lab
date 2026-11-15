@@ -23,11 +23,15 @@ package openid
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -71,8 +75,28 @@ func AuthorizationQuery(clientID, redirectURI string, scopes []string, login Log
 
 // Response is a provider's answer, read whole and within [maxResponseBytes].
 type Response struct {
-	Status int
-	Body   []byte
+	Status      int
+	ContentType string
+	Body        []byte
+}
+
+// ErrResponseContentType is a response whose body is not declared as JSON.
+var ErrResponseContentType = errors.New("response is not declared as JSON")
+
+// CheckJSON refuses a response whose Content-Type is not application/json, alone or with charset=utf-8 (RFC 8259
+// section 8.1 has JSON in UTF-8), before its body is parsed (servers.md rule 28).
+func (r *Response) CheckJSON() error {
+	mediaType, params, err := mime.ParseMediaType(r.ContentType)
+	// mime takes a parameter repeated with the same value; one parameter is all there may be.
+	if err != nil || mediaType != "application/json" || strings.Count(r.ContentType, ";") > 1 {
+		return ErrResponseContentType
+	}
+	for name, value := range params {
+		if name != "charset" || !strings.EqualFold(value, "utf-8") {
+			return ErrResponseContentType
+		}
+	}
+	return nil
 }
 
 // PostForm posts a form to a provider's endpoint.
@@ -93,24 +117,122 @@ func PostForm(ctx context.Context, client *http.Client, endpoint string, form ur
 		return nil, err
 	}
 	if len(body) > maxResponseBytes {
-		return nil, fmt.Errorf("%s: response larger than %d bytes", endpoint, maxResponseBytes)
+		return nil, fmt.Errorf("response larger than %d bytes", maxResponseBytes)
 	}
-	return &Response{Status: response.StatusCode, Body: body}, nil
+	return &Response{Status: response.StatusCode, ContentType: response.Header.Get("Content-Type"), Body: body}, nil
 }
 
-// ParseTokenResponse decodes a token response. Entra ID writes expires_in as a string, which is tolerated.
+// ParseTokenResponse reads a token response (RFC 6749 section 5.1) by its exact member names and ignores members it
+// does not know, as section 5.1 asks. Before anything is used:
+//   - token_type is Bearer or DPoP, compared without case (section 7.1);
+//   - access_token and refresh_token, when present, are VSCHAR within maxBearerBytes (Appendix A.12, A.17);
+//   - id_token, when present, is at most [MaxIDTokenBytes] in compact form: three or five dot-separated base64url
+//     parts, a JWS or a JWE (RFC 7515 section 7.1, RFC 7516 section 7.1), before any JOSE parser sees it;
+//   - scope is space-separated NQCHAR tokens (section 3.3);
+//   - expires_in is a non-negative integer. Entra ID writes it as a string of digits, which is tolerated.
 func ParseTokenResponse(body []byte) (*TokenResponse, error) {
-	response := new(TokenResponse)
-	if err := json.Unmarshal(body, response); err == nil {
-		return response, nil
+	var wire struct {
+		TokenType    jsontext.Value `json:"token_type"`
+		AccessToken  jsontext.Value `json:"access_token"`
+		RefreshToken jsontext.Value `json:"refresh_token"`
+		IDToken      jsontext.Value `json:"id_token"`
+		Scope        jsontext.Value `json:"scope"`
+		ExpiresIn    jsontext.Value `json:"expires_in"`
 	}
-	var fallback struct {
-		TokenResponse
-		ExpiresIn int `json:"expires_in,string"`
+	if err := UnmarshalObject(body, ResponseDepth, ResponseMembers, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrTokenResponse, err)
 	}
-	if err := json.Unmarshal(body, &fallback); err != nil {
-		return nil, fmt.Errorf("decode token response: %w", err)
+	refuse := func(reason string) (*TokenResponse, error) {
+		return nil, fmt.Errorf("%w: %s", ErrTokenResponse, reason)
 	}
-	fallback.TokenResponse.ExpiresIn = fallback.ExpiresIn
-	return &fallback.TokenResponse, nil
+	var response TokenResponse
+	var ok bool
+	if response.TokenType, ok = stringValue(wire.TokenType); !ok ||
+		!strings.EqualFold(response.TokenType, "Bearer") && !strings.EqualFold(response.TokenType, "DPoP") {
+		return refuse("token_type is neither Bearer nor DPoP")
+	}
+	for _, member := range []struct {
+		name   string
+		raw    jsontext.Value
+		target *string
+	}{{"access_token", wire.AccessToken, &response.AccessToken}, {"refresh_token", wire.RefreshToken, &response.RefreshToken}} {
+		value, ok := stringValue(member.raw)
+		if !ok || isPresent(member.raw) && (value == "" || len(value) > maxBearerBytes || !isVSChars(value)) {
+			return refuse(member.name + " is not VSCHAR within bounds")
+		}
+		*member.target = value
+	}
+	if response.IDTokenRaw, ok = stringValue(wire.IDToken); !ok || isPresent(wire.IDToken) && !isCompactJOSE(response.IDTokenRaw) {
+		return refuse(fmt.Sprintf("id_token is no compact JWS or JWE of at most %d bytes", MaxIDTokenBytes))
+	}
+	if response.Scope, ok = stringValue(wire.Scope); !ok || isPresent(wire.Scope) && !isScope(response.Scope) {
+		return refuse("scope is not space-separated NQCHAR")
+	}
+	var err error
+	if response.ExpiresIn, err = expiresIn(wire.ExpiresIn); err != nil {
+		return refuse("expires_in is no non-negative integer")
+	}
+	return &response, nil
+}
+
+// isPresent reports whether a member is there and not null.
+func isPresent(raw jsontext.Value) bool {
+	return len(raw) > 0 && raw.Kind() != 'n'
+}
+
+// isCompactJOSE reports whether token is within MaxIDTokenBytes and has the compact form of a JWS or a JWE. Only the
+// first part, the protected header, may not be empty: a JWE agreed by ECDH-ES directly has no encrypted key.
+func isCompactJOSE(token string) bool {
+	if len(token) > MaxIDTokenBytes {
+		return false
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 && len(parts) != 5 || parts[0] == "" {
+		return false
+	}
+	for _, part := range parts {
+		for _, c := range []byte(part) {
+			if !isBase64URL(c) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func isBase64URL(c byte) bool {
+	return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
+}
+
+// isScope reports whether scope is scope-tokens of NQCHAR separated by single spaces (RFC 6749 section 3.3).
+func isScope(scope string) bool {
+	if len(scope) > maxScopeBytes {
+		return false
+	}
+	for token := range strings.SplitSeq(scope, " ") {
+		if token == "" {
+			return false
+		}
+		for _, c := range []byte(token) {
+			if c != 0x21 && (c < 0x23 || c > 0x7e || c == 0x5c) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// expiresIn reads expires_in as a JSON integer or a string of decimal digits; absent or null is zero.
+func expiresIn(raw jsontext.Value) (int, error) {
+	if !isPresent(raw) {
+		return 0, nil
+	}
+	var digits string
+	if err := json.Unmarshal(raw, &digits); err != nil {
+		digits = string(raw)
+	}
+	if digits == "" || len(digits) > 10 || strings.Trim(digits, "0123456789") != "" {
+		return 0, errors.New("no non-negative integer")
+	}
+	return strconv.Atoi(digits)
 }

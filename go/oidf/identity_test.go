@@ -382,7 +382,7 @@ func TestRFC6749_5_1_TheIdentityCarriesTheScopesGranted(t *testing.T) {
 		stub := newLoginStub(t)
 		stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 		stub.scope = scope
-		if _, _, err := stub.client.ExchangeIdentity(t.Context(), nLogin(), "code"); !errors.Is(err, ErrIdentityClaim) {
+		if _, _, err := stub.client.ExchangeIdentity(t.Context(), nLogin(), "code"); !errors.Is(err, openid.ErrTokenResponse) {
 			t.Errorf("scope %q: %v", scope, err)
 		}
 	}

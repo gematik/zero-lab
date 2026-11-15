@@ -38,13 +38,11 @@ func (rp *RelyingParty) Provider(ctx context.Context, issuer string) (providers.
 	}
 	current := client.provider()
 	return providers.Provider{
-		Info: providers.Info{
-			Issuer:  client.Issuer(),
-			Name:    current.metadata.OrganizationName,
-			LogoURI: current.metadata.LogoURI,
-			Type:    TypeOIDF,
-		},
-		Client: client,
+		Issuer:  client.Issuer(),
+		Name:    current.metadata.OrganizationName,
+		LogoURI: current.metadata.LogoURI,
+		Type:    TypeOIDF,
+		Client:  client,
 	}, nil
 }
 

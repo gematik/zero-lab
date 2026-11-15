@@ -32,6 +32,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"strings"
 	"testing"
@@ -421,5 +422,26 @@ func TestRFC7518_3_3_ParseKeyRefusesRSAKeyBelow2048Bits(t *testing.T) {
 	}
 	if _, err := ParseKey(data); err == nil {
 		t.Error("accepted 2047 bits")
+	}
+}
+
+// go-jose would take the last of two alg or kid members (RFC 7515 section 5.2 permits it); servers.md rule 28 refuses
+// them before go-jose reads the header, so that no reader takes another key or algorithm than this one.
+func TestServerRule28_AProtectedHeaderNamingAMemberTwiceIsRefused(t *testing.T) {
+	key := newECKey(t, elliptic.P256())
+	keys := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: key.Public(), KeyID: "k"}}}
+	signed := signToken(t, jose.ES256, key, "k", testPayload)
+	_, payload, _ := strings.Cut(signed, ".")
+	for _, header := range []string{
+		`{"alg":"ES256","kid":"k","alg":"none"}`, `{"alg":"ES256","kid":"other","kid":"k"}`, `{"alg":"ES256","\u006bid":"k","kid":"k"}`,
+		`{"alg":"ES256","kid":"k","x":` + strings.Repeat("[", 8) + strings.Repeat("]", 8) + `}`, "{\"alg\":\"ES256\",\"kid\":\"\xff\"}",
+	} {
+		token := base64.RawURLEncoding.EncodeToString([]byte(header)) + "." + payload
+		if _, err := VerifyJWS([]byte(token), keys, VerifyOptions{}); !errors.Is(err, ErrProtectedHeader) {
+			t.Errorf("%s: %v", header, err)
+		}
+	}
+	if _, err := VerifyJWS([]byte(signed), keys, VerifyOptions{}); err != nil {
+		t.Errorf("the token as signed: %v", err)
 	}
 }

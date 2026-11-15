@@ -87,6 +87,7 @@ func newOPStub(t *testing.T) *opStub {
 		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{publicKey}})
 	})
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken})
 	})
 	stub.Server = httptest.NewTLSServer(mux)
@@ -326,6 +327,7 @@ func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 	})
 	refuse := false
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		if refuse {
 			w.WriteHeader(http.StatusBadRequest)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant", "error_description": "no such code: " + code})

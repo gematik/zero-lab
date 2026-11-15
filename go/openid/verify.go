@@ -26,10 +26,13 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"encoding/json"
+	"encoding/base64"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -100,8 +103,8 @@ func checkECKeyPair(key *ecdsa.PrivateKey) error {
 // may publish kinds of keys this package does not know beside the ones it signs with. An entry left out is never
 // trusted. A set whose entries are all unusable is an error; an empty one is not.
 func ParseKeySet(data []byte) (*jose.JSONWebKeySet, error) {
-	var members map[string]json.RawMessage
-	if err := json.Unmarshal(data, &members); err != nil {
+	var members map[string]jsontext.Value
+	if err := UnmarshalObject(data, PayloadDepth, PayloadMembers, &members); err != nil {
 		return nil, fmt.Errorf("JWK Set: %w", err)
 	}
 	rawKeys, isSet := members["keys"]
@@ -112,9 +115,9 @@ func ParseKeySet(data []byte) (*jose.JSONWebKeySet, error) {
 		}
 		return &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{*key}}, nil
 	}
-	var entries []json.RawMessage
+	var entries []jsontext.Value
 	if err := json.Unmarshal(rawKeys, &entries); err != nil {
-		return nil, fmt.Errorf("JWK Set: keys: %w", err)
+		return nil, errors.New("JWK Set: keys is no array")
 	}
 	if entries == nil {
 		return nil, errors.New("JWK Set: keys is null")
@@ -139,6 +142,35 @@ func ParseKeySet(data []byte) (*jose.JSONWebKeySet, error) {
 	return set, nil
 }
 
+// Bounds of a JOSE protected header, which names a handful of members; an epk is the deepest of them.
+const (
+	maxProtectedHeaderBytes   = 4096
+	maxProtectedHeaderDepth   = 4
+	maxProtectedHeaderMembers = 64
+)
+
+// ErrProtectedHeader is a JWS or JWE whose protected header is refused before a JOSE parser reads it.
+var ErrProtectedHeader = errors.New("protected header refused")
+
+// CheckProtectedHeader refuses a compact JWS or JWE whose protected header is not one bounded JSON object of
+// distinct member names. go-jose reads the header with encoding/json v1, which keeps the last of two members of
+// the same name, as RFC 7515 section 5.2 permits; servers.md rule 28 refuses them, so that no reader of the header
+// takes another alg or kid than this one.
+func CheckProtectedHeader(compact string) error {
+	header, _, _ := strings.Cut(compact, ".")
+	if len(header) > maxProtectedHeaderBytes {
+		return fmt.Errorf("%w: larger than %d bytes", ErrProtectedHeader, maxProtectedHeaderBytes)
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(header)
+	if err != nil {
+		return fmt.Errorf("%w: no base64url", ErrProtectedHeader)
+	}
+	if err := checkJSONObject(decoded, maxProtectedHeaderDepth, maxProtectedHeaderMembers); err != nil {
+		return fmt.Errorf("%w: %w", ErrProtectedHeader, err)
+	}
+	return nil
+}
+
 // VerifyOptions is what a verifier asks of the keys it uses, beyond fitting the token's algorithm.
 type VerifyOptions struct {
 	// RequireKeyAlgorithm refuses keys that do not state their alg. A trust anchor and an authorization server's own
@@ -160,9 +192,13 @@ func VerifyJWS(raw []byte, keys *jose.JSONWebKeySet, options VerifyOptions) ([]b
 }
 
 func verifyJWS(raw string, keysFor func(kid string) (*jose.JSONWebKeySet, error), options VerifyOptions) ([]byte, error) {
+	if err := CheckProtectedHeader(raw); err != nil {
+		return nil, err
+	}
 	parsed, err := jose.ParseSignedCompact(raw, verificationAlgorithms)
 	if err != nil {
-		return nil, err
+		// go-jose's message quotes the header's alg, which comes from outside.
+		return nil, errors.New("no compact JWS of an allowed algorithm")
 	}
 	header := parsed.Signatures[0].Protected
 	alg := jose.SignatureAlgorithm(header.Algorithm)
@@ -188,10 +224,10 @@ func candidateKeys(keys *jose.JSONWebKeySet, kid string, alg jose.SignatureAlgor
 	if kid != "" {
 		named := keys.Key(kid)
 		if len(named) == 0 {
-			return nil, fmt.Errorf("no key with kid %q", kid)
+			return nil, errors.New("no key with the token's kid")
 		}
 		if err := keyFits(&named[0], alg, options); err != nil {
-			return nil, fmt.Errorf("key %q: %w", kid, err)
+			return nil, fmt.Errorf("the key of the token's kid: %w", err)
 		}
 		return named[:1], nil
 	}

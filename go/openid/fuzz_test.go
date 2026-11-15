@@ -61,7 +61,11 @@ func FuzzVerifyJWS(f *testing.F) {
 	key := newECKey(f, elliptic.P256())
 	token := signToken(f, jose.ES256, key, "k", testPayload)
 	f.Add(token)
-	for _, seed := range []string{"", "a.b.c", "e30.e30.", "e30.e30.e30", "==", `{"payload":"e30"}`} {
+	for _, seed := range []string{
+		"", "a.b.c", "e30.e30.", "e30.e30.e30", "==", `{"payload":"e30"}`,
+		// {"alg":"ES256","kid":"k","kid":"x"} and {"alg":"none"}
+		"eyJhbGciOiJFUzI1NiIsImtpZCI6ImsiLCJraWQiOiJ4In0.e30.", "eyJhbGciOiJub25lIn0.e30.",
+	} {
 		f.Add(seed)
 	}
 	keys := setOf(jose.JSONWebKey{Key: key.Public(), KeyID: "k"})

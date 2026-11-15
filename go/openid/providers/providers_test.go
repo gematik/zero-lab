@@ -37,7 +37,7 @@ type fakeClient struct {
 func (f fakeClient) Issuer() string { return f.issuer }
 
 func fake(issuer, kind string) Provider {
-	return Provider{Info: Info{Issuer: issuer, Name: issuer, Type: kind}, Client: fakeClient{issuer: issuer}}
+	return Provider{Issuer: issuer, Name: issuer, Type: kind, Client: fakeClient{issuer: issuer}}
 }
 
 func fakeKind(issuer string) Kind {

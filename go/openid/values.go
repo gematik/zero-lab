@@ -23,11 +23,11 @@ package openid
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
-	"unicode/utf8"
 )
 
 // Bounds of the request values a login may carry. They travel in a URL or a PAR form, where providers cap the size,
@@ -57,69 +57,76 @@ var (
 // checkClaimsParameter takes a JSON object (OIDC Core 5.5) of valid UTF-8, within the bounds above and without a
 // member named twice in any object, since providers would resolve a duplicate each their own way. It walks the
 // tokens before anything is decoded and refuses rather than repairs.
-func checkClaimsParameter(claims json.RawMessage) error {
+func checkClaimsParameter(claims []byte) error {
 	if len(claims) > MaxClaimsBytes {
 		return fmt.Errorf("%w: larger than %d bytes", ErrClaimsParameter, MaxClaimsBytes)
 	}
-	if !utf8.Valid(claims) {
-		return fmt.Errorf("%w: not UTF-8", ErrClaimsParameter)
+	if err := checkJSONObject(claims, maxClaimsDepth, maxClaimsMembers); err != nil {
+		return fmt.Errorf("%w: %w", ErrClaimsParameter, err)
 	}
-	return walkClaims(json.NewDecoder(bytes.NewReader(claims)))
+	return nil
 }
 
-// claimsLevel is one open object or array of the walk.
-type claimsLevel struct {
-	object    bool
-	names     map[string]bool
-	expectKey bool
+// ErrJSON is a JSON text refused before it is decoded.
+var ErrJSON = errors.New("JSON refused")
+
+// UnmarshalObject decodes a JSON object from outside into target with encoding/json/v2, after CheckJSONObject let it
+// through. v2 refuses invalid UTF-8 and a member named twice, which v1 resolves silently by keeping the last, and
+// matches member names exactly, where v1 would fill an "iss" field from "ISS" (servers.md rule 28). Members target
+// does not name are ignored, as OAuth responses require (RFC 6749 section 5.1). The error names neither a member nor
+// a value: the decoder's own messages quote both.
+func UnmarshalObject(data []byte, depth, members int, target any) error {
+	if err := CheckJSONObject(data, depth, members); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		return fmt.Errorf("%w: a member is not of its type", ErrJSON)
+	}
+	return nil
 }
 
-func walkClaims(decoder *json.Decoder) error {
-	var open []*claimsLevel
+// CheckJSONObject takes one JSON object, nested at most depth deep, with at most members members in all its objects
+// together, of valid UTF-8 and without a member named twice in any object (servers.md rule 28). It reads the tokens
+// before anything is decoded, so the bounds hold before anything grows with the input.
+func CheckJSONObject(data []byte, depth, members int) error {
+	if err := checkJSONObject(data, depth, members); err != nil {
+		return fmt.Errorf("%w: %w", ErrJSON, err)
+	}
+	return nil
+}
+
+// checkJSONObject walks the tokens with jsontext, whose decoder refuses invalid UTF-8 and duplicate names by
+// default. Its errors quote the input, so they are replaced by a reason.
+func checkJSONObject(data []byte, maxDepth, maxMembers int) error {
+	decoder := jsontext.NewDecoder(bytes.NewReader(data))
+	if decoder.PeekKind() != '{' {
+		return errors.New("not a JSON object")
+	}
 	members := 0
-	for started := false; ; started = true {
-		token, err := decoder.Token()
-		if errors.Is(err, io.EOF) && started && len(open) == 0 {
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("%w: not JSON", ErrClaimsParameter)
-		}
-		if !started && token != json.Delim('{') {
-			return fmt.Errorf("%w: not a JSON object", ErrClaimsParameter)
-		}
-		if started && len(open) == 0 {
-			return fmt.Errorf("%w: data after the object", ErrClaimsParameter)
-		}
-		if len(open) > 0 && open[len(open)-1].expectKey && token != json.Delim('}') {
-			level := open[len(open)-1]
-			name, _ := token.(string)
-			if level.names[name] {
-				return fmt.Errorf("%w: a member named twice", ErrClaimsParameter)
+	for {
+		// Inside an object, a name comes at every even position.
+		if kind, length := decoder.StackIndex(decoder.StackDepth()); kind == '{' && length%2 == 0 && decoder.PeekKind() != '}' {
+			if members++; members > maxMembers {
+				return fmt.Errorf("more than %d members", maxMembers)
 			}
-			level.names[name] = true
-			level.expectKey = false
-			if members++; members > maxClaimsMembers {
-				return fmt.Errorf("%w: more than %d members", ErrClaimsParameter, maxClaimsMembers)
-			}
-			continue
 		}
-		switch token {
-		case json.Delim('{'), json.Delim('['):
-			if len(open) == maxClaimsDepth {
-				return fmt.Errorf("%w: nested deeper than %d", ErrClaimsParameter, maxClaimsDepth)
+		if _, err := decoder.ReadToken(); err != nil {
+			if errors.Is(err, jsontext.ErrDuplicateName) {
+				return errors.New("a member named twice")
 			}
-			object := token == json.Delim('{')
-			open = append(open, &claimsLevel{object: object, names: map[string]bool{}, expectKey: object})
-			continue
-		case json.Delim('}'), json.Delim(']'):
-			open = open[:len(open)-1]
+			return errors.New("not JSON")
 		}
-		// A value ended: an object around it expects its next member's name.
-		if len(open) > 0 && open[len(open)-1].object {
-			open[len(open)-1].expectKey = true
+		if decoder.StackDepth() > maxDepth {
+			return fmt.Errorf("nested deeper than %d", maxDepth)
+		}
+		if decoder.StackDepth() == 0 {
+			break
 		}
 	}
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
+		return errors.New("data after the object")
+	}
+	return nil
 }
 
 // checkTokens holds each value to RFC 6749's scope-token = 1*NQCHAR, which space-separated acr_values share: a
@@ -148,4 +155,96 @@ func checkTokens(refused error, values []string, most int, unique bool) error {
 		}
 	}
 	return nil
+}
+
+// Bounds of the values a login exchanges with a provider beyond its request.
+const (
+	// maxAuthorizationCodeBytes bounds the code a callback hands over; providers issue far shorter ones.
+	maxAuthorizationCodeBytes = 2048
+	// maxErrorCodeBytes and maxErrorDescriptionBytes bound the text of an error response (RFC 6749 section 5.2).
+	maxErrorCodeBytes        = 64
+	maxErrorDescriptionBytes = 256
+	// MaxIDTokenBytes bounds the ID token of a token response, signed or signed and encrypted.
+	MaxIDTokenBytes = 16 << 10
+	// maxBearerBytes bounds an access or refresh token; a provider's own token format decides their length.
+	maxBearerBytes = 32 << 10
+	// maxScopeBytes bounds the scope of a token response.
+	maxScopeBytes = 1024
+	// ResponseDepth and ResponseMembers bound the JSON of a provider's response, which holds a handful of flat members.
+	ResponseDepth   = 8
+	ResponseMembers = 256
+)
+
+// The values of a login's exchange refused. Each error names the field, never the value.
+var (
+	ErrAuthorizationCode = errors.New("authorization code refused")
+	ErrErrorResponse     = errors.New("error response refused")
+	ErrTokenResponse     = errors.New("token response refused")
+)
+
+// CheckAuthorizationCode takes the code of a callback as RFC 6749 Appendix A.11 has it, 1*VSCHAR (%x20-7E), within
+// maxAuthorizationCodeBytes. CR, LF and NUL lie outside VSCHAR, so the code cannot split the form it is posted in.
+func CheckAuthorizationCode(code string) error {
+	if code == "" || len(code) > maxAuthorizationCodeBytes {
+		return fmt.Errorf("%w: not 1 to %d characters", ErrAuthorizationCode, maxAuthorizationCodeBytes)
+	}
+	if !isVSChars(code) {
+		return fmt.Errorf("%w: a character outside VSCHAR", ErrAuthorizationCode)
+	}
+	return nil
+}
+
+func isVSChars(value string) bool {
+	for _, c := range []byte(value) {
+		if c < 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// IsErrorText reports whether value is 1 to most characters of NQSCHAR (%x20-21 / %x23-5B / %x5D-7E), the grammar
+// RFC 6749 Appendix A.7 and A.8 give error and error_description: printable ASCII without '"' and '\'.
+func IsErrorText(value string, most int) bool {
+	if value == "" || len(value) > most {
+		return false
+	}
+	for _, c := range []byte(value) {
+		if c < 0x20 || c > 0x7e || c == '"' || c == '\\' {
+			return false
+		}
+	}
+	return true
+}
+
+// ParseErrorResponse reads an OAuth error response (RFC 6749 section 5.2). Its error has to be NQSCHAR of at most
+// maxErrorCodeBytes, or the whole response is refused. An error_description outside its grammar or longer than
+// maxErrorDescriptionBytes is dropped rather than refusing the response: the request failed either way, and the code
+// still says why. error_uri is never read, since a host could otherwise be made to link to wherever a provider says.
+func ParseErrorResponse(body []byte) (*Error, error) {
+	var wire struct {
+		Code        jsontext.Value `json:"error"`
+		Description jsontext.Value `json:"error_description"`
+	}
+	if err := UnmarshalObject(body, ResponseDepth, ResponseMembers, &wire); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrErrorResponse, err)
+	}
+	code, ok := stringValue(wire.Code)
+	if !ok || !IsErrorText(code, maxErrorCodeBytes) {
+		return nil, fmt.Errorf("%w: error is not 1 to %d characters of NQSCHAR", ErrErrorResponse, maxErrorCodeBytes)
+	}
+	description, ok := stringValue(wire.Description)
+	if !ok || !IsErrorText(description, maxErrorDescriptionBytes) {
+		description = ""
+	}
+	return &Error{Code: code, Description: description}, nil
+}
+
+// stringValue reads a member that has to be a string when present; absent or null is "".
+func stringValue(raw jsontext.Value) (string, bool) {
+	var value string
+	if len(raw) == 0 {
+		return "", true
+	}
+	return value, json.Unmarshal(raw, &value) == nil
 }
