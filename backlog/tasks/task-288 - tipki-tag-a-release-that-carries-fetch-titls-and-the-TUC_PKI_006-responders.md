@@ -1,9 +1,10 @@
 ---
 id: TASK-288
 title: 'tipki: tag a release that carries fetch, titls and the TUC_PKI_006 responders'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T19:44:00Z'
+updated_date: '2026-11-15T15:39:00Z'
 labels:
   - tipki
   - go
@@ -23,6 +24,12 @@ The latest tag go/tipki/v0.31.1 predates tipki/fetch, tipki/titls and the OCSP r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A tag go/tipki/vX.Y.Z exists at or after 21aea833 and go list -m -versions shows it
-- [ ] #2 The gated suites the tipki release needs have run and are recorded
+- [x] #1 A tag go/tipki/vX.Y.Z exists at or after 21aea833 and go list -m -versions shows it
+- [x] #2 The gated suites the tipki release needs have run and are recorded
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/tipki/v0.32.0 tagged 2026-11-15 at d94287c2 (after 21aea833): fetch, titls, TUC_PKI_006 responders, json/v2. Gated: idpd SMC-B, IDP certificates and trust download passed on 38962403.
+<!-- SECTION:FINAL_SUMMARY:END -->
