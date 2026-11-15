@@ -841,15 +841,16 @@ func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyCon
 	t.Cleanup(func() { _ = os.Remove(certPath) })
 	master := &Jwk{Key: &keySetOf(stub.masterKey, "master").Keys[0]}
 	return &RelyingPartyConfig{
-		Subject:      "https://rp.example",
-		FedMasterURL: stub.URL,
-		FedMasterJWK: master,
-		SignKey:      KeyConfig{KeyPEMPath: keyPath("sign.pem")},
-		EncKey:       KeyConfig{KeyPEMPath: keyPath("enc.pem")},
-		ClientKey:    KeyConfig{KeyPEMPath: clientKey, CertPEMPath: certPath},
-		RelyingParty: testRelyingPartyMetadata(),
-		HTTPClient:   stub.Client(),
-		Documents:    NewMemoryDocuments(16, nil),
+		Subject:          "https://rp.example",
+		FedMasterURL:     stub.URL,
+		FedMasterJWK:     master,
+		SignKey:          KeyConfig{KeyPEMPath: keyPath("sign.pem")},
+		EncKey:           KeyConfig{KeyPEMPath: keyPath("enc.pem")},
+		ClientKey:        KeyConfig{KeyPEMPath: clientKey, CertPEMPath: certPath},
+		RelyingParty:     testRelyingPartyMetadata(),
+		FederationEntity: testFederationEntity(),
+		HTTPClient:       stub.Client(),
+		Documents:        NewMemoryDocuments(16, nil),
 	}
 }
 
@@ -925,5 +926,40 @@ func TestRFC7517_4_4_AnIDTokenIsVerifiedWithAKeyWithoutAlg(t *testing.T) {
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: testVerifier}, "code"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// OpenID Federation 1.1 section 5.2.1 types a signed JWKS jwk-set+jwt; what an IDP publishes is trusted for its
+// signature along the chain, so a missing or other typ does not keep its keys from being read.
+func TestOIDF_5_2_1_AnIDPsSignedJwksIsReadWhateverItsTyp(t *testing.T) {
+	for _, typ := range []string{"jwk-set+jwt", "jwk-set+json", "JWT", ""} {
+		stub := newFederationStub(t)
+		options := &jose.SignerOptions{}
+		if typ != "" {
+			options = options.WithType(jose.ContentType(typ))
+		}
+		signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: jose.JSONWebKey{Key: stub.opKey, KeyID: "op"}}, options)
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, err := json.Marshal(map[string]any{"exp": time.Now().Add(time.Hour).Unix(), "keys": keySetOf(stub.jwksKey, "idtoken").Keys})
+		if err != nil {
+			t.Fatal(err)
+		}
+		object, err := signer.Sign(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if stub.signedJwks, err = object.CompactSerialize(); err != nil {
+			t.Fatal(err)
+		}
+		federation := stub.federation(t)
+		op, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if keys, err := federation.FetchSignedJwks(t.Context(), op); err != nil || len(keys.Key("idtoken")) != 1 {
+			t.Errorf("typ %q: %v", typ, err)
+		}
 	}
 }

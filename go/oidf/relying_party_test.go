@@ -80,14 +80,15 @@ func TestNewRelyingParty(t *testing.T) {
 	}
 
 	cfg := &RelyingPartyConfig{
-		Subject:      "https://example.com",
-		FedMasterURL: fedMasterURL,
-		FedMasterJWK: fedMasterJwk,
-		SignKey:      KeyConfig{KeyPEMPath: signKeyPath},
-		EncKey:       KeyConfig{KeyPEMPath: encKeyPath},
-		ClientKey:    KeyConfig{KeyPEMPath: clientKeyPath, CertPEMPath: clientCertPath},
-		RelyingParty: testRelyingPartyMetadata(),
-		Documents:    NewMemoryDocuments(16, nil),
+		Subject:          "https://example.com",
+		FedMasterURL:     fedMasterURL,
+		FedMasterJWK:     fedMasterJwk,
+		SignKey:          KeyConfig{KeyPEMPath: signKeyPath},
+		EncKey:           KeyConfig{KeyPEMPath: encKeyPath},
+		ClientKey:        KeyConfig{KeyPEMPath: clientKeyPath, CertPEMPath: clientCertPath},
+		RelyingParty:     testRelyingPartyMetadata(),
+		FederationEntity: testFederationEntity(),
+		Documents:        NewMemoryDocuments(16, nil),
 	}
 
 	es, err := NewRelyingParty(t.Context(), cfg, "")

@@ -334,3 +334,25 @@ func FuzzParseEntityStatement(f *testing.F) {
 		}
 	})
 }
+
+// FEDM_FD_REG_003 and FEDM_FD_REG_004 read metadata.federation_entity: it is always written, and one that names
+// neither name nor organization_name is refused.
+func TestFEDM_FD_REG_004_AFederationEntityWithoutANameIsRefused(t *testing.T) {
+	rp := literalRelyingParty(t, newTestKey(t))
+	if name := member(signedClaims(t, rp), "metadata", "federation_entity", "name"); name != "rp" {
+		t.Errorf("federation_entity.name = %v", name)
+	}
+	rp.entityStatement.Metadata.FederationEntity = &FederationEntityMetadata{OrganizationName: "Example"}
+	if _, err := rp.SignEntityStatement(); err != nil {
+		t.Errorf("organization_name only: %v", err)
+	}
+	for name, entity := range map[string]*FederationEntityMetadata{
+		"empty":   {},
+		"missing": nil,
+	} {
+		rp.entityStatement.Metadata.FederationEntity = entity
+		if _, err := rp.SignEntityStatement(); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), "federation_entity") {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

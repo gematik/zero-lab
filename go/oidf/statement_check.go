@@ -70,6 +70,11 @@ func (rp *RelyingParty) checkStatement(es *EntityStatement) error {
 	if es.Metadata == nil || es.Metadata.OpenidRelyingParty == nil {
 		return fmt.Errorf("%w: no openid_relying_party metadata", ErrEntityStatement)
 	}
+	// gematik's Fachdienst registration tests (FEDM_FD_REG_003, FEDM_FD_REG_004) read metadata.federation_entity, and
+	// an empty one would name nobody.
+	if entity := es.Metadata.FederationEntity; entity == nil || entity.Name == "" && entity.OrganizationName == "" {
+		return fmt.Errorf("%w: federation_entity names neither name nor organization_name", ErrEntityStatement)
+	}
 	return checkRelyingPartyMetadata(es.Metadata.OpenidRelyingParty)
 }
 

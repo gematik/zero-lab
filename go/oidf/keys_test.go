@@ -390,7 +390,7 @@ func TestServeSignedJwksVerifiesAndKeepsItsShape(t *testing.T) {
 	if err := json.Unmarshal(rawHeader, &header); err != nil {
 		t.Fatal(err)
 	}
-	if header.Alg != "ES256" || header.Kid != "sign-kid" || header.Typ != "jwk-set+json" {
+	if header.Alg != "ES256" || header.Kid != "sign-kid" || header.Typ != "jwk-set+jwt" {
 		t.Errorf("header = %+v", header)
 	}
 	var claims struct {

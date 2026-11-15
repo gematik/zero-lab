@@ -513,7 +513,8 @@ func (rp *RelyingParty) signJwks(now time.Time) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return rp.signPayload("jwk-set+json", payload)
+	// OpenID Federation 1.1 section 5.2.1, signed_jwks_uri: an explicitly typed JWT, typ jwk-set+jwt.
+	return rp.signPayload("jwk-set+jwt", payload)
 }
 
 // signPayload signs the payload as a compact JWT with the signing key, under its kid and the given typ. The key signs

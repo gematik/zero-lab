@@ -43,10 +43,18 @@ func testRelyingPartyMetadata() RelyingPartyMetadata {
 	}
 }
 
+// testFederationEntity is the federation_entity metadata of a registered relying party.
+func testFederationEntity() FederationEntity {
+	return FederationEntity{Name: "rp", OrganizationName: "Example"}
+}
+
 // literalRelyingParty is a relying party that signs with signer and needs no federation, for tests of signing alone.
 func literalRelyingParty(tb testing.TB, signer crypto.Signer) *RelyingParty {
 	tb.Helper()
-	cfg := &RelyingPartyConfig{Subject: "https://rp.example", FedMasterURL: "https://fedmaster.example", RelyingParty: testRelyingPartyMetadata()}
+	cfg := &RelyingPartyConfig{
+		Subject: "https://rp.example", FedMasterURL: "https://fedmaster.example",
+		RelyingParty: testRelyingPartyMetadata(), FederationEntity: testFederationEntity(),
+	}
 	relyingPartyKeys := keySetOf(newTestKey(tb), "enc-kid")
 	metadata := cfg.buildMetadata()
 	metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
