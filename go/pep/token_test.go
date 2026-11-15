@@ -27,7 +27,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"math"
 	"os"
 	"strconv"
@@ -88,6 +89,7 @@ var refusedSinceMigration = map[string]string{
 	"exp_string":           "RFC 7519 Section 2: a NumericDate is a number",
 	"iss_null":             "RFC 7519 Section 4.1.1: iss is a string",
 	"private_key_in_set":   "a key set is public material; a private key there is a mistake to surface",
+	"exp_twice_last_valid": "server rule 28: a claim named twice is refused, not read as its last occurrence",
 }
 
 func TestLegacyVerdicts_NothingRefusedBeforeIsAcceptedNow(t *testing.T) {
@@ -162,13 +164,13 @@ func TestLegacyVerdicts_SessionCookieOpensOnlyWhatWasEverMinted(t *testing.T) {
 }
 
 type legacyIssued struct {
-	JWKS        json.RawMessage `json:"jwks"`
-	AccessToken string          `json:"access_token"`
-	JKT         string          `json:"jkt"`
-	SnapshotKey string          `json:"snapshot_key_b64"`
-	Snapshot    string          `json:"snapshot"`
-	SID         string          `json:"sid"`
-	Identity    map[string]any  `json:"identity"`
+	JWKS        jsontext.Value `json:"jwks"`
+	AccessToken string         `json:"access_token"`
+	JKT         string         `json:"jkt"`
+	SnapshotKey string         `json:"snapshot_key_b64"`
+	Snapshot    string         `json:"snapshot"`
+	SID         string         `json:"sid"`
+	Identity    map[string]any `json:"identity"`
 }
 
 func TestLegacySessionCookieFromOldMintStillOpens(t *testing.T) {
@@ -185,8 +187,8 @@ func TestLegacySessionCookieFromOldMintStillOpens(t *testing.T) {
 	if sid != fixture.SID {
 		t.Fatalf("sid = %q", sid)
 	}
-	got, _ := json.Marshal(identity)
-	want, _ := json.Marshal(fixture.Identity)
+	got, _ := json.Marshal(identity, json.Deterministic(true))
+	want, _ := json.Marshal(fixture.Identity, json.Deterministic(true))
 	if !bytes.Equal(got, want) {
 		t.Fatalf("identity = %s, want %s", got, want)
 	}
@@ -347,6 +349,9 @@ func FuzzValidateClaims(f *testing.F) {
 	f.Add([]byte(`{"exp":1,"nbf":"x","aud":["a",null]}`))
 	f.Add([]byte(`{"exp":1e400}`))
 	f.Add([]byte(strconv.FormatFloat(math.MaxFloat64, 'g', -1, 64)))
+	f.Add([]byte(`{"exp":1,"exp":9999999999}`))
+	f.Add([]byte(`{"AUD":"r","EXP":1}`))
+	f.Add([]byte("{\"sub\":\"\xff\"}"))
 	f.Fuzz(func(_ *testing.T, payload []byte) {
 		_ = validateClaims(payload, time.Now(), time.Minute, "r")
 	})
@@ -355,6 +360,9 @@ func FuzzValidateClaims(f *testing.F) {
 func FuzzParseJWKSet(f *testing.F) {
 	f.Add([]byte(`{"keys":[{"kty":"EC"}]}`))
 	f.Add([]byte(`{"kty":"oct","k":"AA"}`))
+	f.Add([]byte(`{"keys":[],"keys":[{"kty":"EC"}]}`))
+	f.Add([]byte(`{"KEYS":[{"kty":"EC"}]}`))
+	f.Add([]byte("{\"keys\":[{\"kid\":\"\xff\"}]}"))
 	f.Fuzz(func(_ *testing.T, data []byte) {
 		_, _ = ParseJWKSet(data)
 	})

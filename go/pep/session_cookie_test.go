@@ -24,7 +24,7 @@ package pep
 import (
 	"bytes"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +43,11 @@ func mintTestCookie(t *testing.T, key []byte, identity map[string]any, exp int64
 	if err != nil {
 		t.Fatal(err)
 	}
+	return sealTestPayload(t, key, payload)
+}
+
+func sealTestPayload(t *testing.T, key, payload []byte) string {
+	t.Helper()
 	encrypter, err := jose.NewEncrypter(jose.A256GCM, jose.Recipient{Algorithm: jose.DIRECT, Key: key}, nil)
 	if err != nil {
 		t.Fatal(err)

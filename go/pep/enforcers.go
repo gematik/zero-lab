@@ -22,7 +22,7 @@
 package pep
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -67,8 +67,8 @@ type EnforcerHolder struct {
 	Enforcer
 }
 
-// UnmarshalJSON decodes the enforcer named by "type" and fails on an unknown type, so a misspelled
-// policy cannot load; EnforcerTypeCustom has no JSON form and is unknown here.
+// UnmarshalJSON decodes the enforcer named by "type" and fails on an unknown type or a member the enforcer does
+// not name, so a misspelled policy cannot load; EnforcerTypeCustom has no JSON form and is unknown here.
 func (h *EnforcerHolder) UnmarshalJSON(data []byte) error {
 	r := struct {
 		Type EnforcerType `json:"type"`
@@ -94,7 +94,7 @@ func (h *EnforcerHolder) UnmarshalJSON(data []byte) error {
 	default:
 		return fmt.Errorf("unknown enforcer type: %s", r.Type)
 	}
-	return json.Unmarshal(data, h.Enforcer)
+	return json.Unmarshal(data, h.Enforcer, json.RejectUnknownMembers(true))
 }
 
 // MarshalJSON writes the held enforcer's own JSON form.

@@ -23,7 +23,7 @@ package pep_test
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"log/slog"
 	"net/http"
@@ -539,7 +539,7 @@ func assertInvalidToken(t *testing.T, enforcer pep.Enforcer, request func(*testi
 		Code        string `json:"error"`
 		Description string `json:"error_description"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&denial); err != nil {
+	if err := json.UnmarshalRead(resp.Body, &denial); err != nil {
 		t.Fatal(err)
 	}
 	if denial.Code != "invalid_token" || denial.Description != "invalid access token" {

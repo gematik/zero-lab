@@ -24,7 +24,7 @@
 package pep
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -261,9 +261,19 @@ func (p *PEP) deny(ctx Context, err Error) {
 	}
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(err.HTTPStatus)
-	if encErr := json.NewEncoder(w).Encode(err); encErr != nil {
+	if encErr := writeJSONLine(w, err); encErr != nil {
 		slog.Warn("Could not write denial", "error", encErr)
 	}
+}
+
+// writeJSONLine writes v as JSON and a newline, so the denial body stays the one clients know.
+func writeJSONLine(w http.ResponseWriter, v any) error {
+	body, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(append(body, '\n'))
+	return err
 }
 
 // HandlerFunc continues a request an Enforcer let through.
