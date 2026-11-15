@@ -51,6 +51,8 @@ var (
 	ErrNonceMismatch    = errors.New("id_token nonce does not match the login")
 	ErrAudienceMismatch = errors.New("token audience does not match")
 	ErrMissingClaim     = errors.New("token lacks a required claim")
+	// ErrACRNotRequested is an ID token whose acr is missing or none of the values the login asked for.
+	ErrACRNotRequested = errors.New("id_token acr is not one asked for")
 )
 
 // IDTokenChecks are what an ID token has to satisfy once its signature verified (OpenID Connect Core 1.0 section
@@ -63,6 +65,10 @@ type IDTokenChecks struct {
 	Nonce string
 	Now   time.Time
 	Skew  time.Duration
+	// ACRValues, when set, are the acr values the login asked for; the token's acr has to be one of them, compared
+	// exactly. An OP may answer acr_values with another class (OIDC Core 3.1.2.1), and only the client knows
+	// whether the class it got is enough (OIDC Core 5.5.1.1), so this one takes nothing it did not ask for.
+	ACRValues []string
 }
 
 // Validate checks the payload of a verified ID token. An empty expected Issuer or ClientID matches nothing, so a
@@ -87,7 +93,25 @@ func (c IDTokenChecks) Validate(payload []byte) error {
 	if claims.expiry == nil {
 		return fmt.Errorf("%w: exp", ErrMissingClaim)
 	}
-	return claims.checkLifetime(c.Now, c.Skew)
+	if err := claims.checkLifetime(c.Now, c.Skew); err != nil {
+		return err
+	}
+	return claims.checkACR(c.ACRValues)
+}
+
+// checkACR takes an acr that is one of requested; with nothing requested it takes any.
+func (c *claims) checkACR(requested []string) error {
+	if len(requested) == 0 {
+		return nil
+	}
+	if c.acr == nil {
+		return fmt.Errorf("%w: no acr", ErrACRNotRequested)
+	}
+	acr, err := stringClaim(c.acr)
+	if err != nil || !slices.Contains(requested, acr) {
+		return ErrACRNotRequested
+	}
+	return nil
 }
 
 // ValidateLifetime checks the exp, nbf and iat of a payload, those it has, at the time now.
@@ -115,6 +139,8 @@ type claims struct {
 	expiry    *time.Time
 	notBefore *time.Time
 	issuedAt  *time.Time
+	// acr is read only when a check asks for it, so that a client that judges acr itself gets the token to judge.
+	acr jsontext.Value
 }
 
 // parseClaims reads members by their exact names, and refuses a claim named twice (RFC 7519 section 4), through
@@ -151,6 +177,7 @@ func parseClaims(payload []byte) (*claims, error) {
 			return nil, fmt.Errorf("token claim nonce: %w", err)
 		}
 	}
+	c.acr = members["acr"]
 	for name, target := range map[string]**time.Time{"exp": &c.expiry, "nbf": &c.notBefore, "iat": &c.issuedAt} {
 		if raw, ok := members[name]; ok {
 			date, err := numericDateClaim(raw)

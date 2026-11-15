@@ -59,7 +59,8 @@ type Login struct {
 	// Scopes replace the client's configured scopes, for this login, when set.
 	Scopes []string
 	// ACRValues are the authentication context classes asked for, in order of preference (OIDC Core 3.1.2.1).
-	// AuthorizationQuery sends them; whether the ID token's acr is judged against them depends on the client.
+	// AuthorizationQuery sends them. The plain OIDC client takes an ID token only with one of them as its acr; a
+	// federation client judges the acr by its own rules.
 	ACRValues []string
 	// Claims is the claims request parameter (OIDC Core 5.5), a JSON object of at most [MaxClaimsBytes].
 	Claims json.RawMessage

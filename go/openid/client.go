@@ -165,11 +165,12 @@ func (c *client) verifyIDToken(ctx context.Context, login Login, response *Token
 	payload, err := verifyJWS(response.IDTokenRaw, keysFor, VerifyOptions{})
 	if err == nil {
 		err = IDTokenChecks{
-			Issuer:   c.discoveryDocument.Issuer,
-			ClientID: c.cfg.ClientID,
-			Nonce:    login.Nonce,
-			Now:      c.now(),
-			Skew:     skew,
+			Issuer:    c.discoveryDocument.Issuer,
+			ClientID:  c.cfg.ClientID,
+			Nonce:     login.Nonce,
+			Now:       c.now(),
+			Skew:      skew,
+			ACRValues: login.ACRValues,
 		}.Validate(payload)
 	}
 	if err != nil {

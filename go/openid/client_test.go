@@ -26,6 +26,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -152,6 +153,38 @@ func TestOIDCCore_3_1_3_7_ExchangeRefusesAnIDTokenThatFailsValidation(t *testing
 			stub.idToken = token
 			if _, err := client.Exchange(t.Context(), Login{Nonce: "n", Verifier: "verifier"}, "code"); err == nil {
 				t.Error("accepted")
+			}
+		})
+	}
+}
+
+func TestOIDCCore_3_1_2_1_ExchangeTakesOnlyAnACRItAskedFor(t *testing.T) {
+	stub := newOPStub(t)
+	client := stub.client(t)
+	tokenWith := func(acr string) string {
+		return signToken(t, jose.ES256, stub.key, "k", fmt.Appendf(nil, `{"iss":%q,"aud":"client","nonce":"n","exp":%d%s}`, stub.URL, time.Now().Add(time.Hour).Unix(), acr))
+	}
+	for name, c := range map[string]struct {
+		asked []string
+		acr   string
+		ok    bool
+	}{
+		"the one asked for":               {[]string{"urn:a"}, `,"acr":"urn:a"`, true},
+		"the second asked for":            {[]string{"urn:a", "urn:b"}, `,"acr":"urn:b"`, true},
+		"nothing asked for, any taken":    {nil, `,"acr":"urn:other"`, true},
+		"nothing asked for, none given":   {nil, ``, true},
+		"another class":                   {[]string{"urn:a"}, `,"acr":"urn:b"`, false},
+		"the class in another case":       {[]string{"urn:a"}, `,"acr":"URN:A"`, false},
+		"no acr":                          {[]string{"urn:a"}, ``, false},
+		"an acr that is no string":        {[]string{"1"}, `,"acr":1`, false},
+		"a null acr":                      {[]string{"urn:a"}, `,"acr":null`, false},
+		"an acr that holds the asked one": {[]string{"urn:a"}, `,"acr":"urn:a urn:b"`, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stub.idToken = tokenWith(c.acr)
+			_, err := client.Exchange(t.Context(), Login{Nonce: "n", Verifier: "verifier", ACRValues: c.asked}, "code")
+			if c.ok && err != nil || !c.ok && !errors.Is(err, ErrACRNotRequested) {
+				t.Errorf("err = %v", err)
 			}
 		})
 	}
