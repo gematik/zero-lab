@@ -43,6 +43,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/pkcs12"
 	"github.com/gematik/zero-lab/go/pkcs12/internal/ber"
+	"github.com/gematik/zero-lab/go/pkcs12/internal/conformance"
 	"github.com/gematik/zero-lab/go/pkcs12/internal/syntax"
 )
 
@@ -72,9 +73,10 @@ func newIdentity(kind string) (certDER, keyDER []byte, err error) {
 	return certDER, keyDER, err
 }
 
-func identity(t testing.TB, kind string) (certDER, keyDER []byte) {
+// identity returns a fresh ECDSA P-256 certificate and key.
+func identity(t testing.TB) (certDER, keyDER []byte) {
 	t.Helper()
-	certDER, keyDER, err := newIdentity(kind)
+	certDER, keyDER, err := newIdentity("ec")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +85,7 @@ func identity(t testing.TB, kind string) (certDER, keyDER []byte) {
 
 func testBags(t testing.TB) *pkcs12.Bags {
 	t.Helper()
-	certDER, keyDER := identity(t, "ec")
+	certDER, keyDER := identity(t)
 	id := []byte{1, 2, 3, 4}
 	return &pkcs12.Bags{
 		Certificates: []pkcs12.CertificateBag{{Raw: certDER, FriendlyName: "Zertifikat ä", LocalKeyID: id}},
@@ -376,7 +378,7 @@ func TestDecodeWrongPasswordAndTampering(t *testing.T) {
 // valid (about 1 in 256), so the plaintext behind valid padding is refused in
 // every run, not only in the run that draws it.
 func TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey(t *testing.T) {
-	_, keyDER := identity(t, "ec")
+	_, keyDER := identity(t)
 	bags := &pkcs12.Bags{PrivateKeys: []pkcs12.PrivateKeyBag{{Raw: keyDER}}}
 	opts := pkcs12.DefaultEncodeOptions()
 	opts.IncludeMAC = false
@@ -401,7 +403,7 @@ func TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey(t *testing.T) {
 // TestP12_041AShroudedKeyIsAPrivateKeyInfo: the decrypted octets of a
 // shrouded key bag are returned only when they are one DER PrivateKeyInfo.
 func TestP12_041AShroudedKeyIsAPrivateKeyInfo(t *testing.T) {
-	_, keyDER := identity(t, "ec")
+	_, keyDER := identity(t)
 	opts := pkcs12.DefaultEncodeOptions()
 	opts.IncludeMAC = false
 	for name, raw := range map[string][]byte{
@@ -416,6 +418,30 @@ func TestP12_041AShroudedKeyIsAPrivateKeyInfo(t *testing.T) {
 			}
 			if _, err := pkcs12.Decode(data, []byte("pw")); !errors.Is(err, pkcs12.ErrParse) {
 				t.Errorf("error = %v, want ErrParse", err)
+			}
+		})
+	}
+}
+
+// TestP12_041AKeyBagIsAPrivateKeyInfo: a plain keyBag is returned only when it is
+// one DER PrivateKeyInfo, as a decrypted shrouded key is.
+func TestP12_041AKeyBagIsAPrivateKeyInfo(t *testing.T) {
+	_, keyDER := identity(t)
+	if _, err := pkcs12.Decode(conformance.KeyBagFile(t, keyDER), nil); err != nil {
+		t.Fatalf("a valid keyBag: %v", err)
+	}
+	for name, value := range map[string][]byte{
+		"wrong version":  {0x30, 0x03, 0x02, 0x01, 0x05},
+		"truncated":      keyDER[:len(keyDER)/2],
+		"not a SEQUENCE": {0x04, 0x01, 0x00},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := pkcs12.Decode(conformance.KeyBagFile(t, value), nil)
+			if !errors.Is(err, pkcs12.ErrParse) {
+				t.Errorf("error = %v, want ErrParse", err)
+			}
+			if code := conformance.Code(err); code != "malformed" {
+				t.Errorf("code = %s, want malformed", code)
 			}
 		})
 	}

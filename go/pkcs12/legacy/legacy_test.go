@@ -164,15 +164,7 @@ func TestEncryptedContentSegments(t *testing.T) {
 // valid (about 1 in 256), so the plaintext behind valid padding is refused in
 // every run, not only in the run that draws it.
 func TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey(t *testing.T) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bags := &pkcs12.Bags{PrivateKeys: []pkcs12.PrivateKeyBag{{Raw: keyDER}}}
+	bags := &pkcs12.Bags{PrivateKeys: []pkcs12.PrivateKeyBag{{Raw: ecKeyDER(t)}}}
 	opts := pkcs12.DefaultEncodeOptions()
 	opts.IncludeMAC = false
 	opts.Iterations = 1
@@ -191,6 +183,43 @@ func TestP12_034AWrongPasswordWithoutMACNeverYieldsAKey(t *testing.T) {
 		}
 	}
 	t.Fatal("no decryption with the wrong password had valid padding")
+}
+
+// TestP12_041AKeyBagIsAPrivateKeyInfo: a plain keyBag is returned only when it is
+// one DER PrivateKeyInfo, as a decrypted shrouded key is.
+func TestP12_041AKeyBagIsAPrivateKeyInfo(t *testing.T) {
+	keyDER := ecKeyDER(t)
+	if _, err := Decode(conformance.KeyBagFile(t, keyDER), nil); err != nil {
+		t.Fatalf("a valid keyBag: %v", err)
+	}
+	for name, value := range map[string][]byte{
+		"wrong version":  {0x30, 0x03, 0x02, 0x01, 0x05},
+		"truncated":      keyDER[:len(keyDER)/2],
+		"not a SEQUENCE": {0x04, 0x01, 0x00},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Decode(conformance.KeyBagFile(t, value), nil)
+			if !errors.Is(err, pkcs12.ErrParse) {
+				t.Errorf("error = %v, want ErrParse", err)
+			}
+			if code := conformance.Code(err); code != "malformed" {
+				t.Errorf("code = %s, want malformed", code)
+			}
+		})
+	}
+}
+
+func ecKeyDER(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keyDER
 }
 
 func FuzzDecode(f *testing.F) {
