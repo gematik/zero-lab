@@ -275,9 +275,34 @@ func TestTheAnchorIsTheOneOfTiPki(t *testing.T) {
 	}
 }
 
+// flawedRoots name a member twice, are not UTF-8 or spell a member in another case, each with
+// what its refusal says (servers.md rule 28).
+var flawedRoots = []struct{ name, json, refusal string }{
+	{"member twice", `[{"cert":"AAAA","cert":"AAAA"}]`, "duplicate object member name"},
+	{"wrapper member twice", `{"roots":[],"roots":[]}`, "duplicate object member name"},
+	{"not UTF-8", `[{"cert":"AAAA","cn":"` + "\xff" + `"}]`, "invalid UTF-8"},
+	{"member in another case", `[{"CERT":"AAAA"}]`, "no cert"},
+}
+
+// Server rule 28: a roots.json that names a member twice or is not UTF-8 is refused, and a
+// member's name is exact. Members gematik may add are still ignored.
+func TestServerRule28_AFlawedRootsDocumentIsRefused(t *testing.T) {
+	for _, flawed := range flawedRoots {
+		t.Run(flawed.name, func(t *testing.T) {
+			_, err := ParseRoots([]byte(flawed.json))
+			if err == nil || !strings.Contains(err.Error(), flawed.refusal) {
+				t.Fatalf("got %v, want %q", err, flawed.refusal)
+			}
+		})
+	}
+}
+
 func FuzzParseRoots(f *testing.F) {
 	f.Add([]byte(`[{"cert":"AAAA"}]`))
 	f.Add([]byte(`{"roots":[]}`))
+	for _, flawed := range flawedRoots {
+		f.Add([]byte(flawed.json))
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		entries, err := ParseRoots(data)
 		if (err == nil) == (len(entries) == 0) {

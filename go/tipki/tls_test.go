@@ -23,7 +23,7 @@ package tipki
 
 import (
 	"crypto/x509"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net"
 	"os"
