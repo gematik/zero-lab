@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-15T09:53:00Z'
-updated_date: '2026-11-15T14:12:00Z'
+updated_date: '2026-11-15T14:51:00Z'
 labels:
   - go
   - pep
@@ -23,5 +23,5 @@ go/docs/design.md section 2: a library logs only through a logger it was given. 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 No non-test library code in openid, pep and pep/proxy calls the default slog; a logger is handed in where one is needed, or the outcome is returned
+- [x] #1 No non-test library code in openid, pep and pep/proxy calls the default slog; a logger is handed in where one is needed, or the outcome is returned
 <!-- AC:END -->

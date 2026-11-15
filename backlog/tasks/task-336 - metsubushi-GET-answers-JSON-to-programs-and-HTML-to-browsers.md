@@ -4,7 +4,7 @@ title: 'metsubushi: GET / answers JSON to programs and HTML to browsers'
 status: In Progress
 assignee: []
 created_date: '2026-11-15T14:31:00Z'
-updated_date: '2026-11-15T14:32:00Z'
+updated_date: '2026-11-15T14:51:00Z'
 labels: []
 dependencies: []
 ordinal: 351000
@@ -18,5 +18,5 @@ metsubushi is the small app for smoke tests behind the PEP. GET / always returns
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 GET / with a browser's Accept returns the HTML page; with curl's Accept (*/*), none, or application/json it returns the info JSON; both carry Vary: Accept; tested
+- [x] #1 GET / with a browser's Accept returns the HTML page; with curl's Accept (*/*), none, or application/json it returns the info JSON; both carry Vary: Accept; tested
 <!-- AC:END -->
