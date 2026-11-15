@@ -30,6 +30,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -343,5 +344,58 @@ func checkPublishedKeys(t *testing.T, signed []byte, keys [3]*ecdsa.PrivateKey, 
 	}
 	if client := published.Key("client"); len(client) != 1 || len(client[0].Certificates) != 1 || string(client[0].Certificates[0].Raw) != string(certificate) {
 		t.Errorf("the client certificate of the files is not published as x5c: %+v", published)
+	}
+}
+
+// TestLoadOIDFKeysTakesOnePEMBlockPerFile proves that a key or certificate file holds one PEM block, which decides
+// the key: a second key or trailing text is refused, without quoting the file, and only the EC PARAMETERS block
+// `openssl ecparam -genkey` writes may come before a key.
+func TestLoadOIDFKeysTakesOnePEMBlockPerFile(t *testing.T) {
+	block := func(blockType string, der []byte) string {
+		return string(pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der}))
+	}
+	parameters, err := asn1.Marshal(asn1.ObjectIdentifier{1, 2, 840, 10045, 3, 1, 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const trailing = "trailing text of the operator"
+	key, other := newKey(t), newKey(t)
+	for name, c := range map[string]struct {
+		file, content, reason string
+	}{
+		"two keys":                           {"sign.pem", block("EC PRIVATE KEY", sec1(t, key)) + block("EC PRIVATE KEY", sec1(t, other)), "after its PEM block"},
+		"trailing text after a key":          {"sign.pem", block("EC PRIVATE KEY", sec1(t, key)) + trailing + "\n", "after its PEM block"},
+		"two EC PARAMETERS before a key":     {"sign.pem", block("EC PARAMETERS", parameters) + block("EC PARAMETERS", parameters) + block("EC PRIVATE KEY", sec1(t, key)), "after its PEM block"},
+		"EC PARAMETERS only":                 {"sign.pem", block("EC PARAMETERS", parameters), "nothing after its EC PARAMETERS block"},
+		"two certificates":                   {"client-cert.pem", block("CERTIFICATE", selfSignedDER(t, key)) + block("CERTIFICATE", selfSignedDER(t, other)), "after its PEM block"},
+		"trailing text after a certificate":  {"client-cert.pem", block("CERTIFICATE", selfSignedDER(t, key)) + trailing, "after its PEM block"},
+		"EC PARAMETERS before a certificate": {"client-cert.pem", block("EC PARAMETERS", parameters) + block("CERTIFICATE", selfSignedDER(t, key)), "after its PEM block"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			files, _, _ := keyFiles(t, dir)
+			path := filepath.Join(dir, c.file)
+			if err := os.WriteFile(path, []byte(c.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := loadOIDFKeys(inDir(dir, files))
+			if err == nil || !strings.Contains(err.Error(), c.reason) || !strings.Contains(err.Error(), path) || strings.Contains(err.Error(), trailing) || strings.Contains(err.Error(), "BEGIN") {
+				t.Errorf("err = %v", err)
+			}
+		})
+	}
+
+	dir := t.TempDir()
+	files, _, _ := keyFiles(t, dir)
+	content := block("EC PARAMETERS", parameters) + block("EC PRIVATE KEY", sec1(t, key)) + "\n\n"
+	if err := os.WriteFile(filepath.Join(dir, "sign.pem"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := loadOIDFKeys(inDir(dir, files))
+	if err != nil {
+		t.Fatalf("EC PARAMETERS before the key: %v", err)
+	}
+	if sign, ok := keys.Sign.(*ecdsa.PrivateKey); !ok || !sign.Equal(key) {
+		t.Error("another signing key")
 	}
 }

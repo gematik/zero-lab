@@ -25,7 +25,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -174,7 +173,6 @@ func (c *client) verifyIDToken(ctx context.Context, login Login, response *Token
 		}.Validate(payload)
 	}
 	if err != nil {
-		slog.Error("verify id_token", "error", err, "jwks_uri", c.discoveryDocument.JwksURI)
 		return fmt.Errorf("verify id_token: %w", err)
 	}
 	return nil

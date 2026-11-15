@@ -22,6 +22,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -59,10 +60,9 @@ func loadOIDFKeys(files oidf.KeyFiles) (oidf.Keys, error) {
 	return oidf.Keys{Sign: sign, Decrypt: agreement, Client: certificate}, nil
 }
 
-// readECPrivateKey reads an EC private key from the first PEM block of a file, SEC 1 or PKCS #8. Errors name the
-// file, never its content.
+// readECPrivateKey reads the one EC private key of a file, SEC 1 or PKCS #8. Errors name the file, never its content.
 func readECPrivateKey(path string) (*ecdsa.PrivateKey, error) {
-	block, err := readPEM(path)
+	block, err := readPEM(path, "EC PARAMETERS")
 	if err != nil {
 		return nil, err
 	}
@@ -84,34 +84,45 @@ func readECPrivateKey(path string) (*ecdsa.PrivateKey, error) {
 		}
 		return key, nil
 	}
-	return nil, fmt.Errorf("%q holds a PEM block %q, no EC private key", path, block.Type)
+	return nil, fmt.Errorf("%q holds no EC private key", path)
 }
 
-// readClientCertificate reads the client key's certificate from the first PEM block of a file and pairs it with the
+// readClientCertificate reads the client key's certificate, the one PEM block of a file, and pairs it with the
 // key, its Leaf parsed, as oidf publishes it as x5c. Whether the certificate is the key's is oidf's to judge.
 func readClientCertificate(path string, key *ecdsa.PrivateKey) (tls.Certificate, error) {
-	block, err := readPEM(path)
+	block, err := readPEM(path, "")
 	if err != nil {
 		return tls.Certificate{}, err
 	}
 	if block.Type != "CERTIFICATE" {
-		return tls.Certificate{}, fmt.Errorf("%q holds a PEM block %q, no certificate", path, block.Type)
+		return tls.Certificate{}, fmt.Errorf("%q holds no certificate", path)
 	}
 	leaf, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("%q: %w", path, err)
+		return tls.Certificate{}, fmt.Errorf("%q holds no X.509 certificate", path)
 	}
 	return tls.Certificate{Certificate: [][]byte{block.Bytes}, PrivateKey: key, Leaf: leaf}, nil
 }
 
-func readPEM(path string) (*pem.Block, error) {
+// readPEM reads the one PEM block of a file, after at most one leading block of type skip, which `openssl ecparam
+// -genkey` writes before the key. Anything but whitespace after the block is refused: a second key would otherwise
+// be ignored, and which key counts would depend on the order in the file.
+func readPEM(path, skip string) (*pem.Block, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	block, _ := pem.Decode(data)
+	block, rest := pem.Decode(data)
+	if block != nil && skip != "" && block.Type == skip {
+		if block, rest = pem.Decode(rest); block == nil {
+			return nil, fmt.Errorf("%q holds nothing after its %s block", path, skip)
+		}
+	}
 	if block == nil {
 		return nil, fmt.Errorf("%q holds no PEM data", path)
+	}
+	if len(bytes.TrimSpace(rest)) != 0 {
+		return nil, fmt.Errorf("%q holds something after its PEM block", path)
 	}
 	return block, nil
 }
