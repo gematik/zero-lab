@@ -1,5 +1,106 @@
 # Release Notes
 
+# Release go/pep/proxy v0.3.0
+
+### breaking
+- The relying party's key files hold one PEM key each (`key_pem_path`, `cert_pem_path`); an inline
+  `jwk` or a `jwk_path` is refused at start, and so is an RSA key (TASK-317).
+- The entity statement must carry what gemSpec_IDP_FD Tabelle 4 and A_27505 require of every
+  relying party: `organization_name`, `keywords` with `product_type:` and `product_type_version:`,
+  `contacts` and `ti_features_supported`; every `redirect_uris` entry is https without query or
+  fragment (A_27585). A configuration without them is refused at start (TASK-315).
+
+### added
+- The federation's signed documents are kept in the PEP's kv store, so replicas share them; each is
+  verified again when read (TASK-293).
+- Only IDPs on the federation master's list are resolved, and the ID token is judged by `acr`,
+  `amr` and the claims asked for (oidf v0.52.0).
+
+### verified
+- `just check` across all Go modules passed on the branch merged at d8f24089; later commits change
+  only go.mod pins and the backlog. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The OpenID Federation suite (`just oidf-test`) passed on 2026-11-15 against
+  https://app-ref.federationmaster.de, on 51a0bb83.
+- kv on Postgres (`go test ./kv/postgres`, Postgres 17) passed on 2026-11-15, on 51a0bb83.
+- A live login through TK RU2 (decoupled) passed on 2026-11-15 on zerobin, image
+  `spilikin/zero-pep-proxy:0.3.0-dev.51a0bb8`.
+
+# Release go/oidf v0.52.0
+
+### breaking
+- `New(ctx, cfg, keys)` builds the relying party from `Keys`: a `crypto.Signer` for the federation
+  key, a `KeyAgreement` (ECDH) for the ID token key and a `tls.Certificate` for mutual TLS, each
+  P-256 with its kid. The library reads no file: `NewRelyingParty` and `KeyConfig` are gone, and
+  `Kind(apiKey, documents, keys, built)` takes the host's key loader for `KeyFiles` (TASK-315,
+  TASK-317).
+- Every fetch takes a context: `NewOpenidFederation`, `FetchIdpList`, `FetchEntityStatement` and
+  `FetchSignedJwks` take it first.
+- `RelyingPartyConfig.Documents` is required: a store of the federation's signed documents, which
+  the host wires (`MemoryDocuments` for tests and a single replica) (TASK-293).
+- `AddEntityStatementHook` takes a hook that returns an error; a failing hook fails signing.
+- The statement's required members (Tabelle 4, A_27505, A_27585) are refused when missing, and so
+  is a gated development master without an API key (`ErrAPIKeyRequired`, TASK-322).
+- `CodeChallengeMethod` and `OpenidProvider` are gone.
+
+### added
+- `RelyingParty.Client(ctx, issuer)` admits only IDPs on the federation master's signed list
+  (A_25449), before any request to the issuer; `ExchangeIdentity` returns an `Identity` and refuses
+  a lower `acr` than asked, a missing `amr` and missing essential claims (A_28484, A_22860-02).
+  `Identity` and `Personal` redact the personal claims in `fmt` and `slog`.
+- An unknown kid or ID token version refetches the IDP's statement once, rate-limited (A_22861).
+- The entity statement is signed once and served as bytes, with ETag, `If-None-Match` and
+  `Cache-Control`; it is signed again after an hour or on `Refresh(ctx)` (A_28857).
+- Every value sent to or received from an IDP is checked against its grammar first and refused,
+  never repaired (servers.md rule 28, TASK-320); fuzz targets cover each entry point.
+- `oidftest`, an in-process test federation with a master and one IDP; `just mod-check` keeps it out
+  of non-test packages.
+
+### verified
+- `just check` across all Go modules passed on the branch merged at d8f24089; later commits change
+  only go.mod pins and the backlog. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The OpenID Federation suite (`just oidf-test`) and `TestNewAtALiveFederationMaster` passed on
+  2026-11-15 against https://app-ref.federationmaster.de, on 51a0bb83.
+- A live login through TK RU2 passed on zerobin on 2026-11-15 (see go/pep/proxy v0.3.0).
+
+# Release go/openid v0.54.0
+
+### breaking
+- `AuthorizationQuery` returns an error: `Login` carries per-login `Scopes`, `ACRValues` and the
+  OIDC `Claims` request parameter, which are checked before they are sent (TASK-296).
+- `NewClient` and `FetchDiscoveryDocument` take a context first.
+- JSON from the network is read with encoding/json/v2 under size, depth and member limits;
+  duplicate members and invalid UTF-8 are refused (servers.md rule 28, TASK-320).
+
+### added
+- `IDTokenChecks.ACRValues`: the plain OIDC client refuses an `acr` it did not ask for
+  (`ErrACRNotRequested`, TASK-318).
+- `CheckAuthorizationCode`, `CheckProtectedHeader`, `ParseErrorResponse`, `UnmarshalObject` and
+  `CheckJSONObject` for hosts that check what they receive.
+
+### fixed
+- The ID token check logs nothing through the default logger (TASK-317).
+
+### verified
+- `just check` across all Go modules passed on the branch merged at d8f24089; later commits change
+  only go.mod pins and the backlog. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- The development guide lists no gated suite as required for `openid`; its use by oidf passed the
+  live runs listed there.
+
+# Release go/pkcs12 v1.0.0-rc.3
+
+### changes
+- A decrypted or plain key bag yields a key only when it is one DER PrivateKeyInfo (RFC 5958); BER
+  inside a key bag is normalised to DER first (spec/pkcs12 P12-041, TASK-326). A wrong password on a
+  file without MAC no longer returns a key by chance; it fails as a wrong password does with a MAC.
+  Both `pkcs12.Decode` and `legacy.Decode` hold to it.
+
+### verified
+- `just check` across all Go modules passed on the branch merged at d8f24089; later commits change
+  only go.mod pins and the backlog. `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- `spec/pkcs12/interop/run.sh` on 2026-11-15, OpenSSL 4.1.0: `pkcs12.Decode` 30 of 30,
+  `legacy.Decode` and `ti-pkcs12` 61 of 61, all compared in full.
+- The development guide lists no gated suite as required for `pkcs12`.
+
 # Release go/pep/proxy v0.2.1
 
 ### fixed
