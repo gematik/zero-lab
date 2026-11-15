@@ -51,6 +51,7 @@
 //! cryptography.
 
 mod asn1;
+mod ber;
 mod decrypt;
 #[cfg(feature = "encode")]
 mod encode;
@@ -499,7 +500,9 @@ fn collect(
                 });
             }
             oids::KEY_BAG => {
-                let pkcs8 = Zeroizing::new(der::Encode::to_der(&bag.value)?);
+                // P12-002: BER inside the PrivateKeyInfo is normalised before P12-041
+                // checks it as DER, as for every other layer of the file.
+                let pkcs8 = Zeroizing::new(ber::to_der(&der::Encode::to_der(&bag.value)?)?);
                 asn1::check_private_key_info(&pkcs8)?;
                 p12.keys.push(KeyBag {
                     pkcs8,
@@ -593,8 +596,8 @@ mod budget_tests {
     }
 }
 
-#[cfg(all(test, feature = "encode"))]
-mod wrong_password_tests {
+#[cfg(test)]
+mod file_tests {
     use der::Encode;
 
     use super::*;
@@ -625,34 +628,97 @@ mod wrong_password_tests {
         tlv(0x30, &content)
     }
 
-    /// A file without MAC whose only safe holds one shrouded key, `pkcs8` encrypted with
-    /// `password` and `salt` at one iteration.
-    fn no_mac_file(pkcs8: &[u8], password: &str, salt: &[u8]) -> Vec<u8> {
-        let (algorithm, ciphertext) = pbes2::encrypt(password, pkcs8, salt, [7; 16], 1).unwrap();
-        let mut epki = algorithm.to_der().unwrap();
-        epki.extend(tlv(0x04, &ciphertext));
-        let mut bag = oids::SHROUDED_KEY_BAG.to_der().unwrap();
-        bag.extend(tlv(0xa0, &tlv(0x30, &epki)));
+    /// A file without MAC whose only safe holds one bag of type `id` with `value`.
+    fn one_bag_file(id: ObjectIdentifier, value: &[u8]) -> Vec<u8> {
+        let mut bag = id.to_der().unwrap();
+        bag.extend(tlv(0xa0, value));
         let safe = tlv(0x30, &tlv(0x30, &bag));
         let mut pfx = vec![0x02, 0x01, 0x03];
         pfx.extend(data(&tlv(0x30, &data(&safe))));
         tlv(0x30, &pfx)
     }
 
-    /// P12-034, P12-041: files without MAC, decoded with the wrong password until the
-    /// padding of a decryption happens to be valid (about 1 in 256), so the plaintext
-    /// behind valid padding is refused in every run, not only in the run that draws it.
-    #[test]
-    fn p12_034_a_wrong_password_without_mac_never_yields_a_key() {
-        // An Ed25519 PrivateKeyInfo (RFC 8410 §10.3).
-        let pkcs8 = [
+    /// A file without MAC whose only safe holds one shrouded key, `pkcs8` encrypted with
+    /// `password` and `salt` at one iteration.
+    #[cfg(feature = "encode")]
+    fn no_mac_file(pkcs8: &[u8], password: &str, salt: &[u8]) -> Vec<u8> {
+        let (algorithm, ciphertext) = pbes2::encrypt(password, pkcs8, salt, [7; 16], 1).unwrap();
+        let mut epki = algorithm.to_der().unwrap();
+        epki.extend(tlv(0x04, &ciphertext));
+        one_bag_file(oids::SHROUDED_KEY_BAG, &tlv(0x30, &epki))
+    }
+
+    /// An Ed25519 PrivateKeyInfo (RFC 8410 §10.3) in DER.
+    fn ed25519_pkcs8() -> Vec<u8> {
+        [
             &[
                 0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
-            ],
+            ][..],
             &[0x04, 0x22, 0x04, 0x20][..],
             &[0x42; 32][..],
         ]
+        .concat()
+    }
+
+    /// P12-002, P12-041: a plain keyBag's PrivateKeyInfo is normalised from BER, every
+    /// layer, before it is checked as DER, and returned as DER.
+    #[test]
+    fn p12_002_a_key_bag_in_ber_is_checked_and_returned_as_der() {
+        let der = ed25519_pkcs8();
+        let private_key = &der[12..];
+        let indefinite_algorithm = [
+            &[
+                0x30, 0x30, 0x02, 0x01, 0x00, 0x30, 0x80, 0x06, 0x03, 0x2b, 0x65, 0x70, 0, 0,
+            ][..],
+            private_key,
+        ]
         .concat();
+        let segmented_private_key = [
+            &[
+                0x30, 0x34, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
+            ][..],
+            &[0x24, 0x80, 0x04, 0x02, 0x04, 0x20, 0x04, 0x20][..],
+            &[0x42; 32][..],
+            &[0, 0][..],
+        ]
+        .concat();
+        for (name, value) in [
+            ("DER", der.clone()),
+            ("indefinite AlgorithmIdentifier", indefinite_algorithm),
+            ("segmented privateKey", segmented_private_key),
+        ] {
+            let p12 = decode(&one_bag_file(oids::KEY_BAG, &value), "x")
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(*p12.keys[0].pkcs8, der, "{name}");
+        }
+    }
+
+    /// P12-041: a plain keyBag that is no PrivateKeyInfo is malformed.
+    #[test]
+    fn p12_041_a_key_bag_is_a_private_key_info() {
+        let der = ed25519_pkcs8();
+        for (name, value) in [
+            ("wrong version", vec![0x30, 0x03, 0x02, 0x01, 0x05]),
+            ("truncated", der[..der.len() / 2].to_vec()),
+            ("not a SEQUENCE", vec![0x04, 0x01, 0x00]),
+        ] {
+            assert!(
+                matches!(
+                    decode(&one_bag_file(oids::KEY_BAG, &value), "x"),
+                    Err(Error::Malformed { .. })
+                ),
+                "{name}"
+            );
+        }
+    }
+
+    /// P12-034, P12-041: files without MAC, decoded with the wrong password until the
+    /// padding of a decryption happens to be valid (about 1 in 256), so the plaintext
+    /// behind valid padding is refused in every run, not only in the run that draws it.
+    #[cfg(feature = "encode")]
+    #[test]
+    fn p12_034_a_wrong_password_without_mac_never_yields_a_key() {
+        let pkcs8 = ed25519_pkcs8();
         decode(&no_mac_file(&pkcs8, "right", b"salt0000"), "right").unwrap();
         for i in 0u32..20_000 {
             match decode(&no_mac_file(&pkcs8, "right", &i.to_be_bytes()), "wrong") {
