@@ -33,7 +33,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -81,21 +80,6 @@ func (s *Server) now() time.Time {
 type clockFunc func() time.Time
 
 func (f clockFunc) Now() time.Time { return f() }
-
-// NewFromConfigFile builds a server from a YAML file holding a Config. Unlike pdp.LoadConfigFile it expands
-// no environment variables, and relative paths resolve against the working directory.
-func NewFromConfigFile(filename string) (*Server, error) {
-	cfg := new(Config)
-	yamlFile, err := os.ReadFile(filename)
-	if err != nil {
-		return nil, fmt.Errorf("read config file '%s': %w", filename, err)
-	}
-	if err := decodeYAML(yamlFile, cfg); err != nil {
-		return nil, fmt.Errorf("unmarshal config file '%s': %w", filename, err)
-	}
-
-	return New(*cfg)
-}
 
 // New builds a server from cfg. It refuses to start without Config.SigningKey: a replica with a key of its own
 // signs tokens nobody else can verify. For the same reason it refuses a Config without Sessions, NonceRedemptions,
