@@ -221,6 +221,12 @@ func main() {
 		log.Fatalf("outbound TLS: %v", err)
 	}
 
+	// One store for the sessions, the revocations and oidf's federation documents. The documents are public
+	// signed data, but they go through the same sealed store: splitting it would need a second backing store and
+	// key handling for no gain, and oidf verifies them again on every read.
+	store := openStore()
+	documents := newKVDocuments(store)
+
 	// Backend selection: PEP_BACKEND=pdp makes pep a confidential client of the PDP (DPoP-bound tokens + the
 	// gated /api proxy); otherwise pep drives the configured OIDC/OIDF/idpd providers directly.
 	var backend proxy.Backend
@@ -232,14 +238,14 @@ func main() {
 		var set *providers.Set
 		if _, statErr := os.Stat(providersPath); statErr == nil { //nolint:gosec // the path comes from PEP_OPENID_PROVIDERS_PATH or the fixed default in the working directory, not a request
 			var err error
-			if set, err = loadProviders(providersPath, publicURL, webClient); err != nil {
+			if set, err = loadProviders(providersPath, publicURL, webClient, documents); err != nil {
 				log.Fatalf("load providers from %s: %v", providersPath, err) //nolint:gosec // start-up log of a path from the operator's environment, no request data
 			}
 			slog.Info("providers loaded", "path", providersPath)
 		} else if providersExplicit {
 			log.Fatalf("PEP_OPENID_PROVIDERS_PATH %q does not exist: %v", providersPath, statErr) //nolint:gosec // %q escapes a value from the operator's environment; start-up log, no request data
 		} else {
-			set = providersFromEnv(publicURL, webClient)
+			set = providersFromEnv(publicURL, webClient, documents)
 		}
 		if set.Empty() {
 			log.Fatal("configure providers via openid-providers.yaml (PEP_OPENID_PROVIDERS_PATH), or PEP_OIDC_ISSUER / PEP_OIDF_RP_CONFIG_PATH / PEP_IDPD_CLIENT_ID")
@@ -265,7 +271,6 @@ func main() {
 		log.Fatalf("gateway routes: %v", err)
 	}
 
-	store := openStore()
 	revocations := openRevocations(store, snapshotTTL)
 	server, err := proxy.New(proxy.Config{
 		Backend:                 backend,

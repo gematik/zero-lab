@@ -45,7 +45,7 @@ const oidfDevAPIKeyEnv = "PEP_OIDF_DEV_API_KEY" //nolint:gosec // the name of th
 // loadProviders builds the providers from openid-providers.yaml. An oidc or idpd entry uses
 // <public>/oauth2/callback unless it sets its own redirect_uri; the idpd client is always the gematik
 // Authenticator deep-link flow. client carries every provider's requests.
-func loadProviders(path, publicURL string, client *http.Client) (*providers.Set, error) {
+func loadProviders(path, publicURL string, client *http.Client, documents oidf.Documents) (*providers.Set, error) {
 	entries, err := providerEntries(path)
 	if err != nil {
 		return nil, err
@@ -54,8 +54,7 @@ func loadProviders(path, publicURL string, client *http.Client) (*providers.Set,
 	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
-		// In-process until the store-backed one is wired, later in TASK-315.
-		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), oidf.NewMemoryDocuments(1024, nil), nil),
+		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), documents, nil),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("providers %q: %w", path, err)
@@ -65,7 +64,7 @@ func loadProviders(path, publicURL string, client *http.Client) (*providers.Set,
 
 // providersFromEnv builds a single provider of each type from the PEP_* env vars — the simple path used
 // when no openid-providers.yaml is present. httpClient carries every provider's requests.
-func providersFromEnv(publicURL string, httpClient *http.Client) *providers.Set {
+func providersFromEnv(publicURL string, httpClient *http.Client, documents oidf.Documents) *providers.Set {
 	var configured []providers.Provider
 	var federation providers.Federation
 	callback := publicURL + "/oauth2/callback"
@@ -113,8 +112,7 @@ func providersFromEnv(publicURL string, httpClient *http.Client) *providers.Set 
 		}
 		config.APIKey = os.Getenv(oidfDevAPIKeyEnv)
 		config.HTTPClient = httpClient
-		// In-process until the store-backed one is wired, later in TASK-315.
-		config.Documents = oidf.NewMemoryDocuments(1024, nil)
+		config.Documents = documents
 		rp, err := oidf.NewRelyingParty(context.Background(), config, filepath.Dir(rpPath))
 		if err != nil {
 			log.Fatalf("load oidf relying party: %v", err)

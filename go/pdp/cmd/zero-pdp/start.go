@@ -137,6 +137,7 @@ func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 		return nil, nil, err
 	}
 	wireStores(&config.AuthzServerConfig, store, nonceKeys)
+	config.OIDFDocuments = newKVDocuments(store)
 	if config.AuthzServerConfig.SigningKey, err = config.AuthzServerConfig.LoadSigningKey(); err != nil {
 		return nil, nil, fmt.Errorf("load the signing key: %w", err)
 	}
