@@ -26,7 +26,8 @@ package main
 import (
 	"crypto/rand"
 	_ "embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net"
 	"net/http"
@@ -247,12 +248,22 @@ func uuidV4() string {
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
+// writeJSON answers as encoding/json v1 did: sorted members, null for a nil slice, and invalid
+// UTF-8 from the echoed request replaced rather than failing the answer.
 func writeJSON(w http.ResponseWriter, code int, v any) {
+	body, err := json.Marshal(v,
+		json.Deterministic(true),
+		json.FormatNilSliceAsNull(true),
+		jsontext.AllowInvalidUTF8(true),
+		jsontext.WithIndent("  "))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "encode response:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(v); err != nil {
+	if _, err := w.Write(append(body, '\n')); err != nil {
 		fmt.Fprintln(os.Stderr, "write response:", err)
 	}
 }
