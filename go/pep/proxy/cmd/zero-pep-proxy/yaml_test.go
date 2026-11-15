@@ -31,7 +31,7 @@ import (
 )
 
 func TestARelyingPartyFileLoads(t *testing.T) {
-	cfg := new(oidf.RelyingPartyConfig)
+	cfg := new(oidf.FileConfig)
 	if err := loadYAML("../../../../oidf/testdata/relying-party.yaml", cfg); err != nil {
 		t.Fatal(err)
 	}

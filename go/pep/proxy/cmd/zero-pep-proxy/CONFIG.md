@@ -23,13 +23,14 @@ references by path, so the two stay in sync:
 ```yaml
 oidc:   [ <openid.Config>, … ]      # several direct OIDC providers
 idpd:   [ <idpd.ClientConfig>, … ]      # several gematik IDP-Dienst clients
-oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its federation IdPs)
+oidf:   <oidf.FileConfig>               # one OIDF relying party (brings its federation IdPs)
 ```
 
 - Full example: [`openid-providers.example.yaml`](openid-providers.example.yaml).
 - `${VAR}` placeholders expand from the environment (keep secrets in a `.env` / mounted file).
-- Relative paths in the OIDF config (`key_pem_path`, `cert_pem_path`, …) resolve against the providers file's
-  own directory — not the process working directory, and not `-w`.
+- The OIDF keys are PEM files named by `key_pem_path` (an EC P-256 key, SEC 1 or PKCS #8) and, for `client_key`,
+  `cert_pem_path`; zero-pep-proxy reads them, the configuration holds no key. Relative paths resolve against the
+  providers file's own directory — not the process working directory, and not `-w`.
 - `PEP_OIDF_DEV_API_KEY` is the key of gematik's development federation (`*.dev.gematik.solutions`),
   which zero-pep-proxy hands to the OIDF relying party. It is a value rather than a file because it opens
   only that environment ([naming and configuration](../../../../../docs/conventions/naming-and-config.md)).

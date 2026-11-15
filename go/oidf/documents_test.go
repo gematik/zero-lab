@@ -264,7 +264,7 @@ func TestServerRule17_AFederationWithoutADocumentStoreIsRefused(t *testing.T) {
 	}
 	cfg := testRelyingPartyConfig(t, stub)
 	cfg.Documents = nil
-	if _, err := NewRelyingParty(t.Context(), cfg, ""); err == nil || !strings.Contains(err.Error(), "store") {
+	if _, err := New(t.Context(), cfg, newTestKeys(t)); err == nil || !strings.Contains(err.Error(), "store") {
 		t.Errorf("err = %v", err)
 	}
 	if n := fetches.count("/.well-known/openid-federation"); n != 0 {

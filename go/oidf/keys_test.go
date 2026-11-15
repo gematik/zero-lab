@@ -27,15 +27,12 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +40,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/openid"
+	"github.com/gematik/zero-lab/go/openid/providers"
 )
 
 // A relying party's default kid is what it registered with the federation master, so the thumbprint must not change
@@ -91,58 +89,200 @@ func TestThumbprintsAreByteIdenticalToThePublishedOnes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			sum, err := jwk.Key.Thumbprint(crypto.SHA256)
+			got, err := thumbprint(jwk.Key.Key)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := base64.RawURLEncoding.EncodeToString(sum); got != tc.want {
+			if got != tc.want {
 				t.Errorf("thumbprint = %s, want %s", got, tc.want)
 			}
 		})
 	}
 }
 
-func writeTestKeyPEM(t *testing.T, curve elliptic.Curve) (string, *ecdsa.PrivateKey) {
+// testKeyFiles names key files, which the loaders of these tests never read.
+func testKeyFiles() KeyFiles {
+	return KeyFiles{
+		SignKey:   KeyFile{KeyPEMPath: "sign.pem"},
+		EncKey:    KeyFile{KeyPEMPath: "enc.pem"},
+		ClientKey: KeyFile{KeyPEMPath: "client.pem", CertPEMPath: "client-cert.pem"},
+	}
+}
+
+// buildKind runs Kind on file, with loader as the host's key loader, in a providers file in dir.
+func buildKind(t *testing.T, stub *federationStub, file KeyFiles, dir string, loader func(KeyFiles) (Keys, error)) (*RelyingParty, error) {
 	t.Helper()
-	key, err := ecdsa.GenerateKey(curve, rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+	config := testRelyingPartyConfig(t, stub)
+	decode := func(v any) error {
+		target, ok := v.(*FileConfig)
+		if !ok {
+			return fmt.Errorf("decode into a %T", v)
+		}
+		*target = FileConfig{RelyingPartyConfig: *config, KeyFiles: file}
+		return nil
 	}
-	der, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "key.pem")
-	data := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return path, key
+	var built *RelyingParty
+	_, err := Kind("", NewMemoryDocuments(16, nil), loader, func(rp *RelyingParty) { built = rp })(decode, providers.Env{BaseDir: dir, HTTPClient: stub.Client()})
+	return built, err
 }
 
-func TestLoadKeyConfigDefaultsTheKidToTheThumbprint(t *testing.T) {
-	path, key := writeTestKeyPEM(t, elliptic.P256())
-	_, kid, err := loadKeyConfig(KeyConfig{KeyPEMPath: path}, "")
+// withoutKIDs is keys as a host's loader returns them: the kids are Kind's to set.
+func withoutKIDs(keys Keys) Keys {
+	keys.SignKID, keys.DecryptKID, keys.ClientKID = "", "", ""
+	return keys
+}
+
+func TestKindDefaultsTheKidToTheThumbprint(t *testing.T) {
+	keys := newTestKeys(t)
+	rp, err := buildKind(t, newFederationStub(t), testKeyFiles(), "", func(KeyFiles) (Keys, error) { return withoutKIDs(keys), nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	sum, err := (&jose.JSONWebKey{Key: key.Public()}).Thumbprint(crypto.SHA256)
+	encryption, err := encryptionPublicKey(keys.Decrypt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := base64.RawURLEncoding.EncodeToString(sum); kid != want {
-		t.Errorf("kid = %s, want %s", kid, want)
+	published := publishedKeys(t, rp)
+	for name, public := range map[string]crypto.PublicKey{"sign": keys.Sign.Public(), "enc": encryption, "client": keys.Client.Leaf.PublicKey} {
+		sum, err := (&jose.JSONWebKey{Key: public}).Thumbprint(crypto.SHA256)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if published[base64.RawURLEncoding.EncodeToString(sum)] == nil {
+			t.Errorf("%s: not published under its thumbprint: %v", name, published)
+		}
 	}
 }
 
-func TestLoadKeyConfigTakesTheConfiguredKid(t *testing.T) {
-	path, _ := writeTestKeyPEM(t, elliptic.P256())
-	_, kid, err := loadKeyConfig(KeyConfig{KeyPEMPath: path, Kid: "registered"}, "")
+func TestKindTakesTheConfiguredKid(t *testing.T) {
+	files := testKeyFiles()
+	files.SignKey.Kid, files.EncKey.Kid, files.ClientKey.Kid = "sign", "enc", "client"
+	rp, err := buildKind(t, newFederationStub(t), files, "", func(KeyFiles) (Keys, error) { return newTestKeys(t), nil })
 	if err != nil {
 		t.Fatal(err)
 	}
-	if kid != "registered" {
-		t.Errorf("kid = %s", kid)
+	published := publishedKeys(t, rp)
+	for kid, want := range map[string][3]string{
+		"sign":   {"statement", "sig", "ES256"},
+		"enc":    {"openid_relying_party", "enc", "ECDH-ES"},
+		"client": {"openid_relying_party", "sig", "ES256"},
+	} {
+		key := published[kid]
+		if key == nil || key["in"] != want[0] || key["use"] != want[1] || key["alg"] != want[2] {
+			t.Errorf("%s: %v", kid, key)
+		}
+	}
+}
+
+func TestKindResolvesRelativeKeyPathsAgainstTheFilesDirectory(t *testing.T) {
+	files := testKeyFiles()
+	files.EncKey.KeyPEMPath = "/etc/keys/enc.pem"
+	var got KeyFiles
+	_, err := buildKind(t, newFederationStub(t), files, "/srv/config", func(files KeyFiles) (Keys, error) {
+		got = files
+		return newTestKeys(t), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := KeyFiles{
+		SignKey:   KeyFile{KeyPEMPath: "/srv/config/sign.pem"},
+		EncKey:    KeyFile{KeyPEMPath: "/etc/keys/enc.pem"},
+		ClientKey: KeyFile{KeyPEMPath: "/srv/config/client.pem", CertPEMPath: "/srv/config/client-cert.pem"},
+	}
+	if got != want {
+		t.Errorf("the loader got %+v, want %+v", got, want)
+	}
+}
+
+// Keys rule 1: oidf reads no key file, so a Kind without the host's loader has no keys and refuses to start.
+func TestKeysRule1_KindWithoutAKeyLoaderIsRefused(t *testing.T) {
+	stub := newFederationStub(t)
+	fetches := stub.countFetches()
+	if _, err := buildKind(t, stub, testKeyFiles(), "", nil); err == nil || !strings.Contains(err.Error(), "loader") {
+		t.Errorf("err = %v", err)
+	}
+	if n := fetches.count("/.well-known/openid-federation"); n != 0 {
+		t.Errorf("%d fetches", n)
+	}
+}
+
+// Servers rule 17: incomplete key files and a certificate named for the signing or the ID token key, which would be
+// ignored, stop the start before a key is loaded.
+func TestServerRule17_KeyFilesThatAreIncompleteOrMisplacedAreRefused(t *testing.T) {
+	stub := newFederationStub(t)
+	for name, c := range map[string]struct {
+		change func(*KeyFiles)
+		reason string
+	}{
+		"no signing key":              {func(f *KeyFiles) { f.SignKey.KeyPEMPath = "" }, "sign_key.key_pem_path is required"},
+		"no ID token key":             {func(f *KeyFiles) { f.EncKey.KeyPEMPath = "" }, "enc_key.key_pem_path is required"},
+		"no client key":               {func(f *KeyFiles) { f.ClientKey.KeyPEMPath = "" }, "client_key.key_pem_path is required"},
+		"no client certificate":       {func(f *KeyFiles) { f.ClientKey.CertPEMPath = "" }, "client_key.cert_pem_path is required"},
+		"a signing key certificate":   {func(f *KeyFiles) { f.SignKey.CertPEMPath = "cert.pem" }, "cert_pem_path belongs to client_key only"},
+		"an ID token key certificate": {func(f *KeyFiles) { f.EncKey.CertPEMPath = "cert.pem" }, "cert_pem_path belongs to client_key only"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			files := testKeyFiles()
+			c.change(&files)
+			loaded := false
+			_, err := buildKind(t, stub, files, "", func(KeyFiles) (Keys, error) {
+				loaded = true
+				return newTestKeys(t), nil
+			})
+			if err == nil || !strings.Contains(err.Error(), c.reason) {
+				t.Errorf("err = %v", err)
+			}
+			if loaded {
+				t.Error("the keys were loaded")
+			}
+		})
+	}
+}
+
+func TestKindNamesTheLoadersError(t *testing.T) {
+	failure := errors.New("enc_key: no such file")
+	_, err := buildKind(t, newFederationStub(t), testKeyFiles(), "", func(KeyFiles) (Keys, error) { return Keys{}, failure })
+	if !errors.Is(err, failure) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// gemSpec_IDP_FD A_23196: keys from a host's loader are held to P-256 like any others, before a kid is computed.
+func TestA_23196_KindRefusesKeysThatAreNotP256(t *testing.T) {
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stub := newFederationStub(t)
+	for name, change := range map[string]func(*Keys){
+		"signing key": func(k *Keys) { k.Sign = p384 },
+		"client key":  func(k *Keys) { k.Client = selfSignedCertificate(t, p384) },
+	} {
+		keys := withoutKIDs(newTestKeys(t))
+		change(&keys)
+		if _, err := buildKind(t, stub, testKeyFiles(), "", func(KeyFiles) (Keys, error) { return keys, nil }); !errors.Is(err, ErrKeys) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// gemSpec_IDP_FD A_23196: New takes P-256 keys only, so an RSA key a host hands in stops the start.
+func TestA_23196_NewRefusesRSAKeys(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stub := newFederationStub(t)
+	for name, change := range map[string]func(*Keys){
+		"signing key": func(k *Keys) { k.Sign = rsaKey },
+		"client key":  func(k *Keys) { k.Client.PrivateKey = rsaKey },
+	} {
+		keys := newTestKeys(t)
+		change(&keys)
+		if _, err := New(t.Context(), testRelyingPartyConfig(t, stub), keys); !errors.Is(err, ErrKeys) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }
 
@@ -175,149 +315,6 @@ func publishedKeys(t *testing.T, rp *RelyingParty) map[string]map[string]any {
 		published[key["kid"].(string)] = key
 	}
 	return published
-}
-
-// A published key states the algorithm it is for, also when it comes from a file.
-func TestPublishedKeysStateTheirAlgAndUse(t *testing.T) {
-	cfg := testRelyingPartyConfig(t, newFederationStub(t))
-	cfg.SignKey.Kid, cfg.EncKey.Kid, cfg.ClientKey.Kid = "sign", "enc", "client"
-	rp, err := NewRelyingParty(t.Context(), cfg, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	published := publishedKeys(t, rp)
-	for kid, want := range map[string][3]string{
-		"sign":   {"statement", "sig", "ES256"},
-		"enc":    {"openid_relying_party", "enc", "ECDH-ES"},
-		"client": {"openid_relying_party", "sig", "ES256"},
-	} {
-		key := published[kid]
-		if key == nil || key["in"] != want[0] || key["use"] != want[1] || key["alg"] != want[2] {
-			t.Errorf("%s: %v", kid, key)
-		}
-		if _, private := key["d"]; private {
-			t.Errorf("%s: published the private part", kid)
-		}
-	}
-}
-
-// gemSpec_IDP_FD A_23196: TLS authentication with a P-256 key only.
-func TestA_23196_AP384ClientKeyFromAFileIsRefused(t *testing.T) {
-	cfg := testRelyingPartyConfig(t, newFederationStub(t))
-	path, _ := writeTestKeyPEM(t, elliptic.P384())
-	certPath, err := generateCert(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Remove(certPath) })
-	cfg.ClientKey = KeyConfig{KeyPEMPath: path, CertPEMPath: certPath}
-	if _, err := NewRelyingParty(t.Context(), cfg, ""); !errors.Is(err, ErrKeys) {
-		t.Errorf("err = %v", err)
-	}
-}
-
-// gemSpec_IDP_FD A_23196: the entity statement is signed with a P-256 key only.
-func TestA_23196_TheSigningKeyHasToBeP256(t *testing.T) {
-	cfg := testRelyingPartyConfig(t, newFederationStub(t))
-	path, _ := writeTestKeyPEM(t, elliptic.P384())
-	cfg.SignKey = KeyConfig{KeyPEMPath: path}
-	if _, err := NewRelyingParty(t.Context(), cfg, ""); !errors.Is(err, ErrKeys) {
-		t.Errorf("err = %v", err)
-	}
-}
-
-func TestLoadKeyConfigRefusesKeysThatCannotDoTheJob(t *testing.T) {
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rsaPath := filepath.Join(t.TempDir(), "rsa.pem")
-	data := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(rsaKey)})
-	if err := os.WriteFile(rsaPath, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	stub := newFederationStub(t)
-	for name, place := range map[string]func(*RelyingPartyConfig){
-		"sign_key":   func(c *RelyingPartyConfig) { c.SignKey = KeyConfig{KeyPEMPath: rsaPath} },
-		"enc_key":    func(c *RelyingPartyConfig) { c.EncKey = KeyConfig{KeyPEMPath: rsaPath} },
-		"client_key": func(c *RelyingPartyConfig) { c.ClientKey.KeyPEMPath = rsaPath },
-	} {
-		cfg := testRelyingPartyConfig(t, stub)
-		place(cfg)
-		if _, err := NewRelyingParty(t.Context(), cfg, ""); err == nil {
-			t.Errorf("%s accepted an RSA key", name)
-		}
-	}
-	publicJWK := map[string]any{"kty": "EC", "crv": "P-256", "x": "cdIR8dLbqaGrzfgyu365KM5s00zjFq8DFaUFqBvrWLs", "y": "XVp1ySJ2kjEInpjTZy0wD59afEXELpck0fk7vrMWrbw"}
-	if _, _, err := loadKeyConfig(KeyConfig{JWK: publicJWK}, ""); err == nil {
-		t.Error("accepted a public key as the private key")
-	}
-}
-
-func TestParsePrivateKeyPEMReadsTheFormatsOfTheStandardLibrary(t *testing.T) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sec1, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for blockType, der := range map[string][]byte{"EC PRIVATE KEY": sec1, "PRIVATE KEY": pkcs8} {
-		parsed, err := parsePrivateKeyPEM(pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: der}))
-		if err != nil {
-			t.Fatalf("%s: %v", blockType, err)
-		}
-		if !key.Equal(parsed.Key.(*ecdsa.PrivateKey)) {
-			t.Errorf("%s: another key", blockType)
-		}
-	}
-	publicDER, err := x509.MarshalPKIXPublicKey(key.Public())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := parsePrivateKeyPEM(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER})); err == nil {
-		t.Error("accepted a public key")
-	}
-	if _, err := parsePrivateKeyPEM([]byte("no PEM here")); err == nil {
-		t.Error("accepted garbage")
-	}
-}
-
-func TestCertPEMPathPublishesTheCertificateAsX5c(t *testing.T) {
-	cfg := testRelyingPartyConfig(t, newFederationStub(t))
-	cfg.ClientKey.Kid = "client"
-	rp, err := NewRelyingParty(t.Context(), cfg, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	der, err := loadCertBytesFromPem(cfg.ClientKey.CertPEMPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	x5c, _ := publishedKeys(t, rp)["client"]["x5c"].([]any)
-	if len(x5c) != 1 || x5c[0] != base64.StdEncoding.EncodeToString(der) {
-		t.Errorf("x5c = %v", x5c)
-	}
-}
-
-// Servers rule 17: a certificate named for the signing or the ID token key would be ignored, so it stops the start.
-func TestServerRule17_ACertificateForAKeyOtherThanTheClientKeyIsRefused(t *testing.T) {
-	stub := newFederationStub(t)
-	for name, place := range map[string]func(*RelyingPartyConfig){
-		"sign_key": func(c *RelyingPartyConfig) { c.SignKey.CertPEMPath = c.ClientKey.CertPEMPath },
-		"enc_key":  func(c *RelyingPartyConfig) { c.EncKey.CertPEMPath = c.ClientKey.CertPEMPath },
-	} {
-		cfg := testRelyingPartyConfig(t, stub)
-		place(cfg)
-		if _, err := NewRelyingParty(t.Context(), cfg, ""); err == nil || !strings.Contains(err.Error(), "cert_pem_path belongs to client_key only") {
-			t.Errorf("%s: %v", name, err)
-		}
-	}
 }
 
 func TestJwkMarshalsBackToAPlainJWK(t *testing.T) {

@@ -23,6 +23,10 @@ package oidf
 
 import (
 	"context"
+	"crypto"
+	"errors"
+	"fmt"
+	"path/filepath"
 
 	"github.com/gematik/zero-lab/go/openid/providers"
 )
@@ -59,15 +63,126 @@ func (rp *RelyingParty) Providers(ctx context.Context) ([]providers.Info, error)
 	return infos, nil
 }
 
-// Kind is the kind of a federation's relying party, one [RelyingPartyConfig], with apiKey as its
-// [RelyingPartyConfig.APIKey] and documents as its [RelyingPartyConfig.Documents]. built, if not nil, gets the
-// relying party, for a program that serves its entity statement too.
-func Kind(apiKey string, documents Documents, built func(*RelyingParty)) providers.Kind {
+// FileConfig is one relying party as a configuration file has it: its [RelyingPartyConfig] and, beside it, the files
+// of its keys.
+type FileConfig struct {
+	RelyingPartyConfig `yaml:",inline"`
+	KeyFiles           `yaml:",inline"`
+}
+
+// Validate reports a missing or misplaced field of the configuration or of its key files.
+func (cfg *FileConfig) Validate() error {
+	if err := cfg.RelyingPartyConfig.Validate(); err != nil {
+		return err
+	}
+	return cfg.KeyFiles.Validate()
+}
+
+// KeyFiles names the files of the relying party's keys, which the host reads, not this package (keys.md rule 1): a
+// configuration carries paths, never key material. SignKey signs the entity statement, EncKey decrypts the ID token,
+// ClientKey authenticates the self_signed_tls_client_auth calls with its certificate.
+type KeyFiles struct {
+	SignKey   KeyFile `yaml:"sign_key"`
+	EncKey    KeyFile `yaml:"enc_key"`
+	ClientKey KeyFile `yaml:"client_key"`
+}
+
+// KeyFile names one key: KeyPEMPath its PEM private key and CertPEMPath its PEM certificate, which only the client
+// key has. Kid is its key id; when empty, the key's RFC 7638 SHA-256 thumbprint is. A relying party registered with a
+// federation master sets the kids it registered, or the IDP cannot find its keys: it looks them up by kid.
+type KeyFile struct {
+	KeyPEMPath  string `yaml:"key_pem_path"`
+	CertPEMPath string `yaml:"cert_pem_path,omitempty"`
+	Kid         string `yaml:"kid,omitempty"`
+}
+
+// Validate reports a key without its file, a client key without its certificate, and a certificate named for
+// another key, which would be ignored (servers.md rule 17).
+func (files KeyFiles) Validate() error {
+	for _, key := range []struct {
+		name string
+		file KeyFile
+	}{{"sign_key", files.SignKey}, {"enc_key", files.EncKey}, {"client_key", files.ClientKey}} {
+		if key.file.KeyPEMPath == "" {
+			return fmt.Errorf("%s.key_pem_path is required", key.name)
+		}
+	}
+	if files.ClientKey.CertPEMPath == "" {
+		return errors.New("client_key.cert_pem_path is required (mTLS)")
+	}
+	if files.SignKey.CertPEMPath != "" || files.EncKey.CertPEMPath != "" {
+		return errors.New("cert_pem_path belongs to client_key only")
+	}
+	return nil
+}
+
+// under resolves the relative paths of files against dir, the directory of the file that names them.
+func (files KeyFiles) under(dir string) KeyFiles {
+	join := func(path string) string {
+		if path == "" || filepath.IsAbs(path) {
+			return path
+		}
+		return filepath.Join(dir, path)
+	}
+	for _, file := range []*KeyFile{&files.SignKey, &files.EncKey, &files.ClientKey} {
+		file.KeyPEMPath, file.CertPEMPath = join(file.KeyPEMPath), join(file.CertPEMPath)
+	}
+	return files
+}
+
+// withKIDs gives keys the kids files name, and each key whose file names none its thumbprint.
+func withKIDs(keys Keys, files KeyFiles) (Keys, error) {
+	if err := keys.checkKeys(); err != nil {
+		return Keys{}, err
+	}
+	encryption, err := encryptionPublicKey(keys.Decrypt)
+	if err != nil {
+		return Keys{}, err
+	}
+	for _, key := range []struct {
+		kid        *string
+		configured string
+		public     crypto.PublicKey
+	}{
+		{&keys.SignKID, files.SignKey.Kid, keys.Sign.Public()},
+		{&keys.DecryptKID, files.EncKey.Kid, encryption},
+		{&keys.ClientKID, files.ClientKey.Kid, keys.Client.Leaf.PublicKey},
+	} {
+		*key.kid = key.configured
+		if key.configured == "" {
+			if *key.kid, err = thumbprint(key.public); err != nil {
+				return Keys{}, err
+			}
+		}
+	}
+	return keys, nil
+}
+
+// Kind is the kind of a federation's relying party, one [FileConfig], with apiKey as its [RelyingPartyConfig.APIKey]
+// and documents as its [RelyingPartyConfig.Documents]. keys loads the keys of the file's [KeyFiles], their relative
+// paths resolved against the file's directory: the host reads them, this package reads no file. The kids of what keys
+// returns are replaced by those of the file or the thumbprints. built, if not nil, gets the relying party, for a
+// program that serves its entity statement too.
+func Kind(apiKey string, documents Documents, keys func(KeyFiles) (Keys, error), built func(*RelyingParty)) providers.Kind {
 	return func(decode providers.Decode, env providers.Env) (providers.Built, error) {
-		config := new(RelyingPartyConfig)
-		if err := decode(config); err != nil {
+		if keys == nil {
+			return providers.Built{}, errors.New("no loader of the relying party's keys")
+		}
+		file := new(FileConfig)
+		if err := decode(file); err != nil {
 			return providers.Built{}, err
 		}
+		if err := file.Validate(); err != nil {
+			return providers.Built{}, fmt.Errorf("config validation failed: %w", err)
+		}
+		loaded, err := keys(file.under(env.BaseDir))
+		if err != nil {
+			return providers.Built{}, fmt.Errorf("load the relying party's keys: %w", err)
+		}
+		if loaded, err = withKIDs(loaded, file.KeyFiles); err != nil {
+			return providers.Built{}, err
+		}
+		config := &file.RelyingPartyConfig
 		config.APIKey = apiKey
 		config.HTTPClient = env.HTTPClient
 		config.Documents = documents
@@ -75,7 +190,7 @@ func Kind(apiKey string, documents Documents, built func(*RelyingParty)) provide
 		// answer from holding the start for longer than one fetch may take.
 		ctx, cancel := context.WithTimeout(context.Background(), defaultHTTPTimeout)
 		defer cancel()
-		rp, err := NewRelyingParty(ctx, config, env.BaseDir)
+		rp, err := New(ctx, config, loaded)
 		if err != nil {
 			return providers.Built{}, err
 		}

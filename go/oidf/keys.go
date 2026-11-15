@@ -29,6 +29,7 @@ import (
 	"crypto/elliptic"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"reflect"
@@ -74,6 +75,11 @@ func (k Keys) check() error {
 	if k.SignKID == k.DecryptKID || k.SignKID == k.ClientKID || k.DecryptKID == k.ClientKID {
 		return fmt.Errorf("%w: two keys share a kid", ErrKeys)
 	}
+	return k.checkKeys()
+}
+
+// checkKeys is check without the kids.
+func (k Keys) checkKeys() error {
 	if isNil(k.Sign) {
 		return fmt.Errorf("%w: no signing key", ErrKeys)
 	}
@@ -142,16 +148,36 @@ func decryptionPublicKey(agreement KeyAgreement) (*ecdh.PublicKey, error) {
 	return nil, fmt.Errorf("%w: the ID token key is no P-256 key", ErrKeys)
 }
 
+// encryptionPublicKey is the public half of the ID token key as the ECDSA key a JWK is made of.
+func encryptionPublicKey(agreement KeyAgreement) (*ecdsa.PublicKey, error) {
+	public, err := decryptionPublicKey(agreement)
+	if err != nil {
+		return nil, err
+	}
+	encryption, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), public.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("%w: the ID token key: %w", ErrKeys, err)
+	}
+	return encryption, nil
+}
+
+// thumbprint is the RFC 7638 SHA-256 thumbprint of public, base64url without padding: the kid of a key whose
+// configuration names none. A registered relying party's kid is what the master knows it by, so it must not change
+// with the library behind it.
+func thumbprint(public crypto.PublicKey) (string, error) {
+	sum, err := (&jose.JSONWebKey{Key: public}).Thumbprint(crypto.SHA256)
+	if err != nil {
+		return "", fmt.Errorf("%w: thumbprint: %w", ErrKeys, err)
+	}
+	return base64.RawURLEncoding.EncodeToString(sum), nil
+}
+
 // publishedKeys are the public keys the entity statement names: the signing key in its jwks, and in the
 // openid_relying_party jwks the ID token key (A_23194) and the client certificate as x5c (A_23183).
 func (k Keys) publishedKeys() (statement, relyingParty *jose.JSONWebKeySet, err error) {
-	decryptPublic, err := decryptionPublicKey(k.Decrypt)
+	encryption, err := encryptionPublicKey(k.Decrypt)
 	if err != nil {
 		return nil, nil, err
-	}
-	encryption, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), decryptPublic.Bytes())
-	if err != nil {
-		return nil, nil, fmt.Errorf("%w: the ID token key: %w", ErrKeys, err)
 	}
 	statement = &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{
 		{Key: k.Sign.Public(), KeyID: k.SignKID, Use: "sig", Algorithm: string(jose.ES256)},

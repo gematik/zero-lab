@@ -26,16 +26,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -824,24 +820,12 @@ func TestRelyingPartyRefusesAProviderWithAnEndpointThatIsNotHTTPS(t *testing.T) 
 
 // The relying party's client carries its mTLS key, which a redirect would present elsewhere.
 func TestRelyingPartyDoesNotFollowARedirectFromPARNorTheTokenEndpoint(t *testing.T) {
-	cfg := testRelyingPartyConfig(t, newFederationStub(t))
-	rp, err := NewRelyingParty(t.Context(), cfg, "")
+	rp, err := New(t.Context(), testRelyingPartyConfig(t, newFederationStub(t)), newTestKeys(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rp.httpClient.CheckRedirect == nil || rp.httpClient.CheckRedirect(nil, nil) == nil {
 		t.Error("the mTLS client follows redirects")
-	}
-}
-
-func TestLoadCertBytesFromPemNamesTheFileWithoutAMissingError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "cert.pem")
-	if err := os.WriteFile(path, []byte("no pem"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := loadCertBytesFromPem(path)
-	if err == nil || strings.Contains(err.Error(), "%!") || !strings.Contains(err.Error(), path) {
-		t.Errorf("err = %v", err)
 	}
 }
 
@@ -911,35 +895,13 @@ func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 	}
 }
 
-// testRelyingPartyConfig is a relying party of the stub's federation, with keys in a temporary directory.
+// testRelyingPartyConfig is a relying party of the stub's federation, for New with keys such as newTestKeys.
 func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyConfig {
 	t.Helper()
-	dir := t.TempDir()
-	keyPath := func(name string) string {
-		der, err := x509.MarshalPKCS8PrivateKey(newTestKey(t))
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	clientKey := keyPath("client.pem")
-	certPath, err := generateCert(clientKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Remove(certPath) })
-	master := &Jwk{Key: &keySetOf(stub.masterKey, "master").Keys[0]}
 	return &RelyingPartyConfig{
 		Subject:          "https://rp.example",
 		FedMasterURL:     stub.URL,
-		FedMasterJWK:     master,
-		SignKey:          KeyConfig{KeyPEMPath: keyPath("sign.pem")},
-		EncKey:           KeyConfig{KeyPEMPath: keyPath("enc.pem")},
-		ClientKey:        KeyConfig{KeyPEMPath: clientKey, CertPEMPath: certPath},
+		FedMasterJWK:     &Jwk{Key: &keySetOf(stub.masterKey, "master").Keys[0]},
 		RelyingParty:     testRelyingPartyMetadata(),
 		FederationEntity: testFederationEntity(),
 		HTTPClient:       stub.Client(),

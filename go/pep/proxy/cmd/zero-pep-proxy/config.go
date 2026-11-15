@@ -54,7 +54,7 @@ func loadProviders(path, publicURL string, client *http.Client, documents oidf.D
 	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
-		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), documents, nil),
+		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), documents, loadOIDFKeys, nil),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("providers %q: %w", path, err)
@@ -106,18 +106,11 @@ func providersFromEnv(publicURL string, httpClient *http.Client, documents oidf.
 	}
 
 	if rpPath := os.Getenv("PEP_OIDF_RP_CONFIG_PATH"); rpPath != "" {
-		config := new(oidf.RelyingPartyConfig)
-		if err := loadYAML(rpPath, config); err != nil {
-			log.Fatalf("load oidf relying party: %v", err)
-		}
-		config.APIKey = os.Getenv(oidfDevAPIKeyEnv)
-		config.HTTPClient = httpClient
-		config.Documents = documents
-		// Start-up, before any request: the bound keeps a federation master that does not answer from holding it.
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		rp, err := oidf.NewRelyingParty(ctx, config, filepath.Dir(rpPath))
-		cancel()
-		if err != nil {
+		// The file is one entry of the providers file's kind, so it is read and built the same way.
+		var rp *oidf.RelyingParty
+		kind := oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), documents, loadOIDFKeys, func(built *oidf.RelyingParty) { rp = built })
+		decode := func(v any) error { return loadYAML(rpPath, v) }
+		if _, err := kind(decode, providers.Env{BaseDir: filepath.Dir(rpPath), HTTPClient: httpClient}); err != nil {
 			log.Fatalf("load oidf relying party: %v", err)
 		}
 		federation = rp

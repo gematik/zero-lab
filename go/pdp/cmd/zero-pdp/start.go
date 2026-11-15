@@ -126,6 +126,7 @@ func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 		return nil, nil, fmt.Errorf("load config file: %w", err)
 	}
 	config.OIDFAPIKey = os.Getenv(oidfDevAPIKeyEnv)
+	config.OIDFKeys = loadOIDFKeys
 	// The OpenID providers, the IDP-Dienst and the federation master are on the internet: the web profile.
 	if config.HTTPClient, err = titls.NewWebHTTPClient(providerHTTPTimeout, titls.Options{}); err != nil {
 		return nil, nil, err

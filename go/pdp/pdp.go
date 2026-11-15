@@ -44,6 +44,9 @@ type Config struct {
 	ProvidersPath string `yaml:"-"`
 	// OIDFAPIKey is the key of gematik's development federation; the program supplies it.
 	OIDFAPIKey string `yaml:"-"`
+	// OIDFKeys loads the keys of the relying party from the files the providers file names; the program supplies
+	// it, as oidf reads no file.
+	OIDFKeys func(oidf.KeyFiles) (oidf.Keys, error) `yaml:"-"`
 	// OIDFDocuments keeps the federation's signed documents; the program supplies it.
 	OIDFDocuments oidf.Documents `yaml:"-"`
 	// HTTPClient carries the requests to the providers and the federation; the program supplies it, and
@@ -93,7 +96,7 @@ func loadProviders(config *Config) error {
 	set, err := providers.Build(entries, providers.Env{BaseDir: filepath.Dir(config.ProvidersPath), HTTPClient: config.HTTPClient}, providers.Kinds{
 		"oidc": providers.OIDC,
 		"idpd": idpd.Kind(nil),
-		"oidf": oidf.Kind(config.OIDFAPIKey, config.OIDFDocuments, func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
+		"oidf": oidf.Kind(config.OIDFAPIKey, config.OIDFDocuments, config.OIDFKeys, func(rp *oidf.RelyingParty) { server.RelyingParty = rp }),
 	})
 	if err != nil {
 		return fmt.Errorf("providers %q: %w", config.ProvidersPath, err)

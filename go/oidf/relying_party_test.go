@@ -22,20 +22,12 @@
 package oidf
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
-	"math/big"
 	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
 // unverifiedPayload reads the claims of a compact JWS, for a test that has already got what it needs from the signer.
@@ -52,20 +44,11 @@ func unverifiedPayload(t *testing.T, signed []byte) []byte {
 	return payload
 }
 
-func TestNewRelyingParty(t *testing.T) {
+func TestNewAtALiveFederationMaster(t *testing.T) {
 	fedMasterURL := os.Getenv("OIDF_FEDMASTER_URL")
 	if fedMasterURL == "" {
-		t.Skip("OIDF_FEDMASTER_URL not set — skipping (NewRelyingParty fetches a live federation master)")
+		t.Skip("OIDF_FEDMASTER_URL not set — skipping (New fetches a live federation master)")
 	}
-	signKeyPath, _ := generateTempKeyFile()
-	defer os.Remove(signKeyPath)
-	encKeyPath, _ := generateTempKeyFile()
-	defer os.Remove(encKeyPath)
-	clientKeyPath, _ := generateTempKeyFile()
-	defer os.Remove(clientKeyPath)
-	clientCertPath, _ := generateCert(clientKeyPath)
-	defer os.Remove(clientCertPath)
-
 	fedMasterJwk, err := NewJwkFromJSON(`{
 		"kty": "EC",
 		"crv": "P-256",
@@ -83,15 +66,12 @@ func TestNewRelyingParty(t *testing.T) {
 		Subject:          "https://example.com",
 		FedMasterURL:     fedMasterURL,
 		FedMasterJWK:     fedMasterJwk,
-		SignKey:          KeyConfig{KeyPEMPath: signKeyPath},
-		EncKey:           KeyConfig{KeyPEMPath: encKeyPath},
-		ClientKey:        KeyConfig{KeyPEMPath: clientKeyPath, CertPEMPath: clientCertPath},
 		RelyingParty:     testRelyingPartyMetadata(),
 		FederationEntity: testFederationEntity(),
 		Documents:        NewMemoryDocuments(16, nil),
 	}
 
-	es, err := NewRelyingParty(t.Context(), cfg, "")
+	es, err := New(t.Context(), cfg, newTestKeys(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,80 +92,6 @@ func TestNewRelyingParty(t *testing.T) {
 	}
 
 	t.Log(claims.Metadata)
-}
-
-func generateTempKeyFile() (string, error) {
-	tmpfile, err := os.CreateTemp(``, `private-key-*.pem`)
-	if err != nil {
-		return "", err
-	}
-
-	prk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return "", err
-	}
-
-	prkDer, err := x509.MarshalECPrivateKey(prk)
-	if err != nil {
-		return "", err
-	}
-
-	err = pem.Encode(tmpfile, &pem.Block{
-		Type:  "EC PRIVATE KEY",
-		Bytes: prkDer,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return tmpfile.Name(), nil
-}
-
-func generateCert(keyfile string) (string, error) {
-	keyData, err := os.ReadFile(keyfile)
-	if err != nil {
-		return "", err
-	}
-	parsed, err := parsePrivateKeyPEM(keyData)
-	if err != nil {
-		return "", err
-	}
-	privKey, ok := parsed.Key.(*ecdsa.PrivateKey)
-	if !ok {
-		return "", errors.New("not an EC key")
-	}
-
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization: []string{"Acme Co"},
-		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(time.Hour * 24 * 180),
-
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, privKey.Public(), privKey)
-	if err != nil {
-		return "", err
-	}
-
-	tmpfile, err := os.CreateTemp(``, `cert-*.pem`)
-	if err != nil {
-		return "", err
-	}
-
-	if err := pem.Encode(tmpfile, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: derBytes,
-	}); err != nil {
-		return "", err
-	}
-
-	return tmpfile.Name(), nil
 }
 
 func TestBuildMetadataFillsTheDefaultsAConfigOmits(t *testing.T) {

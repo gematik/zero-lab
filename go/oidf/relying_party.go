@@ -23,20 +23,12 @@ package oidf
 
 import (
 	"context"
-	"crypto"
-	"crypto/ecdsa"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -53,7 +45,8 @@ import (
 // minimal identity set (display name + insured/KVNR).
 var defaultOPScopes = []string{"openid", "urn:telematik:display_name", "urn:telematik:versicherter"}
 
-// RelyingPartyConfig configures a gematik OpenID Federation relying party. Only deployment-specific values
+// RelyingPartyConfig configures a gematik OpenID Federation relying party. It holds no key: [New] takes the keys as
+// [Keys], and a configuration file names their files in [KeyFiles] beside it. Only deployment-specific values
 // are required; the invariant gematik OIDF metadata (response_types, grant_types, client_registration_types,
 // token_endpoint_auth_method, id_token algorithms, PAR) is filled in by buildMetadata.
 type RelyingPartyConfig struct {
@@ -71,12 +64,6 @@ type RelyingPartyConfig struct {
 	// FedMasterJWK, obtained out of band.
 	FedMasterEntityStatementURI string `yaml:"fed_master_entity_statement_uri,omitempty"`
 	FedMasterJWK                *Jwk   `yaml:"fed_master_jwk,omitempty"`
-
-	// SignKey signs the entity statement; EncKey decrypts the JWE id_token; ClientKey authenticates the
-	// self_signed_tls_client_auth mTLS calls (its cert_pem_path is required). Each is a KeyConfig.
-	SignKey   KeyConfig `yaml:"sign_key"`
-	EncKey    KeyConfig `yaml:"enc_key"`
-	ClientKey KeyConfig `yaml:"client_key"`
 
 	// RelyingParty + FederationEntity are the deployment-specific entity-statement metadata; the rest is
 	// defaulted.
@@ -113,19 +100,6 @@ type RelyingPartyConfig struct {
 	// entity statement anew, after which the last one is served until it expires. Not serialized; supplied
 	// programmatically. When nil, such failures are dropped silently.
 	Logger *slog.Logger `yaml:"-"`
-}
-
-// KeyConfig sources one key. Provide exactly one of KeyPEMPath (a PEM private-key file), JWKPath (a JWK
-// file), or JWK (an inline JWK). CertPEMPath is the optional X.509 certificate (PEM) bound to the key —
-// required for the client key (mTLS). The key id is Kid when set, otherwise the RFC 7638 SHA-256 thumbprint;
-// a relying party already registered with a federation master MUST set Kid to the registered key id, or the
-// OP cannot match the signing key (it looks it up by kid in the jwks the master vouches for).
-type KeyConfig struct {
-	KeyPEMPath  string         `yaml:"key_pem_path,omitempty"`
-	CertPEMPath string         `yaml:"cert_pem_path,omitempty"`
-	JWKPath     string         `yaml:"jwk_path,omitempty"`
-	JWK         map[string]any `yaml:"jwk,omitempty"`
-	Kid         string         `yaml:"kid,omitempty"`
 }
 
 // RelyingPartyMetadata holds the variable openid_relying_party fields; the OIDF boilerplate is defaulted.
@@ -204,25 +178,8 @@ type RelyingParty struct {
 	retryAt atomic.Int64
 }
 
-// Validate reports a missing required field. What needs I/O is checked when the keys are loaded.
+// Validate reports a missing field of what the relying party publishes and whom it trusts.
 func (cfg *RelyingPartyConfig) Validate() error {
-	for _, field := range []struct {
-		name    string
-		present bool
-	}{
-		{"sign_key", !reflect.ValueOf(cfg.SignKey).IsZero()},
-		{"enc_key", !reflect.ValueOf(cfg.EncKey).IsZero()},
-		{"client_key", !reflect.ValueOf(cfg.ClientKey).IsZero()},
-	} {
-		if !field.present {
-			return fmt.Errorf("%s is required", field.name)
-		}
-	}
-	return cfg.validateEntity()
-}
-
-// validateEntity reports a missing field of what the relying party publishes and whom it trusts.
-func (cfg *RelyingPartyConfig) validateEntity() error {
 	for _, field := range []struct {
 		name    string
 		present bool
@@ -278,71 +235,11 @@ func entityIDOfStatementURI(location string) (string, error) {
 	return entityID, nil
 }
 
-// NewRelyingParty validates cfg, loads its keys from the files and inline JWKs it names, with relative paths resolved
-// against baseDir, and builds the relying party with [New]. A key without a configured kid gets its RFC 7638
-// thumbprint.
-func NewRelyingParty(ctx context.Context, cfg *RelyingPartyConfig, baseDir string) (*RelyingParty, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("config validation failed: %w", err)
-	}
-	keys, err := loadKeys(cfg, baseDir)
-	if err != nil {
-		return nil, err
-	}
-	return New(ctx, cfg, keys)
-}
-
-// loadKeys reads the three keys of a file-based configuration. Only the client key has a certificate: one named for
-// another key would be ignored, so it is refused.
-func loadKeys(cfg *RelyingPartyConfig, baseDir string) (Keys, error) {
-	if cfg.ClientKey.CertPEMPath == "" {
-		return Keys{}, errors.New("client_key.cert_pem_path is required (mTLS)")
-	}
-	if cfg.SignKey.CertPEMPath != "" || cfg.EncKey.CertPEMPath != "" {
-		return Keys{}, errors.New("cert_pem_path belongs to client_key only")
-	}
-	sign, signKID, err := loadKeyConfig(cfg.SignKey, baseDir)
-	if err != nil {
-		return Keys{}, fmt.Errorf("sign_key: %w", err)
-	}
-	enc, decryptKID, err := loadKeyConfig(cfg.EncKey, baseDir)
-	if err != nil {
-		return Keys{}, fmt.Errorf("enc_key: %w", err)
-	}
-	client, clientKID, err := loadKeyConfig(cfg.ClientKey, baseDir)
-	if err != nil {
-		return Keys{}, fmt.Errorf("client_key: %w", err)
-	}
-
-	signer, ok := sign.(crypto.Signer)
-	if !ok {
-		return Keys{}, fmt.Errorf("sign_key: a %T cannot sign", sign)
-	}
-	encKey, ok := enc.(*ecdsa.PrivateKey)
-	if !ok {
-		return Keys{}, fmt.Errorf("enc_key: a %T is no EC key", enc)
-	}
-	agreement, err := encKey.ECDH()
-	if err != nil {
-		return Keys{}, fmt.Errorf("enc_key: %w", err)
-	}
-	certificate, err := tlsCertFromKey(client, joinBase(baseDir, cfg.ClientKey.CertPEMPath))
-	if err != nil {
-		return Keys{}, fmt.Errorf("client_key: %w", err)
-	}
-	return Keys{
-		Sign: signer, SignKID: signKID,
-		Decrypt: agreement, DecryptKID: decryptKID,
-		Client: certificate, ClientKID: clientKID,
-	}, nil
-}
-
 // New builds the relying party from cfg and keys and resolves the federation master's entity statement, so the
-// master has to be reachable and its statement has to verify. The key files and inline JWKs of cfg are not read:
-// keys are the ones that count. It refuses a configuration without a document store, a gated master without an API
+// master has to be reachable and its statement has to verify. It refuses a configuration without a document store, a gated master without an API
 // key ([ErrAPIKeyRequired]) and keys that are not as A_23196 requires (see [Keys]).
 func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty, error) {
-	if err := cfg.validateEntity(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 	if cfg.Documents == nil {
@@ -672,121 +569,6 @@ func (rp *RelyingParty) resolveProvider(ctx context.Context, issuer string, fres
 		return nil, err
 	}
 	return &provider{op: op, metadata: metadata, jwks: jwks}, nil
-}
-
-// Loads the certificate from specified path. The certificate must be in PEM format.
-// Returns the certificate bytes in DER encoding.
-func loadCertBytesFromPem(certPath string) ([]byte, error) {
-	certDataPem, err := os.ReadFile(certPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read cert file: %w", err)
-	}
-	certDataDer, _ := pem.Decode(certDataPem)
-	if certDataDer == nil {
-		return nil, fmt.Errorf("failed to decode cert file %s: no PEM data", certPath)
-	}
-	return certDataDer.Bytes, nil
-}
-
-// loadKeyConfig loads one private key (PEM file, JWK file, or inline JWK) and its key id: KeyConfig.Kid when set,
-// otherwise the RFC 7638 SHA-256 thumbprint. Whether the key can do its job is New's to judge.
-func loadKeyConfig(kc KeyConfig, baseDir string) (any, string, error) {
-	privateKey, err := parseKeySource(kc, baseDir)
-	if err != nil {
-		return nil, "", err
-	}
-	if kc.Kid != "" {
-		return privateKey.Key, kc.Kid, nil
-	}
-	tp, err := privateKey.Thumbprint(crypto.SHA256)
-	if err != nil {
-		return nil, "", fmt.Errorf("compute key thumbprint: %w", err)
-	}
-	return privateKey.Key, base64.RawURLEncoding.EncodeToString(tp), nil
-}
-
-// parseKeySource parses a private key from exactly one of pem_path, jwk_path, or an inline jwk.
-func parseKeySource(kc KeyConfig, baseDir string) (*jose.JSONWebKey, error) {
-	var key *jose.JSONWebKey
-	var err error
-	switch {
-	case kc.KeyPEMPath != "":
-		data, err := os.ReadFile(joinBase(baseDir, kc.KeyPEMPath))
-		if err != nil {
-			return nil, fmt.Errorf("read key_pem_path %q: %w", kc.KeyPEMPath, err)
-		}
-		return parsePrivateKeyPEM(data)
-	case kc.JWKPath != "":
-		data, readErr := os.ReadFile(joinBase(baseDir, kc.JWKPath))
-		if readErr != nil {
-			return nil, fmt.Errorf("read jwk_path %q: %w", kc.JWKPath, readErr)
-		}
-		key, err = openid.ParseKey(data)
-	case len(kc.JWK) > 0:
-		data, marshalErr := json.Marshal(kc.JWK)
-		if marshalErr != nil {
-			return nil, fmt.Errorf("marshal inline jwk: %w", marshalErr)
-		}
-		key, err = openid.ParseKey(data)
-	default:
-		return nil, errors.New("provide one of key_pem_path, jwk_path, or jwk")
-	}
-	if err != nil {
-		return nil, err
-	}
-	if key.IsPublic() {
-		return nil, errors.New("a public key was given where a private key is required")
-	}
-	return key, nil
-}
-
-// parsePrivateKeyPEM reads the first PEM block, which has to be a private key.
-func parsePrivateKeyPEM(data []byte) (*jose.JSONWebKey, error) {
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, errors.New("no PEM data found")
-	}
-	var key any
-	var err error
-	switch block.Type {
-	case "EC PRIVATE KEY":
-		key, err = x509.ParseECPrivateKey(block.Bytes)
-	case "PRIVATE KEY":
-		key, err = x509.ParsePKCS8PrivateKey(block.Bytes)
-	case "RSA PRIVATE KEY":
-		key, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	default:
-		return nil, fmt.Errorf("PEM block %q is not a private key", block.Type)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("parse PEM block %q: %w", block.Type, err)
-	}
-	return &jose.JSONWebKey{Key: key}, nil
-}
-
-func joinBase(baseDir, p string) string {
-	if filepath.IsAbs(p) {
-		return p
-	}
-	return filepath.Join(baseDir, p)
-}
-
-// tlsCertFromKey builds the mTLS client certificate from the parsed client private key + the PEM cert, so
-// the client key may come from any source (PEM, JWK, inline) rather than only a PEM file pair.
-func tlsCertFromKey(clientPrivateKey any, certPEMPath string) (tls.Certificate, error) {
-	certDER, err := loadCertBytesFromPem(certPEMPath)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	ecKey, ok := clientPrivateKey.(*ecdsa.PrivateKey)
-	if !ok {
-		return tls.Certificate{}, fmt.Errorf("client private key is a %T, not an EC key", clientPrivateKey)
-	}
-	leaf, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return tls.Certificate{}, fmt.Errorf("parse cert: %w", err)
-	}
-	return tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: ecKey, Leaf: leaf}, nil
 }
 
 // resolveTrustAnchor returns the federation master's signing key set: the explicit FedMasterJWK, else the
