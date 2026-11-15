@@ -286,6 +286,7 @@ func main() {
 		// An https upstream is on the internet as far as pep can tell, so it gets the web profile too; the
 		// transport alone, as the client's timeout would cut off long uploads and downloads.
 		UpstreamTransport: webClient.Transport,
+		Logger:            slog.Default(),
 	})
 	if err != nil {
 		log.Fatalf("create proxy: %v", err)

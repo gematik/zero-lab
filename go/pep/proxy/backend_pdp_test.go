@@ -27,7 +27,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -149,9 +151,9 @@ func asStub(t *testing.T, tls bool, doc func(base string) asMetadata) *httptest.
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/oauth-authorization-server":
-			_ = json.NewEncoder(w).Encode(doc(server.URL))
+			_ = json.MarshalWrite(w, doc(server.URL))
 		case "/elsewhere":
-			_ = json.NewEncoder(w).Encode(doc(server.URL))
+			_ = json.MarshalWrite(w, doc(server.URL))
 		default:
 			http.NotFound(w, r)
 		}
@@ -292,7 +294,7 @@ func TestServerRule2_MetadataDiscoveryDoesNotFollowARedirect(t *testing.T) {
 	})
 	mux.HandleFunc("/elsewhere", func(w http.ResponseWriter, _ *http.Request) {
 		followed.Add(1)
-		_ = json.NewEncoder(w).Encode(fullMetadata(server.URL))
+		_ = json.MarshalWrite(w, fullMetadata(server.URL))
 	})
 	if _, err := discover(t, server, server.URL); err == nil {
 		t.Error("accepted")
@@ -353,4 +355,44 @@ func TestServerRule2_PDPResponsesAreReadWithinTheirBound(t *testing.T) {
 	if _, err := b.fetchProviders(); err == nil {
 		t.Error("providers read past the bound")
 	}
+}
+
+func TestServerRule28_AuthorizationServerResponseIsReadExactly(t *testing.T) {
+	var tr tokenResponse
+	err := decodeBounded(strings.NewReader(`{"access_token":"a","access_token":"b","token_type":"DPoP"}`), &tr)
+	if !errors.Is(err, jsontext.ErrDuplicateName) {
+		t.Errorf("member twice: err = %v", err)
+	}
+	tr = tokenResponse{}
+	if err := decodeBounded(strings.NewReader(`{"ACCESS_TOKEN":"a","token_type":"DPoP","extension":1}`), &tr); err != nil {
+		t.Errorf("unknown members: %v", err)
+	}
+	if tr.AccessToken != "" {
+		t.Errorf("ACCESS_TOKEN was read as access_token")
+	}
+	err = decodeBounded(strings.NewReader("{\"access_token\":\"\xff\"}"), &tr)
+	if err == nil || !strings.Contains(err.Error(), "invalid UTF-8") {
+		t.Errorf("not UTF-8: err = %v", err)
+	}
+	var introspection map[string]any
+	err = decodeBounded(strings.NewReader(`{"active":false,"active":true}`), &introspection)
+	if !errors.Is(err, jsontext.ErrDuplicateName) {
+		t.Errorf("introspection member twice: err = %v", err)
+	}
+}
+
+func FuzzDecodeBounded(f *testing.F) {
+	f.Add([]byte(`{"access_token":"a","refresh_token":"r","expires_in":60,"token_type":"DPoP"}`))
+	f.Add([]byte(`{"access_token":"a","access_token":"b"}`))
+	f.Add([]byte(`{"ACCESS_TOKEN":"a"}`))
+	f.Add([]byte("{\"access_token\":\"\xff\"}"))
+	f.Add([]byte(`{"active":true,"identity":{"sub":"u","sub":"v"}}`))
+	f.Fuzz(func(_ *testing.T, body []byte) {
+		var tr tokenResponse
+		_ = decodeBounded(bytes.NewReader(body), &tr)
+		var md asMetadata
+		_ = decodeBounded(bytes.NewReader(body), &md)
+		var introspection map[string]any
+		_ = decodeBounded(bytes.NewReader(body), &introspection)
+	})
 }

@@ -23,7 +23,7 @@ package pep
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -35,7 +35,9 @@ import (
 )
 
 // sessionCookieClaims is the encrypted snapshot payload. Its format (JWE dir+A256GCM, these json tags) is the
-// contract between pep/proxy's minting and this validation; keep them in sync.
+// contract between pep/proxy's minting and this validation; keep them in sync. Only pep/proxy writes it, so a
+// member it does not name is refused: a reader older than its writer refuses the new member, and the user logs in
+// again.
 type sessionCookieClaims struct {
 	SID      string         `json:"sid"`
 	Identity map[string]any `json:"id"`
@@ -57,8 +59,8 @@ func OpenSessionCookie(token string, keys [][]byte, now time.Time) (identity map
 		if err != nil {
 			continue
 		}
-		var c sessionCookieClaims
-		if json.Unmarshal(payload, &c) != nil {
+		c, err := decodeSessionCookieClaims(payload)
+		if err != nil {
 			return nil, "", false
 		}
 		if now.Unix() >= c.Expiry {
@@ -67,6 +69,17 @@ func OpenSessionCookie(token string, keys [][]byte, now time.Time) (identity map
 		return c.Identity, c.SID, true
 	}
 	return nil, "", false
+}
+
+// decodeSessionCookieClaims reads a decrypted snapshot payload. Decryption proved who wrote it, yet a member named
+// twice, a name in another case or a string that is not UTF-8 is still refused, so no reader takes a different
+// identity from the same payload (server rule 28).
+func decodeSessionCookieClaims(payload []byte) (sessionCookieClaims, error) {
+	var c sessionCookieClaims
+	if err := json.Unmarshal(payload, &c, json.RejectUnknownMembers(true)); err != nil {
+		return sessionCookieClaims{}, fmt.Errorf("session cookie claims: %w", err)
+	}
+	return c, nil
 }
 
 // EnforcerSessionCookie gates a request on a valid pep session cookie (the stateless snapshot) and populates

@@ -57,7 +57,7 @@ func TestSortProviders(t *testing.T) {
 }
 
 func TestSignInChooserRender(t *testing.T) {
-	r, err := newRenderer("")
+	r, err := newRenderer("", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

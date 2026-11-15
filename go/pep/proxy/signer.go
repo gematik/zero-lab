@@ -26,7 +26,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 

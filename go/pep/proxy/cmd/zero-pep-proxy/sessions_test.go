@@ -26,8 +26,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -199,4 +202,100 @@ func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
 func sha256Of(s string) []byte {
 	sum := sha256.Sum256([]byte(s))
 	return sum[:]
+}
+
+// sessionRecordBeforeV2 is a record as encoding/json v1 wrote it, with every member set; sessions in a running store
+// look like this after an upgrade.
+const sessionRecordBeforeV2 = `{"id":"session-a","idp_iss":"https://idp.example","state":"st","nonce":"n","code_verifier":"cv","code_challenge_method":"S256","access_token":"at","refresh_token":"rt","access_token_expires_at":"2026-11-01T12:00:00Z","identity":{"acr":"x\u0026y","n":1.5,"sub":"u1"},"return_to":"/r","created_at":"2026-11-01T12:00:00Z","tokens":{"https://as.example":{"access_token":"a","refresh_token":"r","expires_at":"2026-11-01T12:00:00Z"}},"dpop_key_jwk":"eyJrdHkiOiJFQyJ9"}`
+
+func TestSessionRecordWrittenBeforeV2StillOpens(t *testing.T) {
+	m := newKVSessions(kv.NewMemory())
+	for id, record := range map[string]string{
+		"session-a": sessionRecordBeforeV2,
+		"session-b": `{"id":"session-b","state":"","nonce":"","code_verifier":"","code_challenge_method":"","access_token_expires_at":"0001-01-01T00:00:00Z","created_at":"2026-11-01T12:00:00Z"}`,
+	} {
+		if err := m.store.SetMany(t.Context(), kv.Entry{Key: sessionKey(id), Value: []byte(record), TTL: time.Hour}); err != nil {
+			t.Fatal(err)
+		}
+		got, err := m.Load(t.Context(), id)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if got.ID != id {
+			t.Fatalf("%s: id = %q", id, got.ID)
+		}
+	}
+	got, err := m.Load(t.Context(), "session-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := got.GetTokens("https://as.example")
+	if got.Identity["acr"] != "x&y" || got.RefreshToken != "rt" || string(got.DPoPKeyJWK) != `{"kty":"EC"}` || !ok || entry.AccessToken != "a" {
+		t.Fatalf("session = %+v", got)
+	}
+}
+
+// A record written now holds the members and values v1 wrote, so a replica not yet upgraded opens it.
+func TestSessionRecordIsWrittenAsBeforeV2(t *testing.T) {
+	s, err := decodeSession([]byte(sessionRecordBeforeV2))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newKVSessions(kv.NewMemory())
+	if err := m.Save(t.Context(), s, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	record, found, err := m.store.Get(t.Context(), sessionKey(s.ID))
+	if err != nil || !found {
+		t.Fatalf("found = %v, err = %v", found, err)
+	}
+	var got, want map[string]any
+	if err := json.Unmarshal(record, &got); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(sessionRecordBeforeV2), &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("record = %s\nwant     %s", record, sessionRecordBeforeV2)
+	}
+}
+
+func TestServerRule28_SessionRecordIsReadExactly(t *testing.T) {
+	for name, c := range map[string]struct {
+		record string
+		want   error
+	}{
+		"member twice":         {`{"id":"a","id":"b"}`, jsontext.ErrDuplicateName},
+		"name in another case": {`{"ID":"a"}`, json.ErrUnknownName},
+		"unknown member":       {`{"id":"a","admin":true}`, json.ErrUnknownName},
+		"nested member twice":  {`{"id":"a","identity":{"sub":"u","sub":"v"}}`, jsontext.ErrDuplicateName},
+	} {
+		if _, err := decodeSession([]byte(c.record)); !errors.Is(err, c.want) {
+			t.Errorf("%s: err = %v, want %v", name, err, c.want)
+		}
+	}
+	if _, err := decodeSession([]byte("{\"id\":\"a\",\"identity\":{\"sub\":\"\xff\"}}")); err == nil || !strings.Contains(err.Error(), "invalid UTF-8") {
+		t.Errorf("not UTF-8: err = %v", err)
+	}
+}
+
+func FuzzDecodeSession(f *testing.F) {
+	f.Add([]byte(sessionRecordBeforeV2))
+	f.Add([]byte(`{"id":"a","id":"b"}`))
+	f.Add([]byte(`{"ID":"a"}`))
+	f.Add([]byte("{\"id\":\"a\",\"identity\":{\"sub\":\"\xff\"}}"))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		s, err := decodeSession(data)
+		if err != nil {
+			return
+		}
+		record, err := json.Marshal(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := decodeSession(record); err != nil {
+			t.Fatalf("an accepted record does not read back: %v", err)
+		}
+	})
 }

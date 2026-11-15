@@ -35,9 +35,13 @@ import (
 // TemplateDir is configured (os.DirFS), so a deployment can replace the UI from outside without rebuilding.
 type renderer struct {
 	tmpl *template.Template
+	log  *slog.Logger
 }
 
-func newRenderer(templateDir string) (*renderer, error) {
+func newRenderer(templateDir string, log *slog.Logger) (*renderer, error) {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	fsys := webui.FS
 	if templateDir != "" {
 		fsys = os.DirFS(templateDir)
@@ -46,7 +50,7 @@ func newRenderer(templateDir string) (*renderer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
-	return &renderer{tmpl: t}, nil
+	return &renderer{tmpl: t, log: log}, nil
 }
 
 // render writes the named template (by file name, e.g. "sign_in.html") with the given status + data.
@@ -54,6 +58,6 @@ func (r *renderer) render(w http.ResponseWriter, status int, name string, data a
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := r.tmpl.ExecuteTemplate(w, name, data); err != nil {
-		slog.Error("render template", "name", name, "error", err)
+		r.log.Error("render template", "name", name, "error", err)
 	}
 }

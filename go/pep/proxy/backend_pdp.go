@@ -23,7 +23,7 @@ package proxy
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -74,6 +74,8 @@ type PDPConfig struct {
 	RedirectURI string           // default <public>/oauth2/callback
 	Scopes      []string
 	HTTPClient  *http.Client
+	// Logger receives the backend's operational events; nil logs nothing.
+	Logger *slog.Logger
 }
 
 // asMetadata is the subset of RFC 8414 authorization-server metadata the backend needs.
@@ -96,6 +98,7 @@ type pdpBackend struct {
 	signer    sessionSigner
 	now       func() time.Time
 	providers []Provider // the AS's IdP list, cached at construction (the chooser + single-provider default)
+	log       *slog.Logger
 }
 
 func (b *pdpBackend) setClock(now func() time.Time) { b.now = now }
@@ -122,7 +125,11 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	noRedirects.CheckRedirect = func(*http.Request, []*http.Request) error {
 		return errors.New("redirect refused")
 	}
-	b := &pdpBackend{cfg: cfg, http: &noRedirects, signer: sessionKeySigner{}}
+	log := cfg.Logger
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	b := &pdpBackend{cfg: cfg, http: &noRedirects, signer: sessionKeySigner{}, log: log}
 	meta, err := b.discoverMetadata(cfg.ASIssuer)
 	if err != nil {
 		return nil, fmt.Errorf("pdp discovery: %w", err)
@@ -131,7 +138,7 @@ func NewPDPBackend(cfg PDPConfig) (Backend, error) {
 	// Cache the AS's provider list once: pep treats it exactly like the provider backend's static list — a
 	// single provider auto-starts, several show the chooser. pep has no knowledge of which (if any) is a mock.
 	if ps, err := b.fetchProviders(); err != nil {
-		slog.Warn("pdp: fetch openid-providers failed", "error", err)
+		b.log.Warn("pdp: fetch openid-providers failed", "error", err)
 	} else {
 		for _, p := range ps {
 			b.providers = append(b.providers, Provider{Issuer: p.Issuer, Name: p.Name, LogoURI: p.LogoURI, Type: p.Type})
@@ -169,7 +176,7 @@ func (b *pdpBackend) clientAssertion(ctx context.Context, sess *Session) (string
 		}
 		claims["nonce"] = nonce
 	}
-	payload, err := json.Marshal(claims)
+	payload, err := json.Marshal(claims, json.Deterministic(true))
 	if err != nil {
 		return "", fmt.Errorf("encode client_assertion claims: %w", err)
 	}
@@ -216,9 +223,10 @@ func (b *pdpBackend) fetchNonce(ctx context.Context) (string, error) {
 }
 
 // decodeBounded decodes a JSON response of the authorization server within maxASResponseBytes: a longer one is cut off,
-// which the decoder takes for what it is.
+// which the decoder takes for what it is. Members the response adds are ignored, as OAuth requires (RFC 6749
+// Section 5.1); a member named twice or a string that is not UTF-8 refuses it (server rule 28).
 func decodeBounded(body io.Reader, into any) error {
-	return json.NewDecoder(io.LimitReader(body, maxASResponseBytes)).Decode(into)
+	return json.UnmarshalRead(io.LimitReader(body, maxASResponseBytes), into)
 }
 
 // IsLocalHTTP reports whether rawURL is plain http on this machine by name or loopback address, the one place where
@@ -472,7 +480,7 @@ func (b *pdpBackend) Complete(ctx context.Context, sess *Session, code string) e
 	b.storeTokens(sess, tr)
 	// Best effort: introspect for the upstream identity (the forward_auth headers come from sess.Identity).
 	if identity, err := b.introspectIdentity(ctx, sess, tr.AccessToken); err != nil {
-		slog.Warn("pdp introspection failed", "error", err)
+		b.log.Warn("pdp introspection failed", "error", err)
 	} else {
 		sess.Identity = identity
 	}

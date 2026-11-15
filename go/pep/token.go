@@ -26,7 +26,8 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rsa"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math"
@@ -59,9 +60,9 @@ type AccessToken struct {
 }
 
 // Thumbprint is the token's cnf.jkt, the key it is bound to (RFC 9449 Section 6.1), or "" for an unbound token.
-// Members are read by their exact names, since encoding/json would match a struct field case-insensitively.
+// Members are read by their exact names; a member named twice leaves the token unbound.
 func (t *AccessToken) Thumbprint() string {
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	if json.Unmarshal(t.Payload, &members) != nil {
 		return ""
 	}
@@ -77,7 +78,7 @@ func (t *AccessToken) Thumbprint() string {
 // parsed fails the whole set: the set is the operator's own trust configuration, so a typo must not go unnoticed
 // and leave a key out.
 func ParseJWKSet(data []byte) (*jose.JSONWebKeySet, error) {
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	if err := json.Unmarshal(data, &members); err != nil {
 		return nil, fmt.Errorf("JWK Set: %w", err)
 	}
@@ -164,13 +165,13 @@ func publicKeyFits(key any, alg jose.SignatureAlgorithm) bool {
 }
 
 // validateClaims checks the payload of a verified token: its registered claims have their types, its exp, nbf and
-// iat those it has hold at now, and when resource is set the aud names it. Members are read by their exact names,
-// since encoding/json would match a struct field case-insensitively and take "EXP" for the expiry.
+// iat those it has hold at now, and when resource is set the aud names it. Members are read by their exact names, so
+// "EXP" is no expiry, and a member named twice or a string that is not UTF-8 refuses the token (server rule 28).
 func validateClaims(payload []byte, now time.Time, skew time.Duration, resource string) error {
 	if skew < 0 {
 		return errors.New("acceptable skew must not be negative")
 	}
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	if err := json.Unmarshal(payload, &members); err != nil {
 		return fmt.Errorf("token claims: %w", err)
 	}
@@ -218,7 +219,7 @@ func validateClaims(payload []byte, now time.Time, skew time.Duration, resource 
 	return nil
 }
 
-func stringClaim(raw json.RawMessage) (string, error) {
+func stringClaim(raw jsontext.Value) (string, error) {
 	var value *string
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return "", err
@@ -230,7 +231,7 @@ func stringClaim(raw json.RawMessage) (string, error) {
 }
 
 // audienceClaim reads the single string or array of strings RFC 7519 Section 4.1.3 allows.
-func audienceClaim(raw json.RawMessage) ([]string, error) {
+func audienceClaim(raw jsontext.Value) ([]string, error) {
 	if single, err := stringClaim(raw); err == nil {
 		return []string{single}, nil
 	}
@@ -251,7 +252,7 @@ func audienceClaim(raw json.RawMessage) ([]string, error) {
 	return audience, nil
 }
 
-func numericDateClaim(raw json.RawMessage) (time.Time, error) {
+func numericDateClaim(raw jsontext.Value) (time.Time, error) {
 	var seconds *float64
 	if err := json.Unmarshal(raw, &seconds); err != nil {
 		return time.Time{}, err

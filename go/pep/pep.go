@@ -24,7 +24,7 @@
 package pep
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -75,7 +75,7 @@ func NewBuilder() *Builder {
 }
 
 // Build returns the PEP or the recorded error. It fails without a JWK set source or with a public origin
-// that is not an absolute http or https URL. Defaults: a 30 s HTTP client, the default slog logger, one
+// that is not an absolute http or https URL. Defaults: a 30 s HTTP client, no logging, one
 // minute of skew, and the resource's origin as public origin.
 func (b *Builder) Build() (*PEP, error) {
 	if b.err != nil {
@@ -88,7 +88,7 @@ func (b *Builder) Build() (*PEP, error) {
 		b.p.httpClient = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	if b.p.slogger == nil {
-		b.p.slogger = slog.Default()
+		b.p.slogger = slog.New(slog.DiscardHandler)
 	}
 	if b.p.now == nil {
 		b.p.now = time.Now
@@ -217,7 +217,8 @@ type clockFunc func() time.Time
 
 func (f clockFunc) Now() time.Time { return f() }
 
-// WithSlogger sets the logger of the PEP and of the contexts it creates.
+// WithSlogger sets the logger of the PEP and of the contexts it creates; without one, or with nil, nothing is
+// logged.
 func (b *Builder) WithSlogger(slogger *slog.Logger) *Builder {
 	b.p.slogger = slogger
 	return b
@@ -246,7 +247,7 @@ func (p *PEP) Close() error {
 func (p *PEP) deny(ctx Context, err Error) {
 	w := ctx.Writer()
 	r := ctx.Request()
-	slog.Debug("Request denied", "method", r.Method, "path", r.URL.Path)
+	ctx.Slogger().Debug("Request denied", "method", r.Method, "path", r.URL.Path)
 	if err.WWWAuthenticate != "" {
 		w.Header().Set("WWW-Authenticate", err.WWWAuthenticate)
 	}
@@ -261,9 +262,19 @@ func (p *PEP) deny(ctx Context, err Error) {
 	}
 	w.Header().Add("Content-Type", "application/json")
 	w.WriteHeader(err.HTTPStatus)
-	if encErr := json.NewEncoder(w).Encode(err); encErr != nil {
-		slog.Warn("Could not write denial", "error", encErr)
+	if encErr := writeJSONLine(w, err); encErr != nil {
+		ctx.Slogger().Warn("Could not write denial", "error", encErr)
 	}
+}
+
+// writeJSONLine writes v as JSON and a newline, so the denial body stays the one clients know.
+func writeJSONLine(w http.ResponseWriter, v any) error {
+	body, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(append(body, '\n'))
+	return err
 }
 
 // HandlerFunc continues a request an Enforcer let through.

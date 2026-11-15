@@ -22,10 +22,9 @@
 package pep
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -67,8 +66,8 @@ type EnforcerHolder struct {
 	Enforcer
 }
 
-// UnmarshalJSON decodes the enforcer named by "type" and fails on an unknown type, so a misspelled
-// policy cannot load; EnforcerTypeCustom has no JSON form and is unknown here.
+// UnmarshalJSON decodes the enforcer named by "type" and fails on an unknown type or a member the enforcer does
+// not name, so a misspelled policy cannot load; EnforcerTypeCustom has no JSON form and is unknown here.
 func (h *EnforcerHolder) UnmarshalJSON(data []byte) error {
 	r := struct {
 		Type EnforcerType `json:"type"`
@@ -94,7 +93,7 @@ func (h *EnforcerHolder) UnmarshalJSON(data []byte) error {
 	default:
 		return fmt.Errorf("unknown enforcer type: %s", r.Type)
 	}
-	return json.Unmarshal(data, h.Enforcer)
+	return json.Unmarshal(data, h.Enforcer, json.RejectUnknownMembers(true))
 }
 
 // MarshalJSON writes the held enforcer's own JSON form.
@@ -117,7 +116,7 @@ func (e EnforcerAllOf) Type() EnforcerType {
 // sees the claims an earlier one set.
 func (e EnforcerAllOf) Apply(ctx Context, next HandlerFunc) {
 	if len(e.EnforcerHolders) == 0 {
-		slog.Warn("No enforcers confgured, denying request")
+		ctx.Slogger().Warn("No enforcers configured, denying request")
 		ctx.Deny(ErrorAccessDeinied("No enforcers configured"))
 		return
 	}
@@ -132,7 +131,7 @@ func (e EnforcerAllOf) Apply(ctx Context, next HandlerFunc) {
 	subCtx := ctx.WithDeny(singleDeny)
 
 	for _, enforcer := range e.EnforcerHolders {
-		slog.Debug("Applying enforcer", "type", enforcer.Type())
+		ctx.Slogger().Debug("Applying enforcer", "type", enforcer.Type())
 		enforcer.Apply(subCtx, singleNext)
 		if errorFromGuard != nil {
 			ctx.Deny(*errorFromGuard)
@@ -172,7 +171,7 @@ func (e EnforcerAnyOf) Type() EnforcerType {
 // access_denied, not with the denial of any single enforcer.
 func (e EnforcerAnyOf) Apply(ctx Context, next HandlerFunc) {
 	if len(e.EnforcerHolders) == 0 {
-		slog.Warn("No enforcers confgured, denying request")
+		ctx.Slogger().Warn("No enforcers configured, denying request")
 		ctx.Deny(ErrorAccessDeinied("No enforcers configured"))
 		return
 	}
@@ -187,7 +186,7 @@ func (e EnforcerAnyOf) Apply(ctx Context, next HandlerFunc) {
 	subCtx := ctx.WithDeny(singleDeny)
 
 	for _, enforcer := range e.EnforcerHolders {
-		slog.Debug("Applying enforcer", "type", enforcer.Type())
+		ctx.Slogger().Debug("Applying enforcer", "type", enforcer.Type())
 		enforcer.Apply(subCtx, singleNext)
 		if errorFromGuard == nil {
 			next(ctx)
