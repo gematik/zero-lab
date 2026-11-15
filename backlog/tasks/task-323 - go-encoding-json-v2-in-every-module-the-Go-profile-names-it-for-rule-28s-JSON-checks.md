@@ -3,10 +3,10 @@ id: TASK-323
 title: >-
   go: encoding/json/v2 in every module; the Go profile names it for rule 28's
   JSON checks
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-15T07:36:00Z'
-updated_date: '2026-11-15T14:51:00Z'
+updated_date: '2026-11-15T15:24:00Z'
 labels: []
 dependencies: []
 ordinal: 338000
@@ -45,4 +45,12 @@ From the final review of TASK-315: the hosts still re-read the verified ID token
 2026-11-15: started on branch feat/json-v2, with TASK-332. go/pdp stays on v1: zeta-pdp-go replaces it.
 
 feat/json-v2 at 8c7d770b: all modules but go/pdp on encoding/json/v2 and go 1.27.0; review fixed (epa non-UTF-8 error bodies, rd UTF-8, dpop panic); full just check green. Open before merge: epa HITL against RU for exact member names (maintainer to run or waive).
+
+Merged 2026-11-15. Gated: ePA connect against RU provider 2 passed on 8c7d770b (VAU, authorization, record status, consent decoded with exact names); ePA entitle waived by the maintainer; epa1 not tried (may be down).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Every Go module but go/pdp reads and writes JSON with encoding/json/v2 on go 1.27.0: duplicates, case-folded names and invalid UTF-8 are refused at every untrusted reader, our own formats reject unknown members, signed and hashed output stays byte-identical (Deterministic); dpop refuses a proof with a claim twice. go/docs/design.md prescribes v2. Breaking: openid Login.Claims and oidf Extra are jsontext.Value.
+<!-- SECTION:FINAL_SUMMARY:END -->
