@@ -22,7 +22,7 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"net/http"
@@ -151,18 +151,18 @@ func TestA_24403_AClaimTheIDPDoesNotSupportIsNotAskedFor(t *testing.T) {
 		metadata["claims_supported"] = []string{"urn:telematik:claims:id", "amr"}
 	}, keySetOf(stub.sigKey, "k"))
 	login := validLogin()
-	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:email":{"essential":true}}}`)
+	login.Claims = jsontext.Value(`{"id_token":{"urn:telematik:claims:email":{"essential":true}}}`)
 	if _, err := stub.client.AuthenticationURL(t.Context(), login); !errors.Is(err, ErrClaimNotSupported) {
 		t.Fatalf("err = %v", err)
 	}
-	login.Claims = json.RawMessage(`{"userinfo":{"urn:telematik:claims:email":null}}`)
+	login.Claims = jsontext.Value(`{"userinfo":{"urn:telematik:claims:email":null}}`)
 	if _, err := stub.client.AuthenticationURL(t.Context(), login); !errors.Is(err, ErrClaimNotSupported) {
 		t.Fatalf("userinfo: %v", err)
 	}
 	if pushed.Load() != 0 {
 		t.Fatal("the request reached the IDP")
 	}
-	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:id":{"essential":true},"amr":{"values":["urn:telematik:auth:eGK"]}}}`)
+	login.Claims = jsontext.Value(`{"id_token":{"urn:telematik:claims:id":{"essential":true},"amr":{"values":["urn:telematik:auth:eGK"]}}}`)
 	if _, err := stub.client.AuthenticationURL(t.Context(), login); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestA_24403_AClaimTheIDPDoesNotSupportIsNotAskedFor(t *testing.T) {
 		t.Errorf("claims = %q", got)
 	}
 	stub.publish(t, nil, keySetOf(stub.sigKey, "k"))
-	login.Claims = json.RawMessage(`{"id_token":{"urn:telematik:claims:email":null}}`)
+	login.Claims = jsontext.Value(`{"id_token":{"urn:telematik:claims:email":null}}`)
 	if _, err := stub.client.AuthenticationURL(t.Context(), login); err != nil {
 		t.Errorf("an IDP that lists none: %v", err)
 	}
@@ -184,11 +184,11 @@ func TestOIDCCore_5_5_1_TheClaimsRequestIsReadAsSpecified(t *testing.T) {
 		`{"id_token":{"amr":{"essential":"true"}}}`,
 		`{"userinfo":1}`,
 	} {
-		if _, err := parseClaimsRequest(json.RawMessage(request)); !errors.Is(err, ErrClaimsRequest) {
+		if _, err := parseClaimsRequest(jsontext.Value(request)); !errors.Is(err, ErrClaimsRequest) {
 			t.Errorf("%s: %v", request, err)
 		}
 	}
-	request, err := parseClaimsRequest(json.RawMessage(`{"id_token":{"a":{"essential":true},"b":null,"c":{"essential":false},"d":{"ESSENTIAL":true}},"other":1}`))
+	request, err := parseClaimsRequest(jsontext.Value(`{"id_token":{"a":{"essential":true},"b":null,"c":{"essential":false},"d":{"ESSENTIAL":true}},"other":1}`))
 	if err != nil {
 		t.Fatal(err)
 	}

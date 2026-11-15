@@ -30,7 +30,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -139,7 +139,7 @@ func serveTokens(t *testing.T, idp *fakeIDP, issued *issuedTokens, withIDToken b
 			issued.sealedIDToken = seal(issued.idToken)
 			response["id_token"] = issued.sealedIDToken
 		}
-		_ = json.NewEncoder(w).Encode(response)
+		_ = json.MarshalWrite(w, response)
 	}
 }
 
@@ -204,7 +204,7 @@ func challengeFlow(t *testing.T, idp *fakeIDP, alg string, claims map[string]any
 			answer(w, r)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"challenge": signIDToken(t, idp.key, alg, claims), "user_consent": map[string]any{}})
+		_ = json.MarshalWrite(w, map[string]any{"challenge": signIDToken(t, idp.key, alg, claims), "user_consent": map[string]any{}})
 	}
 	authenticator, err := NewAuthenticator(AuthenticatorConfig{
 		IDP: NewIDP(EnvironmentReference, idp.URL), SignerFunc: SignWithSoftkey(idp.key, idp.cert), Trust: &recording{},
@@ -360,7 +360,7 @@ func TestAKeyAnswerThatIsNoSuccessIsRefused(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
-		_ = json.NewEncoder(w).Encode(jwkOf(t, &idp.key.PublicKey, "enc"))
+		_ = json.MarshalWrite(w, jwkOf(t, &idp.key.PublicKey, "enc"))
 	})
 	idp.Config.Handler = mux
 	if _, err := fetchKey(t.Context(), idp.URL, idp.Client()); err == nil {

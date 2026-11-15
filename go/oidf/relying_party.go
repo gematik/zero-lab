@@ -24,7 +24,7 @@ package oidf
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -409,7 +409,7 @@ func (rp *RelyingParty) signStatement(now time.Time) (signed []byte, registered 
 	if err := rp.checkStatement(es); err != nil {
 		return nil, registration{}, err
 	}
-	payload, err := json.Marshal(es)
+	payload, err := json.Marshal(es, statementJSON)
 	if err != nil {
 		return nil, registration{}, fmt.Errorf("marshal entity statement: %w", err)
 	}
@@ -444,7 +444,7 @@ func (rp *RelyingParty) signJwks(now time.Time) ([]byte, error) {
 		IssuedAt:  issuedAt.Unix(),
 		ExpiresAt: issuedAt.Add(maxStatementLifetime).Unix(),
 		Keys:      rp.relyingPartyKeys,
-	})
+	}, statementJSON)
 	if err != nil {
 		return nil, err
 	}

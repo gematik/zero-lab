@@ -23,7 +23,7 @@ package ti
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"encoding/pem"
 	"errors"
 	"fmt"

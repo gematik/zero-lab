@@ -93,6 +93,53 @@ func TestOWASP_InputValidation_JSONObject(t *testing.T) {
 	}
 }
 
+// A response naming a member twice, carrying invalid UTF-8 or naming a member in another case is not read as one
+// that names it once, in its own case: the first two are refused, the third is not taken for the member.
+func TestServerRule28_AResponseIsReadStrictly(t *testing.T) {
+	var target struct {
+		Issuer string `json:"iss"`
+	}
+	for name, test := range map[string]struct{ body, reason string }{
+		"a member twice":  {`{"iss":"a","iss":"b"}`, "a member named twice"},
+		"invalid UTF-8":   {"{\"iss\":\"a\xffb\"}", "not UTF-8"},
+		"a name repeated": {`{"iss":"a","i\u0073s":"b"}`, "a member named twice"},
+	} {
+		err := UnmarshalObject([]byte(test.body), ResponseDepth, ResponseMembers, &target)
+		if !errors.Is(err, ErrJSON) || !strings.Contains(err.Error(), test.reason) {
+			t.Errorf("%s: %v, want %q", name, err, test.reason)
+		}
+	}
+	target.Issuer = ""
+	if err := UnmarshalObject([]byte(`{"ISS":"a","Iss":"b"}`), ResponseDepth, ResponseMembers, &target); err != nil || target.Issuer != "" {
+		t.Errorf("a member in another case was read as iss: %q %v", target.Issuer, err)
+	}
+	if _, err := ParseTokenResponse([]byte(`{"TOKEN_TYPE":"Bearer"}`)); !errors.Is(err, ErrTokenResponse) {
+		t.Errorf("a token_type in another case was read: %v", err)
+	}
+}
+
+// The claims of an ID token are read as strictly as a response: a member twice and invalid UTF-8 are refused, and a
+// member in another case is not taken for the member.
+func TestServerRule28_IDTokenClaimsAreReadStrictly(t *testing.T) {
+	var claims struct {
+		Issuer string `json:"iss"`
+	}
+	for name, test := range map[string]struct{ payload, reason string }{
+		"a member twice": {"eyJpc3MiOiJhIiwiaXNzIjoiYiJ9", "duplicate object member name"},
+		"invalid UTF-8":  {"eyJpc3MiOiJh_2IifQ", "invalid UTF-8"},
+	} {
+		err := (&TokenResponse{IDTokenRaw: "a." + test.payload + ".c"}).Claims(&claims)
+		if err == nil || !strings.Contains(err.Error(), test.reason) {
+			t.Errorf("%s: %v, want %q", name, err, test.reason)
+		}
+	}
+	claims.Issuer = ""
+	otherCase := "eyJJU1MiOiJhIn0"
+	if err := (&TokenResponse{IDTokenRaw: "a." + otherCase + ".c"}).Claims(&claims); err != nil || claims.Issuer != "" {
+		t.Errorf("ISS was read as iss: %q %v", claims.Issuer, err)
+	}
+}
+
 // manyMembers is an object of n members with distinct names.
 func manyMembers(n int) string {
 	members := make([]string, n)
@@ -214,7 +261,7 @@ func FuzzTokenResponse(f *testing.F) {
 		`{"token_type":"Bearer","token_type":"DPoP"}`, `{"token_type":"Bearer","expires_in":1e309}`,
 		`{"token_type":"Bearer","expires_in":NaN}`, `{"token_type":"Bearer","expires_in":-0}`,
 		"{\"token_type\":\"Bearer\",\"scope\":\"\xc0\xaf\"}", `{"token_type":"Bearer","scope":"a\u200bb"}`,
-		`{"token_type":"Bearer","id_token":"eyJhbGciOiJub25lIn0.e30."}`,
+		`{"token_type":"Bearer","id_token":"eyJhbGciOiJub25lIn0.e30."}`, `{"TOKEN_TYPE":"Bearer","Access_Token":"a"}`,
 		`{"token_type":"Bearer","x":` + strings.Repeat("[", 64) + strings.Repeat("]", 64) + `}`,
 		`{"token_type":"Bearer","id_token":"` + strings.Repeat("A", MaxIDTokenBytes) + `.b.c"}`,
 	} {

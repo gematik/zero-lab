@@ -31,7 +31,8 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"math/big"
 	"strings"
@@ -393,9 +394,9 @@ func TestParseKeySetRefusesWhatIsNotAKeySet(t *testing.T) {
 }
 
 func TestParseKeySetRefusesMoreKeysThanTheBound(t *testing.T) {
-	entries := make([]json.RawMessage, maxKeysInSet+1)
+	entries := make([]jsontext.Value, maxKeysInSet+1)
 	for i := range entries {
-		entries[i] = json.RawMessage(p256JWK)
+		entries[i] = jsontext.Value(p256JWK)
 	}
 	data, err := json.Marshal(map[string]any{"keys": entries})
 	if err != nil {

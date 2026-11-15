@@ -23,7 +23,7 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -165,9 +165,13 @@ func buildRouter(proxies []*epa.Proxy, proxyInfos []*epa.ProxyInfo, prober *ti.P
 	return mux, nil
 }
 
+// responseJSON writes the answers as they always were: a nil slice or map as null rather than [] and {}, and a map's
+// members sorted by name.
+var responseJSON = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true))
+
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
+	if err := json.MarshalWrite(w, v, responseJSON); err != nil {
 		slog.Error("Failed to encode response", "error", err)
 	}
 }

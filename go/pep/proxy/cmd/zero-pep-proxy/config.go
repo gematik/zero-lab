@@ -59,6 +59,9 @@ func loadProviders(path, publicURL string, client *http.Client, documents oidf.D
 	if err != nil {
 		return nil, fmt.Errorf("providers %q: %w", path, err)
 	}
+	for _, p := range set.Configured() {
+		slog.Info("configured openid provider", "type", p.Type, "name", p.Name, "issuer", p.Issuer)
+	}
 	return set, nil
 }
 

@@ -25,9 +25,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -84,7 +85,7 @@ func (s *Session) SetEntitlementPN(insurantID string, auditEvidence string, hcv 
 		JWT: string(jwt),
 	}
 
-	body, err := json.Marshal(entitlement) //nolint:gosec // the signed entitlement JWT is the payload this request exists to send through the VAU channel
+	body, err := json.Marshal(entitlement)
 	if err != nil {
 		return fmt.Errorf("marshaling body: %w", err)
 	}
@@ -155,7 +156,7 @@ func (s *Session) SetEntitlementPoPP(insurantID string, poppToken string) (time.
 	}
 
 	var validTo ValidToResponseType
-	if err := json.NewDecoder(resp.Body).Decode(&validTo); err != nil {
+	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), &validTo); err != nil {
 		return time.Time{}, fmt.Errorf("unmarshaling response: %w", err)
 	}
 

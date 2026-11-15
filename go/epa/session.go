@@ -24,7 +24,7 @@ package epa
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -304,10 +304,14 @@ func (e *ErrorType) Error() string {
 	return fmt.Sprintf("http error: %d, error code: %s, error detail: %s", e.HTTPStatusCode, e.ErrorCode, e.ErrorDetail)
 }
 
+// maxResponseBytes bounds what is read of an Aktensystem's answer to the calls this client makes, which are small
+// JSON documents; more is cut off and fails to decode.
+const maxResponseBytes = 1 << 20
+
 func parseHTTPError(resp *http.Response) error {
 	defer resp.Body.Close()
 	bodyData := new(bytes.Buffer)
-	if _, err := bodyData.ReadFrom(resp.Body); err != nil {
+	if _, err := bodyData.ReadFrom(io.LimitReader(resp.Body, maxResponseBytes)); err != nil {
 		return fmt.Errorf("reading response body: %w", err)
 	}
 
@@ -318,7 +322,7 @@ func parseHTTPError(resp *http.Response) error {
 	}
 
 	typedError := new(ErrorType)
-	if err := json.NewDecoder(bodyData).Decode(typedError); err != nil {
+	if err := json.Unmarshal(bodyData.Bytes(), typedError); err != nil {
 		return fmt.Errorf("http status %d: %s", resp.StatusCode, bodyStr)
 	}
 	typedError.HTTPStatusCode = resp.StatusCode
@@ -356,7 +360,7 @@ func (s *Session) GetStatus() (*vau.Status, error) {
 	}
 
 	status := new(vau.Status)
-	if err := json.NewDecoder(resp.Body).Decode(status); err != nil {
+	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), status); err != nil {
 		return nil, fmt.Errorf("unmarshaling response: %w", err)
 	}
 

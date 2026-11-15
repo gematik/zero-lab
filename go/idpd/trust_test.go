@@ -29,7 +29,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -142,10 +142,10 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 		_, _ = w.Write(idp.discovery(idp.URL))
 	})
 	mux.HandleFunc("/certs/puk_idp_sig", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(idp.sigJWK())
+		_ = json.MarshalWrite(w, idp.sigJWK())
 	})
 	mux.HandleFunc("/certs/puk_idp_enc", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(idp.encJWK())
+		_ = json.MarshalWrite(w, idp.encJWK())
 	})
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) { idp.token(w, r) })
 	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) { idp.authorization(w, r) })

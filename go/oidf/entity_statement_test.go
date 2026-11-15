@@ -22,13 +22,16 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/openid"
 )
 
 // gemSpec_IDP_FedMaster A_28857: exp − iat of the statement is at most 24 hours.
@@ -85,31 +88,31 @@ func TestOIDF_EntityConfiguration_TheSigningKeyIsInJwks(t *testing.T) {
 func TestServerRule17_AnExtraMemberThatShadowsATypedOneIsRefused(t *testing.T) {
 	for name, change := range map[string]func(*Metadata){
 		"openid_relying_party member": func(m *Metadata) {
-			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"client_name": json.RawMessage(`"other"`)}
+			m.OpenidRelyingParty.Extra = map[string]jsontext.Value{"client_name": jsontext.Value(`"other"`)}
 		},
 		"empty typed member": func(m *Metadata) {
-			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"logo_uri": json.RawMessage(`"https://other.example/logo"`)}
+			m.OpenidRelyingParty.Extra = map[string]jsontext.Value{"logo_uri": jsontext.Value(`"https://other.example/logo"`)}
 		},
 		"member in other case": func(m *Metadata) {
-			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"JWKS": json.RawMessage(`{"keys":[]}`)}
+			m.OpenidRelyingParty.Extra = map[string]jsontext.Value{"JWKS": jsontext.Value(`{"keys":[]}`)}
 		},
 		"empty member in other case": func(m *Metadata) {
-			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"Signed_jwks_uri": json.RawMessage(`"https://other.example/jwks"`)}
+			m.OpenidRelyingParty.Extra = map[string]jsontext.Value{"Signed_jwks_uri": jsontext.Value(`"https://other.example/jwks"`)}
 		},
 		"federation_entity member": func(m *Metadata) {
-			m.FederationEntity.Extra = map[string]json.RawMessage{"name": json.RawMessage(`"other"`)}
+			m.FederationEntity.Extra = map[string]jsontext.Value{"name": jsontext.Value(`"other"`)}
 		},
 		"entity type": func(m *Metadata) {
-			m.Extra = map[string]json.RawMessage{"openid_relying_party": json.RawMessage(`{}`)}
+			m.Extra = map[string]jsontext.Value{"openid_relying_party": jsontext.Value(`{}`)}
 		},
 		"invalid JSON": func(m *Metadata) {
-			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"added": json.RawMessage(`{"open":`)}
+			m.OpenidRelyingParty.Extra = map[string]jsontext.Value{"added": jsontext.Value(`{"open":`)}
 		},
 		"duplicate member names": func(m *Metadata) {
-			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"added": json.RawMessage(`{"a":1,"a":2}`)}
+			m.OpenidRelyingParty.Extra = map[string]jsontext.Value{"added": jsontext.Value(`{"a":1,"a":2}`)}
 		},
 		"invalid UTF-8": func(m *Metadata) {
-			m.FederationEntity.Extra = map[string]json.RawMessage{"added": json.RawMessage("\"\xff\"")}
+			m.FederationEntity.Extra = map[string]jsontext.Value{"added": jsontext.Value("\"\xff\"")}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -141,7 +144,7 @@ func TestKeysRule1_NoPrivateKeyPartIsPublished(t *testing.T) {
 			es.Jwks.Keys.Keys = append(es.Jwks.Keys.Keys, jose.JSONWebKey{Key: newTestKey(t), KeyID: "private"})
 		},
 		"deep member": func(es *EntityStatement) {
-			es.Metadata.Extra = map[string]json.RawMessage{"added": json.RawMessage(`{"list":[1,{"keys":[{"kty":"EC","d":"x"}]}]}`)}
+			es.Metadata.Extra = map[string]jsontext.Value{"added": jsontext.Value(`{"list":[1,{"keys":[{"kty":"EC","d":"x"}]}]}`)}
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -319,7 +322,7 @@ func TestA_23034_02_AnOptionalMemberLeftOutIsNotWritten(t *testing.T) {
 // A statement too large for a member to take is not signed. Internal invariant of signing, servers.md rule 2.
 func TestServerRule2_AStatementLargerThanItsBoundIsRefused(t *testing.T) {
 	refusedBy(t, func(es *EntityStatement) {
-		es.Metadata.Extra = map[string]json.RawMessage{"large": json.RawMessage(`"` + strings.Repeat("x", maxStatementBytes) + `"`)}
+		es.Metadata.Extra = map[string]jsontext.Value{"large": jsontext.Value(`"` + strings.Repeat("x", maxStatementBytes) + `"`)}
 	}, "more than")
 }
 
@@ -353,6 +356,60 @@ func TestA_27505_TheFeaturesAndInformationalMembersArePublished(t *testing.T) {
 	}
 }
 
+// The statement is signed and served under an ETag of its bytes, so the same statement is written the same bytes
+// every time, and as encoding/json v1 wrote them: Extra members sorted into the typed ones, a nil slice as null, and
+// <, >, &, U+2028 kept escaped as written.
+func TestTheSameStatementIsWrittenTheSameBytes(t *testing.T) {
+	extra := map[string]jsontext.Value{}
+	for name := range strings.FieldsSeq("q p o n m l k j i h g f e d0 c b a") {
+		extra[name] = jsontext.Value(`"` + name + `"`)
+	}
+	extra["z"] = jsontext.Value(` { "b" : "<&>\u2028\u0061" , "a" : 1 } `)
+	statement := &EntityStatement{Metadata: &Metadata{
+		OpenidRelyingParty: &OpenIDRelyingPartyMetadata{ClientName: "c&<>\u2028", Extra: extra},
+		FederationEntity:   &FederationEntityMetadata{},
+	}}
+	first, err := json.Marshal(statement, statementJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 20 {
+		again, err := json.Marshal(statement, statementJSON)
+		if err != nil || string(again) != string(first) {
+			t.Fatalf("written differently: %s, %v", again, err)
+		}
+	}
+	const want = `{"exp":0,"iat":0,"iss":"","sub":"","authority_hints":null,"jwks":null,"metadata":{"openid_relying_party":{` +
+		`"a":"a","b":"b","c":"c","client_name":"c\u0026\u003c\u003e\u2028","client_registration_types":null,` +
+		`"contacts":null,"d0":"d0","default_acr_values":null,"e":"e","f":"f","g":"g","grant_types":null,"h":"h","i":"i",` +
+		`"id_token_encrypted_response_alg":"","id_token_encrypted_response_enc":"","id_token_signed_response_alg":"",` +
+		`"j":"j","k":"k","keywords":null,"l":"l","m":"m","n":"n","o":"o","organization_name":"","p":"p","q":"q",` +
+		`"redirect_uris":null,"require_pushed_authorization_requests":false,"response_types":null,"scope":"",` +
+		`"ti_features_supported":null,"token_endpoint_auth_method":"","z":{"b":"\u003c\u0026\u003e\u2028\u0061","a":1}},` +
+		`"federation_entity":{}}}`
+	if string(first) != want {
+		t.Errorf("wrote\n%s\nwant\n%s", first, want)
+	}
+}
+
+// An entity statement naming a member twice or carrying invalid UTF-8 is refused, and a member named in another case
+// is not taken for the member: a verifier reading it otherwise could see another issuer or other metadata.
+func TestServerRule28_AnEntityStatementIsReadStrictly(t *testing.T) {
+	for name, test := range map[string]struct{ payload, reason string }{
+		"a member twice": {`{"iss":"https://op.example","iss":"https://other.example"}`, "a member named twice"},
+		"invalid UTF-8":  {"{\"iss\":\"https://op.example/\xff\"}", "not UTF-8"},
+	} {
+		_, err := parseEntityStatement([]byte(test.payload))
+		if !errors.Is(err, openid.ErrJSON) || !strings.Contains(err.Error(), test.reason) {
+			t.Errorf("%s: %v, want %q", name, err, test.reason)
+		}
+	}
+	statement, err := parseEntityStatement([]byte(`{"ISS":"https://op.example","Metadata":{"openid_provider":{}}}`))
+	if err != nil || statement.Issuer != "" || statement.Metadata != nil {
+		t.Errorf("members in another case were read: %+v %v", statement, err)
+	}
+}
+
 // parseEntityStatement reads statements of other entities, so it gets arbitrary bytes; a statement it accepts
 // marshals again.
 func FuzzParseEntityStatement(f *testing.F) {
@@ -363,6 +420,9 @@ func FuzzParseEntityStatement(f *testing.F) {
 	f.Add([]byte(`{"iat":1e400,"exp":-1,"metadata":null,"jwks":null}`))
 	f.Add([]byte(`{"metadata":{"openid_relying_party":{"ti_features_supported":{"id_token_version_supported":["1.0.0"]},"d":1}}}`))
 	f.Add([]byte(`[]`))
+	f.Add([]byte(`{"iss":"https://op.example","iss":"https://other.example"}`))
+	f.Add([]byte(`{"ISS":"https://op.example","Metadata":{"openid_provider":{"issuer":"https://op.example"}}}`))
+	f.Add([]byte("{\"iss\":\"https://op.example/\xff\"}"))
 	f.Fuzz(func(t *testing.T, payload []byte) {
 		statement, err := parseEntityStatement(payload)
 		if err != nil {

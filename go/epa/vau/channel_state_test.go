@@ -26,7 +26,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"net/http"
 	"net/url"
 	"testing"

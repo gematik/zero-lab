@@ -22,7 +22,8 @@
 package epa
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -47,13 +48,13 @@ type InsurantProviderStatus struct {
 // InsurantRecordInfo says which provider, if any, holds the insurant's record.
 type InsurantRecordInfo struct {
 	Found    bool           `json:"found"`
-	Provider ProviderNumber `json:"provider,omitempty"`
+	Provider ProviderNumber `json:"provider,omitzero"`
 }
 
 // InsurantEntitlementInfo is the proxy's cached entitlement for an insurant; the times are RFC 3339.
 type InsurantEntitlementInfo struct {
 	Entitled   bool           `json:"entitled"`
-	Provider   ProviderNumber `json:"provider,omitempty"`
+	Provider   ProviderNumber `json:"provider,omitzero"`
 	EntitledAt string         `json:"entitledAt,omitempty"`
 	ValidTo    string         `json:"validTo,omitempty"`
 }
@@ -66,10 +67,14 @@ type InsurantInfo struct {
 	Entitlement InsurantEntitlementInfo  `json:"entitlement"`
 }
 
+// responseJSON writes the proxy's answers as they always were: a nil slice or map as null rather than [] and {}, and
+// a map's members sorted by name.
+var responseJSON = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true))
+
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(body); err != nil {
+	if err := json.MarshalWrite(w, body, responseJSON); err != nil {
 		slog.Error("Failed to encode response", "error", err)
 	}
 }
@@ -175,6 +180,34 @@ func (p *Proxy) HandleInsurantInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, &info)
 }
 
+// maxEntitleBodyBytes bounds the optional body of an entitle request, which names one provider.
+const maxEntitleBodyBytes = 256
+
+// errEntitleBody is an entitle request's body refused.
+var errEntitleBody = errors.New("entitle body refused")
+
+// entitleProvider reads the optional body {"provider": n} of an entitle request; an empty body names none. The format
+// is the proxy's own, so a member it does not know is refused, as are a member named twice and invalid UTF-8.
+func entitleProvider(body io.Reader) (ProviderNumber, error) {
+	data, err := io.ReadAll(io.LimitReader(body, maxEntitleBodyBytes+1))
+	if err != nil {
+		return 0, fmt.Errorf("%w: unreadable", errEntitleBody)
+	}
+	if len(data) > maxEntitleBodyBytes {
+		return 0, fmt.Errorf("%w: larger than %d bytes", errEntitleBody, maxEntitleBodyBytes)
+	}
+	if len(bytes.Trim(data, " \t\r\n")) == 0 {
+		return 0, nil
+	}
+	var request struct {
+		Provider ProviderNumber `json:"provider"`
+	}
+	if err := json.Unmarshal(data, &request, json.RejectUnknownMembers(true)); err != nil {
+		return 0, fmt.Errorf("%w: %w", errEntitleBody, err)
+	}
+	return request.Provider, nil
+}
+
 // HandleEntitleInsurant explicitly entitles this proxy's SMC-B identity for
 // the insurant's record. The provider is auto-resolved unless the optional
 // JSON body {"provider": n} forces one.
@@ -185,23 +218,20 @@ func (p *Proxy) HandleEntitleInsurant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var body struct {
-		Provider ProviderNumber `json:"provider"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		writeJSONError(w, http.StatusBadRequest, "invalid_body", err.Error())
+	provider, err := entitleProvider(r.Body)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_body", `the body is empty or {"provider": n}`)
 		return
 	}
 
 	var session *Session
 	switch {
-	case body.Provider != 0:
-		if !slices.Contains(AllProviders, body.Provider) {
-			writeJSONError(w, http.StatusBadRequest, "invalid_provider", fmt.Sprintf("unknown provider %d", body.Provider))
+	case provider != 0:
+		if !slices.Contains(AllProviders, provider) {
+			writeJSONError(w, http.StatusBadRequest, "invalid_provider", fmt.Sprintf("unknown provider %d", provider))
 			return
 		}
-		var err error
-		session, err = p.sessionManager.GetSession(body.Provider)
+		session, err = p.sessionManager.GetSession(provider)
 		if err != nil {
 			writeJSONError(w, http.StatusBadGateway, "provider_error", err.Error())
 			return

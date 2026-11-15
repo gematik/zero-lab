@@ -26,7 +26,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -286,7 +286,7 @@ func fetchKey(ctx context.Context, uri string, httpClient *http.Client) (*josebp
 	}
 
 	key := new(josebp.JSONWebKey)
-	err = json.NewDecoder(io.LimitReader(resp.Body, maxIDPResponseBytes)).Decode(key)
+	err = json.UnmarshalRead(io.LimitReader(resp.Body, maxIDPResponseBytes), key)
 	if err != nil {
 		return nil, fmt.Errorf("parsing JWK: %w", err)
 	}
