@@ -1,5 +1,35 @@
 # Release Notes
 
+# Release go/pdp v0.24.0
+
+### breaking
+- `authzserver.NewFromConfigFile` is gone; `New` always refused what it built (TASK-312).
+- `Config.OIDFKeys` loads the relying party's keys: zero-pdp reads one PEM key per file
+  (`key_pem_path`, `cert_pem_path`); an inline `jwk`, a `jwk_path` and RSA keys are refused at start
+  (TASK-317). `Config.OIDFDocuments` keeps the federation's signed documents, in zero-pdp the kv
+  store (TASK-293).
+- The entity statement must carry what gemSpec_IDP_FD Tabelle 4, A_27505 and A_27585 require of a
+  relying party (`organization_name`, `keywords`, `contacts`, `ti_features_supported`, https
+  redirect URIs); the start stops when it cannot be signed (TASK-315).
+
+### fixed
+- A pushed `request_uri` and an authorization code are good once, also across replicas (TASK-316).
+
+### changes
+- Dependencies bumped: go-jose v4.1.9, go.yaml.in/yaml/v4 v4.0.0, pgx v5.13.0, golang.org/x
+  crypto v0.59.0, sync v0.25.0, text v0.44.0; openid v0.54.0, oidf v0.52.0.
+
+### verified
+- `just check` across all Go modules passed on 62a5f58a, with zaddy's bump checked on its own
+  (lint, vuln, tests); `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- kv on Postgres (`go test ./kv/postgres`, Postgres 17) passed on 51a0bb83.
+- PDP end to end (`just pdp-e2e`) passed on 51a0bb83 against a local zero-pdp: 9 passed; federation
+  PAR, cross-client introspection and the entity statement checks skipped for lack of their
+  variables. The two entity statement checks passed against a zero-pdp with a federation
+  configured (the reference federation's relying party `directory-ref`).
+- PDP HITL was waived by the maintainer on 2026-11-15. The federation login leg, oidf v0.52.0, passed
+  live through TK RU2 in zero-pep-proxy v0.3.0 on zerobin; zero-pdp's own login was not run.
+
 # Release go/pep/proxy v0.3.0
 
 ### breaking
