@@ -22,7 +22,7 @@
 package idpd
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 )
@@ -56,7 +56,7 @@ func (e *Error) Error() string {
 // tries to parse the oath2 error from the reader, taken from the HTTP response body
 func parseErrorResponse(httpCode int, body io.Reader) error {
 	var oidcErr Error
-	err := json.NewDecoder(io.LimitReader(body, maxIDPResponseBytes)).Decode(&oidcErr)
+	err := json.UnmarshalRead(io.LimitReader(body, maxIDPResponseBytes), &oidcErr)
 	if err != nil {
 		return fmt.Errorf("status %d: unable to decode error: %w", httpCode, err)
 	}

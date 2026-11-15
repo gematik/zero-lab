@@ -27,7 +27,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -199,7 +199,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	}
 
 	challenge := new(Challenge)
-	err = json.NewDecoder(io.LimitReader(resp.Body, maxIDPResponseBytes)).Decode(challenge)
+	err = json.UnmarshalRead(io.LimitReader(resp.Body, maxIDPResponseBytes), challenge)
 	if err != nil {
 		return nil, fmt.Errorf("decoding challenge: %w", err)
 	}
