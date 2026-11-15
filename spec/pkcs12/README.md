@@ -117,7 +117,7 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | Rule | Requirement |
 |---|---|
 | P12-040 | A certBag with certId x509Certificate yields the DER certificate (the certValue octets, unchanged). Other certificate types are `unsupported_algorithm`. |
-| P12-041 | A pkcs8ShroudedKeyBag yields the decrypted PrivateKeyInfo octets, unchanged; a keyBag yields its PrivateKeyInfo unchanged. |
+| P12-041 | A pkcs8ShroudedKeyBag yields the decrypted PrivateKeyInfo, a keyBag its PrivateKeyInfo; each is returned only when it is exactly one DER PrivateKeyInfo (RFC 5958: version 0 or 1, AlgorithmIdentifier, non-empty privateKey, attributes [0], publicKey [1] only in version 1, nothing after it), else the decode fails with `malformed`. |
 | P12-042 | A safeContentsBag is decoded recursively. |
 | P12-043 | CRL bags, secret bags and unknown bag types are skipped. |
 | P12-044 | The attributes friendlyName (BMPString, decoded as UTF-16 so that surrogate pairs written by Windows survive) and localKeyId (OCTET STRING) are reported per bag. Unknown attributes are ignored. |
@@ -146,8 +146,9 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | `limit_exceeded` | the work budget of P12-036 exceeded | `ErrLimitExceeded` | `Error::LimitExceeded` |
 
 A wrong password on a file without MAC yields `decryption_failed` in about 255 of 256 cases; in the
-others the padding happens to be valid and the plaintext fails to parse (`malformed`). Both are
-conformant.
+others the padding happens to be valid and the plaintext fails to parse (`malformed`): as a
+SafeContents for an encrypted safe, as a PrivateKeyInfo for a shrouded key (P12-041). Both codes are
+conformant; returning the plaintext is not.
 
 ## Algorithm
 
@@ -169,8 +170,8 @@ decode(file, password):
 
 collect(bags): for each bag
       certBag            → X.509 only (P12-040), with attributes (P12-044)
-      pkcs8ShroudedKeyBag → decrypt(EncryptedPrivateKeyInfo) (P12-041)
-      keyBag             → PrivateKeyInfo as is (P12-041)
+      pkcs8ShroudedKeyBag → decrypt(EncryptedPrivateKeyInfo), one DER PrivateKeyInfo or malformed (P12-041)
+      keyBag             → one DER PrivateKeyInfo or malformed (P12-041)
       safeContentsBag    → collect(nested) (P12-042)
       otherwise          → skip (P12-043)
 

@@ -32,8 +32,9 @@ Each case is written once per encoding:
 | `ber` | the same file with every constructed element in indefinite-length form and every OCTET STRING longer than 512 bytes split into constructed segments. Only the outer encoding changes; the values of all OCTET STRINGs stay byte for byte, so MACs and digests stay valid (P12-011). Always profile `legacy`. |
 | `as-is` | a committed file, unchanged |
 
-Negative cases mutate the produced file: `truncate`, `append` a byte, `flip` one bit at an offset
-from the end (inside the authSafe), `patch` an OID in place, or rewrite the MAC iterations
+Negative cases mutate the file as produced, before it is encoded, so a mutation reaches every
+encoding of its case: `truncate`, `append` a byte, `flip` one bit at an offset from the end (inside
+the authSafe), `patch` bytes in place (an OID, a version), or rewrite the MAC iterations
 (`mac-iterations`; MacData lies outside the MAC, so the rest stays valid).
 
 ## Manifest

@@ -328,7 +328,7 @@ func ParseEncryptedPrivateKeyInfo(data []byte) (*EncryptedPrivateKeyInfo, error)
 	return &epki, nil
 }
 
-// CheckPrivateKeyInfo checks that data is one DER PrivateKeyInfo (RFC 5208
+// CheckPrivateKeyInfo checks that data is one DER PrivateKeyInfo (P12-041; RFC 5208
 // §5, as OneAsymmetricKey in RFC 5958 §2) and nothing else. A wrong password
 // on a file without MAC leaves valid padding in about 1 of 256 decryptions;
 // the plaintext is random then, and this check is what refuses it before it

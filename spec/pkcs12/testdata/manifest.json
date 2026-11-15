@@ -595,6 +595,36 @@
       }
     },
     {
+      "id": "keybag-not-privatekeyinfo",
+      "description": "A keyBag whose PrivateKeyInfo has version 5 (patched from 0), otherwise intact DER, no MAC",
+      "rules": [
+        "P12-041"
+      ],
+      "profile": "modern",
+      "openssl": [
+        "-keypbe",
+        "NONE",
+        "-certpbe",
+        "NONE",
+        "-nomac"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "patch",
+        "find": "020100300d06092a864886f70d0101010500",
+        "replace": "020105300d06092a864886f70d0101010500"
+      },
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "malformed"
+      }
+    },
+    {
       "id": "friendly-names",
       "description": "friendlyName attributes with non-ASCII characters",
       "rules": [

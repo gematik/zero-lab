@@ -97,6 +97,13 @@ func generate(manifestPath, out, openssl string) error {
 		if err != nil {
 			return fmt.Errorf("case %s: %w", c.ID, err)
 		}
+		// A mutation alters the file as produced, so a case can carry it into
+		// every encoding: a BER encoding of a patched file is still patched.
+		if c.Mutation != nil {
+			if base, err = mutate(base, *c.Mutation); err != nil {
+				return fmt.Errorf("case %s: %w", c.ID, err)
+			}
+		}
 		for _, encoding := range c.Encodings {
 			data := base
 			switch encoding {
@@ -107,11 +114,6 @@ func generate(manifestPath, out, openssl string) error {
 				}
 			default:
 				return fmt.Errorf("case %s: unknown encoding %q", c.ID, encoding)
-			}
-			if c.Mutation != nil {
-				if data, err = mutate(data, *c.Mutation); err != nil {
-					return fmt.Errorf("case %s: %w", c.ID, err)
-				}
 			}
 			file := c.ID + "." + encoding + ".p12"
 			if err := os.WriteFile(filepath.Join(out, file), data, 0o600); err != nil {
