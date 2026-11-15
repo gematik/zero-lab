@@ -477,7 +477,8 @@ fn collect(
                     trusted_key_usage,
                 });
             }
-            // P12-041: the PrivateKeyInfo octets, decrypted or as they are.
+            // P12-041: the PrivateKeyInfo octets, decrypted or as they are, once they are one
+            // DER PrivateKeyInfo.
             oids::SHROUDED_KEY_BAG => {
                 let shrouded: EncryptedPrivateKeyInfo = reparse(&bag.value)?;
                 p12.encryption.push(Encryption {
@@ -490,6 +491,7 @@ fn collect(
                     shrouded.encrypted_data.as_bytes(),
                     budget,
                 )?;
+                asn1::check_private_key_info(&pkcs8)?;
                 p12.keys.push(KeyBag {
                     pkcs8,
                     friendly_name,
@@ -497,8 +499,10 @@ fn collect(
                 });
             }
             oids::KEY_BAG => {
+                let pkcs8 = Zeroizing::new(der::Encode::to_der(&bag.value)?);
+                asn1::check_private_key_info(&pkcs8)?;
                 p12.keys.push(KeyBag {
-                    pkcs8: Zeroizing::new(der::Encode::to_der(&bag.value)?),
+                    pkcs8,
                     friendly_name,
                     local_key_id,
                 });
@@ -586,5 +590,77 @@ mod budget_tests {
             Budget::default().spend("MAC", 0, 1),
             Err(Error::Malformed { .. })
         ));
+    }
+}
+
+#[cfg(all(test, feature = "encode"))]
+mod wrong_password_tests {
+    use der::Encode;
+
+    use super::*;
+
+    /// A DER TLV of `tag` around `content`.
+    fn tlv(tag: u8, content: &[u8]) -> Vec<u8> {
+        let mut out = vec![tag];
+        let len = content.len();
+        if len < 0x80 {
+            out.push(u8::try_from(len).unwrap());
+        } else if len < 0x100 {
+            out.extend([0x81, u8::try_from(len).unwrap()]);
+        } else {
+            out.extend([
+                0x82,
+                u8::try_from(len >> 8).unwrap(),
+                u8::try_from(len & 0xff).unwrap(),
+            ]);
+        }
+        out.extend(content);
+        out
+    }
+
+    /// A ContentInfo of type data around `octets`.
+    fn data(octets: &[u8]) -> Vec<u8> {
+        let mut content = oids::DATA.to_der().unwrap();
+        content.extend(tlv(0xa0, &tlv(0x04, octets)));
+        tlv(0x30, &content)
+    }
+
+    /// A file without MAC whose only safe holds one shrouded key, `pkcs8` encrypted with
+    /// `password` and `salt` at one iteration.
+    fn no_mac_file(pkcs8: &[u8], password: &str, salt: &[u8]) -> Vec<u8> {
+        let (algorithm, ciphertext) = pbes2::encrypt(password, pkcs8, salt, [7; 16], 1).unwrap();
+        let mut epki = algorithm.to_der().unwrap();
+        epki.extend(tlv(0x04, &ciphertext));
+        let mut bag = oids::SHROUDED_KEY_BAG.to_der().unwrap();
+        bag.extend(tlv(0xa0, &tlv(0x30, &epki)));
+        let safe = tlv(0x30, &tlv(0x30, &bag));
+        let mut pfx = vec![0x02, 0x01, 0x03];
+        pfx.extend(data(&tlv(0x30, &data(&safe))));
+        tlv(0x30, &pfx)
+    }
+
+    /// P12-034, P12-041: files without MAC, decoded with the wrong password until the
+    /// padding of a decryption happens to be valid (about 1 in 256), so the plaintext
+    /// behind valid padding is refused in every run, not only in the run that draws it.
+    #[test]
+    fn p12_034_a_wrong_password_without_mac_never_yields_a_key() {
+        // An Ed25519 PrivateKeyInfo (RFC 8410 §10.3).
+        let pkcs8 = [
+            &[
+                0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70,
+            ],
+            &[0x04, 0x22, 0x04, 0x20][..],
+            &[0x42; 32][..],
+        ]
+        .concat();
+        decode(&no_mac_file(&pkcs8, "right", b"salt0000"), "right").unwrap();
+        for i in 0u32..20_000 {
+            match decode(&no_mac_file(&pkcs8, "right", &i.to_be_bytes()), "wrong") {
+                Err(Error::DecryptFailed) => {}
+                Err(Error::Malformed { .. }) => return,
+                other => panic!("wrong password with valid padding: {other:?}"),
+            }
+        }
+        panic!("no decryption with the wrong password had valid padding");
     }
 }

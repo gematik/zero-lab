@@ -25,7 +25,7 @@
 //! indefinite lengths and constructed strings leave no contiguous value to borrow.
 
 use der::asn1::{Any, ContextSpecific, ObjectIdentifier, OctetString, SetOfVec};
-use der::{Decode, Encode, Reader, Sequence, TagNumber, Tagged, ValueOrd};
+use der::{Decode, Encode, Reader, Sequence, Tag, TagNumber, Tagged, ValueOrd};
 use spki::AlgorithmIdentifierOwned;
 
 use crate::{Error, oids};
@@ -200,6 +200,53 @@ impl<'a> Decode<'a> for EncryptedData {
     }
 }
 
+/// Checks that `bytes` is exactly one DER `PrivateKeyInfo` (P12-041; `OneAsymmetricKey`,
+/// RFC 5958 §2): version 0 or 1, an AlgorithmIdentifier, a non-empty privateKey,
+/// attributes `[0]`, publicKey `[1]` only in version 1, nothing after it. A wrong password
+/// on a file without MAC leaves valid padding in about 1 of 256 decryptions; the plaintext
+/// is random then, and this check is what refuses it before it is returned as a key.
+pub(crate) fn check_private_key_info(bytes: &[u8]) -> Result<(), Error> {
+    PrivateKeyInfoShape::from_der(bytes)?;
+    Ok(())
+}
+
+/// What [`check_private_key_info`] decodes: the structure only, the key stays in its octets.
+struct PrivateKeyInfoShape;
+
+impl<'a> Decode<'a> for PrivateKeyInfoShape {
+    type Error = der::Error;
+
+    fn decode<R: Reader<'a>>(reader: &mut R) -> der::Result<Self> {
+        const ATTRIBUTES: Tag = Tag::ContextSpecific {
+            constructed: true,
+            number: TagNumber(0),
+        };
+        const PUBLIC_KEY: Tag = Tag::ContextSpecific {
+            constructed: false,
+            number: TagNumber(1),
+        };
+        reader.sequence(|r| {
+            let version: u8 = r.decode()?;
+            if version > 1 {
+                return Err(Tag::Integer.value_error().into());
+            }
+            let _algorithm: AlgorithmIdentifierOwned = r.decode()?;
+            let private_key: OctetString = r.decode()?;
+            if private_key.as_bytes().is_empty() {
+                return Err(Tag::OctetString.value_error().into());
+            }
+            if !r.is_finished() && Tag::peek(r)? == ATTRIBUTES {
+                r.decode::<Any>()?;
+            }
+            if version == 1 && !r.is_finished() && Tag::peek(r)? == PUBLIC_KEY {
+                r.decode::<Any>()?;
+            }
+            // Anything left is trailing data, which the sequence refuses.
+            Ok(Self)
+        })
+    }
+}
+
 /// `T` from the element `value` holds, decoded again under BER: [`Any`]'s own
 /// accessors assume DER for what is nested. Only for SEQUENCE values, which re-encode
 /// losslessly (see [`ContentInfo`]).
@@ -275,6 +322,93 @@ mod tests {
             assert!(
                 EncryptedData::from_der(&encrypted_data(version)).is_err(),
                 "version {version}"
+            );
+        }
+    }
+
+    /// A `OneAsymmetricKey` (RFC 5958 §2) of `version` with Ed25519 as algorithm, the
+    /// optional `parameters` and `private_key`, and `extra` after the private key.
+    fn one_asymmetric_key(
+        version: u8,
+        parameters: &str,
+        private_key: &[u8],
+        extra: &str,
+    ) -> Vec<u8> {
+        let mut algorithm = bytes("06032b6570");
+        algorithm.extend(bytes(parameters));
+        let mut content = vec![
+            0x02,
+            0x01,
+            version,
+            0x30,
+            u8::try_from(algorithm.len()).unwrap(),
+        ];
+        content.extend(algorithm);
+        content.extend([0x04, u8::try_from(private_key.len()).unwrap()]);
+        content.extend(private_key);
+        content.extend(bytes(extra));
+        let mut der = vec![0x30, u8::try_from(content.len()).unwrap()];
+        der.extend(content);
+        der
+    }
+
+    /// P12-041: a key is one DER `PrivateKeyInfo` as RFC 5958 allows it, and nothing else.
+    #[test]
+    fn p12_041_a_private_key_info_is_checked_strictly() {
+        let seed = [0u8; 34];
+        for (name, der) in [
+            ("v1", one_asymmetric_key(0, "", &seed, "")),
+            (
+                "v1 with attributes",
+                one_asymmetric_key(0, "", &seed, "a000"),
+            ),
+            (
+                "v2 with public key",
+                one_asymmetric_key(1, "", &seed, "81020001"),
+            ),
+            (
+                "v2 with both",
+                one_asymmetric_key(1, "", &seed, "a00081020001"),
+            ),
+            (
+                "v2 without public key",
+                one_asymmetric_key(1, "", &seed, ""),
+            ),
+            (
+                "parameters of one element",
+                one_asymmetric_key(0, "0500", &seed, ""),
+            ),
+        ] {
+            assert!(check_private_key_info(&der).is_ok(), "{name}");
+        }
+        let mut trailing = one_asymmetric_key(0, "", &seed, "");
+        trailing.push(0);
+        for (name, der) in [
+            ("empty", Vec::new()),
+            ("trailing octet", trailing),
+            ("version 2", one_asymmetric_key(2, "", &seed, "")),
+            (
+                "v1 with public key",
+                one_asymmetric_key(0, "", &seed, "81020001"),
+            ),
+            (
+                "public key before attributes",
+                one_asymmetric_key(1, "", &seed, "81020001a000"),
+            ),
+            ("unknown field", one_asymmetric_key(1, "", &seed, "0500")),
+            (
+                "two parameters",
+                one_asymmetric_key(0, "05000500", &seed, ""),
+            ),
+            ("empty private key", one_asymmetric_key(0, "", &[], "")),
+            (
+                "random octets",
+                b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345".to_vec(),
+            ),
+        ] {
+            assert!(
+                matches!(check_private_key_info(&der), Err(Error::Malformed { .. })),
+                "{name}"
             );
         }
     }
