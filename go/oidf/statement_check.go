@@ -125,21 +125,11 @@ const maxRedirectURIBytes = 2048
 // keinen fragment part enthalten, keine Nutzer-spezifischen Anmeldeinformationen enthalten." Beyond that, it is
 // printable ASCII within maxRedirectURIBytes, since logins compare it byte for byte.
 func checkRegisteredRedirectURI(uri string) error {
-	if len(uri) > maxRedirectURIBytes {
-		return fmt.Errorf("%w: a redirect_uri is longer than %d characters", ErrEntityStatement, maxRedirectURIBytes)
+	if _, _, err := checkHTTPSURL(uri, maxRedirectURIBytes); err != nil {
+		return fmt.Errorf("%w: a redirect_uri (A_27585): %w", ErrEntityStatement, err)
 	}
-	for _, c := range []byte(uri) {
-		if c <= 0x20 || c >= 0x7f {
-			return fmt.Errorf("%w: a redirect_uri holds a character outside printable ASCII", ErrEntityStatement)
-		}
-	}
-	rest, found := strings.CutPrefix(uri, "https://")
-	host, _, _ := strings.Cut(rest, "/")
-	if !found || host == "" || strings.HasPrefix(host, ":") {
-		return fmt.Errorf("%w: a redirect_uri is no https URL with a host (A_27585)", ErrEntityStatement)
-	}
-	if strings.ContainsAny(uri, "?#") || strings.Contains(host, "@") {
-		return fmt.Errorf("%w: a redirect_uri has a query, a fragment or user info (A_27585)", ErrEntityStatement)
+	if strings.Contains(uri, "?") {
+		return fmt.Errorf("%w: a redirect_uri has a query (A_27585)", ErrEntityStatement)
 	}
 	return nil
 }

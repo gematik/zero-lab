@@ -45,6 +45,45 @@ const (
 	maxEntityIdentifierBytes = 2048
 )
 
+// checkPrintable takes 1 to maxBytes printable ASCII characters: what a URL of this package is made of before its
+// grammar is looked at. The error names the rule, never the value, which may come from a request or a peer.
+func checkPrintable(value string, maxBytes int) error {
+	if value == "" || len(value) > maxBytes {
+		return fmt.Errorf("not 1 to %d characters", maxBytes)
+	}
+	for _, c := range []byte(value) {
+		if c <= 0x20 || c >= 0x7f {
+			return errors.New("a character outside printable ASCII")
+		}
+	}
+	return nil
+}
+
+// checkHTTPSURL holds what every https URL grammar of this package shares, so that a fix to it lands once:
+// checkPrintable, "https://" as sent (url.Parse would lowercase a scheme in upper case), an authority up to the first
+// '/', '?' or '#' that is not empty, starts with no ':' and holds no user info, and no fragment. It returns the
+// authority and what follows it for the rules each grammar adds on top, and does not parse the URL any further.
+func checkHTTPSURL(uri string, maxBytes int) (authority, rest string, err error) {
+	if err := checkPrintable(uri, maxBytes); err != nil {
+		return "", "", err
+	}
+	afterScheme, found := strings.CutPrefix(uri, "https://")
+	if !found {
+		return "", "", errors.New("not an https URL")
+	}
+	authority, rest = afterScheme, ""
+	if end := strings.IndexAny(afterScheme, "/?#"); end >= 0 {
+		authority, rest = afterScheme[:end], afterScheme[end:]
+	}
+	if authority == "" || strings.HasPrefix(authority, ":") {
+		return "", "", errors.New("not an https URL with a host")
+	}
+	if strings.Contains(authority, "@") || strings.Contains(rest, "#") {
+		return "", "", errors.New("user info or a fragment")
+	}
+	return authority, rest, nil
+}
+
 // checkText takes valid UTF-8 of at most most bytes without control characters (Cc), which would let a value break a
 // log line or a header it is written into, and without format characters (Cf: bidi overrides, zero-width characters)
 // and line or paragraph separators (Zl, Zp), which would make it read otherwise than it is. The error names the rule,
@@ -302,19 +341,19 @@ var ErrEntityIdentifier = errors.New("entity identifier refused")
 // no issuer of the federation uses one, and so neither an encoded '/' nor double encoding can slip through. The
 // admission compares it byte for byte with the IdP list, so nothing is normalised.
 func checkEntityIdentifier(iss string) error {
-	if iss == "" || len(iss) > maxEntityIdentifierBytes {
-		return fmt.Errorf("%w: not 1 to %d characters", ErrEntityIdentifier, maxEntityIdentifierBytes)
+	host, rest, err := checkHTTPSURL(iss, maxEntityIdentifierBytes)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrEntityIdentifier, err)
 	}
-	rest, found := strings.CutPrefix(iss, "https://")
-	if !found {
-		return fmt.Errorf("%w: not https", ErrEntityIdentifier)
-	}
-	host, path, hasPath := strings.Cut(rest, "/")
 	if !isHost(host) {
 		return fmt.Errorf("%w: no host name in lowercase with a port of 1 to 65535", ErrEntityIdentifier)
 	}
-	if !hasPath {
+	if rest == "" {
 		return nil
+	}
+	path, found := strings.CutPrefix(rest, "/")
+	if !found {
+		return fmt.Errorf("%w: a query", ErrEntityIdentifier)
 	}
 	for segment := range strings.SplitSeq(path, "/") {
 		if segment == "" || segment == "." || segment == ".." {
@@ -398,24 +437,18 @@ func parsePARResponse(body []byte) (pushedAuthorizationResponse, error) {
 }
 
 func checkRequestURI(uri string) error {
-	if uri == "" || len(uri) > maxRequestURIBytes {
-		return fmt.Errorf("%w: request_uri is not 1 to %d characters", ErrPARResponse, maxRequestURIBytes)
-	}
-	for _, c := range []byte(uri) {
-		if c <= 0x20 || c >= 0x7f {
-			return fmt.Errorf("%w: request_uri holds a character outside printable ASCII", ErrPARResponse)
+	// The prefix is compared as sent: url.Parse would lowercase a scheme in upper case.
+	if !strings.HasPrefix(uri, "urn:") {
+		if err := checkParsedHTTPSURL(uri, maxRequestURIBytes); err != nil {
+			return fmt.Errorf("%w: request_uri: %w", ErrPARResponse, err)
 		}
-	}
-	parsed, err := url.Parse(uri)
-	if err != nil {
-		return fmt.Errorf("%w: request_uri is no URI", ErrPARResponse)
-	}
-	switch {
-	// The prefixes are compared as sent: url.Parse would lowercase a scheme in upper case.
-	case strings.HasPrefix(uri, "urn:") && parsed.Opaque != "":
-		return nil
-	case strings.HasPrefix(uri, "https://") && parsed.Hostname() != "" && parsed.User == nil && !strings.Contains(uri, "#"):
 		return nil
 	}
-	return fmt.Errorf("%w: request_uri is neither a urn: URI nor an https URL", ErrPARResponse)
+	if err := checkPrintable(uri, maxRequestURIBytes); err != nil {
+		return fmt.Errorf("%w: request_uri: %w", ErrPARResponse, err)
+	}
+	if parsed, err := url.Parse(uri); err != nil || parsed.Opaque == "" {
+		return fmt.Errorf("%w: request_uri is no urn: URI", ErrPARResponse)
+	}
+	return nil
 }

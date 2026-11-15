@@ -35,7 +35,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -78,23 +77,21 @@ var errFederationURL = errors.New("federation URL refused")
 // maxEntityIdentifierBytes printable ASCII characters, with a host and no credentials or fragment. It holds tests too,
 // whose stubs serve TLS, so that no plain path exists to be left open.
 func checkFederationURL(location string) error {
-	if len(location) > maxEntityIdentifierBytes {
-		return fmt.Errorf("%w: longer than %d characters", errFederationURL, maxEntityIdentifierBytes)
+	if err := checkParsedHTTPSURL(location, maxEntityIdentifierBytes); err != nil {
+		return fmt.Errorf("%w: %w", errFederationURL, err)
 	}
-	for _, c := range []byte(location) {
-		if c <= 0x20 || c >= 0x7f {
-			return fmt.Errorf("%w: a character outside printable ASCII", errFederationURL)
-		}
+	return nil
+}
+
+// checkParsedHTTPSURL is checkHTTPSURL for a URL that is fetched or sent on as it stands: it has to parse too, with a
+// host name, the way net/http will read it.
+func checkParsedHTTPSURL(uri string, maxBytes int) error {
+	if _, _, err := checkHTTPSURL(uri, maxBytes); err != nil {
+		return err
 	}
-	parsed, err := url.Parse(location)
-	if err != nil {
-		return fmt.Errorf("%w: no URL", errFederationURL)
-	}
-	if !strings.HasPrefix(location, "https://") || parsed.Host == "" || parsed.Hostname() == "" {
-		return fmt.Errorf("%w: not an https URL", errFederationURL)
-	}
-	if parsed.User != nil || strings.Contains(location, "#") {
-		return fmt.Errorf("%w: credentials or a fragment", errFederationURL)
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.Hostname() == "" {
+		return errors.New("not an https URL with a host name")
 	}
 	return nil
 }

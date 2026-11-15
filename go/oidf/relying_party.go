@@ -34,7 +34,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -263,15 +262,11 @@ func (cfg *RelyingPartyConfig) fedMasterEntityID() (string, error) {
 // prefix is an entity identifier the master's statement has to name as iss and sub.
 func entityIDOfStatementURI(location string) (string, error) {
 	const name = "fed_master_entity_statement_uri"
-	parsed, err := url.Parse(location)
-	if err != nil {
-		return "", fmt.Errorf("%s is no URI", name)
+	if _, _, err := checkHTTPSURL(location, maxEntityIdentifierBytes+len(wellKnownFederation)); err != nil {
+		return "", fmt.Errorf("%s: %w", name, err)
 	}
-	if parsed.Scheme != "https" || parsed.Hostname() == "" {
-		return "", fmt.Errorf("%s is not https", name)
-	}
-	if parsed.User != nil || strings.ContainsAny(location, "?#") {
-		return "", fmt.Errorf("%s has user info, a query or a fragment", name)
+	if strings.Contains(location, "?") {
+		return "", fmt.Errorf("%s has a query", name)
 	}
 	entityID, found := strings.CutSuffix(location, wellKnownFederation)
 	if !found {
