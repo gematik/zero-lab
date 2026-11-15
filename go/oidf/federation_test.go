@@ -317,7 +317,7 @@ type loginStub struct {
 	scope string
 }
 
-func newLoginStub(t *testing.T) *loginStub {
+func newLoginStub(t testing.TB) *loginStub {
 	t.Helper()
 	stub := &loginStub{encKey: newTestKey(t), sigKey: newTestKey(t)}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

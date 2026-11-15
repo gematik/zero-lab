@@ -113,18 +113,24 @@ func FuzzTokenResponseClaims(f *testing.F) {
 	})
 }
 
-// FuzzAuthorizationQueryClaims feeds arbitrary claims parameters to AuthorizationQuery. Invariants: it never panics,
+// FuzzAuthorizationQueryClaims is the fuzz target of the claims parameter (the plan's FuzzClaimsParameter): it feeds
+// arbitrary claims parameters to AuthorizationQuery. Invariants: it never panics, a refusal does not quote the input,
 // and what it sends is the input unchanged, which an oracle of its own finds to be UTF-8, a JSON object within the
 // size bound and without a member named twice.
 func FuzzAuthorizationQueryClaims(f *testing.F) {
 	for _, seed := range []string{
 		`{"id_token":{"acr":{"essential":true}}}`, `{}`, `[]`, `null`, `"x"`, `{} {}`, `{"a":`, ` {"a":1} `, ``,
 		`{"a":1,"a":2}`, `{"a":{"b":1,"b":2}}`, `{"a":[{"b":1},{"b":1}]}`, "{\"a\":\"\xff\"}", `{"a":1,"\u0061":2}`,
+		"{\"a\":\"\xc0\xaf\"}", `{"a":"\u202e\u200b"}`, `{"a":"\ud800"}`, `{"a":1e999}`, `{"a":NaN}`, `{"a":-0.0e-0}`,
+		strings.Repeat(`{"a":`, 6) + "1" + strings.Repeat("}", 6), strings.Repeat(`[`, 64), `{"a":"b\r\nX: y"}`,
 	} {
 		f.Add([]byte(seed))
 	}
 	f.Fuzz(func(t *testing.T, claims []byte) {
 		query, err := AuthorizationQuery("c", "https://rp/cb", []string{"openid"}, Login{Claims: claims})
+		if err != nil && len(claims) >= 16 && strings.Contains(err.Error(), string(claims)) {
+			t.Fatalf("the error quotes the input: %v", err)
+		}
 		if err != nil || len(claims) == 0 {
 			return
 		}
@@ -135,11 +141,11 @@ func FuzzAuthorizationQueryClaims(f *testing.F) {
 		if trimmed := strings.TrimLeft(sent, " \t\r\n"); !strings.HasPrefix(trimmed, "{") {
 			t.Fatalf("sent a claims parameter that is no JSON object: %q", sent)
 		}
-		var value any
-		if err := json.Unmarshal(claims, &value); err != nil {
+		if !json.Valid(claims) {
 			t.Fatalf("sent a claims parameter that is no JSON: %q", sent)
 		}
 		decoder := json.NewDecoder(bytes.NewReader(claims))
+		decoder.UseNumber()
 		if duplicate(t, decoder) {
 			t.Fatalf("sent a claims parameter with a member named twice: %q", sent)
 		}

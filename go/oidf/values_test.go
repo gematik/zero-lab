@@ -237,7 +237,7 @@ func (c *countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 // answering points the stub provider's PAR and token endpoints at handler and counts every request the client sends.
-func (s *loginStub) answering(t *testing.T, handler http.HandlerFunc) *countingTransport {
+func (s *loginStub) answering(t testing.TB, handler http.HandlerFunc) *countingTransport {
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -383,6 +383,11 @@ func TestOWASP_InputValidation_EntityIdentifier(t *testing.T) {
 		"an empty port":             "https://op.example:",
 		"a port of letters":         "https://op.example:ab",
 		"an IPv6 literal":           "https://[::1]",
+		"a host of a dot":           "https://.",
+		"an empty label":            "https://op..example",
+		"a trailing dot":            "https://op.example.",
+		"a label with a hyphen end": "https://op-.example",
+		"a label of 64":             "https://" + strings.Repeat("a", 64) + ".example",
 	} {
 		if err := checkEntityIdentifier(iss); !errors.Is(err, ErrEntityIdentifier) {
 			t.Errorf("%s: %v", name, err)

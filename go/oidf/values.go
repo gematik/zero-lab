@@ -288,8 +288,8 @@ func checkRedirectURI(uri string, registered []string) error {
 var ErrEntityIdentifier = errors.New("entity identifier refused")
 
 // checkEntityIdentifier takes an entity identifier (OpenID Federation 1.1 section 1.2) a fetch can be built from by
-// appending a path: an https URL of at most maxEntityIdentifierBytes printable ASCII characters with a host of
-// lowercase letters, digits, dots and hyphens and an optional port, without user info, query or fragment, without
+// appending a path: an https URL of at most maxEntityIdentifierBytes printable ASCII characters with a host name
+// as isHost takes it and an optional port, without user info, query or fragment, without
 // '.' or '..' segments, without '\' and without '%'. A '%' is refused outright rather than only before an encoded
 // '/', '\', '?', '#' or '@': no issuer of the federation uses one, and so double encoding cannot slip through either.
 // The admission compares it byte for byte with the IdP list, so nothing is normalised.
@@ -308,7 +308,7 @@ func checkEntityIdentifier(iss string) error {
 	}
 	host, path, _ := strings.Cut(rest, "/")
 	if !isHost(host) {
-		return fmt.Errorf("%w: no host of lowercase letters, digits, dots and hyphens", ErrEntityIdentifier)
+		return fmt.Errorf("%w: no host name in lowercase", ErrEntityIdentifier)
 	}
 	for segment := range strings.SplitSeq(path, "/") {
 		if segment == "." || segment == ".." {
@@ -318,16 +318,22 @@ func checkEntityIdentifier(iss string) error {
 	return nil
 }
 
-// isHost reports whether host is a name of lowercase letters, digits, dots and hyphens, or an IPv4 address, with an
-// optional port of digits.
+// isHost reports whether host is a name of labels of lowercase letters, digits and inner hyphens, 1 to 63 characters
+// each and separated by single dots (RFC 1123 section 2.1), which takes IPv4 addresses too, with an optional port of
+// digits. A trailing dot, an empty label and upper case are refused: the host is compared as it stands.
 func isHost(host string) bool {
 	name, port, hasPort := strings.Cut(host, ":")
 	if name == "" || hasPort && (port == "" || len(port) > 5 || strings.Trim(port, "0123456789") != "") {
 		return false
 	}
-	for _, c := range []byte(name) {
-		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '.' && c != '-' {
+	for label := range strings.SplitSeq(name, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
 			return false
+		}
+		for _, c := range []byte(label) {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+				return false
+			}
 		}
 	}
 	return true
