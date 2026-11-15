@@ -188,6 +188,11 @@ type RelyingParty struct {
 	signing chan struct{}
 	// stale is set when a hook was added after the last signing.
 	stale atomic.Bool
+	// refetchedAt is when the documents of an IDP were last refetched past the store, by issuer. Only admitted
+	// issuers get an entry, and entries older than refetchInterval are dropped, so the IdP list bounds it.
+	refetchMu   sync.Mutex
+	refetchedAt map[string]time.Time
+
 	// retryAt, in Unix nanoseconds, is when a request may try again after a failed signing; zero after a success.
 	// Written only by the holder of the signing token.
 	retryAt atomic.Int64
@@ -837,6 +842,37 @@ func transportWithClientCertificate(rt http.RoundTripper, certificate func(*tls.
 // Federation returns the client of this relying party's federation master.
 func (rp *RelyingParty) Federation() *OpenidFederation {
 	return rp.federation
+}
+
+// refetchInterval is how long after a refetch of an IDP's documents another one is refused.
+const refetchInterval = time.Minute
+
+// mayRefetch reports whether the documents of issuer may be refetched now, and if so counts the refetch.
+func (rp *RelyingParty) mayRefetch(issuer string) bool {
+	now := rp.now()
+	rp.refetchMu.Lock()
+	defer rp.refetchMu.Unlock()
+	if rp.refetchedAt == nil {
+		rp.refetchedAt = make(map[string]time.Time)
+	}
+	for known, at := range rp.refetchedAt {
+		if now.Sub(at) >= refetchInterval {
+			delete(rp.refetchedAt, known)
+		}
+	}
+	if _, recent := rp.refetchedAt[issuer]; recent {
+		return false
+	}
+	rp.refetchedAt[issuer] = now
+	return true
+}
+
+// idTokenVersions are the ID token versions the relying party publishes in its ti_features_supported.
+func (rp *RelyingParty) idTokenVersions() []string {
+	if rp.entityStatement == nil || rp.entityStatement.Metadata == nil || rp.entityStatement.Metadata.OpenidRelyingParty == nil {
+		return supportedVersions(nil)
+	}
+	return supportedVersions(rp.entityStatement.Metadata.OpenidRelyingParty.TIFeaturesSupported)
 }
 
 // registeredScope is the scope of the relying party's openid_relying_party metadata, the scopes a login may ask for.

@@ -77,16 +77,18 @@ type OpenIDProviderMetadata struct {
 		Ar  []string `json:"ar"`
 		Par []string `json:"par"`
 	} `json:"request_authentication_methods_supported"`
-	RequirePushedAuthorizationRequests         bool       `json:"require_pushed_authorization_requests"`
-	ResponseModesSupported                     []string   `json:"response_modes_supported"`
-	ResponseTypesSupported                     []string   `json:"response_types_supported"`
-	ScopesSupported                            []string   `json:"scopes_supported"`
-	SignedJwksURI                              string     `json:"signed_jwks_uri"`
-	SubjectTypesSupported                      []string   `json:"subject_types_supported"`
-	TokenEndpoint                              string     `json:"token_endpoint"`
-	TokenEndpointAuthMethodsSupported          []string   `json:"token_endpoint_auth_methods_supported"`
-	TokenEndpointAuthSigningAlgValuesSupported []string   `json:"token_endpoint_auth_signing_alg_values_supported"`
-	UserTypeSupported                          []UserType `json:"user_type_supported"`
+	RequirePushedAuthorizationRequests         bool     `json:"require_pushed_authorization_requests"`
+	ResponseModesSupported                     []string `json:"response_modes_supported"`
+	ResponseTypesSupported                     []string `json:"response_types_supported"`
+	ScopesSupported                            []string `json:"scopes_supported"`
+	SignedJwksURI                              string   `json:"signed_jwks_uri"`
+	SubjectTypesSupported                      []string `json:"subject_types_supported"`
+	TokenEndpoint                              string   `json:"token_endpoint"`
+	TokenEndpointAuthMethodsSupported          []string `json:"token_endpoint_auth_methods_supported"`
+	TokenEndpointAuthSigningAlgValuesSupported []string `json:"token_endpoint_auth_signing_alg_values_supported"`
+	// TIFeaturesSupported names the ID token versions the IDP issues (gemSpec_IDP_Sek A_27506).
+	TIFeaturesSupported *TIFeatures `json:"ti_features_supported"`
+	UserTypeSupported   []UserType  `json:"user_type_supported"`
 }
 
 // OpenIDRelyingPartyMetadata is the openid_relying_party metadata this relying party publishes, with the members

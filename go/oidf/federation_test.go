@@ -90,6 +90,8 @@ type federationStub struct {
 	masterKey, opKey, jwksKey *ecdsa.PrivateKey
 
 	masterStatement, fetchStatement, opStatement, idpList, signedJwks string
+	// idToken is what the provider's token endpoint answers with.
+	idToken atomic.Pointer[string]
 
 	// redirected counts the requests that reached /elsewhere, where a redirecting endpoint points.
 	redirected atomic.Int64
@@ -107,6 +109,13 @@ func newFederationStub(t *testing.T) *federationStub {
 	serve("/idps", &stub.idpList)
 	serve("/op/.well-known/openid-federation", &stub.opStatement)
 	serve("/op/jwks", &stub.signedJwks)
+	mux.HandleFunc("POST /op/token", func(w http.ResponseWriter, _ *http.Request) {
+		idToken := ""
+		if token := stub.idToken.Load(); token != nil {
+			idToken = *token
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": idToken})
+	})
 	mux.HandleFunc("/elsewhere", func(http.ResponseWriter, *http.Request) { stub.redirected.Add(1) })
 	mux.HandleFunc("/redirecting", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/elsewhere", http.StatusTemporaryRedirect)
@@ -292,13 +301,15 @@ type loginStub struct {
 	encKey  *ecdsa.PrivateKey
 	sigKey  *ecdsa.PrivateKey
 	idToken string
+	// scope is the scope of the token response.
+	scope string
 }
 
 func newLoginStub(t *testing.T) *loginStub {
 	t.Helper()
 	stub := &loginStub{encKey: newTestKey(t), sigKey: newTestKey(t)}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken})
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken, "scope": stub.scope})
 	}))
 	t.Cleanup(server.Close)
 	stub.client = &RelyingPartyClient{
@@ -350,7 +361,10 @@ func (s *loginStub) nestedToken(t *testing.T, claims map[string]any) string {
 }
 
 func validIDTokenClaims() map[string]any {
-	return map[string]any{"iss": "https://op.example", "aud": "https://rp.example", "nonce": "n", "exp": time.Now().Add(time.Hour).Unix()}
+	return map[string]any{
+		"iss": "https://op.example", "aud": "https://rp.example", "nonce": "n", "exp": time.Now().Add(time.Hour).Unix(),
+		"sub": "subject", "acr": LoAHigh, "amr": []string{"urn:telematik:auth:eGK"}, "auth_time": time.Now().Add(-time.Minute).Unix(),
+	}
 }
 
 // gemSpec_IDP_FD A_23195: the ID token is decrypted with the relying party's own key before it is used.

@@ -50,7 +50,7 @@ oidf:
     # gemSpec_IDP_FD A_23034-02 and A_27505 require these of every registered relying party.
     keywords: ["product_type:<product type>", "product_type_version:<product type version>"]
     contacts: [support@example.invalid]
-    # 2.0.0 only once the ID token of version 2.0.0 is read.
+    # Both versions of gemSpec_IDP_FD A_27505 are read; the IDP issues the highest both sides list (A_27598).
     ti_features_supported: { id_token_version_supported: ["1.0.0"] }
   federation_entity:
     name: My Relying Party

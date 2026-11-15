@@ -25,9 +25,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync/atomic"
 
 	"github.com/go-jose/go-jose/v4"
@@ -84,7 +86,7 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 		return "", err
 	}
 	if len(login.ACRValues) == 0 {
-		form.Set("acr_values", defaultACRValue)
+		form.Set("acr_values", LoAHigh)
 	}
 
 	endpoint := c.provider().metadata.PushedAuthorizationRequestEndpoint
@@ -106,11 +108,38 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 	return c.provider().metadata.AuthorizationEndpoint + "?" + params.Encode(), nil
 }
 
-// Exchange redeems the authorization code over mutual TLS, decrypts the JWE id_token with the
-// relying party's encryption key and verifies its signature against the provider's signed JWKS, its expiry
-// and its audience against the client_id. A provider's rejection is
-// returned as *Error.
+// Exchange implements openid.Client with [RelyingPartyClient.ExchangeIdentity], dropping the identity.
 func (c *RelyingPartyClient) Exchange(ctx context.Context, login openid.Login, code string) (*openid.TokenResponse, error) {
+	_, response, err := c.ExchangeIdentity(ctx, login, code)
+	return response, err
+}
+
+// Why an ID token is refused before its claims are read.
+var (
+	// ErrIDTokenVersion is an ID token whose version the relying party does not publish or the IDP does not list.
+	ErrIDTokenVersion = errors.New("ID token version refused")
+	// ErrIDTokenKey is an ID token signed under a kid the IDP's signed JWKS does not name, also after a refetch.
+	ErrIDTokenKey = errors.New("ID token key unknown")
+)
+
+// ExchangeIdentity redeems the authorization code over mutual TLS and returns who logged in. The login has to be the
+// one given to AuthenticationURL. The ID token is
+//   - decrypted through the ID token key (A_23194, A_23195), its JWE header naming a version both sides support;
+//   - verified with the IDP's signed JWKS (A_23049);
+//   - checked as OIDC Core 3.1.3.7 has it: issuer, audience, nonce of this login, lifetime (A_23049);
+//   - judged by its acr and amr (A_28484) and auth_time, and required to hold the claims the login asked for as
+//     essential (A_22860-02).
+//
+// An unknown kid, or a version the IDP's statement does not list, refetches the IDP's statement and signed JWKS past
+// the store once (A_22861; A_23207 Hinweis 3), at most once a minute per IDP; a signature that does not verify under a
+// known kid refetches nothing. A provider's refusal is returned as *Error.
+func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.Login, code string) (*Identity, *openid.TokenResponse, error) {
+	if err := checkStateOrNonce(ErrNonce, login.Nonce); err != nil {
+		return nil, nil, err
+	}
+	if err := checkVerifier(login.Verifier); err != nil {
+		return nil, nil, err
+	}
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -120,58 +149,165 @@ func (c *RelyingPartyClient) Exchange(ctx context.Context, login openid.Login, c
 
 	response, err := openid.PostForm(ctx, c.rp.httpClient, c.provider().metadata.TokenEndpoint, form)
 	if err != nil {
-		return nil, fmt.Errorf("unable to do token request: %w", err)
+		return nil, nil, fmt.Errorf("unable to do token request: %w", err)
 	}
 	if response.Status != http.StatusOK {
 		var oidcErr Error
 		if err := json.Unmarshal(response.Body, &oidcErr); err != nil {
-			return nil, fmt.Errorf("unable to decode error: %w", err)
+			return nil, nil, fmt.Errorf("unable to decode error: %w", err)
 		}
-		return nil, &oidcErr
+		return nil, nil, &oidcErr
 	}
 	tokenResponse, err := openid.ParseTokenResponse(response.Body)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	decryptedIDToken, err := c.decryptIDToken(tokenResponse.IDTokenRaw)
+	signed, version, err := c.decryptIDToken(tokenResponse.IDTokenRaw)
 	if err != nil {
-		return nil, fmt.Errorf("unable to decrypt id_token: %w", err)
+		return nil, nil, fmt.Errorf("unable to decrypt id_token: %w", err)
 	}
+	tokenResponse.IDTokenRaw = string(signed)
 
-	tokenResponse.IDTokenRaw = string(decryptedIDToken)
-
-	if err := c.verifyIDToken(login, tokenResponse); err != nil {
-		return nil, fmt.Errorf("unable to parse id_token: %w", err)
+	refetched := false
+	if err := c.checkVersion(ctx, version, &refetched); err != nil {
+		return nil, nil, err
 	}
-
-	return tokenResponse, nil
+	payload, err := c.verifyIDToken(ctx, signed, &refetched)
+	if err != nil {
+		return nil, nil, err
+	}
+	now := c.rp.now()
+	checks := openid.IDTokenChecks{Issuer: c.issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: now}
+	if err := checks.Validate(payload); err != nil {
+		return nil, nil, fmt.Errorf("unable to parse token: %w", err)
+	}
+	identity, err := parseIdentity(payload, c.issuer, version)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := checkIdentity(identity, payload, login, now); err != nil {
+		return nil, nil, err
+	}
+	asked := c.scopes
+	if len(login.Scopes) > 0 {
+		asked = login.Scopes
+	}
+	if identity.Scopes, err = grantedScopes(tokenResponse.Scope, asked); err != nil {
+		return nil, nil, err
+	}
+	return identity, tokenResponse, nil
 }
 
 // decryptIDToken takes only what buildMetadata registers the relying party for: id_token_encrypted_response_alg
 // ECDH-ES and id_token_encrypted_response_enc A256GCM. The content key is agreed through the ID token key's
-// KeyAgreement, the key the header's kid names (A_23195).
-func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, error) {
+// KeyAgreement, the key the header's kid names (A_23195). It returns the signed token and the version its protected
+// header names.
+func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, string, error) {
 	encrypted, err := jose.ParseEncryptedCompact(raw, []jose.KeyAlgorithm{jose.ECDH_ES}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// go-jose reports every failure of the key as one cryptographic error, so the kid is checked here as well to say why.
 	if kid := encrypted.Header.KeyID; kid != "" && kid != c.rp.keys.DecryptKID {
-		return nil, fmt.Errorf("%w: kid names another key", ErrIDTokenEncryption)
+		return nil, "", fmt.Errorf("%w: kid names another key", ErrIDTokenEncryption)
 	}
-	return encrypted.Decrypt(opaqueDecrypter{agreement: c.rp.keys.Decrypt, kid: c.rp.keys.DecryptKID})
+	version, err := idTokenVersion(encrypted.Header)
+	if err != nil {
+		return nil, "", err
+	}
+	signed, err := encrypted.Decrypt(opaqueDecrypter{agreement: c.rp.keys.Decrypt, kid: c.rp.keys.DecryptKID})
+	return signed, version, err
 }
 
-func (c *RelyingPartyClient) verifyIDToken(login openid.Login, response *openid.TokenResponse) error {
-	payload, err := openid.VerifyJWS([]byte(response.IDTokenRaw), c.provider().jwks, memberKeys)
+// defaultIDTokenVersion is the version of an ID token whose header names none, and of a party that lists none
+// (gemSpec_IDP_FD A_23207 Hinweis 1 and 2).
+const defaultIDTokenVersion = "1.0.0"
+
+// idTokenVersion reads the version member of the JWE protected header (gemSpec_IDP_Sek A_27713-01), one of the
+// versions A_27505 allows.
+func idTokenVersion(header jose.Header) (string, error) {
+	value, present := header.ExtraHeaders["version"]
+	if !present {
+		return defaultIDTokenVersion, nil
+	}
+	version, ok := value.(string)
+	if !ok || !slices.Contains(idTokenVersions, version) {
+		return "", fmt.Errorf("%w: the header names no version of A_27505", ErrIDTokenVersion)
+	}
+	return version, nil
+}
+
+// supportedVersions are the versions a ti_features_supported member lists, the default when there is none.
+func supportedVersions(features *TIFeatures) []string {
+	if features == nil || len(features.IDTokenVersionSupported) == 0 {
+		return []string{defaultIDTokenVersion}
+	}
+	return features.IDTokenVersionSupported
+}
+
+// checkVersion takes a version the relying party publishes, since the IDP picks the highest both support
+// (gemSpec_IDP_Sek A_27598), and that the IDP's statement lists. A version the statement does not list may mean the
+// statement kept is outdated (A_23207 Hinweis 3), so the statement is refetched once.
+func (c *RelyingPartyClient) checkVersion(ctx context.Context, version string, refetched *bool) error {
+	if !slices.Contains(c.rp.idTokenVersions(), version) {
+		return fmt.Errorf("%w: the relying party does not publish it", ErrIDTokenVersion)
+	}
+	if slices.Contains(supportedVersions(c.provider().metadata.TIFeaturesSupported), version) {
+		return nil
+	}
+	if err := c.refetch(ctx, refetched); err != nil {
+		return fmt.Errorf("%w: the IDP does not list it: %w", ErrIDTokenVersion, err)
+	}
+	if !slices.Contains(supportedVersions(c.provider().metadata.TIFeaturesSupported), version) {
+		return fmt.Errorf("%w: the IDP does not list it", ErrIDTokenVersion)
+	}
+	return nil
+}
+
+// verifyIDToken verifies the signed ID token with the IDP's signed JWKS and returns its payload. Only ES256 is taken,
+// the id_token_signed_response_alg the relying party registers. A kid the JWKS does not name refetches it once
+// (A_22861).
+func (c *RelyingPartyClient) verifyIDToken(ctx context.Context, signed []byte, refetched *bool) ([]byte, error) {
+	parsed, err := jose.ParseSignedCompact(string(signed), []jose.SignatureAlgorithm{jose.ES256})
 	if err != nil {
-		return fmt.Errorf("unable to parse token: %w", err)
+		return nil, fmt.Errorf("unable to parse token: %w", err)
 	}
-	checks := openid.IDTokenChecks{Issuer: c.issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: c.rp.now()}
-	if err := checks.Validate(payload); err != nil {
-		return fmt.Errorf("unable to parse token: %w", err)
+	kid := parsed.Signatures[0].Protected.KeyID
+	if kid != "" && len(c.provider().jwks.Key(kid)) == 0 {
+		if err := c.refetch(ctx, refetched); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrIDTokenKey, err)
+		}
+		if len(c.provider().jwks.Key(kid)) == 0 {
+			return nil, ErrIDTokenKey
+		}
 	}
+	payload, err := openid.VerifyJWS(signed, c.provider().jwks, memberKeys)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse token: %w", err)
+	}
+	return payload, nil
+}
+
+// errRefetchLimited is a refetch refused because one was made for the IDP less than refetchInterval ago.
+var errRefetchLimited = errors.New("the IDP's documents were refetched less than a minute ago")
+
+// refetch resolves the IDP's statement and signed JWKS anew past the store, which keeps the result, once per
+// exchange and at most once per refetchInterval per IDP: an ID token is the IDP's to send, but anyone can send a
+// token with a made-up kid, and each would otherwise cost the federation three fetches.
+func (c *RelyingPartyClient) refetch(ctx context.Context, refetched *bool) error {
+	if *refetched {
+		return errors.New("refetched already")
+	}
+	*refetched = true
+	if !c.rp.mayRefetch(c.issuer) {
+		return errRefetchLimited
+	}
+	resolved, err := c.rp.resolveProvider(ctx, c.issuer, true)
+	if err != nil {
+		return err
+	}
+	c.current.Store(resolved)
 	return nil
 }
 

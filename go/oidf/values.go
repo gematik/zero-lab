@@ -92,8 +92,7 @@ var (
 	// ErrScopeNotRegistered is a scope outside the scope the relying party registered, which the IDP compares the
 	// request against.
 	ErrScopeNotRegistered = errors.New("scope not registered")
-	// ErrACRValues is a login that asks for an authentication context class the relying party does not judge the ID
-	// token by.
+	// ErrACRValues is an acr value that is no gematik level of assurance.
 	ErrACRValues = errors.New("acr values refused")
 	// ErrClaimNotSupported is a claim the IDP does not list in its claims_supported (gemSpec_IDP_Sek A_24403).
 	ErrClaimNotSupported = errors.New("claim not supported by the IDP")
@@ -101,14 +100,48 @@ var (
 	ErrClaimsRequest = errors.New("claims request refused")
 )
 
-// checkACRValues takes no acr values, which ask for gematik-ehealth-loa-high, or exactly that one. gemSpec_IDP_FD
-// A_28484 has the relying party judge the ID token's acr; until it does, asking for a lower level would let an
-// authentication at that level through unnoticed.
+// The levels of assurance of the TI federation (gemSpec_IDP_Sek Tabelle 7, gemSpec_IDP_FD), ranked low < substantial
+// < high.
+const (
+	LoALow         = "gematik-ehealth-loa-low"
+	LoASubstantial = "gematik-ehealth-loa-substantial"
+	LoAHigh        = "gematik-ehealth-loa-high"
+)
+
+var loaRank = map[string]int{LoALow: 1, LoASubstantial: 2, LoAHigh: 3}
+
+// checkACRValues takes acr values that are gematik levels of assurance. The ID token's acr is held to the lowest of
+// them (checkIdentity), so asking for a lower level never lets a lower authentication through unnoticed.
 func checkACRValues(values []string) error {
-	if len(values) == 0 || (len(values) == 1 && values[0] == defaultACRValue) {
-		return nil
+	for _, acr := range values {
+		if _, known := loaRank[acr]; !known {
+			return fmt.Errorf("%w: not a gematik level of assurance", ErrACRValues)
+		}
 	}
-	return fmt.Errorf("%w: only %s is judged", ErrACRValues, defaultACRValue)
+	return nil
+}
+
+// grantedScopes reads the scope of a token response, space-separated scope-tokens of NQCHAR (RFC 6749 section 3.3);
+// without one, the scopes asked for were granted (section 5.1).
+func grantedScopes(scope string, asked []string) ([]string, error) {
+	if scope == "" {
+		return slices.Clone(asked), nil
+	}
+	if len(scope) > maxTextBytes {
+		return nil, fmt.Errorf("%w: the granted scope is longer than %d bytes", ErrIdentityClaim, maxTextBytes)
+	}
+	scopes := strings.Split(scope, " ")
+	for _, token := range scopes {
+		if token == "" {
+			return nil, fmt.Errorf("%w: the granted scope has an empty token", ErrIdentityClaim)
+		}
+		for _, c := range []byte(token) {
+			if c != 0x21 && (c < 0x23 || c > 0x7e || c == 0x5c) {
+				return nil, fmt.Errorf("%w: the granted scope has a character outside NQCHAR", ErrIdentityClaim)
+			}
+		}
+	}
+	return scopes, nil
 }
 
 // checkLogin refuses the values of a login the relying party would send badly, before any request is made. scopes are
