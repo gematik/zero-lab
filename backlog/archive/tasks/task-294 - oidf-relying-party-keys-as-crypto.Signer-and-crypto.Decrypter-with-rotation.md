@@ -4,7 +4,7 @@ title: 'oidf: relying party keys rotate with an overlap'
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
-updated_date: '2026-11-14T20:52:00Z'
+updated_date: '2026-11-15T09:05:00Z'
 labels: []
 dependencies: []
 ordinal: 310000
@@ -25,4 +25,6 @@ The relying party loads its signing and encryption keys as raw private keys from
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-14: keys as crypto.Signer, an ECDH key agreement and a tls.Certificate come with TASK-315 (ECDH-ES needs a key agreement, not a crypto.Decrypter). What is left here: publishing the next and the previous key, so they rotate with an overlap (servers.md rule 22).
+
+2026-11-15: aborted. Keys as functions came with TASK-315; the rotation that is left is TASK-327.
 <!-- SECTION:NOTES:END -->

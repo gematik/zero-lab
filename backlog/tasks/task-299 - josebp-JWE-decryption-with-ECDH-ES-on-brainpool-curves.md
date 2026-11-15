@@ -4,7 +4,7 @@ title: 'josebp: JWE decryption with ECDH-ES on brainpool curves'
 status: Done
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
-updated_date: '2026-11-14T20:52:00Z'
+updated_date: '2026-11-15T09:05:00Z'
 labels: []
 dependencies: []
 ordinal: 315000
@@ -18,7 +18,7 @@ josebp encrypts ECDH-ES JWE on brainpool curves and cannot decrypt one; go-jose,
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 It is known whether the federation uses brainpool for ID token encryption; if so, josebp decrypts it
+- [x] #1 It is known whether the federation uses brainpool for ID token encryption; if so, josebp decrypts it
 <!-- AC:END -->
 
 ## Final Summary

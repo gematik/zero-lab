@@ -3,10 +3,10 @@ id: TASK-293
 title: >-
   oidf: entity statements, signed JWKS and the IDP list are cached until they
   expire
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
-updated_date: '2026-11-14T20:52:00Z'
+updated_date: '2026-11-15T09:05:00Z'
 labels: []
 dependencies: []
 ordinal: 309000
@@ -20,7 +20,7 @@ Every Provider() call fetches the master's statement, the provider's statement a
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Within their validity statements, keys and list come from a cache that replicas can share; an expired entry is fetched again
+- [x] #1 Within their validity statements, keys and list come from a cache that replicas can share; an expired entry is fetched again
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -28,3 +28,9 @@ Every Provider() call fetches the master's statement, the provider's statement a
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-14: done as part of TASK-315 on feat/oidf-rp: a Documents store in oidf's terms, wired by the hosts (kv in pdp and pep/proxy), so replicas share it; every read is verified again.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Done with TASK-315 (merged to main at 1fc214c7): oidf.Documents (Get/Keep) keeps the master's statement, statements about and of IDPs, signed JWKS and the IdP list until their exp; every read is verified again like a fetch, single-flight per URL; pdp and pep/proxy wire a kv-backed store (oidf:doc:sha256(url)), so replicas share it.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -4,7 +4,7 @@ title: 'oidf: a login only at an OpenID provider of a user type the caller accep
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
-updated_date: '2026-11-14T20:52:00Z'
+updated_date: '2026-11-15T09:05:00Z'
 labels: []
 dependencies: []
 ordinal: 313000
@@ -25,4 +25,6 @@ relying_party.go has a TODO where the subject's entity type and user_type_suppor
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-14: TASK-315 refuses an IDP that is not on the master's IdP list (A_25449, the maintainer: only IDPs listed at the federation master are trusted) or has no openid_provider metadata. What is left here: a user-type filter, not built for now by the maintainer's decision.
+
+2026-11-15: aborted. The openid_provider and IdP-list admission came with TASK-315; the user-type filter that is left is TASK-328.
 <!-- SECTION:NOTES:END -->

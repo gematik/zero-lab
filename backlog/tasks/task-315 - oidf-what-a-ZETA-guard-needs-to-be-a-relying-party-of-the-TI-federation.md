@@ -4,7 +4,7 @@ title: 'oidf: what a ZETA guard needs to be a relying party of the TI federation
 status: In Progress
 assignee: []
 created_date: '2026-11-14T20:17:00Z'
-updated_date: '2026-11-14T21:03:00Z'
+updated_date: '2026-11-15T09:05:00Z'
 labels:
   - oidf
   - go
@@ -36,15 +36,15 @@ Not needed by zeta-pdp-go: decryption on brainpool (TASK-299; the schema asks P-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A caller can add any member and whole entity types to the served entity statement through the hook; empty optional members are left out; exp minus iat is at most 86400 s; kids as the caller sets them
-- [ ] #2 acr_values, scope and claims are set per login; state and nonce beyond 512 base64url characters are refused before the request
-- [ ] #3 Signing and TLS client keys can be handed in as crypto.Signer, the ID token key as an ECDH key agreement (ECDH-ES is no decryption, so not a crypto.Decrypter)
-- [ ] #4 Statements, signed JWKS and the IdP list are kept in a store interface of oidf's own terms, wired by the hosts, verified again on every read; fetches take the context
-- [ ] #5 ID token claims are typed; a lower acr than asked for is refused; an IDP that is not on the master's IdP list or not an openid_provider is refused
-- [ ] #6 An exported test federation with a sektoral IDP exists
-- [ ] #7 The entity statement and signed JWKS are signed once and served as bytes, re-signed on age or change
+- [x] #1 A caller can add any member and whole entity types to the served entity statement through the hook; empty optional members are left out; exp minus iat is at most 86400 s; kids as the caller sets them
+- [x] #2 acr_values, scope and claims are set per login; state and nonce beyond 512 base64url characters are refused before the request
+- [x] #3 Signing and TLS client keys can be handed in as crypto.Signer, the ID token key as an ECDH key agreement (ECDH-ES is no decryption, so not a crypto.Decrypter)
+- [x] #4 Statements, signed JWKS and the IdP list are kept in a store interface of oidf's own terms, wired by the hosts, verified again on every read; fetches take the context
+- [x] #5 ID token claims are typed; a lower acr than asked for is refused; an IDP that is not on the master's IdP list or not an openid_provider is refused
+- [x] #6 An exported test federation with a sektoral IDP exists
+- [x] #7 The entity statement and signed JWKS are signed once and served as bytes, re-signed on age or change
 - [ ] #8 A tag of go/oidf carries it
-- [ ] #9 Every request value to and from the IDP is validated against an allowlist before use (OWASP input validation: reject, never repair; errors name the field, not the value); fuzz targets with nasty-input seeds cover each entry point
+- [x] #9 Every request value to and from the IDP is validated against an allowlist before use (OWASP input validation: reject, never repair; errors name the field, not the value); fuzz targets with nasty-input seeds cover each entry point
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -71,4 +71,6 @@ Full plan: ~/.claude/plans/cheerful-tickling-bear.md
 2026-11-14, from zeta-pdp-go, two more sources:
 - gematik/app-FedIdpTestsuite (features/fachdienstRegistration.feature, FEDM_FD_REG_001 to 005) is what a relying party's entity statement is tested with before registration: Content-Type application/entity-statement+jwt;charset=UTF-8, header alg ES256 with kid and typ entity-statement+jwt, claims iss, sub, iat, exp, jwks, authority_hints (the master first), metadata with openid_relying_party and federation_entity. Worth running against what this module serves.
 - State towards a sektoral IDP must be short and of the base64url alphabet. Measured on 2026-11-14 with pushed requests as a registered relying party of the reference federation: BMS and T-Systems IDPs refuse a state of 513 characters and take 512; IBM takes 8192. gematik/ref-idp-server has the same bound for its own endpoint (IdpController: state and nonce ^[_\-a-zA-Z0-9]{1,512}$, code_verifier at most 128), and its test suite says the bound comes from RISE's concept, not from a requirement. All three IDPs return a short random request_uri (27 to 60 characters) that lasts 90 seconds.
+
+2026-11-15: merged to main (1fc214c7), repinned (a01d0b31), full just check green on main. Open: AC #8, the tags, after the maintainer's just oidf-test and a live TK login.
 <!-- SECTION:NOTES:END -->
