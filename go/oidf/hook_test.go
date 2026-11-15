@@ -51,8 +51,9 @@ func literalRelyingParty(tb testing.TB, signer crypto.Signer) *RelyingParty {
 	metadata := cfg.buildMetadata()
 	metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
 	return &RelyingParty{
-		cfg:  cfg,
-		keys: Keys{Sign: signer, SignKID: "sign-kid"},
+		cfg:       cfg,
+		fedMaster: cfg.FedMasterURL,
+		keys:      Keys{Sign: signer, SignKID: "sign-kid"},
 		entityStatement: &EntityStatement{
 			Issuer:   cfg.Subject,
 			Subject:  cfg.Subject,

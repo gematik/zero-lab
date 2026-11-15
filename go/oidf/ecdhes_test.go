@@ -410,7 +410,7 @@ func TestA_28484_AnACRThatIsNotCheckedYetIsNotAskedFor(t *testing.T) {
 	defer server.Close()
 	stub := newLoginStub(t)
 	stub.client.rp.httpClient = server.Client()
-	stub.client.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint = server.URL
+	stub.metadata().PushedAuthorizationRequestEndpoint = server.URL
 
 	for name, acr := range map[string][]string{
 		"a lower level":         {"gematik-ehealth-loa-substantial"},

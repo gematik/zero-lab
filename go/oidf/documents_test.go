@@ -380,7 +380,7 @@ func TestServerRule12_EachCallerJudgesASharedFetchWithItsOwnKeys(t *testing.T) {
 		federation, transport := inBubble(t, stub, realNow)
 		location := stub.URL + "/op/.well-known/openid-federation"
 		read := func(keys *jose.JSONWebKeySet) error {
-			_, err := document(t.Context(), federation, location, keys, memberKeys, parseEntityStatement)
+			_, err := document(t.Context(), federation, location, false, keys, memberKeys, parseEntityStatement)
 			return err
 		}
 		wrong := make(chan error, 1)

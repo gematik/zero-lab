@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 
 	"github.com/go-jose/go-jose/v4"
 
@@ -43,15 +44,28 @@ const (
 	CodeChallengeMethodS256 CodeChallengeMethod = "S256"
 )
 
-// RelyingPartyClient is an openid.Client for one OpenID provider of the federation; RelyingParty.NewClient
-// creates it.
+// RelyingPartyClient is an openid.Client for one OpenID provider of the federation; [RelyingParty.Client] creates it.
+// It is safe for concurrent use.
 type RelyingPartyClient struct {
 	rp          *RelyingParty
-	op          *EntityStatement
-	metadata    *OpenIDProviderMetadata
+	issuer      string
 	scopes      []string
 	redirectURI string
-	jwks        *jose.JSONWebKeySet
+	// current is what the provider published when it was last resolved; a refetch replaces it whole.
+	current atomic.Pointer[provider]
+}
+
+// provider is an OpenID provider as resolved: its verified entity statement, the openid_provider metadata in it and
+// its signed JWKS.
+type provider struct {
+	op       *EntityStatement
+	metadata *OpenIDProviderMetadata
+	jwks     *jose.JSONWebKeySet
+}
+
+// provider is what the client resolved last.
+func (c *RelyingPartyClient) provider() *provider {
+	return c.current.Load()
 }
 
 // ErrACRValues is a login that asks for an authentication context class the relying party does not judge the ID
@@ -81,7 +95,7 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 		form.Set("acr_values", defaultACRValue)
 	}
 
-	endpoint := c.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint
+	endpoint := c.provider().metadata.PushedAuthorizationRequestEndpoint
 	response, err := openid.PostForm(ctx, c.rp.httpClient, endpoint, form)
 	if err != nil {
 		return "", fmt.Errorf("unable to do PAR request: %w", err)
@@ -97,7 +111,7 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 	params := url.Values{}
 	params.Add("request_uri", pushed.RequestURI)
 	params.Add("client_id", c.rp.ClientID())
-	return c.op.Metadata.OpenidProvider.AuthorizationEndpoint + "?" + params.Encode(), nil
+	return c.provider().metadata.AuthorizationEndpoint + "?" + params.Encode(), nil
 }
 
 // Exchange redeems the authorization code over mutual TLS, decrypts the JWE id_token with the
@@ -112,7 +126,7 @@ func (c *RelyingPartyClient) Exchange(ctx context.Context, login openid.Login, c
 	form.Set("client_id", c.rp.ClientID())
 	form.Set("code_verifier", login.Verifier)
 
-	response, err := openid.PostForm(ctx, c.rp.httpClient, c.op.Metadata.OpenidProvider.TokenEndpoint, form)
+	response, err := openid.PostForm(ctx, c.rp.httpClient, c.provider().metadata.TokenEndpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("unable to do token request: %w", err)
 	}
@@ -158,18 +172,18 @@ func (c *RelyingPartyClient) decryptIDToken(raw string) ([]byte, error) {
 }
 
 func (c *RelyingPartyClient) verifyIDToken(login openid.Login, response *openid.TokenResponse) error {
-	payload, err := openid.VerifyJWS([]byte(response.IDTokenRaw), c.jwks, memberKeys)
+	payload, err := openid.VerifyJWS([]byte(response.IDTokenRaw), c.provider().jwks, memberKeys)
 	if err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}
-	checks := openid.IDTokenChecks{Issuer: c.op.Issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: c.rp.now()}
+	checks := openid.IDTokenChecks{Issuer: c.issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: c.rp.now()}
 	if err := checks.Validate(payload); err != nil {
 		return fmt.Errorf("unable to parse token: %w", err)
 	}
 	return nil
 }
 
-// Issuer returns the issuer named in the provider's entity statement.
+// Issuer returns the provider's issuer, which its entity statement and its openid_provider metadata name.
 func (c *RelyingPartyClient) Issuer() string {
-	return c.op.Issuer
+	return c.issuer
 }

@@ -304,13 +304,20 @@ func newLoginStub(t *testing.T) *loginStub {
 			httpClient:      server.Client(),
 			entityStatement: &EntityStatement{Subject: "https://rp.example"},
 		},
-		op: &EntityStatement{
-			Issuer:   "https://op.example",
-			Metadata: &Metadata{OpenidProvider: &OpenIDProviderMetadata{TokenEndpoint: server.URL}},
-		},
-		jwks: keySetOf(stub.sigKey, "k"),
+		issuer: "https://op.example",
 	}
+	metadata := &OpenIDProviderMetadata{Issuer: "https://op.example", TokenEndpoint: server.URL}
+	stub.client.current.Store(&provider{
+		op:       &EntityStatement{Issuer: "https://op.example", Metadata: &Metadata{OpenidProvider: metadata}},
+		metadata: metadata,
+		jwks:     keySetOf(stub.sigKey, "k"),
+	})
 	return stub
+}
+
+// metadata is the stub provider's openid_provider metadata, for a test to point its endpoints elsewhere.
+func (s *loginStub) metadata() *OpenIDProviderMetadata {
+	return s.client.provider().metadata
 }
 
 func encryptForTest(t testing.TB, recipient any, alg jose.KeyAlgorithm, enc jose.ContentEncryption, plaintext string) string {
@@ -474,6 +481,7 @@ func (s *federationStub) relyingParty(t *testing.T) *RelyingParty {
 	t.Helper()
 	return &RelyingParty{
 		cfg:        &RelyingPartyConfig{},
+		fedMaster:  s.URL,
 		federation: s.federation(t),
 		httpClient: s.Client(),
 		entityStatement: &EntityStatement{
@@ -680,7 +688,7 @@ func TestServerRule2_FederationReadsNoMoreThanItsBound(t *testing.T) {
 
 func TestRelyingPartyTakesAProviderWhoseEndpointsAreAllHTTPS(t *testing.T) {
 	stub := newFederationStub(t)
-	if _, err := stub.relyingParty(t).newClient(t.Context(), stub.URL+"/op"); err != nil {
+	if _, err := stub.relyingParty(t).Client(t.Context(), stub.URL+"/op"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -690,7 +698,7 @@ func TestRelyingPartyRefusesAProviderWithAnEndpointThatIsNotHTTPS(t *testing.T) 
 		t.Run(endpoint, func(t *testing.T) {
 			stub := newFederationStub(t)
 			stub.opStatement = signJWS(t, stub.opKey, "op", stub.opClaims(map[string]any{endpoint: "http://op.example/plain"}))
-			if _, err := stub.relyingParty(t).newClient(t.Context(), stub.URL+"/op"); err == nil || !strings.Contains(err.Error(), endpoint) {
+			if _, err := stub.relyingParty(t).Client(t.Context(), stub.URL+"/op"); err == nil || !strings.Contains(err.Error(), endpoint) {
 				t.Errorf("err = %v", err)
 			}
 		})
@@ -752,8 +760,8 @@ func TestServerRule14_AFederatedLoginLogsNoSecretAtDebug(t *testing.T) {
 	}))
 	defer server.Close()
 	stub.client.rp.httpClient = server.Client()
-	stub.client.op.Metadata.OpenidProvider.TokenEndpoint = server.URL + "/token"
-	stub.client.op.Metadata.OpenidProvider.PushedAuthorizationRequestEndpoint = server.URL + "/par"
+	stub.metadata().TokenEndpoint = server.URL + "/token"
+	stub.metadata().PushedAuthorizationRequestEndpoint = server.URL + "/par"
 	claims := validIDTokenClaims()
 	claims["nonce"] = nonce
 	stub.idToken = stub.nestedToken(t, claims)
@@ -892,7 +900,7 @@ func TestRFC8725_3_1_AMemberTokenWhoseAlgDoesNotFitTheKeyWithoutAlgIsRefused(t *
 
 func TestRFC7517_4_4_AnIDTokenIsVerifiedWithAKeyWithoutAlg(t *testing.T) {
 	stub := newLoginStub(t)
-	withoutAlg(stub.client.jwks)
+	withoutAlg(stub.client.provider().jwks)
 	stub.idToken = stub.nestedToken(t, validIDTokenClaims())
 	if _, err := stub.client.Exchange(t.Context(), openid.Login{Nonce: "n", Verifier: "verifier"}, "code"); err != nil {
 		t.Fatal(err)

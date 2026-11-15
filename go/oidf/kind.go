@@ -32,15 +32,15 @@ const TypeOIDF = "oidf"
 
 // Provider implements [providers.Federation]: it resolves issuer in the federation.
 func (rp *RelyingParty) Provider(ctx context.Context, issuer string) (providers.Provider, error) {
-	client, err := rp.newClient(ctx, issuer)
+	client, err := rp.Client(ctx, issuer)
 	if err != nil {
 		return providers.Provider{}, err
 	}
 	return providers.Provider{
 		Info: providers.Info{
 			Issuer:  client.Issuer(),
-			Name:    client.metadata.OrganizationName,
-			LogoURI: client.metadata.LogoURI,
+			Name:    client.provider().metadata.OrganizationName,
+			LogoURI: client.provider().metadata.LogoURI,
 			Type:    TypeOIDF,
 		},
 		Client: client,

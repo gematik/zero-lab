@@ -34,10 +34,12 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,10 +62,16 @@ type RelyingPartyConfig struct {
 	// statement's iss/sub and the OIDF client_id.
 	Subject string `yaml:"sub"`
 
-	// FedMasterURL is the federation master. Its trust-anchor signing key is resolved from a built-in table
-	// of known gematik masters (see knownFedMasters); set FedMasterJWK to override or for an unlisted master.
-	FedMasterURL string `yaml:"fed_master_url"`
-	FedMasterJWK *Jwk   `yaml:"fed_master_jwk,omitempty"`
+	// FedMasterURL is the federation master's entity identifier. Its trust-anchor signing key is resolved from a
+	// built-in table of known gematik masters (see knownFedMasters); set FedMasterJWK to override or for an unlisted
+	// master. Exactly one of FedMasterURL and FedMasterEntityStatementURI is set.
+	FedMasterURL string `yaml:"fed_master_url,omitempty"`
+	// FedMasterEntityStatementURI names the master by the location of its entity configuration: an https URI without
+	// query, fragment or user info, ending in exactly "/.well-known/openid-federation". The entity identifier is what
+	// precedes that suffix. The URI is a location, not a source of trust: an unlisted master's key comes from
+	// FedMasterJWK, obtained out of band.
+	FedMasterEntityStatementURI string `yaml:"fed_master_entity_statement_uri,omitempty"`
+	FedMasterJWK                *Jwk   `yaml:"fed_master_jwk,omitempty"`
 
 	// SignKey signs the entity statement; EncKey decrypts the JWE id_token; ClientKey authenticates the
 	// self_signed_tls_client_auth mTLS calls (its cert_pem_path is required). Each is a KeyConfig.
@@ -159,7 +167,9 @@ var knownFedMasters = map[string]string{
 // RelyingParty is this service's entity in the federation: it signs and serves its entity statement and creates
 // clients for the federated OpenID providers. Only one built by New serves.
 type RelyingParty struct {
-	cfg             *RelyingPartyConfig
+	cfg *RelyingPartyConfig
+	// fedMaster is the master's entity identifier, from either form of the configuration.
+	fedMaster       string
 	trustAnchor     *jose.JSONWebKeySet
 	keys            Keys
 	entityStatement *EntityStatement
@@ -207,7 +217,6 @@ func (cfg *RelyingPartyConfig) validateEntity() error {
 		present bool
 	}{
 		{"sub", cfg.Subject != ""},
-		{"fed_master_url", cfg.FedMasterURL != ""},
 		{"relying_party.client_name", cfg.RelyingParty.ClientName != ""},
 		{"relying_party.redirect_uris", len(cfg.RelyingParty.RedirectURIs) > 0},
 	} {
@@ -215,7 +224,51 @@ func (cfg *RelyingPartyConfig) validateEntity() error {
 			return fmt.Errorf("%s is required", field.name)
 		}
 	}
-	return nil
+	_, err := cfg.fedMasterEntityID()
+	return err
+}
+
+// wellKnownFederation is the path of an entity configuration below its entity identifier (OpenID Federation 1.1
+// section 9).
+const wellKnownFederation = "/.well-known/openid-federation"
+
+// fedMasterEntityID is the master's entity identifier: FedMasterURL, or what precedes the well-known path of
+// FedMasterEntityStatementURI. Exactly one of the two has to be set.
+func (cfg *RelyingPartyConfig) fedMasterEntityID() (string, error) {
+	switch {
+	case cfg.FedMasterURL != "" && cfg.FedMasterEntityStatementURI != "":
+		return "", errors.New("set one of fed_master_url and fed_master_entity_statement_uri, not both")
+	case cfg.FedMasterURL != "":
+		return cfg.FedMasterURL, nil
+	case cfg.FedMasterEntityStatementURI != "":
+		return entityIDOfStatementURI(cfg.FedMasterEntityStatementURI)
+	default:
+		return "", errors.New("fed_master_url or fed_master_entity_statement_uri is required")
+	}
+}
+
+// entityIDOfStatementURI takes the location of an entity configuration as the operator configures it, so that the
+// prefix is an entity identifier the master's statement has to name as iss and sub.
+func entityIDOfStatementURI(location string) (string, error) {
+	const name = "fed_master_entity_statement_uri"
+	parsed, err := url.Parse(location)
+	if err != nil {
+		return "", fmt.Errorf("%s is no URI", name)
+	}
+	if parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return "", fmt.Errorf("%s is not https", name)
+	}
+	if parsed.User != nil || strings.ContainsAny(location, "?#") {
+		return "", fmt.Errorf("%s has user info, a query or a fragment", name)
+	}
+	entityID, found := strings.CutSuffix(location, wellKnownFederation)
+	if !found {
+		return "", fmt.Errorf("%s does not end in %s", name, wellKnownFederation)
+	}
+	if err := checkEntityIdentifier(entityID); err != nil {
+		return "", fmt.Errorf("%s does not start with an entity identifier", name)
+	}
+	return entityID, nil
 }
 
 // NewRelyingParty validates cfg, loads its keys from the files and inline JWKs it names, with relative paths resolved
@@ -297,6 +350,9 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 	}
 
 	rp := RelyingParty{cfg: cfg, keys: keys}
+	if rp.fedMaster, err = cfg.fedMasterEntityID(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
 	rp.trustAnchor, err = cfg.resolveTrustAnchor()
 	if err != nil {
 		return nil, err
@@ -332,7 +388,7 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 		rp.entityStatement.Metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
 	}
 
-	rp.federation, err = NewOpenidFederation(ctx, cfg.FedMasterURL, rp.trustAnchor,
+	rp.federation, err = NewOpenidFederation(ctx, rp.fedMaster, rp.trustAnchor,
 		WithHTTPClient(baseClient), WithAPIKey(cfg.APIKey), WithClock(rp.now), WithDocuments(cfg.Documents), WithLogger(cfg.Logger))
 	if err != nil {
 		return nil, err
@@ -410,7 +466,7 @@ func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
 	es.Issuer, es.Subject = rp.cfg.Subject, rp.cfg.Subject
 	es.IssuedAt = issuedAt.Unix()
 	es.ExpiresAt = issuedAt.Add(maxStatementLifetime).Unix()
-	es.AuthorityHints = []string{rp.cfg.FedMasterURL}
+	es.AuthorityHints = []string{rp.fedMaster}
 	if err := rp.checkStatement(es); err != nil {
 		return nil, err
 	}
@@ -488,49 +544,88 @@ type pushedAuthorizationResponse struct {
 	ExpiresIn  int    `json:"expires_in"`
 }
 
-// newClient resolves issuer through the federation master and returns a client for that OpenID provider. The
-// provider's entity statement and signed JWKS come from the document store while they verify, else they are fetched.
-func (rp *RelyingParty) newClient(ctx context.Context, issuer string) (*RelyingPartyClient, error) {
-	op, err := rp.federation.FetchEntityStatement(ctx, issuer)
+// ErrIDPNotAdmitted is an issuer that is not on the federation master's signed IdP list.
+var ErrIDPNotAdmitted = errors.New("identity provider not admitted")
+
+// Client resolves issuer through the federation master and returns a client for that OpenID provider.
+//
+// The issuer has to be on the master's signed IdP list, byte for byte, before anything is fetched at or about it: the
+// issuer usually comes from a request, and only the IDPs the master admits may be asked (gemSpec_ZETA A_25449; servers.md
+// rule 2, no fetch steered by a request). Then its entity statement is resolved along the chain from the trust anchor,
+// it has to describe an openid_provider whose endpoints are https, and its signed JWKS is fetched. Documents come from
+// the store while they verify, else they are fetched.
+func (rp *RelyingParty) Client(ctx context.Context, issuer string) (*RelyingPartyClient, error) {
+	if err := rp.admit(ctx, issuer); err != nil {
+		return nil, err
+	}
+	resolved, err := rp.resolveProvider(ctx, issuer, false)
 	if err != nil {
 		return nil, err
 	}
-
-	// TODO: check if entity is openid provider
-	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
-		return nil, errors.New("no openid provider metadata found")
-	}
-
-	metadata := op.Metadata.OpenidProvider
-
-	for _, endpoint := range []struct{ name, location string }{
-		{"authorization_endpoint", metadata.AuthorizationEndpoint},
-		{"pushed_authorization_request_endpoint", metadata.PushedAuthorizationRequestEndpoint},
-		{"token_endpoint", metadata.TokenEndpoint},
-	} {
-		if err := checkFederationURL(endpoint.location); err != nil {
-			return nil, fmt.Errorf("%s of '%s': %w", endpoint.name, issuer, err)
-		}
-	}
-
-	jwks, err := rp.federation.FetchSignedJwks(ctx, op)
-	if err != nil {
-		return nil, err
-	}
-
 	scopes := rp.cfg.Scopes
 	if len(scopes) == 0 {
 		scopes = defaultOPScopes
 	}
-
-	return &RelyingPartyClient{
+	client := &RelyingPartyClient{
 		rp:          rp,
-		op:          op,
+		issuer:      issuer,
 		scopes:      scopes,
 		redirectURI: rp.entityStatement.Metadata.OpenidRelyingParty.RedirectURIs[0],
-		metadata:    metadata,
-		jwks:        jwks,
-	}, nil
+	}
+	client.current.Store(resolved)
+	return client, nil
+}
+
+// admit refuses an issuer that is not an entry of the master's IdP list. The list and the master's statement are
+// fetched from the master only.
+func (rp *RelyingParty) admit(ctx context.Context, issuer string) error {
+	if err := checkEntityIdentifier(issuer); err != nil {
+		return fmt.Errorf("%w: the issuer is no entity identifier", ErrIDPNotAdmitted)
+	}
+	idps, err := rp.federation.FetchIdpList(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(idps, func(idp IdentityProviderInfo) bool { return idp.Issuer == issuer }) {
+		return fmt.Errorf("%w: not on the master's IdP list", ErrIDPNotAdmitted)
+	}
+	return nil
+}
+
+// ErrNotAnOpenIDProvider is an admitted entity whose statement does not describe an OpenID provider the relying party
+// can log in at.
+var ErrNotAnOpenIDProvider = errors.New("not an OpenID provider")
+
+// resolveProvider resolves the entity statement and signed JWKS of an admitted issuer; fresh fetches them past the
+// store.
+func (rp *RelyingParty) resolveProvider(ctx context.Context, issuer string, fresh bool) (*provider, error) {
+	op, err := rp.federation.entityStatement(ctx, issuer, fresh)
+	if err != nil {
+		return nil, err
+	}
+	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
+		return nil, fmt.Errorf("%w: the statement has no openid_provider metadata", ErrNotAnOpenIDProvider)
+	}
+	metadata := op.Metadata.OpenidProvider
+	// OpenID Connect Discovery 1.0 section 4.3: the issuer the provider names is the one it was resolved as.
+	if metadata.Issuer != issuer {
+		return nil, fmt.Errorf("%w: openid_provider names another issuer", ErrNotAnOpenIDProvider)
+	}
+	for _, endpoint := range []struct{ name, location string }{
+		{"authorization_endpoint", metadata.AuthorizationEndpoint},
+		{"pushed_authorization_request_endpoint", metadata.PushedAuthorizationRequestEndpoint},
+		{"token_endpoint", metadata.TokenEndpoint},
+		{"signed_jwks_uri", metadata.SignedJwksURI},
+	} {
+		if err := checkFederationURL(endpoint.location); err != nil {
+			return nil, fmt.Errorf("%w: %s: %w", ErrNotAnOpenIDProvider, endpoint.name, err)
+		}
+	}
+	jwks, err := rp.federation.signedJwks(ctx, op, fresh)
+	if err != nil {
+		return nil, err
+	}
+	return &provider{op: op, metadata: metadata, jwks: jwks}, nil
 }
 
 // Loads the certificate from specified path. The certificate must be in PEM format.
@@ -649,7 +744,7 @@ func tlsCertFromKey(clientPrivateKey any, certPEMPath string) (tls.Certificate, 
 }
 
 // resolveTrustAnchor returns the federation master's signing key set: the explicit FedMasterJWK, else the
-// built-in JWK for a known FedMasterURL.
+// built-in JWK of the master's entity identifier.
 func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error) {
 	if cfg.FedMasterJWK != nil && cfg.FedMasterJWK.Key != nil {
 		set, err := cfg.FedMasterJWK.AsSet()
@@ -658,9 +753,13 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error)
 		}
 		return set.Keys, nil
 	}
-	known, ok := knownFedMasters[cfg.FedMasterURL]
+	entityID, err := cfg.fedMasterEntityID()
+	if err != nil {
+		return nil, err
+	}
+	known, ok := knownFedMasters[entityID]
 	if !ok {
-		return nil, fmt.Errorf("no built-in trust anchor for fed_master_url %q; set fed_master_jwk", cfg.FedMasterURL)
+		return nil, fmt.Errorf("no built-in trust anchor for the master %q; set fed_master_jwk", entityID)
 	}
 	key, err := openid.ParseKey([]byte(known))
 	if err != nil {

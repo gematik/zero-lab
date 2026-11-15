@@ -36,6 +36,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 
@@ -296,8 +297,9 @@ func (f *OpenidFederation) fetch(ctx context.Context, location string) ([]byte, 
 // options and lies within its lifetime. A document kept in the store is judged exactly like a fetched one; one that
 // no longer passes, having expired or been altered, is fetched again and replaces the kept one (servers.md rule 12).
 // Every caller judges with its own keys and checks, once per document it reads, so no caller takes a document for
-// having passed another caller's judgement.
-func document[T any](ctx context.Context, f *OpenidFederation, location string, keys *jose.JSONWebKeySet, options openid.VerifyOptions, check func(payload []byte) (T, error)) (T, error) {
+// having passed another caller's judgement. fresh skips the store, for a caller that knows the kept document to be
+// outdated although it still verifies (gemSpec_IDP_FD A_22861).
+func document[T any](ctx context.Context, f *OpenidFederation, location string, fresh bool, keys *jose.JSONWebKeySet, options openid.VerifyOptions, check func(payload []byte) (T, error)) (T, error) {
 	var zero T
 	read := func(signed []byte) (T, []byte, error) {
 		payload, err := verifyStatement(signed, keys, options, f.now())
@@ -311,13 +313,15 @@ func document[T any](ctx context.Context, f *OpenidFederation, location string, 
 		return zero, err
 	}
 
-	kept, found, err := f.documents.Get(ctx, location)
-	switch {
-	case err != nil:
-		f.report(ctx, "reading a kept federation document failed", location, err)
-	case found:
-		if value, _, err := read(kept); err == nil {
-			return value, nil
+	if !fresh {
+		kept, found, err := f.documents.Get(ctx, location)
+		switch {
+		case err != nil:
+			f.report(ctx, "reading a kept federation document failed", location, err)
+		case found:
+			if value, _, err := read(kept); err == nil {
+				return value, nil
+			}
 		}
 	}
 
@@ -426,7 +430,7 @@ func (f *OpenidFederation) report(ctx context.Context, message, location string,
 // document, so endpoints come from a statement that has not expired.
 func (f *OpenidFederation) masterEntity(ctx context.Context) (*FederationEntityMetadata, error) {
 	location := f.fedMasterURL + "/.well-known/openid-federation"
-	es, err := document(ctx, f, location, f.jwks, trustAnchorKeys, func(payload []byte) (*EntityStatement, error) {
+	es, err := document(ctx, f, location, false, f.jwks, trustAnchorKeys, func(payload []byte) (*EntityStatement, error) {
 		es, err := parseEntityStatement(payload)
 		if err != nil {
 			return nil, err
@@ -451,27 +455,116 @@ func (f *OpenidFederation) FetchIdpList(ctx context.Context) ([]IdentityProvider
 	if err != nil {
 		return nil, err
 	}
-	idps, err := document(ctx, f, entity.IdpListEndpoint, f.jwks, trustAnchorKeys, func(payload []byte) ([]IdentityProviderInfo, error) {
-		var claims struct {
-			IdpEntity *[]IdentityProviderInfo `json:"idp_entity"`
-		}
-		if err := json.Unmarshal(payload, &claims); err != nil {
-			return nil, fmt.Errorf("unable to read idp_entity from token: %w", err)
-		}
-		if claims.IdpEntity == nil {
-			return nil, errors.New("unable to get idp_entity from token: no such claim")
-		}
-		return *claims.IdpEntity, nil
-	})
+	idps, err := document(ctx, f, entity.IdpListEndpoint, false, f.jwks, trustAnchorKeys, parseIdpList)
 	if err != nil {
 		return nil, fmt.Errorf("idp list from '%s': %w", entity.IdpListEndpoint, err)
 	}
 	return idps, nil
 }
 
+// maxIdps bounds the entries of the IdP list; the federation has a few dozen.
+const maxIdps = 512
+
+// parseIdpList reads the idp_entity member of the master's verified IdP list (gemSpec_IDP_FedMaster Tabelle 8). Every
+// entry needs an iss that is an entity identifier, since admission compares it byte for byte with the issuer a login
+// asks for; the informational members are text within bounds. Members are read by their exact names. An entry that
+// does not hold refuses the whole list: the master signed it, and a list read in part would admit by accident.
+func parseIdpList(payload []byte) ([]IdentityProviderInfo, error) {
+	if !utf8.Valid(payload) {
+		return nil, errors.New("the IdP list is not UTF-8")
+	}
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &members); err != nil {
+		return nil, fmt.Errorf("the IdP list: %w", err)
+	}
+	var entries []map[string]json.RawMessage
+	raw, ok := members["idp_entity"]
+	if !ok {
+		return nil, errors.New("the IdP list has no idp_entity")
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil || entries == nil {
+		return nil, errors.New("the IdP list's idp_entity is no array of objects")
+	}
+	if len(entries) > maxIdps {
+		return nil, fmt.Errorf("the IdP list has more than %d entries", maxIdps)
+	}
+	idps := make([]IdentityProviderInfo, 0, len(entries))
+	for i, entry := range entries {
+		idp, err := parseIdpEntry(entry)
+		if err != nil {
+			return nil, fmt.Errorf("the IdP list's entry %d: %w", i, err)
+		}
+		idps = append(idps, idp)
+	}
+	return idps, nil
+}
+
+func parseIdpEntry(entry map[string]json.RawMessage) (IdentityProviderInfo, error) {
+	var idp IdentityProviderInfo
+	if entry == nil {
+		return idp, errors.New("not an object")
+	}
+	iss, present, err := textMember(entry, "iss", maxEntityIdentifierBytes)
+	if err != nil || !present {
+		return idp, errors.New("iss is no text")
+	}
+	if err := checkEntityIdentifier(iss); err != nil {
+		return idp, errors.New("iss is no entity identifier")
+	}
+	idp.Issuer = iss
+	if idp.OrganizationName, _, err = textMember(entry, "organization_name", maxTextBytes); err != nil {
+		return idp, fmt.Errorf("organization_name: %w", err)
+	}
+	if idp.LogoURI, _, err = textMember(entry, "logo_uri", maxEntityIdentifierBytes); err != nil {
+		return idp, fmt.Errorf("logo_uri: %w", err)
+	}
+	if raw, ok := entry["pkv"]; ok && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &idp.IsPkv); err != nil {
+			return idp, errors.New("pkv is no boolean")
+		}
+	}
+	userType, err := userTypeMember(entry)
+	if err != nil {
+		return idp, err
+	}
+	idp.UserType = userType
+	return idp, nil
+}
+
+// userTypeMember reads user_type_supported, which Tabelle 8 types [string] and masters have served as a string; a
+// list of one is read as that one, a longer list as none, since IdentityProviderInfo holds one.
+func userTypeMember(entry map[string]json.RawMessage) (UserType, error) {
+	raw, ok := entry["user_type_supported"]
+	if !ok || string(raw) == "null" {
+		return "", nil
+	}
+	if single, _, err := textMember(entry, "user_type_supported", maxTextBytes); err == nil {
+		return UserType(single), nil
+	}
+	var list []string
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return "", errors.New("user_type_supported is neither text nor a list of text")
+	}
+	for _, value := range list {
+		if err := checkText(value, maxTextBytes); err != nil {
+			return "", fmt.Errorf("user_type_supported: %w", err)
+		}
+	}
+	if len(list) == 1 {
+		return UserType(list[0]), nil
+	}
+	return "", nil
+}
+
 // FetchEntityStatement returns the self-signed entity statement of the issuer iss, verified with the keys that
 // the master's statement about iss vouches for.
 func (f *OpenidFederation) FetchEntityStatement(ctx context.Context, iss string) (*EntityStatement, error) {
+	return f.entityStatement(ctx, iss, false)
+}
+
+// entityStatement is FetchEntityStatement; fresh fetches the master's statement about iss and the statement of iss
+// past the store.
+func (f *OpenidFederation) entityStatement(ctx context.Context, iss string, fresh bool) (*EntityStatement, error) {
 	if err := checkEntityIdentifier(iss); err != nil {
 		return nil, fmt.Errorf("issuer: %w", err)
 	}
@@ -485,7 +578,7 @@ func (f *OpenidFederation) FetchEntityStatement(ctx context.Context, iss string)
 	query.Add("sub", iss)
 	location := entity.FederationFetchEndpoint + "?" + query.Encode()
 
-	fromMaster, err := document(ctx, f, location, f.jwks, trustAnchorKeys, func(payload []byte) (*EntityStatement, error) {
+	fromMaster, err := document(ctx, f, location, fresh, f.jwks, trustAnchorKeys, func(payload []byte) (*EntityStatement, error) {
 		es, err := parseEntityStatement(payload)
 		if err != nil {
 			return nil, err
@@ -502,7 +595,7 @@ func (f *OpenidFederation) FetchEntityStatement(ctx context.Context, iss string)
 		return nil, fmt.Errorf("unable to fetch entity statement from '%s': %w", location, err)
 	}
 
-	selfSigned, err := document(ctx, f, iss+"/.well-known/openid-federation", fromMaster.Jwks.Keys, memberKeys, func(payload []byte) (*EntityStatement, error) {
+	selfSigned, err := document(ctx, f, iss+"/.well-known/openid-federation", fresh, fromMaster.Jwks.Keys, memberKeys, func(payload []byte) (*EntityStatement, error) {
 		es, err := parseEntityStatement(payload)
 		if err != nil {
 			return nil, err
@@ -526,6 +619,11 @@ func (f *OpenidFederation) FederationMasterURL() string {
 // FetchSignedJwks returns the key set published at op's signed_jwks_uri, verified against the keys of op's
 // entity statement, so op has to be a statement FetchEntityStatement verified.
 func (f *OpenidFederation) FetchSignedJwks(ctx context.Context, op *EntityStatement) (*jose.JSONWebKeySet, error) {
+	return f.signedJwks(ctx, op, false)
+}
+
+// signedJwks is FetchSignedJwks; fresh fetches past the store.
+func (f *OpenidFederation) signedJwks(ctx context.Context, op *EntityStatement, fresh bool) (*jose.JSONWebKeySet, error) {
 	if op.Metadata == nil || op.Metadata.OpenidProvider == nil {
 		return nil, errors.New("no openid provider found in entity statement")
 	}
@@ -534,7 +632,7 @@ func (f *OpenidFederation) FetchSignedJwks(ctx context.Context, op *EntityStatem
 	}
 
 	jwksURL := op.Metadata.OpenidProvider.SignedJwksURI
-	jwks, err := document(ctx, f, jwksURL, op.Jwks.Keys, memberKeys, func(payload []byte) (*jose.JSONWebKeySet, error) {
+	jwks, err := document(ctx, f, jwksURL, fresh, op.Jwks.Keys, memberKeys, func(payload []byte) (*jose.JSONWebKeySet, error) {
 		if err := requireExpiry(payload); err != nil {
 			return nil, err
 		}
