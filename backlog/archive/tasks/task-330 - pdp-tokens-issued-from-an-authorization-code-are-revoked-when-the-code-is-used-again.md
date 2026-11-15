@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-15T09:24:00Z'
+updated_date: '2026-11-15T14:09:00Z'
 labels:
   - pdp
   - go
@@ -24,3 +25,9 @@ TASK-316 makes a code single use (a second use gets invalid_grant). RFC 6749 sec
 <!-- AC:BEGIN -->
 - [ ] #1 A second use of a code is refused and revokes the access and refresh tokens issued from its first use, shown through the HTTP handlers
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Archived 2026-11-15: zeta-pdp-go replaces zero-pdp; the property moves to zeta-pdp-go TASK-106.
+<!-- SECTION:NOTES:END -->

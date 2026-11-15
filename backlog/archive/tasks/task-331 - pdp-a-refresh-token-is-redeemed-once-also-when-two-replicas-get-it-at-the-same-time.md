@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-15T09:28:00Z'
+updated_date: '2026-11-15T14:09:00Z'
 labels:
   - pdp
   - go
@@ -24,3 +25,9 @@ Found by the review of TASK-316: tokenEndpointRefreshToken (go/pdp/authzserver/t
 <!-- AC:BEGIN -->
 - [ ] #1 Of two concurrent refreshes with the same token exactly one succeeds, shown by a test through the handlers against a store with atomic Take
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Archived 2026-11-15: zeta-pdp-go replaces zero-pdp; the property moves to zeta-pdp-go TASK-106.
+<!-- SECTION:NOTES:END -->
