@@ -4,9 +4,9 @@ go 1.27.0
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.9
-	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.2.0.20261115135804-98986bff37eb
-	github.com/gematik/zero-lab/go/nonce v0.23.0
-	github.com/gematik/zero-lab/go/pep v0.27.1-0.20261115135804-98986bff37eb
+	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3
+	github.com/gematik/zero-lab/go/nonce v0.24.0
+	github.com/gematik/zero-lab/go/pep v0.28.0
 )
 
 require (

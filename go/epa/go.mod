@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/cloudflare/circl v1.6.5
 	github.com/fxamacker/cbor/v2 v2.10.0
-	github.com/gematik/zero-lab/go/tipki v0.31.2-0.20261115135804-98986bff37eb
+	github.com/gematik/zero-lab/go/tipki v0.32.0
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6
@@ -13,7 +13,7 @@ require (
 )
 
 require (
-	github.com/gematik/zero-lab/go/brainpool v1.3.1-0.20261115135804-98986bff37eb // indirect
+	github.com/gematik/zero-lab/go/brainpool v1.4.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
