@@ -192,6 +192,8 @@ type RelyingParty struct {
 	// issuers get an entry, and entries older than refetchInterval are dropped, so the IdP list bounds it.
 	refetchMu   sync.Mutex
 	refetchedAt map[string]time.Time
+	// refetching holds the refetch in flight, by issuer.
+	refetching map[string]*refetchFlight
 
 	// retryAt, in Unix nanoseconds, is when a request may try again after a failed signing; zero after a success.
 	// Written only by the holder of the signing token.
@@ -391,7 +393,11 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 	rp.relyingPartyKeys = relyingPartyKeys
 	// The scopes asked for by default have to be registered, or every login would be refused (servers.md rule 17).
 	registered := strings.Fields(rp.entityStatement.Metadata.OpenidRelyingParty.Scope)
-	for _, scope := range cfg.Scopes {
+	used := cfg.Scopes
+	if len(used) == 0 {
+		used = defaultOPScopes
+	}
+	for _, scope := range used {
 		if !slices.Contains(registered, scope) {
 			return nil, fmt.Errorf("config validation failed: %w: scopes holds one that relying_party.scope lacks", ErrScopeNotRegistered)
 		}
@@ -562,9 +568,9 @@ var ErrIDPNotAdmitted = errors.New("identity provider not admitted")
 
 // Client resolves issuer through the federation master and returns a client for that OpenID provider.
 //
-// The issuer has to be on the master's signed IdP list, byte for byte, before anything is fetched at or about it: the
-// issuer usually comes from a request, and only the IDPs the master admits may be asked (gemSpec_ZETA A_25449; servers.md
-// rule 2, no fetch steered by a request). Then its entity statement is resolved along the chain from the trust anchor,
+// The issuer has to be on the master's signed IdP list (gemSpec_IDP_FedMaster Tabelle 8, which gemSpec_IDP_FD has a
+// relying party fetch), byte for byte, before anything is fetched at or about it: the issuer usually comes from a
+// request, and a fetch goes only to hosts the trust chain names (servers.md rule 2). Then its entity statement is resolved along the chain from the trust anchor,
 // it has to describe an openid_provider whose endpoints are https, and its signed JWKS is fetched. Documents come from
 // the store while they verify, else they are fetched.
 func (rp *RelyingParty) Client(ctx context.Context, issuer string) (*RelyingPartyClient, error) {
@@ -845,14 +851,60 @@ func (rp *RelyingParty) Federation() *OpenidFederation {
 	return rp.federation
 }
 
-// refetchInterval is how long after a refetch of an IDP's documents another one is refused.
+// refetchInterval is how long after a refetch of an IDP's documents past the store another one is refused: an ID token
+// is the IDP's to send, but anyone can send a token with a made-up kid, and each would otherwise cost the federation
+// three fetches.
 const refetchInterval = time.Minute
 
-// mayRefetch reports whether the documents of issuer may be refetched now, and if so counts the refetch.
-func (rp *RelyingParty) mayRefetch(issuer string) bool {
-	now := rp.now()
+// refetchFlight is one refetch of an IDP's documents that concurrent exchanges wait for.
+type refetchFlight struct {
+	done     chan struct{}
+	resolved *provider
+	err      error
+}
+
+// refetchProvider resolves the documents of an admitted issuer anew. Past the store when no refetch of it ran within
+// refetchInterval; an exchange that finds one in flight waits for it as long as its context lets it. When the limiter
+// refuses, or the refetch it waited for failed, it resolves from the store, which costs no fetch while the kept
+// documents verify and holds what a refetch within the minute kept.
+func (rp *RelyingParty) refetchProvider(ctx context.Context, issuer string) (*provider, error) {
 	rp.refetchMu.Lock()
-	defer rp.refetchMu.Unlock()
+	if call, inFlight := rp.refetching[issuer]; inFlight {
+		rp.refetchMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-call.done:
+		}
+		if call.err == nil {
+			return call.resolved, nil
+		}
+		return rp.resolveProvider(ctx, issuer, false)
+	}
+	if !rp.mayRefetchLocked(issuer) {
+		rp.refetchMu.Unlock()
+		return rp.resolveProvider(ctx, issuer, false)
+	}
+	call := &refetchFlight{done: make(chan struct{}), err: errors.New("the refetch did not finish")}
+	if rp.refetching == nil {
+		rp.refetching = make(map[string]*refetchFlight)
+	}
+	rp.refetching[issuer] = call
+	rp.refetchMu.Unlock()
+	defer func() {
+		rp.refetchMu.Lock()
+		delete(rp.refetching, issuer)
+		rp.refetchMu.Unlock()
+		close(call.done)
+	}()
+	call.resolved, call.err = rp.resolveProvider(ctx, issuer, true)
+	return call.resolved, call.err
+}
+
+// mayRefetchLocked reports whether the documents of issuer may be refetched past the store now, and if so counts the
+// refetch. The caller holds refetchMu.
+func (rp *RelyingParty) mayRefetchLocked(issuer string) bool {
+	now := rp.now()
 	if rp.refetchedAt == nil {
 		rp.refetchedAt = make(map[string]time.Time)
 	}

@@ -46,7 +46,9 @@ func (e Error) Error() string {
 
 // Login is what one login at a provider keeps from the authorization request to the token request. RFC 6749
 // section 4.1.3 requires the token request to repeat the redirect_uri of the authorization request, and the ID
-// token is judged against the nonce, so the Login given to Exchange must be the one given to AuthenticationURL.
+// token is judged against the nonce, so the Login given to Exchange must be the one given to AuthenticationURL: a
+// host keeps it in its login session whole, Scopes, ACRValues and Claims included, since a client may judge the ID
+// token by them, and one whose Claims were dropped cannot check the essential claims.
 type Login struct {
 	State    string
 	Nonce    string
@@ -56,7 +58,10 @@ type Login struct {
 	// Scopes replace the client's configured scopes, for this login, when set.
 	Scopes []string
 	// ACRValues are the authentication context classes asked for, in order of preference (OIDC Core 3.1.2.1).
-	// AuthorizationQuery sends them; whether the ID token's acr is judged against them depends on the client.
+	// AuthorizationQuery sends them; whether the ID token's acr is judged against them depends on the client. The
+	// federation's client takes any acr no lower than the lowest asked for: asking for gematik-ehealth-loa-high and
+	// -substantial admits substantial with or without the person's consent to it for data of high protection need,
+	// which the host tells by oidf.Identity's Consent (ID token 2.0.0) or by amr urn:telematik:auth:mEW (1.0.0).
 	ACRValues []string
 	// Claims is the claims request parameter (OIDC Core 5.5), a JSON object of at most [MaxClaimsBytes].
 	Claims json.RawMessage

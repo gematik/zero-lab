@@ -36,11 +36,12 @@ func (rp *RelyingParty) Provider(ctx context.Context, issuer string) (providers.
 	if err != nil {
 		return providers.Provider{}, err
 	}
+	current := client.provider()
 	return providers.Provider{
 		Info: providers.Info{
 			Issuer:  client.Issuer(),
-			Name:    client.provider().metadata.OrganizationName,
-			LogoURI: client.provider().metadata.LogoURI,
+			Name:    current.metadata.OrganizationName,
+			LogoURI: current.metadata.LogoURI,
 			Type:    TypeOIDF,
 		},
 		Client: client,

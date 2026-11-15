@@ -455,7 +455,16 @@ func (f *OpenidFederation) FetchIdpList(ctx context.Context) ([]IdentityProvider
 	if err != nil {
 		return nil, err
 	}
-	idps, err := document(ctx, f, entity.IdpListEndpoint, false, f.jwks, trustAnchorKeys, parseIdpList)
+	// The list is kept no longer than its exp, like every document (keep).
+	idps, err := document(ctx, f, entity.IdpListEndpoint, false, f.jwks, trustAnchorKeys, func(payload []byte) ([]IdentityProviderInfo, error) {
+		var claims struct {
+			Issuer string `json:"iss"`
+		}
+		if err := json.Unmarshal(payload, &claims); err != nil || claims.Issuer != f.fedMasterURL {
+			return nil, errors.New("the IdP list is not the master's: iss names another")
+		}
+		return parseIdpList(payload)
+	})
 	if err != nil {
 		return nil, fmt.Errorf("idp list from '%s': %w", entity.IdpListEndpoint, err)
 	}
@@ -475,6 +484,9 @@ func parseIdpList(payload []byte) ([]IdentityProviderInfo, error) {
 	}
 	var members map[string]json.RawMessage
 	if err := json.Unmarshal(payload, &members); err != nil {
+		return nil, fmt.Errorf("the IdP list: %w", err)
+	}
+	if err := requireExpiry(payload); err != nil {
 		return nil, fmt.Errorf("the IdP list: %w", err)
 	}
 	var entries []map[string]json.RawMessage
@@ -532,7 +544,8 @@ func parseIdpEntry(entry map[string]json.RawMessage) (IdentityProviderInfo, erro
 }
 
 // userTypeMember reads user_type_supported, which Tabelle 8 types [string] and masters have served as a string; a
-// list of one is read as that one, a longer list as none, since IdentityProviderInfo holds one.
+// list of one is read as that one, a longer list as none, since IdentityProviderInfo holds one. None is harmless while
+// nothing filters by user type (TASK-297).
 func userTypeMember(entry map[string]json.RawMessage) (UserType, error) {
 	raw, ok := entry["user_type_supported"]
 	if !ok || string(raw) == "null" {
@@ -656,7 +669,7 @@ func requireExpiry(payload []byte) error {
 		return err
 	}
 	if _, ok := members["exp"]; !ok {
-		return errors.New("a signed key set has to state its exp")
+		return errors.New("a signed key set or IdP list has to state its exp")
 	}
 	return nil
 }

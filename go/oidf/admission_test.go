@@ -29,9 +29,9 @@ import (
 	"unicode/utf8"
 )
 
-// gemSpec_ZETA A_25449: only the IDPs on the master's signed list are asked. The issuer comes from a request, so
-// nothing is fetched at or about it before it is found on the list (servers.md rule 2).
-func TestA_25449_AnIDPNotOnTheMastersListIsRefusedBeforeAnyFetch(t *testing.T) {
+// Servers rule 2 and gemSpec_IDP_FedMaster Tabelle 8: only the IDPs on the master's signed list are asked. The issuer
+// comes from a request, so nothing is fetched at or about it before it is found on the list.
+func TestFedMaster_IdPList_AnIDPNotOnItIsRefusedBeforeAnyFetch(t *testing.T) {
 	stub := newFederationStub(t)
 	rp := stub.relyingParty(t)
 	counter := stub.countFetches()
@@ -55,8 +55,8 @@ func TestA_25449_AnIDPNotOnTheMastersListIsRefusedBeforeAnyFetch(t *testing.T) {
 	}
 }
 
-// gemSpec_ZETA A_25449: an IDP the master has taken off its list is no longer admitted, even with its statement kept.
-func TestA_25449_AnIDPTakenOffTheListIsRefused(t *testing.T) {
+// An IDP the master has taken off its list is no longer admitted, even with its statement kept.
+func TestFedMaster_IdPList_AnIDPTakenOffItIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	rp := stub.relyingParty(t)
 	if _, err := rp.Client(t.Context(), stub.URL+"/op"); err != nil {
@@ -162,41 +162,60 @@ func TestFedMaster_StatementURI_BuildsTheRelyingParty(t *testing.T) {
 	}
 }
 
-// gemSpec_IDP_FedMaster Tabelle 8: every entry names its issuer as an entity identifier, and a list that does not
-// hold is refused whole.
+// gemSpec_IDP_FedMaster Tabelle 8: the list states its exp, every entry names its issuer as an entity identifier, and
+// a list that does not hold is refused whole.
 func TestFedMaster_TheIdPListIsReadStrictly(t *testing.T) {
-	for name, payload := range map[string]string{
-		"no idp_entity":       `{"iss":"https://m.example"}`,
-		"idp_entity null":     `{"idp_entity":null}`,
-		"an entry not object": `{"idp_entity":["https://op.example"]}`,
-		"no iss":              `{"idp_entity":[{"organization_name":"x"}]}`,
-		"iss not https":       `{"idp_entity":[{"iss":"http://op.example"}]}`,
-		"iss with a query":    `{"idp_entity":[{"iss":"https://op.example?x"}]}`,
-		"iss in another case": `{"idp_entity":[{"ISS":"https://op.example"}]}`,
-		"a name with a CR":    `{"idp_entity":[{"iss":"https://op.example","organization_name":"a\rb"}]}`,
-		"pkv not boolean":     `{"idp_entity":[{"iss":"https://op.example","pkv":"no"}]}`,
-		"not UTF-8":           "{\"idp_entity\":[{\"iss\":\"https://op.example\",\"organization_name\":\"\xff\"}]}",
+	const exp = `"exp":4102444800,`
+	for name, c := range map[string]struct{ payload, reason string }{
+		"no exp":              {`{"idp_entity":[]}`, "has to state its exp"},
+		"no idp_entity":       {`{` + exp + `"iss":"https://m.example"}`, "has no idp_entity"},
+		"idp_entity null":     {`{` + exp + `"idp_entity":null}`, "no array of objects"},
+		"an entry not object": {`{` + exp + `"idp_entity":["https://op.example"]}`, "no array of objects"},
+		"no iss":              {`{` + exp + `"idp_entity":[{"organization_name":"x"}]}`, "iss is no text"},
+		"iss not https":       {`{` + exp + `"idp_entity":[{"iss":"http://op.example"}]}`, "iss is no entity identifier"},
+		"iss with a query":    {`{` + exp + `"idp_entity":[{"iss":"https://op.example?x"}]}`, "iss is no entity identifier"},
+		"iss in another case": {`{` + exp + `"idp_entity":[{"ISS":"https://op.example"}]}`, "iss is no text"},
+		"a name with a CR":    {`{` + exp + `"idp_entity":[{"iss":"https://op.example","organization_name":"a\rb"}]}`, "organization_name: holds a control"},
+		"a name with RLO":     {`{` + exp + `"idp_entity":[{"iss":"https://op.example","organization_name":"a\u202eb"}]}`, "organization_name: holds a control or format"},
+		"pkv not boolean":     {`{` + exp + `"idp_entity":[{"iss":"https://op.example","pkv":"no"}]}`, "pkv is no boolean"},
+		"user type a number":  {`{` + exp + `"idp_entity":[{"iss":"https://op.example","user_type_supported":1}]}`, "neither text nor a list"},
+		"not UTF-8":           {"{" + exp + "\"idp_entity\":[{\"iss\":\"https://op.example\",\"organization_name\":\"\xff\"}]}", "not UTF-8"},
 	} {
-		if _, err := parseIdpList([]byte(payload)); err == nil {
-			t.Errorf("%s: accepted", name)
+		if _, err := parseIdpList([]byte(c.payload)); err == nil || !strings.Contains(err.Error(), c.reason) {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
-	idps, err := parseIdpList([]byte(`{"idp_entity":[{"iss":"https://op.example","organization_name":"Kasse","logo_uri":"https://op.example/l.png","pkv":true,"user_type_supported":["IP"]}]}`))
+	idps, err := parseIdpList([]byte(`{` + exp + `"idp_entity":[{"iss":"https://op.example","organization_name":"Kasse","logo_uri":"https://op.example/l.png","pkv":true,"user_type_supported":["IP"]}]}`))
 	if err != nil || len(idps) != 1 || idps[0].Issuer != "https://op.example" || !idps[0].IsPkv || idps[0].UserType != UserTypeIP {
 		t.Fatalf("%+v, %v", idps, err)
 	}
 }
 
+// gemSpec_IDP_FedMaster Tabelle 8: iss of the list is the master; a list signed with its key but naming another is
+// refused.
+func TestFedMaster_IdPList_OfAnotherIssuerIsRefused(t *testing.T) {
+	stub := newFederationStub(t)
+	stub.idpList = signJWS(t, stub.masterKey, "master", map[string]any{
+		"iss": "https://other.example", "exp": time.Now().Add(time.Hour).Unix(), "idp_entity": []any{},
+	})
+	if _, err := stub.federation(t).FetchIdpList(t.Context()); err == nil || !strings.Contains(err.Error(), "iss names another") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func FuzzIdpList(f *testing.F) {
-	f.Add([]byte(`{"idp_entity":[{"iss":"https://op.example","organization_name":"OP","logo_uri":"","pkv":false,"user_type_supported":"IP"}]}`))
-	f.Add([]byte(`{"idp_entity":[{"iss":"https://op.example","user_type_supported":["IP","HP"]}]}`))
-	f.Add([]byte("{\"idp_entity\":[{\"iss\":\"https://op.example/%2F..\",\"organization_name\":\"\\u202e\"}]}"))
-	f.Add([]byte(`{"idp_entity":[{"iss":"https://op.example\r\nX: y"}]}`))
-	f.Add([]byte(`{"idp_entity":[{"iss":"javascript:alert(1)"}],"idp_entity":[]}`))
-	f.Add([]byte(`{"idp_entity":[{"iss":"https://a@op.example"},{"iss":1e999}]}`))
+	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"https://op.example","organization_name":"OP","logo_uri":"","pkv":false,"user_type_supported":"IP"}]}`))
+	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"https://op.example","user_type_supported":["IP","HP"]}]}`))
+	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"https://op.example/%2F..","organization_name":"\u202e"}]}`))
+	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"https://op.example\r\nX: y"}]}`))
+	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"javascript:alert(1)"}],"idp_entity":[]}`))
+	f.Add([]byte(`{"exp":1,"idp_entity":[{"iss":"https://a@op.example"},{"iss":1e999}]}`))
 	f.Fuzz(func(t *testing.T, payload []byte) {
 		idps, err := parseIdpList(payload)
 		if err != nil {
+			if len(payload) >= 16 && strings.Contains(err.Error(), string(payload)) {
+				t.Fatalf("the error holds the input: %v", err)
+			}
 			return
 		}
 		if len(idps) > maxIdps {
@@ -207,7 +226,7 @@ func FuzzIdpList(f *testing.F) {
 				t.Fatalf("accepted issuer %q", idp.Issuer)
 			}
 			for _, text := range []string{idp.Issuer, idp.OrganizationName, idp.LogoURI, string(idp.UserType)} {
-				if checkText(text, maxEntityIdentifierBytes) != nil || !utf8.ValidString(text) {
+				if !utf8.ValidString(text) || strings.ContainsFunc(text, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 					t.Fatalf("accepted text %q", text)
 				}
 			}

@@ -151,6 +151,7 @@ func newFederationStub(t *testing.T) *federationStub {
 		}},
 	}))
 	stub.idpList = signJWS(t, stub.masterKey, "master", lifetime(map[string]any{
+		"iss":        stub.URL,
 		"idp_entity": []map[string]any{{"iss": stub.URL + "/op", "organization_name": "OP", "logo_uri": "", "pkv": false, "user_type_supported": "IP"}},
 	}))
 	stub.signedJwks = signJWS(t, stub.opKey, "op", lifetime(map[string]any{
@@ -267,13 +268,14 @@ func TestFederationJudgesStatementsNinetySecondsAhead(t *testing.T) {
 	}{
 		{"exp beyond the tolerance", map[string]any{"exp": time.Now().Add(2 * statementClockTolerance).Unix()}, true},
 		{"exp within the tolerance", map[string]any{"exp": time.Now().Add(statementClockTolerance / 2).Unix()}, false},
-		{"iat within the tolerance", map[string]any{"iat": time.Now().Add(statementClockTolerance / 2).Unix()}, true},
+		{"iat within the tolerance", map[string]any{"iat": time.Now().Add(statementClockTolerance / 2).Unix(), "exp": time.Now().Add(time.Hour).Unix()}, true},
 		{"iat beyond the tolerance", map[string]any{"iat": time.Now().Add(2 * statementClockTolerance).Unix()}, false},
 		{"nbf beyond the tolerance", map[string]any{"nbf": time.Now().Add(2 * statementClockTolerance).Unix()}, false},
-		{"no time claims", map[string]any{}, true},
+		{"no exp", map[string]any{}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.claims["idp_entity"] = []any{}
+			tc.claims["iss"] = stub.URL
 			stub.idpList = signJWS(t, stub.masterKey, "master", tc.claims)
 			_, err := stub.federation(t).FetchIdpList(t.Context())
 			if tc.accept && err != nil {
@@ -364,6 +366,7 @@ func validIDTokenClaims() map[string]any {
 	return map[string]any{
 		"iss": "https://op.example", "aud": "https://rp.example", "nonce": "n", "exp": time.Now().Add(time.Hour).Unix(),
 		"sub": "subject", "acr": LoAHigh, "amr": []string{"urn:telematik:auth:eGK"}, "auth_time": time.Now().Add(-time.Minute).Unix(),
+		"iat": time.Now().Unix(),
 	}
 }
 
@@ -421,7 +424,7 @@ func TestA_23195_ATokenEncryptedForAnotherRecipientIsRefused(t *testing.T) {
 func TestA_23049_AnIDTokenThatDoesNotHoldIsRefused(t *testing.T) {
 	stub := newLoginStub(t)
 	expired := validIDTokenClaims()
-	expired["exp"] = time.Now().Add(-time.Second).Unix()
+	expired["exp"] = time.Now().Add(-idTokenSkew - time.Second).Unix()
 	otherAudience := validIDTokenClaims()
 	otherAudience["aud"] = "https://other.example"
 	noAudience := validIDTokenClaims()

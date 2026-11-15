@@ -138,7 +138,12 @@ func TestServerRule17_AConfiguredScopeThatIsNotRegisteredIsRefused(t *testing.T)
 	cfg := testRelyingPartyConfig(t, newFederationStub(t))
 	cfg.Scopes = []string{"openid", "urn:telematik:email"}
 	if _, err := New(t.Context(), cfg, newTestKeys(t)); !errors.Is(err, ErrScopeNotRegistered) {
-		t.Fatalf("err = %v", err)
+		t.Fatalf("configured: %v", err)
+	}
+	cfg.Scopes = nil
+	cfg.RelyingParty.Scope = "openid urn:telematik:display_name"
+	if _, err := New(t.Context(), cfg, newTestKeys(t)); !errors.Is(err, ErrScopeNotRegistered) {
+		t.Fatalf("the default scopes: %v", err)
 	}
 }
 

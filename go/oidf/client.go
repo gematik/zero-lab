@@ -82,14 +82,15 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 	if len(login.Scopes) > 0 {
 		scopes = login.Scopes
 	}
-	if err := checkLogin(login, scopes, c.rp.registeredScope(), c.provider().metadata.ClaimsSupported); err != nil {
+	current := c.provider()
+	if err := checkLogin(login, scopes, c.rp.registeredScope(), current.metadata.ClaimsSupported); err != nil {
 		return "", err
 	}
 	if len(login.ACRValues) == 0 {
 		form.Set("acr_values", LoAHigh)
 	}
 
-	endpoint := c.provider().metadata.PushedAuthorizationRequestEndpoint
+	endpoint := current.metadata.PushedAuthorizationRequestEndpoint
 	response, err := openid.PostForm(ctx, c.rp.httpClient, endpoint, form)
 	if err != nil {
 		return "", fmt.Errorf("unable to do PAR request: %w", err)
@@ -105,7 +106,7 @@ func (c *RelyingPartyClient) AuthenticationURL(ctx context.Context, login openid
 	params := url.Values{}
 	params.Add("request_uri", pushed.RequestURI)
 	params.Add("client_id", c.rp.ClientID())
-	return c.provider().metadata.AuthorizationEndpoint + "?" + params.Encode(), nil
+	return current.metadata.AuthorizationEndpoint + "?" + params.Encode(), nil
 }
 
 // Exchange implements openid.Client with [RelyingPartyClient.ExchangeIdentity], dropping the identity.
@@ -123,7 +124,9 @@ var (
 )
 
 // ExchangeIdentity redeems the authorization code over mutual TLS and returns who logged in. The login has to be the
-// one given to AuthenticationURL. The ID token is
+// one given to AuthenticationURL, with the same Scopes, ACRValues and Claims, which the host keeps in its login
+// session: the acr is judged against ACRValues, and without Claims the essential claims cannot be checked. The ID
+// token is
 //   - decrypted through the ID token key (A_23194, A_23195), its JWE header naming a version both sides support;
 //   - verified with the IDP's signed JWKS (A_23049);
 //   - checked as OIDC Core 3.1.3.7 has it: issuer, audience, nonce of this login, lifetime (A_23049);
@@ -131,7 +134,8 @@ var (
 //     essential (A_22860-02).
 //
 // An unknown kid, or a version the IDP's statement does not list, refetches the IDP's statement and signed JWKS past
-// the store once (A_22861; A_23207 Hinweis 3), at most once a minute per IDP; a signature that does not verify under a
+// the store once (A_22861; A_23207 Hinweis 3): at most once a minute per IDP, with concurrent exchanges waiting for
+// the refetch in flight, and from the store when the minute has not passed. A signature that does not verify under a
 // known kid refetches nothing. A provider's refusal is returned as *Error.
 func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.Login, code string) (*Identity, *openid.TokenResponse, error) {
 	if err := checkStateOrNonce(ErrNonce, login.Nonce); err != nil {
@@ -147,7 +151,8 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 	form.Set("client_id", c.rp.ClientID())
 	form.Set("code_verifier", login.Verifier)
 
-	response, err := openid.PostForm(ctx, c.rp.httpClient, c.provider().metadata.TokenEndpoint, form)
+	current := c.provider()
+	response, err := openid.PostForm(ctx, c.rp.httpClient, current.metadata.TokenEndpoint, form)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to do token request: %w", err)
 	}
@@ -170,15 +175,15 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 	tokenResponse.IDTokenRaw = string(signed)
 
 	refetched := false
-	if err := c.checkVersion(ctx, version, &refetched); err != nil {
+	if current, err = c.checkVersion(ctx, current, version, &refetched); err != nil {
 		return nil, nil, err
 	}
-	payload, err := c.verifyIDToken(ctx, signed, &refetched)
+	payload, err := c.verifyIDToken(ctx, current, signed, &refetched)
 	if err != nil {
 		return nil, nil, err
 	}
 	now := c.rp.now()
-	checks := openid.IDTokenChecks{Issuer: c.issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: now}
+	checks := openid.IDTokenChecks{Issuer: c.issuer, ClientID: c.rp.ClientID(), Nonce: login.Nonce, Now: now, Skew: idTokenSkew}
 	if err := checks.Validate(payload); err != nil {
 		return nil, nil, fmt.Errorf("unable to parse token: %w", err)
 	}
@@ -186,7 +191,7 @@ func (c *RelyingPartyClient) ExchangeIdentity(ctx context.Context, login openid.
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := checkIdentity(identity, payload, login, now); err != nil {
+	if err := checkIdentity(identity, payload, login, c.rp.ClientID(), now); err != nil {
 		return nil, nil, err
 	}
 	asked := c.scopes
@@ -248,67 +253,61 @@ func supportedVersions(features *TIFeatures) []string {
 
 // checkVersion takes a version the relying party publishes, since the IDP picks the highest both support
 // (gemSpec_IDP_Sek A_27598), and that the IDP's statement lists. A version the statement does not list may mean the
-// statement kept is outdated (A_23207 Hinweis 3), so the statement is refetched once.
-func (c *RelyingPartyClient) checkVersion(ctx context.Context, version string, refetched *bool) error {
+// statement kept is outdated (A_23207 Hinweis 3), so the statement is refetched once. It returns the provider as
+// resolved after that.
+func (c *RelyingPartyClient) checkVersion(ctx context.Context, current *provider, version string, refetched *bool) (*provider, error) {
 	if !slices.Contains(c.rp.idTokenVersions(), version) {
-		return fmt.Errorf("%w: the relying party does not publish it", ErrIDTokenVersion)
+		return nil, fmt.Errorf("%w: the relying party does not publish it", ErrIDTokenVersion)
 	}
-	if slices.Contains(supportedVersions(c.provider().metadata.TIFeaturesSupported), version) {
-		return nil
+	if slices.Contains(supportedVersions(current.metadata.TIFeaturesSupported), version) {
+		return current, nil
 	}
-	if err := c.refetch(ctx, refetched); err != nil {
-		return fmt.Errorf("%w: the IDP does not list it: %w", ErrIDTokenVersion, err)
+	current, err := c.refetch(ctx, refetched)
+	if err != nil {
+		return nil, fmt.Errorf("%w: the IDP does not list it: %w", ErrIDTokenVersion, err)
 	}
-	if !slices.Contains(supportedVersions(c.provider().metadata.TIFeaturesSupported), version) {
-		return fmt.Errorf("%w: the IDP does not list it", ErrIDTokenVersion)
+	if !slices.Contains(supportedVersions(current.metadata.TIFeaturesSupported), version) {
+		return nil, fmt.Errorf("%w: the IDP does not list it", ErrIDTokenVersion)
 	}
-	return nil
+	return current, nil
 }
 
 // verifyIDToken verifies the signed ID token with the IDP's signed JWKS and returns its payload. Only ES256 is taken,
 // the id_token_signed_response_alg the relying party registers. A kid the JWKS does not name refetches it once
 // (A_22861).
-func (c *RelyingPartyClient) verifyIDToken(ctx context.Context, signed []byte, refetched *bool) ([]byte, error) {
+func (c *RelyingPartyClient) verifyIDToken(ctx context.Context, current *provider, signed []byte, refetched *bool) ([]byte, error) {
 	parsed, err := jose.ParseSignedCompact(string(signed), []jose.SignatureAlgorithm{jose.ES256})
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse token: %w", err)
 	}
 	kid := parsed.Signatures[0].Protected.KeyID
-	if kid != "" && len(c.provider().jwks.Key(kid)) == 0 {
-		if err := c.refetch(ctx, refetched); err != nil {
+	if kid != "" && len(current.jwks.Key(kid)) == 0 {
+		if current, err = c.refetch(ctx, refetched); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrIDTokenKey, err)
 		}
-		if len(c.provider().jwks.Key(kid)) == 0 {
+		if len(current.jwks.Key(kid)) == 0 {
 			return nil, ErrIDTokenKey
 		}
 	}
-	payload, err := openid.VerifyJWS(signed, c.provider().jwks, memberKeys)
+	payload, err := openid.VerifyJWS(signed, current.jwks, memberKeys)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse token: %w", err)
 	}
 	return payload, nil
 }
 
-// errRefetchLimited is a refetch refused because one was made for the IDP less than refetchInterval ago.
-var errRefetchLimited = errors.New("the IDP's documents were refetched less than a minute ago")
-
-// refetch resolves the IDP's statement and signed JWKS anew past the store, which keeps the result, once per
-// exchange and at most once per refetchInterval per IDP: an ID token is the IDP's to send, but anyone can send a
-// token with a made-up kid, and each would otherwise cost the federation three fetches.
-func (c *RelyingPartyClient) refetch(ctx context.Context, refetched *bool) error {
+// refetch resolves the IDP's statement and signed JWKS anew, once per exchange, and makes the result the client's.
+func (c *RelyingPartyClient) refetch(ctx context.Context, refetched *bool) (*provider, error) {
 	if *refetched {
-		return errors.New("refetched already")
+		return nil, errors.New("refetched already")
 	}
 	*refetched = true
-	if !c.rp.mayRefetch(c.issuer) {
-		return errRefetchLimited
-	}
-	resolved, err := c.rp.resolveProvider(ctx, c.issuer, true)
+	resolved, err := c.rp.refetchProvider(ctx, c.issuer)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	c.current.Store(resolved)
-	return nil
+	return resolved, nil
 }
 
 // Issuer returns the provider's issuer, which its entity statement and its openid_provider metadata name.

@@ -42,8 +42,10 @@ const (
 	maxEntityIdentifierBytes = 2048
 )
 
-// checkText takes valid UTF-8 of at most most bytes without control characters, which would let a value break a log
-// line or a header it is written into. The error names the rule, never the value.
+// checkText takes valid UTF-8 of at most most bytes without control characters (Cc), which would let a value break a
+// log line or a header it is written into, and without format characters (Cf: bidi overrides, zero-width characters)
+// and line or paragraph separators (Zl, Zp), which would make it read otherwise than it is. The error names the rule,
+// never the value.
 func checkText(value string, most int) error {
 	if len(value) > most {
 		return fmt.Errorf("longer than %d bytes", most)
@@ -52,8 +54,8 @@ func checkText(value string, most int) error {
 		return errors.New("not UTF-8")
 	}
 	for _, r := range value {
-		if unicode.IsControl(r) {
-			return errors.New("holds a control character")
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
+			return errors.New("holds a control or format character")
 		}
 	}
 	return nil

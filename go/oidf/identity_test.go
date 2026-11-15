@@ -28,10 +28,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-jose/go-jose/v4"
 
@@ -206,29 +208,109 @@ func TestA_28484_TheAMRIsAListOfMethods(t *testing.T) {
 	}
 }
 
-// OIDC Core 2: auth_time is a NumericDate; it is required here and may not lie ahead of the clock.
-func TestOIDCCore_2_AnAuthTimeThatIsMissingOrAheadIsRefused(t *testing.T) {
-	for name, authTime := range map[string]any{
-		"missing":          nil,
-		"a string":         "1700000000",
-		"ahead":            time.Now().Add(2 * time.Minute).Unix(),
-		"past year 9999":   1e15,
-		"negative":         -1,
-		"null":             json.RawMessage("null"),
-		"an object":        map[string]any{},
-		"huge exponent":    json.RawMessage("1e999"),
-		"a fraction ahead": float64(time.Now().Add(90*time.Second).UnixMilli()) / 1000,
+// OIDC Core 2 and 5.5: auth_time is required when the login asks for it in its claims request; when present it is a
+// NumericDate no further ahead of the clock than the skew.
+func TestOIDCCore_2_AnAuthTimeThatIsAskedForOrPresentIsChecked(t *testing.T) {
+	askedFor := json.RawMessage(`{"id_token":{"auth_time":null}}`)
+	for name, c := range map[string]struct {
+		authTime any
+		claims   json.RawMessage
+		want     error
+	}{
+		"missing, asked for":    {nil, askedFor, ErrAuthTime},
+		"a string":              {"1700000000", nil, ErrAuthTime},
+		"ahead":                 {time.Now().Add(2 * time.Minute).Unix(), nil, ErrAuthTime},
+		"past year 9999":        {1e15, nil, ErrAuthTime},
+		"negative":              {-1, nil, ErrAuthTime},
+		"null":                  {json.RawMessage("null"), nil, ErrAuthTime},
+		"an object":             {map[string]any{}, nil, ErrAuthTime},
+		"a fraction ahead":      {float64(time.Now().Add(90*time.Second).UnixMilli()) / 1000, nil, ErrAuthTime},
+		"missing, not asked":    {nil, nil, nil},
+		"within the skew ahead": {time.Now().Add(30 * time.Second).Unix(), askedFor, nil},
 	} {
 		stub := newLoginStub(t)
 		claims := validIDTokenClaims()
-		if authTime == nil {
+		if c.authTime == nil {
 			delete(claims, "auth_time")
 		} else {
-			claims["auth_time"] = authTime
+			claims["auth_time"] = c.authTime
 		}
 		stub.idToken = stub.nestedToken(t, claims)
-		if _, _, err := stub.client.ExchangeIdentity(t.Context(), nLogin(), "code"); err == nil {
-			t.Errorf("%s: accepted", name)
+		login := nLogin()
+		login.Claims = c.claims
+		_, _, err := stub.client.ExchangeIdentity(t.Context(), login, "code")
+		if c.want == nil && err != nil || c.want != nil && !errors.Is(err, c.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// OIDC Core 3.1.3.7: iat is required, and with several audiences azp names this client; an azp always does.
+func TestOIDCCore_3_1_3_7_IatAndAzpAreChecked(t *testing.T) {
+	for name, c := range map[string]struct {
+		change func(map[string]any)
+		want   error
+	}{
+		"no iat":                        {func(c map[string]any) { delete(c, "iat") }, openid.ErrMissingClaim},
+		"several audiences without azp": {func(c map[string]any) { c["aud"] = []string{"https://rp.example", "https://other.example"} }, ErrAuthorizedParty},
+		"azp of another client":         {func(c map[string]any) { c["azp"] = "https://other.example" }, ErrAuthorizedParty},
+		"azp no text":                   {func(c map[string]any) { c["azp"] = 1 }, ErrAuthorizedParty},
+		"iat ahead beyond the skew":     {func(c map[string]any) { c["iat"] = time.Now().Add(2 * time.Minute).Unix() }, openid.ErrTokenIssuedInFuture},
+		"several audiences with azp": {func(c map[string]any) {
+			c["aud"], c["azp"] = []string{"https://rp.example", "https://other.example"}, "https://rp.example"
+		}, nil},
+		"iat ahead within the skew": {func(c map[string]any) { c["iat"] = time.Now().Add(30 * time.Second).Unix() }, nil},
+	} {
+		stub := newLoginStub(t)
+		claims := validIDTokenClaims()
+		c.change(claims)
+		stub.idToken = stub.nestedToken(t, claims)
+		_, _, err := stub.client.ExchangeIdentity(t.Context(), nLogin(), "code")
+		if c.want == nil && err != nil || c.want != nil && !errors.Is(err, c.want) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// gemSpec_IDP_Sek A_27591 and A_27592: the signals of version 2.0.0 are read as text or a list of text, and nothing
+// else; consent does not lower the level a login takes.
+func TestA_27591_ConsentAndInteractiveAreReadStrictly(t *testing.T) {
+	for name, c := range map[string]struct {
+		consent, interactive any
+		acr                  string
+		asked                []string
+		want                 error
+	}{
+		"consent as text":           {"loa-substantial", nil, LoASubstantial, []string{LoAHigh, LoASubstantial}, nil},
+		"consent as a list":         {[]string{"loa-substantial"}, "silent", LoASubstantial, []string{LoAHigh, LoASubstantial}, nil},
+		"consent, only high asked":  {[]string{"loa-substantial"}, nil, LoASubstantial, nil, ErrACR},
+		"consent a number":          {1, nil, LoAHigh, nil, ErrIdentityClaim},
+		"consent with a CR":         {"loa\r", nil, LoAHigh, nil, ErrIdentityClaim},
+		"consent of 17":             {strings.Split(strings.Repeat("c,", 16)+"c", ","), nil, LoAHigh, nil, ErrIdentityClaim},
+		"interactive a list of two": {nil, []string{"silent", "x"}, LoAHigh, nil, ErrIdentityClaim},
+		"interactive an object":     {nil, map[string]any{}, LoAHigh, nil, ErrIdentityClaim},
+	} {
+		stub := newLoginStub(t)
+		claims := validIDTokenClaims()
+		claims["acr"] = c.acr
+		if c.consent != nil {
+			claims[claimConsent] = c.consent
+		}
+		if c.interactive != nil {
+			claims[claimInteractive] = c.interactive
+		}
+		stub.idToken = stub.nestedToken(t, claims)
+		login := nLogin()
+		login.ACRValues = c.asked
+		identity, _, err := stub.client.ExchangeIdentity(t.Context(), login, "code")
+		if c.want != nil {
+			if !errors.Is(err, c.want) {
+				t.Errorf("%s: %v", name, err)
+			}
+			continue
+		}
+		if err != nil || len(identity.Consent) != 1 || identity.Consent[0] != "loa-substantial" {
+			t.Errorf("%s: %+v, %v", name, identity, err)
 		}
 	}
 }
@@ -255,18 +337,22 @@ func TestIDPSek_TheIdentityCarriesACRAndAMR(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Identity{
-		Issuer: "https://op.example", Subject: "subject", ID: "X123456789", DisplayName: "Erika Mustermann",
-		GivenName: "Erika", FamilyName: "Mustermann", Profession: "1.2.276.0.76.4.49", Organization: "109500969",
-		Birthdate: "1964-08-12", ACR: LoASubstantial, IDTokenVersion: "1.0.0",
+		Issuer: "https://op.example", Profession: "1.2.276.0.76.4.49", Organization: "109500969",
+		ACR: LoASubstantial, IDTokenVersion: "1.0.0",
+		Personal: Personal{
+			Subject: "subject", ID: "X123456789", DisplayName: "Erika Mustermann", GivenName: "Erika",
+			FamilyName: "Mustermann", Birthdate: "1964-08-12",
+		},
 	}
 	got := *identity
 	if got.AuthTime.Unix() != claims["auth_time"] || len(got.AMR) != 2 || got.AMR[1] != "urn:telematik:auth:mEW" || strings.Join(got.Scopes, " ") != strings.Join(defaultOPScopes, " ") {
 		t.Errorf("auth_time %v, amr %v, scopes %v", got.AuthTime, got.AMR, got.Scopes)
 	}
 	got.AuthTime, got.AMR, got.Scopes = time.Time{}, nil, nil
-	if fmt.Sprintf("%#v", []any{got.Subject, got.ID, got.DisplayName, got.GivenName, got.FamilyName, got.Profession, got.Organization, got.Birthdate, got.ACR, got.IDTokenVersion, got.Issuer}) !=
-		fmt.Sprintf("%#v", []any{want.Subject, want.ID, want.DisplayName, want.GivenName, want.FamilyName, want.Profession, want.Organization, want.Birthdate, want.ACR, want.IDTokenVersion, want.Issuer}) {
-		t.Errorf("identity = %+v", identity)
+	if !reflect.DeepEqual(got, want) {
+		gotJSON, _ := json.Marshal(got)
+		wantJSON, _ := json.Marshal(want)
+		t.Errorf("identity = %s, want %s", gotJSON, wantJSON)
 	}
 	if strings.Count(response.IDTokenRaw, ".") != 2 {
 		t.Error("the response does not carry the inner JWS")
@@ -366,6 +452,62 @@ func TestA_22861_AnUnknownKIDRefetchesOnce(t *testing.T) {
 	}
 }
 
+// rotate makes the provider publish a new ID token key and returns it; the store still holds the old JWKS.
+func (l *federatedLogin) rotate(t *testing.T) *ecdsa.PrivateKey {
+	t.Helper()
+	rotated := newTestKey(t)
+	l.stub.signedJwks = signJWS(t, l.stub.opKey, "op", map[string]any{
+		"iat": time.Now().Unix(), "exp": time.Now().Add(time.Hour).Unix(), "keys": keySetOf(rotated, "rotated").Keys,
+	})
+	return rotated
+}
+
+// gemSpec_IDP_FD A_22861 during a key rotation: concurrent logins that meet the new kid wait for the one refetch in
+// flight, and both succeed.
+func TestA_22861_ConcurrentLoginsDuringARotationRefetchOnce(t *testing.T) {
+	login := newFederatedLogin(t)
+	login.issue(t, login.rotate(t), "rotated", login.claims(), nil)
+	other, err := login.rp.Client(t.Context(), login.stub.URL+"/op")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, 2)
+	for _, client := range []*RelyingPartyClient{login.client, other} {
+		go func() {
+			_, _, err := client.ExchangeIdentity(t.Context(), nLogin(), "code")
+			errs <- err
+		}()
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
+	if n := login.refetches(); n != 1 {
+		t.Errorf("%d refetches", n)
+	}
+}
+
+// gemSpec_IDP_FD A_22861: a client resolved before a refetch, meeting the new kid within the minute after it, takes
+// the documents the refetch kept, without a fetch.
+func TestA_22861_ALoginWithinTheMinuteAfterARefetchSucceedsFromTheStore(t *testing.T) {
+	login := newFederatedLogin(t)
+	stale, err := login.rp.Client(t.Context(), login.stub.URL+"/op")
+	if err != nil {
+		t.Fatal(err)
+	}
+	login.issue(t, login.rotate(t), "rotated", login.claims(), nil)
+	if _, err := login.exchange(t, nLogin()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := stale.ExchangeIdentity(t.Context(), nLogin(), "code"); err != nil {
+		t.Fatalf("the stale client: %v", err)
+	}
+	if n := login.refetches(); n != 1 {
+		t.Errorf("%d refetches", n)
+	}
+}
+
 // gemSpec_IDP_FD A_22861 speaks of an unknown key: a signature that does not verify under a known kid is refused and
 // refetches nothing.
 func TestA_22861_AnUnknownKIDRefetchesOnce_ABrokenSignatureDoesNot(t *testing.T) {
@@ -423,27 +565,48 @@ func TestA_23207_AVersionNeitherSideListsIsRefused(t *testing.T) {
 	}
 }
 
-// Servers rule 14: the personal claims of an identity never reach a log or an error by formatting, while what tells
-// how and where the person logged in does.
+// hostSession is how a host might hold an identity in its own exported struct.
+type hostSession struct {
+	ID       string
+	Identity Identity
+	Person   *Personal
+}
+
+// Servers rule 14: the personal claims of an identity never reach a log or an error by formatting, also inside a
+// host's struct, a map or a slice, while what tells how and where the person logged in does.
 func TestServerRule14_AnIdentityDoesNotLogItsPersonalClaims(t *testing.T) {
 	identity := &Identity{
-		Issuer: "https://idp.example", Subject: "subject-7f3a", ID: "X110411675", DisplayName: "Erika Mustermann-Display",
-		GivenName: "ErikaGiven", FamilyName: "MustermannFamily", Birthdate: "1964-08-12",
-		Profession: "1.2.276.0.76.4.49", Organization: "109500969", ACR: LoAHigh, AMR: []string{"urn:telematik:auth:eGK"},
-		AuthTime: time.Date(2026, 11, 15, 8, 0, 0, 0, time.UTC), IDTokenVersion: "2.0.0", Scopes: []string{"openid", "urn:telematik:versicherter"},
+		Issuer: "https://idp.example", Profession: "1.2.276.0.76.4.49", Organization: "109500969", ACR: LoASubstantial,
+		AMR: []string{"urn:telematik:auth:eGK"}, AuthTime: time.Date(2026, 11, 15, 8, 0, 0, 0, time.UTC), IDTokenVersion: "2.0.0",
+		Consent: []string{"loa-substantial"}, Interactive: "silent", Scopes: []string{"openid", "urn:telematik:versicherter"},
+		Personal: Personal{
+			Subject: "subject-7f3a", ID: "X110411675", DisplayName: "Erika Mustermann-Display", GivenName: "ErikaGiven",
+			FamilyName: "MustermannFamily", Birthdate: "1964-08-12",
+		},
 	}
-	personal := []string{identity.Subject, identity.ID, identity.DisplayName, identity.GivenName, identity.FamilyName, identity.Birthdate}
-	shown := []string{identity.Issuer, identity.Profession, identity.Organization, identity.ACR, identity.AMR[0], "2026-11-15T08:00:00Z", identity.IDTokenVersion, "urn:telematik:versicherter"}
+	p := identity.Personal
+	personal := []string{p.Subject, p.ID, p.DisplayName, p.GivenName, p.FamilyName, p.Birthdate}
+	shown := []string{identity.Issuer, identity.Profession, identity.Organization, identity.ACR, identity.AMR[0], "2026-11-15T08:00:00Z", identity.IDTokenVersion, "loa-substantial", "silent", "urn:telematik:versicherter"}
 
+	session := hostSession{ID: "session-1", Identity: *identity, Person: &identity.Personal}
+	values := []any{
+		identity, *identity, identity.Personal, &identity.Personal, session, &session,
+		map[string]Identity{"a": *identity},
+		[]Identity{*identity},
+		[]Personal{identity.Personal},
+	}
 	var outputs []string
 	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
-		outputs = append(outputs, fmt.Sprintf(verb, identity), fmt.Sprintf(verb, *identity))
+		for _, value := range values {
+			outputs = append(outputs, fmt.Sprintf(verb, value))
+		}
 	}
-	outputs = append(outputs, identity.String(), fmt.Errorf("login: %v", identity).Error(), fmt.Errorf("login: %v", *identity).Error())
-	var text, structured bytes.Buffer
-	slog.New(slog.NewTextHandler(&text, nil)).Info("login", "identity", identity)
-	slog.New(slog.NewJSONHandler(&structured, nil)).Info("login", "identity", *identity)
-	outputs = append(outputs, text.String(), structured.String())
+	outputs = append(outputs, identity.String(), identity.Personal.String(), fmt.Errorf("login: %v", identity).Error(), fmt.Errorf("login: %+v", session).Error())
+	var text, structured, hosted bytes.Buffer
+	slog.New(slog.NewTextHandler(&text, nil)).Info("login", "identity", identity, "personal", identity.Personal)
+	slog.New(slog.NewJSONHandler(&structured, nil)).Info("login", "identity", *identity, "personal", identity.Personal)
+	slog.New(slog.NewTextHandler(&hosted, nil)).Info("login", "session", session)
+	outputs = append(outputs, text.String(), structured.String(), hosted.String())
 
 	for _, output := range outputs {
 		for _, value := range personal {
@@ -455,47 +618,72 @@ func TestServerRule14_AnIdentityDoesNotLogItsPersonalClaims(t *testing.T) {
 			t.Errorf("%q does not say what is withheld", output)
 		}
 	}
-	for _, output := range []string{identity.String(), text.String(), structured.String()} {
+	for _, output := range []string{identity.String(), text.String(), structured.String(), hosted.String()} {
 		for _, value := range shown {
 			if !strings.Contains(output, value) {
 				t.Errorf("%q lacks %q", output, value)
 			}
 		}
 	}
-	// The fields stay data a host can keep.
+	// json.Marshal is not redacted: the fields stay data a host can keep.
 	stored, err := json.Marshal(identity)
-	if err != nil || !bytes.Contains(stored, []byte(identity.ID)) {
+	if err != nil || !bytes.Contains(stored, []byte(p.ID)) || !bytes.Contains(stored, []byte(p.Subject)) {
 		t.Errorf("JSON %s, %v", stored, err)
 	}
 }
 
 func FuzzIdentity(f *testing.F) {
-	f.Add([]byte(`{"sub":"s","acr":"gematik-ehealth-loa-high","amr":["urn:telematik:auth:eGK"],"auth_time":1700000000,"urn:telematik:claims:id":"X1","birthdate":"1964-08-12"}`))
+	f.Add([]byte(`{"sub":"s","acr":"gematik-ehealth-loa-high","amr":["urn:telematik:auth:eGK"],"auth_time":1700000000,"iat":1700000000,"urn:telematik:claims:id":"X1","birthdate":"1964-08-12"}`))
 	f.Add([]byte(`{"sub":"s","SUB":"t","acr":"x","amr":[],"auth_time":1e999}`))
 	f.Add([]byte(`{"sub":"s\r\nX: y","acr":"gematik-ehealth-loa-high","amr":["a"],"auth_time":1}`))
 	f.Add([]byte("{\"sub\":\"\xff\",\"acr\":\"gematik-ehealth-loa-high\",\"amr\":[\"a\"],\"auth_time\":1}"))
 	f.Add([]byte(`{"sub":"s","acr":"gematik-ehealth-loa-high","amr":["a",null,1],"auth_time":-1,"urn:telematik:claims:display_name":{"x":1}}`))
 	f.Add([]byte(`{"sub":"s","sub":"t","acr":"gematik-ehealth-loa-high","amr":["\u202e"],"auth_time":253402300799.9}`))
+	f.Add([]byte(`{"sub":"s","acr":"gematik-ehealth-loa-substantial","amr":["a"],"iat":1,"aud":["x","y"],"azp":"x","urn:telematik:auth:consent":["loa-substantial"],"urn:telematik:auth:interactive":"silent"}`))
+	login := openid.Login{Nonce: "n", Verifier: testVerifier, ACRValues: []string{LoAHigh, LoASubstantial}, Claims: json.RawMessage(`{"id_token":{"auth_time":{"essential":true}}}`)}
 	f.Fuzz(func(t *testing.T, payload []byte) {
 		identity, err := parseIdentity(payload, "https://op.example", "1.0.0")
 		if err != nil {
+			if len(payload) >= 16 && strings.Contains(err.Error(), string(payload)) {
+				t.Fatalf("the error holds the input: %v", err)
+			}
 			return
 		}
 		texts := []string{
-			identity.Subject, identity.ID, identity.DisplayName, identity.GivenName, identity.FamilyName,
-			identity.Profession, identity.Organization, identity.Birthdate, identity.ACR,
+			identity.Personal.Subject, identity.Personal.ID, identity.Personal.DisplayName, identity.Personal.GivenName,
+			identity.Personal.FamilyName, identity.Personal.Birthdate, identity.Profession, identity.Organization,
+			identity.ACR, identity.Interactive,
 		}
-		texts = append(texts, identity.AMR...)
+		texts = append(append(texts, identity.AMR...), identity.Consent...)
 		for _, text := range texts {
-			if checkText(text, maxTextBytes) != nil {
+			if !utf8.ValidString(text) || len(text) > maxTextBytes || strings.ContainsFunc(text, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 				t.Fatalf("accepted %q", text)
 			}
 		}
-		if identity.Subject == "" || len(identity.AMR) == 0 || len(identity.AMR) > maxAMREntries {
-			t.Fatalf("accepted sub %q, amr %v", identity.Subject, identity.AMR)
+		if identity.Personal.Subject == "" || len(identity.AMR) == 0 || len(identity.AMR) > maxAMREntries {
+			t.Fatalf("accepted sub %q, amr %v", identity.Personal.Subject, identity.AMR)
 		}
-		if identity.AuthTime.Unix() < 0 || identity.AuthTime.Unix() > maxNumericDate {
+		if !identity.AuthTime.IsZero() && (identity.AuthTime.Unix() < 0 || identity.AuthTime.Unix() > maxNumericDate) {
 			t.Fatalf("accepted auth_time %v", identity.AuthTime)
 		}
+		err = checkIdentity(identity, payload, login, "x", time.Unix(1700000000, 0))
+		if err == nil && (identity.ACR != LoAHigh && identity.ACR != LoASubstantial || identity.AuthTime.IsZero()) {
+			t.Fatalf("checkIdentity took acr %q, auth_time %v", identity.ACR, identity.AuthTime)
+		}
 	})
+}
+
+// A text a log or a reader would take for something else is refused: control characters, bidi overrides, zero-width
+// characters and line separators. Internal invariant of checkText, which every text claim passes.
+func TestServerRule14_TextWithControlOrFormatCharactersIsRefused(t *testing.T) {
+	for _, r := range []rune{0, '\r', '\n', 0x7f, 0x85, 0x200b, 0x200d, 0x202e, 0x2066, 0xfeff, 0x2028, 0x2029} {
+		if err := checkText("a"+string(r)+"b", maxTextBytes); err == nil {
+			t.Errorf("U+%04X accepted", r)
+		}
+	}
+	for _, text := range []string{"Erika Mustermann", "Jürgen Weiß-Öztürk", "1.2.276.0.76.4.49", "loa-substantial"} {
+		if err := checkText(text, maxTextBytes); err != nil {
+			t.Errorf("%q: %v", text, err)
+		}
+	}
 }
