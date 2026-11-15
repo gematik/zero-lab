@@ -9,11 +9,11 @@ success or failure only, for decoders that report no reason.
 | Decoder | Profile | Comparison | Passing cases |
 |---|---|---|---|
 | go/pkcs12 (pkcs12.Decode) | modern | full | 30 of 30 |
-| go/pkcs12 (legacy.Decode) | legacy | full | 59 of 59 |
-| rust/ti-pkcs12 | legacy | full | 59 of 59 |
-| OpenSSL 4.1.0 CLI | legacy | coarse | 56 of 59 |
-| pyca/cryptography 50.0.2 | legacy | coarse | 52 of 59 |
-| JDK 21.0.10 KeyStore PKCS12 | legacy | coarse | 39 of 59 |
+| go/pkcs12 (legacy.Decode) | legacy | full | 61 of 61 |
+| rust/ti-pkcs12 | legacy | full | 61 of 61 |
+| OpenSSL 4.1.0 CLI | legacy | coarse | 58 of 61 |
+| pyca/cryptography 50.0.2 | legacy | coarse | 54 of 61 |
+| JDK 21.0.10 KeyStore PKCS12 | legacy | coarse | 39 of 61 |
 
 ## Cases
 
@@ -52,7 +52,7 @@ success or failure only, for decoders that report no reason.
 | mac-iterations-limit | der | ✅ |
 | work-budget-total | der | ✅ |
 
-### go/pkcs12 (legacy.Decode) (profile legacy, full comparison, 59 of 59)
+### go/pkcs12 (legacy.Decode) (profile legacy, full comparison, 61 of 61)
 
 | Case | Encoding | Result |
 |---|---|---|
@@ -96,6 +96,8 @@ success or failure only, for decoders that report no reason.
 | plain-bags | ber | ✅ |
 | keybag-not-privatekeyinfo | der | ✅ |
 | keybag-not-privatekeyinfo | ber | ✅ |
+| keybag-ber-inside | der | ✅ |
+| keybag-ber-inside | ber | ✅ |
 | friendly-names | der | ✅ |
 | friendly-names | ber | ✅ |
 | vendor-cgm | as-is | ✅ |
@@ -116,7 +118,7 @@ success or failure only, for decoders that report no reason.
 | mac-iterations-limit | der | ✅ |
 | work-budget-total | der | ✅ |
 
-### rust/ti-pkcs12 (profile legacy, full comparison, 59 of 59)
+### rust/ti-pkcs12 (profile legacy, full comparison, 61 of 61)
 
 | Case | Encoding | Result |
 |---|---|---|
@@ -160,6 +162,8 @@ success or failure only, for decoders that report no reason.
 | plain-bags | ber | ✅ |
 | keybag-not-privatekeyinfo | der | ✅ |
 | keybag-not-privatekeyinfo | ber | ✅ |
+| keybag-ber-inside | der | ✅ |
+| keybag-ber-inside | ber | ✅ |
 | friendly-names | der | ✅ |
 | friendly-names | ber | ✅ |
 | vendor-cgm | as-is | ✅ |
@@ -180,7 +184,7 @@ success or failure only, for decoders that report no reason.
 | mac-iterations-limit | der | ✅ |
 | work-budget-total | der | ✅ |
 
-### OpenSSL 4.1.0 CLI (profile legacy, coarse comparison, 56 of 59)
+### OpenSSL 4.1.0 CLI (profile legacy, coarse comparison, 58 of 61)
 
 | Case | Encoding | Result |
 |---|---|---|
@@ -224,6 +228,8 @@ success or failure only, for decoders that report no reason.
 | plain-bags | ber | ✅ |
 | keybag-not-privatekeyinfo | der | ✅ |
 | keybag-not-privatekeyinfo | ber | ✅ |
+| keybag-ber-inside | der | ✅ |
+| keybag-ber-inside | ber | ✅ |
 | friendly-names | der | ✅ |
 | friendly-names | ber | ✅ |
 | vendor-cgm | as-is | ✅ |
@@ -244,7 +250,7 @@ success or failure only, for decoders that report no reason.
 | mac-iterations-limit | der | ❌ timeout after 20s |
 | work-budget-total | der | ❌ code "ok", want limit_exceeded |
 
-### pyca/cryptography 50.0.2 (profile legacy, coarse comparison, 52 of 59)
+### pyca/cryptography 50.0.2 (profile legacy, coarse comparison, 54 of 61)
 
 | Case | Encoding | Result |
 |---|---|---|
@@ -288,8 +294,10 @@ success or failure only, for decoders that report no reason.
 | plain-bags | ber | ✅ |
 | keybag-not-privatekeyinfo | der | ✅ |
 | keybag-not-privatekeyinfo | ber | ✅ |
-| friendly-names | der | ❌ key 5cc84740f99e: friendly name "", want "Schlüssel ä" |
-| friendly-names | ber | ❌ key 5cc84740f99e: friendly name "", want "Schlüssel ä" |
+| keybag-ber-inside | der | ✅ |
+| keybag-ber-inside | ber | ✅ |
+| friendly-names | der | ❌ key 6172c3897291: friendly name "", want "Schlüssel ä" |
+| friendly-names | ber | ❌ key 6172c3897291: friendly name "", want "Schlüssel ä" |
 | vendor-cgm | as-is | ❌ key 7e0400d186a4: friendly name "", want "test-cs2" |
 | vendor-secunet | as-is | ❌ key c152053c871d: friendly name "", want "valid_ec" |
 | wrong-password | der | ✅ |
@@ -308,7 +316,7 @@ success or failure only, for decoders that report no reason.
 | mac-iterations-limit | der | ❌ timeout after 20s |
 | work-budget-total | der | ❌ code "ok", want limit_exceeded |
 
-### JDK 21.0.10 KeyStore PKCS12 (profile legacy, coarse comparison, 39 of 59)
+### JDK 21.0.10 KeyStore PKCS12 (profile legacy, coarse comparison, 39 of 61)
 
 | Case | Encoding | Result |
 |---|---|---|
@@ -346,14 +354,16 @@ success or failure only, for decoders that report no reason.
 | ec-key | ber | ✅ |
 | certificates-only | der | ❌ 0 certificates, want 2 |
 | certificates-only | ber | ❌ 0 certificates, want 2 |
-| key-only | der | ❌ key 5cc84740f99e missing |
-| key-only | ber | ❌ key 5cc84740f99e missing |
+| key-only | der | ❌ key 6172c3897291 missing |
+| key-only | ber | ❌ key 6172c3897291 missing |
 | plain-bags | der | ❌ 0 certificates, want 2 |
 | plain-bags | ber | ❌ 0 certificates, want 2 |
 | keybag-not-privatekeyinfo | der | ❌ code "ok", want malformed |
 | keybag-not-privatekeyinfo | ber | ❌ code "ok", want malformed |
-| friendly-names | der | ❌ certificate 73bdd39a51a0: friendly name "schlüssel ä", want "Schlüssel ä" |
-| friendly-names | ber | ❌ certificate 73bdd39a51a0: friendly name "schlüssel ä", want "Schlüssel ä" |
+| keybag-ber-inside | der | ❌ 0 certificates, want 2 |
+| keybag-ber-inside | ber | ❌ 0 certificates, want 2 |
+| friendly-names | der | ❌ certificate 04cd56ba9aeb: friendly name "schlüssel ä", want "Schlüssel ä" |
+| friendly-names | ber | ❌ certificate 04cd56ba9aeb: friendly name "schlüssel ä", want "Schlüssel ä" |
 | vendor-cgm | as-is | ✅ |
 | vendor-secunet | as-is | ✅ |
 | wrong-password | der | ✅ |

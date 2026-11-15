@@ -75,7 +75,7 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | Rule | Requirement |
 |---|---|
 | P12-001 | The input MUST be a PFX: a SEQUENCE of version 3, a ContentInfo authSafe and an optional MacData. Anything else is `malformed`. |
-| P12-002 | A decoder MUST accept DER. *(legacy)* It MUST also accept BER: indefinite lengths, non-minimal definite lengths and constructed strings, in every layer (PFX, authSafe octets, safes, decrypted plaintext). |
+| P12-002 | A decoder MUST accept DER. *(legacy)* It MUST also accept BER: indefinite lengths, non-minimal definite lengths and constructed strings, in every layer: the PFX, the authSafe octets, every safe and the decrypted plaintext of an encrypted safe, each with all it holds, a keyBag's PrivateKeyInfo included. The decrypted plaintext of a shrouded key is not normalised (P12-041). |
 | P12-003 | Bytes after the PFX, and after any structure inside it, are `malformed`. |
 | P12-004 | A decoder MUST bound nesting depth (at least 32 levels accepted) and MUST NOT allocate beyond the input size because of a length field. |
 | P12-005 | *(legacy)* `encryptedContent [0] IMPLICIT OCTET STRING` MUST be accepted in constructed form (a `[0]` holding OCTET STRING segments, joined in order); generic BER conversion cannot do this because only the schema tells that this `[0]` is a string. |
@@ -117,7 +117,7 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | Rule | Requirement |
 |---|---|
 | P12-040 | A certBag with certId x509Certificate yields the DER certificate (the certValue octets, unchanged). Other certificate types are `unsupported_algorithm`. |
-| P12-041 | A pkcs8ShroudedKeyBag yields the decrypted PrivateKeyInfo, a keyBag its PrivateKeyInfo; each is returned only when it is exactly one DER PrivateKeyInfo (RFC 5958: version 0 or 1, AlgorithmIdentifier, non-empty privateKey, attributes [0], publicKey [1] only in version 1, nothing after it), else the decode fails with `malformed`. |
+| P12-041 | A pkcs8ShroudedKeyBag yields the decrypted PrivateKeyInfo, a keyBag its PrivateKeyInfo; each is returned only when it is exactly one DER PrivateKeyInfo (RFC 5958: version 0 or 1, AlgorithmIdentifier, non-empty privateKey, attributes [0], publicKey [1] only in version 1, nothing after it), else the decode fails with `malformed`. The check comes last: a keyBag's PrivateKeyInfo is checked as it stands after the BER→DER normalisation of its SafeContents (P12-002, legacy); a shrouded key is checked as decrypted, without normalisation, so it must be DER. |
 | P12-042 | A safeContentsBag is decoded recursively. |
 | P12-043 | CRL bags, secret bags and unknown bag types are skipped. |
 | P12-044 | The attributes friendlyName (BMPString, decoded as UTF-16 so that surrogate pairs written by Windows survive) and localKeyId (OCTET STRING) are reported per bag. Unknown attributes are ignored. |
@@ -165,13 +165,13 @@ decode(file, password):
       Data          → safe := its OCTET STRING value
       EncryptedData → safe := decrypt(contentEncryptionAlgorithm, encryptedContent) (P12-005, D)
       otherwise     → unsupported_algorithm (P12-035)
-      collect(SafeContents(safe))
+      collect(SafeContents(safe)), legacy: after BER→DER of safe, every layer (P12-002)
  6. pairs := certificates and keys with equal localKeyId (P12-045)
 
 collect(bags): for each bag
       certBag            → X.509 only (P12-040), with attributes (P12-044)
-      pkcs8ShroudedKeyBag → decrypt(EncryptedPrivateKeyInfo), one DER PrivateKeyInfo or malformed (P12-041)
-      keyBag             → one DER PrivateKeyInfo or malformed (P12-041)
+      pkcs8ShroudedKeyBag → decrypt(EncryptedPrivateKeyInfo), not normalised: one DER PrivateKeyInfo or malformed (P12-041)
+      keyBag             → its PrivateKeyInfo as normalised with the safe: one DER PrivateKeyInfo or malformed (P12-041)
       safeContentsBag    → collect(nested) (P12-042)
       otherwise          → skip (P12-043)
 

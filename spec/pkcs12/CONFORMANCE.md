@@ -34,8 +34,11 @@ Each case is written once per encoding:
 
 Negative cases mutate the file as produced, before it is encoded, so a mutation reaches every
 encoding of its case: `truncate`, `append` a byte, `flip` one bit at an offset from the end (inside
-the authSafe), `patch` bytes in place (an OID, a version), or rewrite the MAC iterations
-(`mac-iterations`; MacData lies outside the MAC, so the rest stays valid).
+the authSafe), `patch` bytes in place (an OID, a version), rewrite the MAC iterations
+(`mac-iterations`; MacData lies outside the MAC, so the rest stays valid), or write every keyBag's
+PrivateKeyInfo in BER (`keybag-ber`; the `ber` encoding leaves the octets of the safes as they are,
+so this is the only way BER reaches inside a safe; it changes the authSafe octets, so the case has
+no MAC).
 
 ## Manifest
 

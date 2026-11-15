@@ -625,6 +625,44 @@
       }
     },
     {
+      "id": "keybag-ber-inside",
+      "description": "A keyBag whose PrivateKeyInfo is BER: indefinite lengths, the privateKey OCTET STRING segmented; no MAC",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "profile": "legacy",
+      "openssl": [
+        "-keypbe",
+        "NONE",
+        "-certpbe",
+        "NONE",
+        "-nomac"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "keybag-ber"
+      },
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": null
+      }
+    },
+    {
       "id": "friendly-names",
       "description": "friendlyName attributes with non-ASCII characters",
       "rules": [

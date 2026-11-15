@@ -347,6 +347,8 @@ func mutate(data []byte, m Mutation) ([]byte, error) {
 		return bytes.ReplaceAll(data, find, replace), nil
 	case "mac-iterations":
 		return setMACIterations(data, m.Value)
+	case "keybag-ber":
+		return keyBagsToBER(data)
 	}
 	return nil, fmt.Errorf("unknown mutation %q", m.Kind)
 }
@@ -373,4 +375,67 @@ func setMACIterations(der []byte, iterations int64) ([]byte, error) {
 	}
 	pfx.MacData.Iterations = iterations
 	return asn1.Marshal(pfx)
+}
+
+// oidKeyBagDER is the DER encoding of the keyBag OID (RFC 7292 §4.2.1).
+var oidKeyBagDER = []byte{0x06, 0x0b, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x0c, 0x0a, 0x01, 0x01}
+
+// keyBagsToBER writes the PrivateKeyInfo of every keyBag in BER, as toBER
+// does with a whole file: indefinite lengths, OCTET STRINGs over 512 bytes
+// segmented. toBER leaves the octets of the authSafe and of the safes as they
+// are, so no other case reaches BER inside a keyBag. The rewrite changes the
+// authSafe octets; a case using it has no MAC.
+func keyBagsToBER(der []byte) ([]byte, error) {
+	out, n, err := rewriteKeyBags(der)
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, errors.New("keybag-ber: no keyBag found")
+	}
+	return out, nil
+}
+
+// rewriteKeyBags walks the DER elements of der, and the OCTET STRINGs whose
+// contents are DER elements themselves (the authSafe and its safes), and
+// returns der with each keyBag's value in BER and the number of keyBags.
+func rewriteKeyBags(der []byte) ([]byte, int, error) {
+	var out []byte
+	total := 0
+	for len(der) > 0 {
+		ident, compound, isOctetString, content, size, err := readTLV(der)
+		if err != nil {
+			return nil, 0, err
+		}
+		switch {
+		case compound && bytes.HasPrefix(content, oidKeyBagDER):
+			// SafeBag ::= SEQUENCE { bagId, bagValue [0] EXPLICIT, bagAttributes OPTIONAL }
+			rest := content[len(oidKeyBagDER):]
+			valueIdent, _, _, value, valueSize, err := readTLV(rest)
+			if err != nil {
+				return nil, 0, err
+			}
+			ber, err := toBER(value, 512)
+			if err != nil {
+				return nil, 0, err
+			}
+			bag := append(slices.Clone(oidKeyBagDER), appendTLV(nil, valueIdent, ber)...)
+			bag = append(bag, rest[valueSize:]...)
+			out = appendTLV(out, ident, bag)
+			total++
+		case compound || isOctetString:
+			inner, n, err := rewriteKeyBags(content)
+			if err != nil || n == 0 {
+				// Not DER inside (an OCTET STRING of other content), or nothing to rewrite.
+				out = append(out, der[:size]...)
+				break
+			}
+			out = appendTLV(out, ident, inner)
+			total += n
+		default:
+			out = append(out, der[:size]...)
+		}
+		der = der[size:]
+	}
+	return out, total, nil
 }

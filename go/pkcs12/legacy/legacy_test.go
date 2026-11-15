@@ -209,6 +209,28 @@ func TestP12_041AKeyBagIsAPrivateKeyInfo(t *testing.T) {
 	}
 }
 
+// TestP12_002AKeyBagInBERIsCheckedAndReturnedAsDER: a plain keyBag's
+// PrivateKeyInfo is normalised from BER with its SafeContents, every layer,
+// before P12-041 checks it as DER.
+func TestP12_002AKeyBagInBERIsCheckedAndReturnedAsDER(t *testing.T) {
+	der := unhex(t, "302e 020100 3005 06032b6570 0422 0420"+strings.Repeat("42", 32))
+	for name, value := range map[string][]byte{
+		"DER":                            der,
+		"indefinite AlgorithmIdentifier": unhex(t, "3030 020100 3080 06032b6570 0000 0422 0420"+strings.Repeat("42", 32)),
+		"segmented privateKey":           unhex(t, "3034 020100 3005 06032b6570 2480 0402 0420 0420"+strings.Repeat("42", 32)+"0000"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			bags, err := Decode(conformance.KeyBagFile(t, value), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(bags.PrivateKeys[0].Raw, der) {
+				t.Errorf("key = %x, want %x", bags.PrivateKeys[0].Raw, der)
+			}
+		})
+	}
+}
+
 func ecKeyDER(t *testing.T) []byte {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
