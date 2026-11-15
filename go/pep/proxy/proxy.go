@@ -39,6 +39,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Config configures the proxy server.
@@ -578,9 +579,10 @@ func (s *Server) renderFailure(w http.ResponseWriter, code, description string, 
 // sanitizeReturnTo guards the rd= return-to against open redirects and login loops: a local absolute path
 // that is not one of pep's own /oauth2/* endpoints. Returning into /oauth2/* bounces the browser back into
 // the auth flow instead of the app, and it is how a forward_auth that fails to exclude /oauth2/* accretes an
-// ever-growing rd=/oauth2/start?rd=/oauth2/start?… Anything rejected collapses to "" (callers default to "/").
+// ever-growing rd=/oauth2/start?rd=/oauth2/start?… It must be valid UTF-8 as well, since the session record that
+// keeps it is JSON and would not encode. Anything rejected collapses to "" (callers default to "/").
 func sanitizeReturnTo(rd string) string {
-	if !strings.HasPrefix(rd, "/") || strings.HasPrefix(rd, "//") || strings.HasPrefix(rd, "/\\") {
+	if !utf8.ValidString(rd) || !strings.HasPrefix(rd, "/") || strings.HasPrefix(rd, "//") || strings.HasPrefix(rd, "/\\") {
 		return ""
 	}
 	u, err := url.Parse(rd)

@@ -298,11 +298,27 @@ func TestRFC9700_4_11_1_SanitizeReturnTo(t *testing.T) {
 		// returns into pep's own auth endpoints are rejected — they are how the rd loop grows
 		"/oauth2/start?rd=/oauth2/start?rd=/": "", "/oauth2/start": "", "/oauth2": "",
 		"/oauth2callback": "/oauth2callback", "/foo/../oauth2/start": "",
+		// a return-to that is not UTF-8 cannot be kept in the JSON session record
+		"/\xff": "", "/a\xe4b": "", "/%FF": "/%FF",
 	}
 	for in, want := range cases {
 		if got := sanitizeReturnTo(in); got != want {
 			t.Errorf("sanitizeReturnTo(%q) = %q, want %q", in, got, want)
 		}
+	}
+
+	s := newTestServer(t)
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/start?rd=%2F%FF", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("/oauth2/start?rd=%%2F%%FF = %d, want 302", rec.Code)
+	}
+	sess, err := s.sessions.byState(t.Context(), "test-state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.ReturnTo != "" {
+		t.Errorf("rd=%%2F%%FF kept as %q", sess.ReturnTo)
 	}
 }
 
