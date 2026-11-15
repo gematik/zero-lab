@@ -113,7 +113,10 @@ func providersFromEnv(publicURL string, httpClient *http.Client, documents oidf.
 		config.APIKey = os.Getenv(oidfDevAPIKeyEnv)
 		config.HTTPClient = httpClient
 		config.Documents = documents
-		rp, err := oidf.NewRelyingParty(context.Background(), config, filepath.Dir(rpPath))
+		// Start-up, before any request: the bound keeps a federation master that does not answer from holding it.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		rp, err := oidf.NewRelyingParty(ctx, config, filepath.Dir(rpPath))
+		cancel()
 		if err != nil {
 			log.Fatalf("load oidf relying party: %v", err)
 		}
