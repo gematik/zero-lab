@@ -45,18 +45,16 @@ func TestA_28857_TheStatementLivesAtMostADay(t *testing.T) {
 	}
 }
 
-// OpenID Federation 1.1 section 3: an entity configuration is a statement an entity makes about itself, iss equal to sub.
+// OpenID Federation 1.1 section 3: an entity configuration is a statement an entity makes about itself, iss equal to
+// sub. A hook cannot rename the entity: iss and sub are set after the hooks.
 func TestOIDF_EntityConfiguration_IssEqualsSub(t *testing.T) {
 	rp := newTestRelyingParty(t, nil)
-	if claims := signedClaims(t, rp); claims["iss"] != "https://rp.example" || claims["sub"] != claims["iss"] {
-		t.Errorf("iss %v sub %v", claims["iss"], claims["sub"])
-	}
 	rp.AddEntityStatementHook(func(es *EntityStatement) error {
-		es.Subject = "https://other.example"
+		es.Issuer, es.Subject = "https://other.example", "https://other.example"
 		return nil
 	})
-	if _, err := rp.SignEntityStatement(); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), "iss and sub") {
-		t.Errorf("err = %v", err)
+	if claims := signedClaims(t, rp); claims["iss"] != "https://rp.example" || claims["sub"] != "https://rp.example" {
+		t.Errorf("iss %v sub %v", claims["iss"], claims["sub"])
 	}
 }
 
@@ -90,6 +88,12 @@ func TestServerRule17_AnExtraMemberThatShadowsATypedOneIsRefused(t *testing.T) {
 		},
 		"empty typed member": func(m *Metadata) {
 			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"logo_uri": json.RawMessage(`"https://other.example/logo"`)}
+		},
+		"member in other case": func(m *Metadata) {
+			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"JWKS": json.RawMessage(`{"keys":[]}`)}
+		},
+		"empty member in other case": func(m *Metadata) {
+			m.OpenidRelyingParty.Extra = map[string]json.RawMessage{"Signed_jwks_uri": json.RawMessage(`"https://other.example/jwks"`)}
 		},
 		"federation_entity member": func(m *Metadata) {
 			m.FederationEntity.Extra = map[string]json.RawMessage{"name": json.RawMessage(`"other"`)}
@@ -139,7 +143,7 @@ func TestKeysRule1_NoPrivateKeyPartIsPublished(t *testing.T) {
 				change(es)
 				return nil
 			})
-			if _, err := rp.SignEntityStatement(); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), "private key part") {
+			if _, err := rp.SignEntityStatement(); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), "private") {
 				t.Errorf("err = %v", err)
 			}
 		})
@@ -182,18 +186,102 @@ func TestA_23034_02_JwksOrSignedJwksURINotBoth(t *testing.T) {
 	}
 }
 
-// gemSpec_IDP_FD A_23034-02: optional members a deployment did not configure are left out, not written empty.
-func TestA_23034_02_EmptyOptionalMembersAreNotWritten(t *testing.T) {
-	claims := signedClaims(t, newTestRelyingParty(t, nil))
-	metadata, _ := member(claims, "metadata", "openid_relying_party").(map[string]any)
-	for _, name := range []string{"logo_uri", "organization_name", "signed_jwks_uri", "keywords", "contacts", "ti_features_supported"} {
+// refusedBy signs with the hook given and asserts the refusal names the member.
+func refusedBy(t *testing.T, change func(*EntityStatement), member string) {
+	t.Helper()
+	rp := newTestRelyingParty(t, nil)
+	rp.AddEntityStatementHook(func(es *EntityStatement) error {
+		change(es)
+		return nil
+	})
+	if signed, err := rp.SignEntityStatement(); !errors.Is(err, ErrEntityStatement) || !strings.Contains(err.Error(), member) {
+		t.Errorf("signed %d bytes, err = %v", len(signed), err)
+	}
+}
+
+// gemSpec_IDP_FD A_23034-02 Tabelle 4: the openid_relying_party metadata is there, with client_name and
+// organization_name in the Wertebereich ^[ à-üÀ-Ü ß\w\ \-\.\+\*\/]{1,128}$, keywords naming the product type and its
+// version, and a contact. A statement without them is not signed.
+func TestA_23034_02_ARelyingPartyWithoutTheRequiredMembersIsRefused(t *testing.T) {
+	for name, test := range map[string]struct {
+		change func(*OpenIDRelyingPartyMetadata)
+		member string
+	}{
+		"empty client_name":             {func(m *OpenIDRelyingPartyMetadata) { m.ClientName = "" }, "client_name"},
+		"client_name with a colon":      {func(m *OpenIDRelyingPartyMetadata) { m.ClientName = "https://rp.example" }, "client_name"},
+		"client_name too long":          {func(m *OpenIDRelyingPartyMetadata) { m.ClientName = strings.Repeat("ä", 129) }, "client_name"},
+		"no organization_name":          {func(m *OpenIDRelyingPartyMetadata) { m.OrganizationName = "" }, "organization_name"},
+		"organization_name with U+2028": {func(m *OpenIDRelyingPartyMetadata) { m.OrganizationName = "Société\u2028" }, "organization_name"},
+		"no keywords":                   {func(m *OpenIDRelyingPartyMetadata) { m.Keywords = nil }, "product_type:"},
+		"no product type version":       {func(m *OpenIDRelyingPartyMetadata) { m.Keywords = []string{"product_type:zero-lab"} }, "product_type_version:"},
+		"an empty product type":         {func(m *OpenIDRelyingPartyMetadata) { m.Keywords = []string{"product_type:", "product_type_version:1"} }, "product_type:"},
+		"no contacts":                   {func(m *OpenIDRelyingPartyMetadata) { m.Contacts = nil }, "contacts"},
+		"neither jwks nor the URI":      {func(m *OpenIDRelyingPartyMetadata) { m.Jwks = nil }, "signed_jwks_uri"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			refusedBy(t, func(es *EntityStatement) { test.change(es.Metadata.OpenidRelyingParty) }, test.member)
+		})
+	}
+	t.Run("no openid_relying_party", func(t *testing.T) {
+		refusedBy(t, func(es *EntityStatement) { es.Metadata.OpenidRelyingParty = nil }, "openid_relying_party")
+	})
+}
+
+// The Wertebereich of Tabelle 4 names umlauts and ß beside ASCII word characters.
+func TestA_23034_02_UmlautsAndSharpSAreInTheWertebereich(t *testing.T) {
+	rp := newTestRelyingParty(t, func(cfg *RelyingPartyConfig) {
+		cfg.RelyingParty.ClientName = "Größe Äöü-Dienst +*/."
+		cfg.RelyingParty.OrganizationName = "Straße Müller GmbH"
+	})
+	if claims := signedClaims(t, rp); member(claims, "metadata", "openid_relying_party", "client_name") != "Größe Äöü-Dienst +*/." {
+		t.Errorf("client_name = %v", member(claims, "metadata", "openid_relying_party", "client_name"))
+	}
+}
+
+// gemSpec_IDP_FD A_27505: ti_features_supported names the ID token versions supported, from "1.0.0" and "2.0.0".
+func TestA_27505_TIFeaturesSupportedIsRequired(t *testing.T) {
+	for name, features := range map[string]*TIFeatures{
+		"missing":       nil,
+		"empty":         {},
+		"other version": {IDTokenVersionSupported: []string{"3.0.0"}},
+		"twice":         {IDTokenVersionSupported: []string{"1.0.0", "1.0.0"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			refusedBy(t, func(es *EntityStatement) { es.Metadata.OpenidRelyingParty.TIFeaturesSupported = features }, "id_token_version_supported")
+		})
+	}
+}
+
+// gemSpec_IDP_FD A_23034-02 Tabelle 3: the statement's jwks holds the signing key only; A_23196: every published key
+// is a public P-256 key.
+func TestA_23034_02_JwksHoldsTheSigningKeyOnly(t *testing.T) {
+	refusedBy(t, func(es *EntityStatement) {
+		es.Jwks.Keys.Keys = append(es.Jwks.Keys.Keys, jose.JSONWebKey{Key: []byte("0123456789abcdef"), KeyID: "oct"})
+	}, "private key")
+	refusedBy(t, func(es *EntityStatement) {
+		es.Jwks.Keys.Keys = append(es.Jwks.Keys.Keys, jose.JSONWebKey{Key: newTestKey(t).Public(), KeyID: "next", Use: "sig"})
+	}, "another key than the signing key")
+	refusedBy(t, func(es *EntityStatement) {
+		keys := es.Metadata.OpenidRelyingParty.Jwks.Keys
+		keys.Keys = append(keys.Keys, jose.JSONWebKey{Key: []byte("0123456789abcdef"), KeyID: "oct"})
+	}, "openid_relying_party jwks")
+}
+
+// gemSpec_IDP_FD A_23034-02: logo_uri, the one optional member a deployment may leave out, is not written empty.
+func TestA_23034_02_AnOptionalMemberLeftOutIsNotWritten(t *testing.T) {
+	metadata, _ := member(signedClaims(t, newTestRelyingParty(t, nil)), "metadata", "openid_relying_party").(map[string]any)
+	for _, name := range []string{"logo_uri", "signed_jwks_uri"} {
 		if value, ok := metadata[name]; ok {
 			t.Errorf("%s = %v", name, value)
 		}
 	}
-	if entity, _ := member(claims, "metadata", "federation_entity").(map[string]any); len(entity) != 0 {
-		t.Errorf("federation_entity = %v", entity)
-	}
+}
+
+// A statement too large for a member to take is not signed. Internal invariant of signing, servers.md rule 2.
+func TestServerRule2_AStatementLargerThanItsBoundIsRefused(t *testing.T) {
+	refusedBy(t, func(es *EntityStatement) {
+		es.Metadata.Extra = map[string]json.RawMessage{"large": json.RawMessage(`"` + strings.Repeat("x", maxStatementBytes) + `"`)}
+	}, "more than")
 }
 
 // gemSpec_IDP_FD A_23034-02 Tabelle 4 and A_27505: keywords, contacts, organization_name and ti_features_supported are

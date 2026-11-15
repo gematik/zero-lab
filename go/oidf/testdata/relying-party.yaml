@@ -8,8 +8,14 @@ client_key: { key_pem_path: client.pem, cert_pem_path: client-cert.pem }
 
 relying_party:
   client_name: Zero Trust Lab
+  organization_name: gematik GmbH
   redirect_uris:
     - https://rp.example.com/callback
+  # gemSpec_IDP_FD A_23034-02 and A_27505 require these of every registered relying party.
+  keywords: ["product_type:zero-lab", "product_type_version:0.0.0"]
+  contacts: [support@example.invalid]
+  # 2.0.0 only once the ID token of version 2.0.0 is read.
+  ti_features_supported: { id_token_version_supported: ["1.0.0"] }
 
 federation_entity:
   name: Zero Trust Lab

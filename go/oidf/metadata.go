@@ -58,7 +58,8 @@ func (m *FederationEntityMetadata) MarshalJSON() ([]byte, error) {
 
 // withExtra marshals the typed value of the object named where and adds the extra members. An extra member that
 // shadows a typed one, even one left out as empty, is an error, and so is one that is not valid JSON: what is signed
-// has to be what the typed fields say.
+// has to be what the typed fields say. Names are compared without case, as encoding/json matches them when it reads
+// the statement back.
 func withExtra(value any, extra map[string]json.RawMessage, where string) ([]byte, error) {
 	data, err := json.Marshal(value)
 	if err != nil || len(extra) == 0 {
@@ -70,7 +71,7 @@ func withExtra(value any, extra map[string]json.RawMessage, where string) ([]byt
 	}
 	typed := memberNames(reflect.TypeOf(value).Elem())
 	for name, raw := range extra {
-		if slices.Contains(typed, name) {
+		if slices.ContainsFunc(typed, func(member string) bool { return strings.EqualFold(member, name) }) {
 			return nil, fmt.Errorf("%w: %s member %q shadows a typed member", ErrEntityStatement, where, name)
 		}
 		if !json.Valid(raw) {

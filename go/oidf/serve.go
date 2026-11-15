@@ -25,6 +25,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -37,8 +38,12 @@ const (
 	// refreshAfter is how long a signed statement is served before it is signed anew, well inside its lifetime of
 	// maxStatementLifetime, so that a signer that fails for a while costs nothing a verifier sees.
 	refreshAfter = time.Hour
-	// refreshTimeout bounds a re-signing that a request started.
+	// refreshTimeout is the context deadline of a signing a request started. The hooks and the signer take no
+	// context, so it is checked between them; a Keys.Sign that hangs is bounded by its own timeouts only.
 	refreshTimeout = 5 * time.Second
+	// retryBackoff is how long, after a signing that a request started has failed, requests are answered with the last
+	// statement before one tries again, so that a failing signer or hook is not called at the rate of requests.
+	retryBackoff = time.Minute
 	// maxCacheAge bounds the max-age a cache is told to keep a response.
 	maxCacheAge = time.Hour
 
@@ -82,6 +87,7 @@ func (rp *RelyingParty) sign(ctx context.Context) error {
 	}
 	rp.statement.Store(statement)
 	rp.jwks.Store(jwks)
+	rp.retryAt.Store(0)
 	return nil
 }
 
@@ -106,8 +112,12 @@ func (rp *RelyingParty) signBoth(ctx context.Context) (statement, jwks *served, 
 
 // Refresh signs the entity statement and the signed JWK Set anew and serves them from now on. A host calls it when what
 // its hooks add has changed: gemSpec_IDP_FedMaster A_28857 asks for a new statement on every change. It waits for a
-// signing in flight while ctx lets it. On an error the statement served before stays.
+// signing in flight while ctx lets it, and does not wait for retryBackoff. On an error the statement served before
+// stays.
 func (rp *RelyingParty) Refresh(ctx context.Context) error {
+	if rp.signing == nil {
+		return errors.New("a relying party not built by New does not sign")
+	}
 	select {
 	case rp.signing <- struct{}{}:
 	case <-ctx.Done():
@@ -117,16 +127,22 @@ func (rp *RelyingParty) Refresh(ctx context.Context) error {
 	return rp.sign(ctx)
 }
 
-// dueForSigning reports whether the served documents are missing, old enough to be signed anew, or lack a hook.
+// dueForSigning reports whether the served documents are missing, old enough to be signed anew, or lack a hook, and
+// no failed signing asks to wait.
 func (rp *RelyingParty) dueForSigning(now time.Time) bool {
 	statement, jwks := rp.statement.Load(), rp.jwks.Load()
-	return statement == nil || jwks == nil || rp.stale.Load() ||
-		!now.Before(statement.refreshAt) || !now.Before(jwks.refreshAt)
+	if statement == nil || jwks == nil {
+		return true
+	}
+	if now.UnixNano() < rp.retryAt.Load() {
+		return false
+	}
+	return rp.stale.Load() || !now.Before(statement.refreshAt) || !now.Before(jwks.refreshAt)
 }
 
 // refreshFromRequest re-signs on the request that found the documents due, unless another one does already: that one
 // and every other request meanwhile are answered with what is served, which stays valid until its exp. The signing
-// does not end when the client hangs up, as it serves all requests after it, but it is bounded by refreshTimeout.
+// does not end when the client hangs up, as it serves all requests after it. A failure is retried after retryBackoff.
 func (rp *RelyingParty) refreshFromRequest(request context.Context) {
 	select {
 	case rp.signing <- struct{}{}:
@@ -139,7 +155,12 @@ func (rp *RelyingParty) refreshFromRequest(request context.Context) {
 	}
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(request), refreshTimeout)
 	defer cancel()
-	if err := rp.sign(ctx); err != nil && rp.cfg != nil && rp.cfg.Logger != nil {
+	err := rp.sign(ctx)
+	if err == nil {
+		return
+	}
+	rp.retryAt.Store(rp.now().Add(retryBackoff).UnixNano())
+	if rp.cfg != nil && rp.cfg.Logger != nil {
 		rp.cfg.Logger.LogAttrs(ctx, slog.LevelError, "signing the entity statement anew failed; the last one is served until it expires",
 			slog.Any("error", err))
 	}

@@ -48,6 +48,10 @@ func TestARelyingPartyFileLoads(t *testing.T) {
 	if len(cfg.RelyingParty.RedirectURIs) == 0 {
 		t.Error("redirect_uris empty")
 	}
+	if rp := cfg.RelyingParty; len(rp.Keywords) != 2 || len(rp.Contacts) != 1 || rp.OrganizationName == "" ||
+		rp.TIFeaturesSupported == nil || len(rp.TIFeaturesSupported.IDTokenVersionSupported) != 1 {
+		t.Errorf("the members gemSpec_IDP_FD A_23034-02 and A_27505 require did not load: %+v", rp)
+	}
 	if cfg.SignKey.KeyPEMPath == "" {
 		t.Errorf("sign_key.key_pem_path = %q", cfg.SignKey.KeyPEMPath)
 	}

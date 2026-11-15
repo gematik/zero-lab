@@ -414,17 +414,7 @@ func TestA_23049_AnIDTokenThatDoesNotHoldIsRefused(t *testing.T) {
 }
 
 func TestSignEntityStatementVerifiesAgainstItsPublishedKey(t *testing.T) {
-	key := newTestKey(t)
-	rp := &RelyingParty{
-		cfg:  &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
-		keys: Keys{Sign: key, SignKID: "sign-kid"},
-		entityStatement: &EntityStatement{
-			Issuer:   "https://rp.example",
-			Subject:  "https://rp.example",
-			Jwks:     &Jwks{Keys: keySetOf(key, "sign-kid")},
-			Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{}},
-		},
-	}
+	rp := literalRelyingParty(t, newTestKey(t))
 	signed, err := rp.SignEntityStatement()
 	if err != nil {
 		t.Fatal(err)
@@ -828,7 +818,7 @@ func testRelyingPartyConfig(t *testing.T, stub *federationStub) *RelyingPartyCon
 		SignKey:      KeyConfig{KeyPEMPath: keyPath("sign.pem")},
 		EncKey:       KeyConfig{KeyPEMPath: keyPath("enc.pem")},
 		ClientKey:    KeyConfig{KeyPEMPath: clientKey, CertPEMPath: certPath},
-		RelyingParty: RelyingPartyMetadata{ClientName: "rp", RedirectURIs: []string{"https://rp.example/cb"}},
+		RelyingParty: testRelyingPartyMetadata(),
 		HTTPClient:   stub.Client(),
 		Documents:    NewMemoryDocuments(16, nil),
 	}

@@ -86,11 +86,8 @@ func TestNewRelyingParty(t *testing.T) {
 		SignKey:      KeyConfig{KeyPEMPath: signKeyPath},
 		EncKey:       KeyConfig{KeyPEMPath: encKeyPath},
 		ClientKey:    KeyConfig{KeyPEMPath: clientKeyPath, CertPEMPath: clientCertPath},
-		RelyingParty: RelyingPartyMetadata{
-			ClientName:   "https://example.com",
-			RedirectURIs: []string{"https://example.com/callback"},
-		},
-		Documents: NewMemoryDocuments(16, nil),
+		RelyingParty: testRelyingPartyMetadata(),
+		Documents:    NewMemoryDocuments(16, nil),
 	}
 
 	es, err := NewRelyingParty(t.Context(), cfg, "")

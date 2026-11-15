@@ -97,7 +97,8 @@ type RelyingPartyConfig struct {
 	// programmatically, and required.
 	Documents Documents `yaml:"-"`
 
-	// Logger receives the failures of Documents, which cost a fetch and nothing else. Not serialized; supplied
+	// Logger receives the failures of Documents, which cost a fetch and nothing else, and the failures of signing the
+	// entity statement anew, after which the last one is served until it expires. Not serialized; supplied
 	// programmatically. When nil, such failures are dropped silently.
 	Logger *slog.Logger `yaml:"-"`
 }
@@ -177,6 +178,9 @@ type RelyingParty struct {
 	signing chan struct{}
 	// stale is set when a hook was added after the last signing.
 	stale atomic.Bool
+	// retryAt, in Unix nanoseconds, is when a request may try again after a failed signing; zero after a success.
+	// Written only by the holder of the signing token.
+	retryAt atomic.Int64
 }
 
 // Validate reports a missing required field. What needs I/O is checked when the keys are loaded.
@@ -401,6 +405,9 @@ func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
 		return nil, err
 	}
 	issuedAt := now.Add(-statementBackdate)
+	// An entity configuration names its entity as issuer and subject (OpenID Federation 1.1 section 3); a hook
+	// renames nothing.
+	es.Issuer, es.Subject = rp.cfg.Subject, rp.cfg.Subject
 	es.IssuedAt = issuedAt.Unix()
 	es.ExpiresAt = issuedAt.Add(maxStatementLifetime).Unix()
 	es.AuthorityHints = []string{rp.cfg.FedMasterURL}
@@ -414,33 +421,6 @@ func (rp *RelyingParty) signEntityStatement(now time.Time) ([]byte, error) {
 	return rp.signPayload("entity-statement+jwt", payload)
 }
 
-// checkStatement refuses a statement that others could not take for this relying party's entity configuration: it
-// names itself as issuer and subject (OpenID Federation 1.1 section 3), its jwks holds the key it is signed with under
-// the header's kid, and its openid_relying_party metadata has jwks or signed_jwks_uri, not both (gemSpec_IDP_FD
-// A_23034-02).
-func (rp *RelyingParty) checkStatement(es *EntityStatement) error {
-	if es.Issuer == "" || es.Issuer != es.Subject {
-		return fmt.Errorf("%w: iss and sub differ", ErrEntityStatement)
-	}
-	if es.Jwks == nil || es.Jwks.Keys == nil {
-		return fmt.Errorf("%w: no jwks", ErrEntityStatement)
-	}
-	published := es.Jwks.Keys.Key(rp.keys.SignKID)
-	if len(published) != 1 {
-		return fmt.Errorf("%w: jwks does not hold the signing key's kid exactly once", ErrEntityStatement)
-	}
-	public, ok := published[0].Key.(interface{ Equal(crypto.PublicKey) bool })
-	if !ok || isNil(rp.keys.Sign) || !public.Equal(rp.keys.Sign.Public()) {
-		return fmt.Errorf("%w: jwks holds another key under the signing key's kid", ErrEntityStatement)
-	}
-	if es.Metadata != nil && es.Metadata.OpenidRelyingParty != nil {
-		if metadata := es.Metadata.OpenidRelyingParty; metadata.Jwks != nil && metadata.SignedJwksURI != "" {
-			return fmt.Errorf("%w: openid_relying_party has both jwks and signed_jwks_uri", ErrEntityStatement)
-		}
-	}
-	return nil
-}
-
 // signedJwksClaims keep the shape registered parties get today: a whole JWK Set under "keys", so the array sits at
 // keys.keys rather than at the top level of the payload.
 type signedJwksClaims struct {
@@ -452,6 +432,9 @@ type signedJwksClaims struct {
 
 // signJwks returns the ID token and client keys as a signed JWK Set, with the lifetime of the statement.
 func (rp *RelyingParty) signJwks(now time.Time) ([]byte, error) {
+	if err := checkPublicKeys(rp.relyingPartyKeys, "the signed JWKS"); err != nil {
+		return nil, err
+	}
 	issuedAt := now.Add(-statementBackdate)
 	payload, err := json.Marshal(signedJwksClaims{
 		Issuer:    rp.entityStatement.Subject,
@@ -467,10 +450,13 @@ func (rp *RelyingParty) signJwks(now time.Time) ([]byte, error) {
 
 // signPayload signs the payload as a compact JWT with the signing key, under its kid and the given typ. The key signs
 // through crypto.Signer, so it may be an HSM's, and only ES256 (A_23196). A payload with a member named d at any depth
-// is refused, so that no private key part is ever published.
+// is refused, so that no private key part is ever published, and so is one larger than maxStatementBytes.
 func (rp *RelyingParty) signPayload(typ string, payload []byte) ([]byte, error) {
 	if isNil(rp.keys.Sign) {
 		return nil, errors.New("no signing key")
+	}
+	if len(payload) > maxStatementBytes {
+		return nil, fmt.Errorf("%w: %d bytes, more than %d", ErrEntityStatement, len(payload), maxStatementBytes)
 	}
 	private, err := hasMemberD(payload)
 	if err != nil {

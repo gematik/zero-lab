@@ -92,23 +92,23 @@ type OpenIDProviderMetadata struct {
 type OpenIDRelyingPartyMetadata struct {
 	SignedJwksURI                      string      `json:"signed_jwks_uri,omitempty"`
 	Jwks                               *Jwks       `json:"jwks,omitempty"`
-	OrganizationName                   string      `json:"organization_name,omitempty"`
+	OrganizationName                   string      `json:"organization_name"`
 	ClientName                         string      `json:"client_name"`
 	LogoURI                            string      `json:"logo_uri,omitempty"`
-	Keywords                           []string    `json:"keywords,omitempty"`
-	Contacts                           []string    `json:"contacts,omitempty"`
+	Keywords                           []string    `json:"keywords"`
+	Contacts                           []string    `json:"contacts"`
 	RedirectURIs                       []string    `json:"redirect_uris"`
 	ResponseTypes                      []string    `json:"response_types"`
 	ClientRegistrationTypes            []string    `json:"client_registration_types"`
 	GrantTypes                         []string    `json:"grant_types"`
 	RequirePushedAuthorizationRequests bool        `json:"require_pushed_authorization_requests"`
 	TokenEndpointAuthMethod            string      `json:"token_endpoint_auth_method"`
-	DefaultACRValues                   []string    `json:"default_acr_values,omitempty"`
+	DefaultACRValues                   []string    `json:"default_acr_values"`
 	IDTokenSignedResponseAlg           string      `json:"id_token_signed_response_alg"`
 	IDTokenEncryptedResponseAlg        string      `json:"id_token_encrypted_response_alg"`
 	IDTokenEncryptedResponseEnc        string      `json:"id_token_encrypted_response_enc"`
 	Scope                              string      `json:"scope"`
-	TIFeaturesSupported                *TIFeatures `json:"ti_features_supported,omitempty"`
+	TIFeaturesSupported                *TIFeatures `json:"ti_features_supported"`
 	// Extra holds further members by name. It is written beside the typed members and never filled from a parsed
 	// statement.
 	Extra map[string]json.RawMessage `json:"-"`

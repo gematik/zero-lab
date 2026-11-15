@@ -119,15 +119,7 @@ func newTestKeys(t *testing.T) Keys {
 
 func TestKeysRule1_AnHSMSignerSignsTheStatement(t *testing.T) {
 	key := newTestKey(t)
-	rp := &RelyingParty{
-		cfg:  &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
-		keys: Keys{Sign: hsmSigner{key}, SignKID: "sign-kid"},
-		entityStatement: &EntityStatement{
-			Issuer: "https://rp.example", Subject: "https://rp.example",
-			Jwks:     &Jwks{Keys: keySetOf(key, "sign-kid")},
-			Metadata: &Metadata{OpenidRelyingParty: &OpenIDRelyingPartyMetadata{}},
-		},
-	}
+	rp := literalRelyingParty(t, hsmSigner{key})
 	signed, err := rp.SignEntityStatement()
 	if err != nil {
 		t.Fatal(err)

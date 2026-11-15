@@ -22,11 +22,47 @@
 package oidf
 
 import (
+	"crypto"
 	"encoding/json"
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/go-jose/go-jose/v4"
 )
+
+// testRelyingPartyMetadata is what a registered relying party configures (gemSpec_IDP_FD A_23034-02, A_27505).
+func testRelyingPartyMetadata() RelyingPartyMetadata {
+	return RelyingPartyMetadata{
+		ClientName:          "rp",
+		OrganizationName:    "Example",
+		RedirectURIs:        []string{"https://rp.example/cb"},
+		Keywords:            []string{"product_type:zero-lab", "product_type_version:0.0.0"},
+		Contacts:            []string{"support@example.invalid"},
+		TIFeaturesSupported: &TIFeatures{IDTokenVersionSupported: []string{"1.0.0"}},
+	}
+}
+
+// literalRelyingParty is a relying party that signs with signer and needs no federation, for tests of signing alone.
+func literalRelyingParty(tb testing.TB, signer crypto.Signer) *RelyingParty {
+	tb.Helper()
+	cfg := &RelyingPartyConfig{Subject: "https://rp.example", FedMasterURL: "https://fedmaster.example", RelyingParty: testRelyingPartyMetadata()}
+	relyingPartyKeys := keySetOf(newTestKey(tb), "enc-kid")
+	metadata := cfg.buildMetadata()
+	metadata.OpenidRelyingParty.Jwks = &Jwks{Keys: relyingPartyKeys}
+	return &RelyingParty{
+		cfg:  cfg,
+		keys: Keys{Sign: signer, SignKID: "sign-kid"},
+		entityStatement: &EntityStatement{
+			Issuer:   cfg.Subject,
+			Subject:  cfg.Subject,
+			Jwks:     &Jwks{Keys: &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: signer.Public(), KeyID: "sign-kid", Algorithm: "ES256", Use: "sig"}}}},
+			Metadata: metadata,
+		},
+		relyingPartyKeys: relyingPartyKeys,
+		signing:          make(chan struct{}, 1),
+	}
+}
 
 // newTestRelyingParty is a relying party built by New against a federation stub, with the config changed first.
 func newTestRelyingParty(t *testing.T, change func(*RelyingPartyConfig)) *RelyingParty {
@@ -72,10 +108,7 @@ func member(claims map[string]any, path ...string) any {
 // The hook runs on a deep copy: what it appends to slices and Extra maps does not accumulate across signings, and the
 // relying party's own statement is untouched. Internal invariant of AddEntityStatementHook.
 func TestEntityStatementHook(t *testing.T) {
-	rp := newTestRelyingParty(t, func(cfg *RelyingPartyConfig) {
-		cfg.RelyingParty.Keywords = []string{"product_type:example"}
-		cfg.RelyingParty.Contacts = []string{"support@rp.example"}
-	})
+	rp := newTestRelyingParty(t, nil)
 	const injected = "https://product.example/as-cb"
 	rp.AddEntityStatementHook(func(es *EntityStatement) error {
 		metadata := es.Metadata.OpenidRelyingParty
@@ -104,7 +137,7 @@ func TestEntityStatementHook(t *testing.T) {
 		}
 	}
 	base := rp.entityStatement.Metadata
-	if len(base.OpenidRelyingParty.RedirectURIs) != 1 || len(base.OpenidRelyingParty.Keywords) != 1 ||
+	if len(base.OpenidRelyingParty.RedirectURIs) != 1 || len(base.OpenidRelyingParty.Keywords) != 2 ||
 		len(base.OpenidRelyingParty.Contacts) != 1 || base.OpenidRelyingParty.Extra != nil || base.Extra != nil {
 		t.Errorf("base entity statement mutated by hook: %+v", base.OpenidRelyingParty)
 	}
@@ -136,6 +169,8 @@ func TestEntityStatementHook_AddsAWholeEntityType(t *testing.T) {
 	}
 }
 
+// A hook that fails fails the signing, and nothing half-built is signed. Internal invariant of AddEntityStatementHook,
+// servers.md rule 16.
 func TestEntityStatementHook_AFailingHookFailsSigning(t *testing.T) {
 	rp := newTestRelyingParty(t, nil)
 	refused := errors.New("registry unavailable")

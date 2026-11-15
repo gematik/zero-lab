@@ -38,9 +38,11 @@ import (
 
 // Keys are the relying party's private keys, as functions: a key in an HSM serves as well as one in memory, and no
 // private key part passes through this package (keys.md rule 1). gemSpec_IDP_FD A_23196 allows only P-256 keys for
-// TLS authentication, ID token encryption and the entity statement's signature.
+// TLS authentication, ID token encryption and the entity statement's signature. A_28208 asks for kids in the UUIDv7
+// format for newly created keys; the kids are taken as the host gives them.
 type Keys struct {
-	// Sign signs the entity statement and the signed JWKS, ES256 only.
+	// Sign signs the entity statement and the signed JWKS, ES256 only. A crypto.Signer takes no context, so Sign
+	// bounds its own operations (an HSM client's timeouts): a Sign that hangs holds up every signing after it.
 	Sign    crypto.Signer
 	SignKID string
 	// Decrypt agrees the content key of the ID token, ECDH-ES with A256GCM only (A_23194, A_23195).

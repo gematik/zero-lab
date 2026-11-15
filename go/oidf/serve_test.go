@@ -256,8 +256,45 @@ func TestServerRule16_AFailingSignerServesTheLastStatementUntilItsExpThen503(t *
 		}
 	}
 	fixture.signer.failing.Store(false)
+	fixture.clock.Advance(retryBackoff)
 	if bytes.Equal(fixture.statement(t), first) {
 		t.Error("not signed anew once the signer is back")
+	}
+}
+
+// Servers rule 24: a failing signer is not called at the rate of requests. After a failed signing, requests get the
+// last statement for retryBackoff; then one tries again.
+func TestServerRule24_AFailingSignerIsRetriedAfterABackoff(t *testing.T) {
+	fixture := newServingFixture(t)
+	fixture.signer.failing.Store(true)
+	fixture.clock.Advance(refreshAfter)
+	var wait sync.WaitGroup
+	for range 1000 {
+		wait.Go(func() {
+			if recorder := fixture.get(fixture.rp.Serve, http.MethodGet, nil); recorder.Code != http.StatusOK {
+				t.Errorf("status = %d", recorder.Code)
+			}
+		})
+	}
+	wait.Wait()
+	if n := fixture.signer.count.Load() - 2; n > 2 {
+		t.Errorf("%d signatures asked for by 1000 requests", n)
+	}
+	logLines := func() int { return strings.Count(fixture.logs.String(), "\n") }
+	if n := logLines(); n != 1 {
+		t.Errorf("%d log lines", n)
+	}
+	before := fixture.signer.count.Load()
+	fixture.clock.Advance(retryBackoff - time.Second)
+	fixture.statement(t)
+	if fixture.signer.count.Load() != before {
+		t.Error("tried again within retryBackoff")
+	}
+	fixture.clock.Advance(time.Second)
+	fixture.statement(t)
+	fixture.statement(t)
+	if n := fixture.signer.count.Load() - before; n != 1 || logLines() != 2 {
+		t.Errorf("%d attempts and %d log lines after retryBackoff", n, logLines())
 	}
 }
 
@@ -552,20 +589,7 @@ func TestFEDM_FD_REG_005_TheSigningKeyIsAP256KeyWithUse(t *testing.T) {
 
 // BenchmarkServe measures a request for the entity statement, which signs nothing once the statement is signed.
 func BenchmarkServe(b *testing.B) {
-	key := newTestKey(b)
-	rp := &RelyingParty{
-		cfg:  &RelyingPartyConfig{FedMasterURL: "https://fedmaster.example"},
-		keys: Keys{Sign: key, SignKID: "sign-kid"},
-		entityStatement: &EntityStatement{
-			Issuer: "https://rp.example", Subject: "https://rp.example",
-			Jwks: &Jwks{Keys: keySetOf(key, "sign-kid")},
-			Metadata: &Metadata{
-				OpenidRelyingParty: &OpenIDRelyingPartyMetadata{RedirectURIs: []string{"https://rp.example/cb"}},
-				FederationEntity:   &FederationEntityMetadata{Name: "rp"},
-			},
-		},
-		signing: make(chan struct{}, 1),
-	}
+	rp := literalRelyingParty(b, newTestKey(b))
 	if err := rp.sign(b.Context()); err != nil {
 		b.Fatal(err)
 	}
