@@ -550,14 +550,43 @@ func assertInvalidToken(t *testing.T, enforcer pep.Enforcer, request func(*testi
 // A query can carry what the log must not hold, as a forwarded callback's code does.
 func TestServerRule14_ADeniedRequestIsLoggedWithoutItsQuery(t *testing.T) {
 	var logs bytes.Buffer
+	jwkSet, err := pep.ParseJWKSet([]byte(publicJWSKSet))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := pep.NewBuilder().
+		Resource("https://example.com").
+		WithJWKSet(jwkSet).
+		WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).
+		WithSlogger(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))).
+		Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	guarded := p.GuardedHandlerFunc(&pep.EnforcerDeny{}, func(http.ResponseWriter, *http.Request) {})
+	guarded(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://example.com/cb?code=code-value", nil))
+	if !strings.Contains(logs.String(), "Request denied") {
+		t.Fatalf("the denial was not logged: %s", logs.String())
+	}
+	if strings.Contains(logs.String(), "code-value") {
+		t.Errorf("the log holds the query: %s", logs.String())
+	}
+}
+
+// go/docs/design.md §2: a library logs only through the logger it was given, so a PEP built without one is silent.
+func TestPEPWithoutLoggerLogsNothing(t *testing.T) {
+	var logs bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	p := createPEP(t)
-	guarded := p.GuardedHandlerFunc(&pep.EnforcerDeny{}, func(http.ResponseWriter, *http.Request) {})
-	guarded(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://example.com/cb?code=code-value", nil))
-	if strings.Contains(logs.String(), "code-value") {
-		t.Errorf("the log holds the query: %s", logs.String())
+	enforcer := &pep.EnforcerAllOf{EnforcerHolders: []pep.EnforcerHolder{{Enforcer: &pep.EnforcerAuthorizationBearer{}}}}
+	guarded := p.GuardedHandlerFunc(enforcer, func(http.ResponseWriter, *http.Request) {})
+	guarded(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://example.com/", nil))
+	guarded = p.GuardedHandlerFunc(&pep.EnforcerAnyOf{}, func(http.ResponseWriter, *http.Request) {})
+	guarded(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://example.com/", nil))
+	if logs.Len() != 0 {
+		t.Errorf("the default logger was used: %s", logs.String())
 	}
 }
