@@ -1,5 +1,15 @@
 # Release Notes
 
+# Release go/metsubushi v0.3.1
+
+### fixed
+- `GET /` answers curl and programs with the request echoed back, as `/api/anything` does: method, URL,
+  query arguments, every header and the client address, so a smoke test behind the PEP sees the headers it
+  added. 0.3.0 answered with the pod info of `/api/info` (TASK-340).
+
+### verified
+- `just lint golangci modernize test` for metsubushi; a test checks the echoed header and query argument.
+
 # Release 2026-11-15: encoding/json/v2 across the Go modules
 
 Every module below reads and writes JSON with encoding/json/v2 and requires go 1.27.0 (TASK-323). Where
