@@ -344,8 +344,8 @@ func loadKeys(cfg *RelyingPartyConfig, baseDir string) (Keys, error) {
 
 // New builds the relying party from cfg and keys and resolves the federation master's entity statement, so the
 // master has to be reachable and its statement has to verify. The key files and inline JWKs of cfg are not read:
-// keys are the ones that count. It refuses a configuration without a document store and keys that are not as
-// A_23196 requires (see [Keys]).
+// keys are the ones that count. It refuses a configuration without a document store, a gated master without an API
+// key ([ErrAPIKeyRequired]) and keys that are not as A_23196 requires (see [Keys]).
 func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty, error) {
 	if err := cfg.validateEntity(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -366,6 +366,9 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 
 	rp := RelyingParty{cfg: cfg, keys: keys, hooks: slices.Clone(cfg.Hooks)}
 	if rp.fedMaster, err = cfg.fedMasterEntityID(); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
+	if err := checkAPIKey(rp.fedMaster, cfg.APIKey); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
 	rp.trustAnchor, err = cfg.resolveTrustAnchor()

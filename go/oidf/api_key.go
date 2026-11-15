@@ -22,8 +22,9 @@
 package oidf
 
 import (
-	"log/slog"
+	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -31,27 +32,42 @@ import (
 // xdev.gematik.solutions out.
 const gatedDomain = ".dev.gematik.solutions"
 
+// ErrAPIKeyRequired is a federation master in the gated development federation configured without its API key.
+// Every fetch from it would be refused, so the start is (servers.md rule 17).
+var ErrAPIKeyRequired = errors.New("the federation master is gated and no API key is configured")
+
+// isGated reports whether u is an https URL the API key is sent with.
+func isGated(u *url.URL) bool {
+	return u.Scheme == "https" && strings.HasSuffix(strings.ToLower(u.Hostname()), gatedDomain)
+}
+
+// checkAPIKey refuses a gated master without a key. A master URL that does not parse is left to the fetch, which
+// refuses it.
+func checkAPIKey(fedMasterURL, apiKey string) error {
+	parsed, err := url.Parse(fedMasterURL)
+	if err != nil || apiKey != "" || !isGated(parsed) {
+		return nil
+	}
+	return ErrAPIKeyRequired
+}
+
 type addAPIKeyTransport struct {
 	t      http.RoundTripper
 	apiKey string
 }
 
 // AddAPIKeyTransport wraps t so that https requests to hosts below dev.gematik.solutions carry apiKey as
-// x-authorization. Without a key they go out unchanged and an error is logged. A nil t means
-// http.DefaultTransport.
+// x-authorization. Without a key they go out unchanged; a federation refuses a gated master without one at
+// construction (see [ErrAPIKeyRequired]). A nil t means http.DefaultTransport.
 func AddAPIKeyTransport(t http.RoundTripper, apiKey string) http.RoundTripper {
 	return &addAPIKeyTransport{t, apiKey}
 }
 
 func (adt *addAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if req.URL.Scheme == "https" && strings.HasSuffix(strings.ToLower(req.URL.Hostname()), gatedDomain) {
-		if adt.apiKey != "" {
-			// A RoundTripper must not change the request it was given.
-			req = req.Clone(req.Context())
-			req.Header.Set("x-authorization", adt.apiKey)
-		} else {
-			slog.Error("no federation API key configured", "host", req.URL.Host)
-		}
+	if adt.apiKey != "" && isGated(req.URL) {
+		// A RoundTripper must not change the request it was given.
+		req = req.Clone(req.Context())
+		req.Header.Set("x-authorization", adt.apiKey)
 	}
 	if adt.t == nil {
 		return http.DefaultTransport.RoundTrip(req)

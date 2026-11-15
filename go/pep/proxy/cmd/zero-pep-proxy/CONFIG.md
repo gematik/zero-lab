@@ -33,6 +33,7 @@ oidf:   <oidf.RelyingPartyConfig>       # one OIDF relying party (brings its fed
 - `PEP_OIDF_DEV_API_KEY` is the key of gematik's development federation (`*.dev.gematik.solutions`),
   which zero-pep-proxy hands to the OIDF relying party. It is a value rather than a file because it opens
   only that environment ([naming and configuration](../../../../../docs/conventions/naming-and-config.md)).
+  A federation master in that environment without the key stops the start.
 
 ## 2. Environment variables (everything that is not a provider)
 

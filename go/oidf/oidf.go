@@ -223,7 +223,8 @@ func WithLogger(logger *slog.Logger) Option {
 
 // NewOpenidFederation resolves the master's entity statement from fedMasterURL, verifies it against the trust
 // anchor jwks and returns a client of that master. It fails if the statement does not verify or names no
-// federation_entity metadata, or if no document store is given.
+// federation_entity metadata, if no document store is given, or if the master is gated and no API key is given
+// ([ErrAPIKeyRequired]).
 func NewOpenidFederation(ctx context.Context, fedMasterURL string, jwks *jose.JSONWebKeySet, opts ...Option) (*OpenidFederation, error) {
 	o := &federationOptions{}
 	for _, opt := range opts {
@@ -231,6 +232,9 @@ func NewOpenidFederation(ctx context.Context, fedMasterURL string, jwks *jose.JS
 	}
 	if o.documents == nil {
 		return nil, errors.New("a store of federation documents is required")
+	}
+	if err := checkAPIKey(fedMasterURL, o.apiKey); err != nil {
+		return nil, err
 	}
 
 	httpClient := o.httpClient

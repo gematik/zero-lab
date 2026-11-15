@@ -22,9 +22,13 @@
 package oidf
 
 import (
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
+	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"testing"
 )
 
@@ -81,6 +85,92 @@ func TestALibraryReadsNoAPIKeyFromTheEnvironment(t *testing.T) {
 	_ = resp.Body.Close()
 	if got := next.last.Header.Get("x-authorization"); got != "" {
 		t.Errorf("x-authorization = %q", got)
+	}
+}
+
+// refusingTransport fails every request and counts them, so a test sees whether a fetch was tried.
+type refusingTransport struct{ requests atomic.Int64 }
+
+var errNoNetwork = errors.New("no network in this test")
+
+func (c *refusingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	c.requests.Add(1)
+	return nil, errNoNetwork
+}
+
+func TestServerRule17_AFederationWithAGatedMasterAndNoAPIKeyIsRefusedAtConstruction(t *testing.T) {
+	for _, master := range []string{"https://app.dev.gematik.solutions", "https://APP.Dev.Gematik.Solutions:8443"} {
+		t.Run(master, func(t *testing.T) {
+			transport := &refusingTransport{}
+			_, err := NewOpenidFederation(t.Context(), master, keySetOf(newTestKey(t), "master"),
+				WithHTTPClient(&http.Client{Transport: transport}), WithDocuments(NewMemoryDocuments(16, nil)))
+			if !errors.Is(err, ErrAPIKeyRequired) {
+				t.Errorf("err = %v, want ErrAPIKeyRequired", err)
+			}
+			if n := transport.requests.Load(); n != 0 {
+				t.Errorf("%d requests", n)
+			}
+		})
+	}
+}
+
+func TestServerRule17_AFederationWithAGatedMasterAndAnAPIKeyIsNotRefusedForTheKey(t *testing.T) {
+	transport := &refusingTransport{}
+	_, err := NewOpenidFederation(t.Context(), "https://app.dev.gematik.solutions", keySetOf(newTestKey(t), "master"),
+		WithHTTPClient(&http.Client{Transport: transport}), WithDocuments(NewMemoryDocuments(16, nil)), WithAPIKey("key-value"))
+	if !errors.Is(err, errNoNetwork) {
+		t.Errorf("err = %v, want the fetch's error", err)
+	}
+}
+
+func TestServerRule17_ARelyingPartyWithAGatedMasterAndNoAPIKeyIsRefusedAtConstruction(t *testing.T) {
+	for name, change := range map[string]func(*RelyingPartyConfig){
+		"fed_master_url": func(cfg *RelyingPartyConfig) { cfg.FedMasterURL = "https://app.dev.gematik.solutions" },
+		"fed_master_entity_statement_uri": func(cfg *RelyingPartyConfig) {
+			cfg.FedMasterEntityStatementURI = "https://app.dev.gematik.solutions/.well-known/openid-federation"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			transport := &refusingTransport{}
+			cfg := &RelyingPartyConfig{
+				Subject:          "https://rp.example",
+				FedMasterJWK:     &Jwk{Key: &keySetOf(newTestKey(t), "master").Keys[0]},
+				RelyingParty:     testRelyingPartyMetadata(),
+				FederationEntity: testFederationEntity(),
+				HTTPClient:       &http.Client{Transport: transport},
+				Documents:        NewMemoryDocuments(16, nil),
+			}
+			change(cfg)
+			_, err := New(t.Context(), cfg, newTestKeys(t))
+			if !errors.Is(err, ErrAPIKeyRequired) {
+				t.Errorf("err = %v, want ErrAPIKeyRequired", err)
+			}
+			if n := transport.requests.Load(); n != 0 {
+				t.Errorf("%d requests", n)
+			}
+		})
+	}
+}
+
+// TestALibraryLogsNothingThroughTheDefaultLogger proves go/docs/design.md section 2: a request to a gated host
+// without a key goes out unchanged and leaves no trace in the default logger.
+func TestALibraryLogsNothingThroughTheDefaultLogger(t *testing.T) {
+	var logged bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	next := &recordingTransport{}
+	req, err := http.NewRequest(http.MethodGet, "https://idp.dev.gematik.solutions/x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := AddAPIKeyTransport(next, "").RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if logged.Len() != 0 {
+		t.Errorf("logged %q", logged.String())
 	}
 }
 
