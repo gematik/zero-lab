@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-15T10:02:00Z'
+updated_date: '2026-11-15T10:20:00Z'
 labels:
   - pkcs12
   - rust
@@ -25,3 +26,9 @@ Found by the review of TASK-329 (2026-11-15), with a differential probe of go/pk
 - [ ] #1 spec/pkcs12 states the OID and AlgorithmIdentifier parameter rules of P12-041
 - [ ] #2 Go and Rust agree on every edge case above, pinned by shared corpus cases or differential tests
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-15, from the ber_to_der fuzz target (TASK-329): rust ber.rs now refuses BER forms the der crate cannot read back: high tag numbers below 31, with a leading zero group or above 32 bits, and universal types der does not read (tag 15, a primitive SEQUENCE, a segmented GraphicString). go/pkcs12/internal/ber still accepts them. The spec should say which forms a legacy decoder normalises.
+<!-- SECTION:NOTES:END -->
