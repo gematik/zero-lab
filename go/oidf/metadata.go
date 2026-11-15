@@ -23,8 +23,8 @@ package oidf
 
 import (
 	"bytes"
-	"encoding/json"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -57,18 +57,30 @@ func (m *FederationEntityMetadata) MarshalJSON() ([]byte, error) {
 	return withExtra((*typed)(m), m.Extra, "federation_entity")
 }
 
+// statementJSON writes what the relying party signs and serves byte for byte as encoding/json v1 did, so that the
+// same statement keeps its signature input and ETag: maps sorted by name, a nil slice as null, and <, >, &, U+2028
+// and U+2029 escaped, in raw values too, whose escapes are kept as written.
+var statementJSON = json.JoinOptions(
+	json.Deterministic(true),
+	json.FormatNilSliceAsNull(true),
+	json.FormatNilMapAsNull(true),
+	jsontext.EscapeForHTML(true),
+	jsontext.EscapeForJS(true),
+	jsontext.PreserveRawStrings(true),
+)
+
 // withExtra marshals the typed value of the object named where and adds the extra members. An extra member that
 // shadows a typed one, even one left out as empty, is an error, and so is one that is not valid JSON as RFC 7493 has
 // it, with a member name twice or invalid UTF-8: what is signed has to be what the typed fields say, and read the same
 // by every member of the federation. This package reads names exactly, but names are compared without case here: a
 // member whose decoder matches names without case, as encoding/json v1 does, would take the extra member for the
 // typed one.
-func withExtra(value any, extra map[string]json.RawMessage, where string) ([]byte, error) {
-	data, err := json.Marshal(value)
+func withExtra(value any, extra map[string]jsontext.Value, where string) ([]byte, error) {
+	data, err := json.Marshal(value, statementJSON)
 	if err != nil || len(extra) == 0 {
 		return data, err
 	}
-	var members map[string]json.RawMessage
+	var members map[string]jsontext.Value
 	if err := json.Unmarshal(data, &members); err != nil {
 		return nil, err
 	}
@@ -82,7 +94,7 @@ func withExtra(value any, extra map[string]json.RawMessage, where string) ([]byt
 		}
 		members[name] = raw
 	}
-	return json.Marshal(members)
+	return json.Marshal(members, statementJSON)
 }
 
 // memberNames are the JSON member names of a struct's fields.
@@ -153,7 +165,7 @@ func (j *Jwks) clone() *Jwks {
 	return &Jwks{Keys: &jose.JSONWebKeySet{Keys: slices.Clone(j.Keys.Keys)}}
 }
 
-func cloneExtra(extra map[string]json.RawMessage) map[string]json.RawMessage {
+func cloneExtra(extra map[string]jsontext.Value) map[string]jsontext.Value {
 	if extra == nil {
 		return nil
 	}
@@ -167,41 +179,20 @@ func cloneExtra(extra map[string]json.RawMessage) map[string]json.RawMessage {
 // hasMemberD reports whether a member named d is anywhere in the JSON payload, at any depth: d is where a JWK keeps
 // its private part (RFC 7518 sections 6.2.2.1 and 6.3.2.1).
 func hasMemberD(payload []byte) (bool, error) {
-	// One frame per open object or array; atName is whether an object's next token is a member name.
-	type frame struct{ object, atName bool }
-	var open []frame
-	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder := jsontext.NewDecoder(bytes.NewReader(payload))
 	for {
-		token, err := decoder.Token()
-		if errors.Is(err, io.EOF) && len(open) == 0 {
-			return false, nil
-		}
+		// Inside an object, a name comes at every even position.
+		kind, length := decoder.StackIndex(decoder.StackDepth())
+		atName := kind == '{' && length%2 == 0 && decoder.PeekKind() != '}'
+		token, err := decoder.ReadToken()
 		if errors.Is(err, io.EOF) {
-			return false, io.ErrUnexpectedEOF
+			return false, nil
 		}
 		if err != nil {
 			return false, err
 		}
-		if n := len(open); n > 0 && open[n-1].atName && token != json.Delim('}') {
-			if token == any("d") {
-				return true, nil
-			}
-			open[n-1].atName = false
-			continue
-		}
-		switch token {
-		case json.Delim('{'):
-			open = append(open, frame{object: true, atName: true})
-			continue
-		case json.Delim('['):
-			open = append(open, frame{})
-			continue
-		case json.Delim('}'), json.Delim(']'):
-			open = open[:len(open)-1]
-		}
-		// A value has ended; in an object, a member name or the end follows.
-		if n := len(open); n > 0 && open[n-1].object {
-			open[n-1].atName = true
+		if atName && token.String() == "d" {
+			return true, nil
 		}
 	}
 }

@@ -22,7 +22,7 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"net/http"
 	"net/url"
@@ -126,7 +126,7 @@ func FuzzLoginValues(f *testing.F) {
 				t.Fatalf("sent acr_values %q", form.Get("acr_values"))
 			}
 		}
-		if sentClaims := form.Get("claims"); sentClaims != string(claims) || len(claims) > 0 && !json.Valid(claims) {
+		if sentClaims := form.Get("claims"); sentClaims != string(claims) || len(claims) > 0 && !jsontext.Value(claims).IsValid() {
 			t.Fatalf("sent claims %q for %q", sentClaims, claims)
 		}
 	})

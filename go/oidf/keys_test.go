@@ -28,7 +28,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -295,10 +295,14 @@ func publishedKeys(t *testing.T, rp *RelyingParty) map[string]map[string]any {
 		t.Fatal(err)
 	}
 	var claims struct {
-		Jwks     struct{ Keys []map[string]any } `json:"jwks"`
+		Jwks struct {
+			Keys []map[string]any `json:"keys"`
+		} `json:"jwks"`
 		Metadata struct {
 			OpenidRelyingParty struct {
-				Jwks struct{ Keys []map[string]any } `json:"jwks"`
+				Jwks struct {
+					Keys []map[string]any `json:"keys"`
+				} `json:"jwks"`
 			} `json:"openid_relying_party"`
 		} `json:"metadata"`
 	}

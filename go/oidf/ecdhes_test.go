@@ -31,7 +31,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"math/big"
@@ -405,10 +405,14 @@ func TestA_23183_TheKeysArePublishedUnderTheirKIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	var claims struct {
-		Jwks     struct{ Keys []map[string]any } `json:"jwks"`
+		Jwks struct {
+			Keys []map[string]any `json:"keys"`
+		} `json:"jwks"`
 		Metadata struct {
 			OpenidRelyingParty struct {
-				Jwks struct{ Keys []map[string]any } `json:"jwks"`
+				Jwks struct {
+					Keys []map[string]any `json:"keys"`
+				} `json:"jwks"`
 			} `json:"openid_relying_party"`
 		} `json:"metadata"`
 	}

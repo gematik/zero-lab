@@ -39,7 +39,7 @@ type Error struct {
 	Operation        string `json:"operation"`
 	ErrorCode        string `json:"error"`
 	Description      string `json:"error_description"`
-	GematikTimestamp int64  `json:"gematik_timestamp,omitempty"`
+	GematikTimestamp int64  `json:"gematik_timestamp,omitzero"`
 	GematikUUID      string `json:"gematik_uuid,omitempty"`
 	GematikCode      string `json:"gematik_code,omitempty"`
 }

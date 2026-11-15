@@ -22,7 +22,7 @@
 package oidf
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 
 	"github.com/go-jose/go-jose/v4"
@@ -46,7 +46,7 @@ type Jwk struct {
 
 // MarshalJSON writes the key as a JWK (RFC 7517).
 func (j *Jwk) MarshalJSON() ([]byte, error) {
-	return json.Marshal(j.Key)
+	return json.Marshal(j.Key, statementJSON)
 }
 
 // UnmarshalJSON parses a JWK and replaces the wrapped key.
@@ -94,7 +94,7 @@ type Jwks struct {
 
 // MarshalJSON writes the keys as a JWK Set (RFC 7517 §5).
 func (j *Jwks) MarshalJSON() ([]byte, error) {
-	return json.Marshal(j.Keys)
+	return json.Marshal(j.Keys, statementJSON)
 }
 
 // UnmarshalJSON parses a JWK Set and replaces the wrapped set. As [openid.ParseKeySet] leaves out entries it cannot
