@@ -25,9 +25,13 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -39,6 +43,7 @@ import (
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/oidf"
+	"github.com/gematik/zero-lab/go/oidf/oidftest"
 )
 
 const (
@@ -93,15 +98,74 @@ func newTestServer(t *testing.T) (*Server, *jose.JSONWebKey) {
 // Servers rule 17: the entity statement is signed again with the products' redirect URIs at the start, and a
 // relying party that cannot sign it stops the start.
 func TestServerRule17_ARelyingPartyThatCannotSignStopsTheStart(t *testing.T) {
+	rp := newRelyingParty(t)
+	errHook := errors.New("the host's hook failed")
+	rp.AddEntityStatementHook(func(*oidf.EntityStatement) error { return errHook })
 	cfg := Config{
 		Issuer:       testIssuer,
 		SigningKey:   &SigningKey{Signer: newP256(t), KeyID: "test-server-key"},
 		Products:     []Product{{ProductID: testProductID, RedirectURIs: []string{"https://rp.example.com/callback"}, Scopes: []string{testScope}}},
-		RelyingParty: &oidf.RelyingParty{},
+		RelyingParty: rp,
 	}
-	if _, err := New(withTestStores(t, cfg)); err == nil || !strings.Contains(err.Error(), "sign the entity statement") {
+	if _, err := New(withTestStores(t, cfg)); !errors.Is(err, errHook) || !strings.Contains(err.Error(), "sign the entity statement") {
 		t.Errorf("err = %v", err)
 	}
+}
+
+// newRelyingParty is a relying party of a test federation, built by oidf.New as the program builds it.
+func newRelyingParty(t *testing.T) *oidf.RelyingParty {
+	t.Helper()
+	federation := oidftest.New(t)
+	agreement, err := newP256(t).ECDH()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := oidf.Keys{
+		Sign: newP256(t), SignKID: "sign",
+		Decrypt: agreement, DecryptKID: "enc",
+		Client: selfSignedCertificate(t), ClientKID: "client",
+	}
+	rp, err := oidf.New(t.Context(), &oidf.RelyingPartyConfig{
+		Subject:      "https://rp.example.com",
+		FedMasterURL: federation.MasterURL(),
+		FedMasterJWK: &oidf.Jwk{Key: &federation.TrustAnchor().Keys[0]},
+		RelyingParty: oidf.RelyingPartyMetadata{
+			ClientName:          "rp",
+			OrganizationName:    "Example",
+			RedirectURIs:        []string{"https://rp.example.com/callback"},
+			Keywords:            []string{"product_type:zero-pdp", "product_type_version:0.0.0"},
+			Contacts:            []string{"support@example.invalid"},
+			TIFeaturesSupported: &oidf.TIFeatures{IDTokenVersionSupported: []string{"1.0.0"}},
+		},
+		FederationEntity: oidf.FederationEntity{Name: "rp", OrganizationName: "Example"},
+		HTTPClient:       federation.Client(),
+		Documents:        oidf.NewMemoryDocuments(16, nil),
+	}, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rp
+}
+
+// selfSignedCertificate is a client certificate for self_signed_tls_client_auth.
+func selfSignedCertificate(t *testing.T) tls.Certificate {
+	t.Helper()
+	key := newP256(t)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "rp.example.com"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key, Leaf: leaf}
 }
 
 func jwkToMap(t *testing.T, key *jose.JSONWebKey) map[string]any {
