@@ -24,7 +24,7 @@ package openid
 import (
 	"bytes"
 	"crypto/elliptic"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"strings"
 	"testing"
 	"time"
@@ -104,7 +104,11 @@ func FuzzValidateClaims(f *testing.F) {
 
 // A token from a provider reaches Claims after verification only by the callers' discipline, so it must not panic.
 func FuzzTokenResponseClaims(f *testing.F) {
-	for _, seed := range []string{"", "nodots", "one.dot", "a.b.c", "a.e30.c", "a.b.c.d"} {
+	for _, seed := range []string{
+		"", "nodots", "one.dot", "a.b.c", "a.e30.c", "a.b.c.d",
+		// {"iss":"a","iss":"b"}, {"ISS":"a"} and {"iss":"a\xffb"}
+		"a.eyJpc3MiOiJhIiwiaXNzIjoiYiJ9.c", "a.eyJJU1MiOiJhIn0.c", "a.eyJpc3MiOiJh_2IifQ.c",
+	} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(_ *testing.T, token string) {
@@ -141,48 +145,48 @@ func FuzzAuthorizationQueryClaims(f *testing.F) {
 		if trimmed := strings.TrimLeft(sent, " \t\r\n"); !strings.HasPrefix(trimmed, "{") {
 			t.Fatalf("sent a claims parameter that is no JSON object: %q", sent)
 		}
-		if !json.Valid(claims) {
+		if !jsontext.Value(claims).IsValid(jsontext.AllowDuplicateNames(true)) {
 			t.Fatalf("sent a claims parameter that is no JSON: %q", sent)
 		}
-		decoder := json.NewDecoder(bytes.NewReader(claims))
-		decoder.UseNumber()
+		decoder := jsontext.NewDecoder(bytes.NewReader(claims), jsontext.AllowDuplicateNames(true))
 		if duplicate(t, decoder) {
 			t.Fatalf("sent a claims parameter with a member named twice: %q", sent)
 		}
 	})
 }
 
-// duplicate reads one JSON value from decoder and reports whether an object in it names a member twice. It recurses
-// where the code under test keeps a stack, so the two do not share a mistake.
-func duplicate(t *testing.T, decoder *json.Decoder) bool {
+// duplicate reads one JSON value from decoder and reports whether an object in it names a member twice. The decoder
+// lets duplicates through, so the names are compared here. It recurses where the code under test keeps a stack, so
+// the two do not share a mistake.
+func duplicate(t *testing.T, decoder *jsontext.Decoder) bool {
 	t.Helper()
-	token, err := decoder.Token()
+	token, err := decoder.ReadToken()
 	if err != nil {
 		t.Fatalf("token: %v", err)
 	}
-	switch token {
-	case json.Delim('{'):
+	switch token.Kind() {
+	case '{':
 		names := map[string]bool{}
 		found := false
-		for decoder.More() {
-			name, err := decoder.Token()
+		for decoder.PeekKind() != '}' {
+			name, err := decoder.ReadToken()
 			if err != nil {
 				t.Fatalf("name: %v", err)
 			}
-			if names[name.(string)] {
+			if names[name.String()] {
 				found = true
 			}
-			names[name.(string)] = true
+			names[name.String()] = true
 			found = duplicate(t, decoder) || found
 		}
-		_, _ = decoder.Token()
+		_, _ = decoder.ReadToken()
 		return found
-	case json.Delim('['):
+	case '[':
 		found := false
-		for decoder.More() {
+		for decoder.PeekKind() != ']' {
 			found = duplicate(t, decoder) || found
 		}
-		_, _ = decoder.Token()
+		_, _ = decoder.ReadToken()
 		return found
 	}
 	return false

@@ -25,7 +25,7 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -54,7 +54,7 @@ func TestOIDCDiscovery_3_RefusesAnythingButHTTPS(t *testing.T) {
 		t.Run(field, func(t *testing.T) {
 			var server *httptest.Server
 			server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_ = json.NewEncoder(w).Encode(map[string]string{
+				_ = json.MarshalWrite(w, map[string]string{
 					"issuer":                 server.URL,
 					"authorization_endpoint": server.URL + "/a",
 					"token_endpoint":         server.URL + "/t",
@@ -77,7 +77,7 @@ func newOPStub(t *testing.T) *opStub {
 	publicKey := jose.JSONWebKey{Key: stub.key.Public(), KeyID: "k"}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(DiscoveryDocument{
+		_ = json.MarshalWrite(w, DiscoveryDocument{
 			Issuer:                stub.URL,
 			AuthorizationEndpoint: stub.URL + "/authorize",
 			TokenEndpoint:         stub.URL + "/token",
@@ -85,11 +85,11 @@ func newOPStub(t *testing.T) *opStub {
 		})
 	})
 	mux.HandleFunc("GET /jwks", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{publicKey}})
+		_ = json.MarshalWrite(w, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{publicKey}})
 	})
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken})
+		_ = json.MarshalWrite(w, map[string]any{"access_token": "at", "token_type": "Bearer", "id_token": stub.idToken})
 	})
 	stub.Server = httptest.NewTLSServer(mux)
 	t.Cleanup(stub.Close)
@@ -203,7 +203,7 @@ func TestNewClientFailsWhenTheKeySetCannotBeFetched(t *testing.T) {
 	mux := http.NewServeMux()
 	var server *httptest.Server
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(DiscoveryDocument{Issuer: server.URL, JwksURI: server.URL + "/missing"})
+		_ = json.MarshalWrite(w, DiscoveryDocument{Issuer: server.URL, JwksURI: server.URL + "/missing"})
 	})
 	server = httptest.NewTLSServer(mux)
 	defer server.Close()
@@ -231,11 +231,11 @@ func serveDiscovery(t *testing.T, status int, doc func(base string) DiscoveryDoc
 	keys := jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: newECKey(t, elliptic.P256()).Public(), KeyID: "k"}}}
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/.well-known/openid-configuration") {
-			_ = json.NewEncoder(w).Encode(keys)
+			_ = json.MarshalWrite(w, keys)
 			return
 		}
 		w.WriteHeader(status)
-		_ = json.NewEncoder(w).Encode(doc(server.URL))
+		_ = json.MarshalWrite(w, doc(server.URL))
 	}))
 	t.Cleanup(server.Close)
 	return server
@@ -290,9 +290,9 @@ func TestOIDCDiscovery_4_1_AnIssuerWithATrailingSlashIsFetchedWithoutItAndCompar
 	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
-			_ = json.NewEncoder(w).Encode(DiscoveryDocument{Issuer: server.URL + "/", JwksURI: server.URL + "/jwks"})
+			_ = json.MarshalWrite(w, DiscoveryDocument{Issuer: server.URL + "/", JwksURI: server.URL + "/jwks"})
 		case "/jwks":
-			_ = json.NewEncoder(w).Encode(keys)
+			_ = json.MarshalWrite(w, keys)
 		default:
 			http.NotFound(w, r)
 		}
@@ -353,20 +353,20 @@ func TestServerRule14_ALoginLogsNoSecretAtDebug(t *testing.T) {
 	stub := &opStub{key: newECKey(t, elliptic.P256())}
 	publicKey := jose.JSONWebKey{Key: stub.key.Public(), KeyID: "k"}
 	mux.HandleFunc("GET /.well-known/openid-configuration", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(DiscoveryDocument{Issuer: stub.URL, AuthorizationEndpoint: stub.URL + "/authorize", TokenEndpoint: stub.URL + "/token", JwksURI: stub.URL + "/jwks"})
+		_ = json.MarshalWrite(w, DiscoveryDocument{Issuer: stub.URL, AuthorizationEndpoint: stub.URL + "/authorize", TokenEndpoint: stub.URL + "/token", JwksURI: stub.URL + "/jwks"})
 	})
 	mux.HandleFunc("GET /jwks", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{publicKey}})
+		_ = json.MarshalWrite(w, jose.JSONWebKeySet{Keys: []jose.JSONWebKey{publicKey}})
 	})
 	refuse := false
 	mux.HandleFunc("POST /token", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if refuse {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid_grant", "error_description": "no such code: " + code})
+			_ = json.MarshalWrite(w, map[string]string{"error": "invalid_grant", "error_description": "no such code: " + code})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": token, "refresh_token": refresh, "token_type": "Bearer", "id_token": stub.idToken})
+		_ = json.MarshalWrite(w, map[string]any{"access_token": token, "refresh_token": refresh, "token_type": "Bearer", "id_token": stub.idToken})
 	})
 	stub.Server = httptest.NewTLSServer(mux)
 	defer stub.Close()

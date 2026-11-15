@@ -27,7 +27,8 @@ package openid
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -63,7 +64,7 @@ type Login struct {
 	// federation client judges the acr by its own rules.
 	ACRValues []string
 	// Claims is the claims request parameter (OIDC Core 5.5), a JSON object of at most [MaxClaimsBytes].
-	Claims json.RawMessage
+	Claims jsontext.Value
 }
 
 // RedirectFor is the login's redirect URI, or the client's configured one if it has none.
