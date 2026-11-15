@@ -22,6 +22,7 @@
 package proxy
 
 import (
+	"log/slog"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -57,7 +58,7 @@ func TestSortProviders(t *testing.T) {
 }
 
 func TestSignInChooserRender(t *testing.T) {
-	r, err := newRenderer("", nil)
+	r, err := newRenderer("", slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

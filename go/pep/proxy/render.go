@@ -39,9 +39,6 @@ type renderer struct {
 }
 
 func newRenderer(templateDir string, log *slog.Logger) (*renderer, error) {
-	if log == nil {
-		log = slog.New(slog.DiscardHandler)
-	}
 	fsys := webui.FS
 	if templateDir != "" {
 		fsys = os.DirFS(templateDir)

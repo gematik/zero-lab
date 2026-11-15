@@ -483,7 +483,7 @@ func TestServerRule14_AForwardAuthDenialLogsNoQuery(t *testing.T) {
 
 // A store's error text reaches pages and logs, so a session's own lookup errors name neither the ID nor the state.
 func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
-	store := newSessionManager(newMemorySessions(), time.Hour, nil)
+	store := newSessionManager(newMemorySessions(), time.Hour, slog.New(slog.DiscardHandler))
 	if _, err := store.byID(t.Context(), "session-id-value"); err == nil || strings.Contains(err.Error(), "session-id-value") {
 		t.Errorf("err = %v", err)
 	}

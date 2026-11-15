@@ -135,9 +135,6 @@ func newSessionManager(store SessionStore, ttl time.Duration, log *slog.Logger) 
 	if ttl <= 0 {
 		ttl = defaultSessionTTL
 	}
-	if log == nil {
-		log = slog.New(slog.DiscardHandler)
-	}
 	return &sessionManager{now: time.Now, store: store, ttl: ttl, maxLifetime: defaultSessionMaxLifetime, log: log}
 }
 

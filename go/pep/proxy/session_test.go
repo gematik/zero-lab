@@ -46,7 +46,7 @@ func TestSessionTokenSet(t *testing.T) {
 }
 
 func TestSessionRotate(t *testing.T) {
-	store := newSessionManager(newMemorySessions(), time.Hour, nil)
+	store := newSessionManager(newMemorySessions(), time.Hour, slog.New(slog.DiscardHandler))
 	sess := store.create()
 	sess.Identity = map[string]any{"sub": "u1"}
 	if err := store.save(t.Context(), sess); err != nil {
@@ -76,7 +76,7 @@ func TestSessionRotate(t *testing.T) {
 }
 
 func TestSessionAbsoluteTimeout(t *testing.T) {
-	store := newSessionManager(newMemorySessions(), time.Hour, nil)
+	store := newSessionManager(newMemorySessions(), time.Hour, slog.New(slog.DiscardHandler))
 	store.maxLifetime = time.Hour
 	sess := store.create()
 	sess.CreatedAt = time.Now().Add(-2 * time.Hour) // past the absolute cap, idle TTL notwithstanding
@@ -93,7 +93,7 @@ func TestSessionAbsoluteTimeout(t *testing.T) {
 
 // RFC 9700 Section 2.1: the state is a one-time use CSRF token.
 func TestRFC9700_2_1_SessionStateSingleUse(t *testing.T) {
-	store := newSessionManager(newMemorySessions(), time.Hour, nil)
+	store := newSessionManager(newMemorySessions(), time.Hour, slog.New(slog.DiscardHandler))
 	sess := store.create()
 	sess.State = "s-123"
 	if err := store.save(t.Context(), sess); err != nil {
@@ -112,7 +112,7 @@ func TestRFC9700_2_1_SessionStateSingleUse(t *testing.T) {
 }
 
 func TestSessionStoreTokenHashing(t *testing.T) {
-	m := newSessionManager(newMemorySessions(), time.Hour, nil)
+	m := newSessionManager(newMemorySessions(), time.Hour, slog.New(slog.DiscardHandler))
 	sess := m.create()
 	if sess.token == "" {
 		t.Fatal("no cookie token generated")

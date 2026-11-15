@@ -64,9 +64,6 @@ func newGateway(routes []Route, deps gatewayDeps) (*Gateway, error) {
 	if deps.now == nil {
 		deps.now = time.Now
 	}
-	if deps.log == nil {
-		deps.log = slog.New(slog.DiscardHandler)
-	}
 	validated, err := validateRoutes(routes)
 	if err != nil {
 		return nil, err
