@@ -22,8 +22,9 @@ Decisions an auditor should know:
   scheme-based normalization, without query and fragment.
 - **Algorithms are an allowlist** of registered asymmetric ones, ES256 by default; `none` and MAC
   algorithms cannot be configured. go-jose refuses any other algorithm while parsing.
-- **Claims are read by exact name and type**: encoding/json would match `HTU` to `htu`, so the
-  payload is read as a map.
+- **Claims are read by exact name and type**, so `HTU` is not `htu`. A header or payload that
+  names a member twice, in any object, or is not UTF-8 is refused, not read with the last
+  member winning.
 - **Time is a parameter**: the package never calls `time.Now`; it reads the `Clock` it is given
   (`SystemClock` in production).
 - **Replay detection** stores a SHA-256 of key, htu and jti (Section 11.1). `MemoryReplays`

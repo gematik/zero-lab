@@ -548,3 +548,40 @@ func TestServerRule16_AReplaysErrorRefusesTheProof(t *testing.T) {
 	_, err := v.Verify(t.Context(), withProof(k.sign(t, k.header(), validClaims())), testRequest())
 	requireUndecided(t, err)
 }
+
+// Server rule 28: a header or payload that names a member twice, in any object, is refused
+// rather than read with the last member winning, which RFC 7515 Section 4 and RFC 7519
+// Section 4 would allow and another parser may resolve differently.
+func TestServerRule28_AProofNamingAMemberTwiceIsRefused(t *testing.T) {
+	requireFlawsRefused(t, "member twice")
+}
+
+// Server rule 28: a header or payload that is not UTF-8 is refused, not repaired.
+func TestServerRule28_AProofThatIsNotUTF8IsRefused(t *testing.T) {
+	requireFlawsRefused(t, "not UTF-8")
+}
+
+// Server rule 28: member names are exact, so "TYP" is not typ and "JTI" is not jti.
+func TestServerRule28_ProofMemberNamesAreExact(t *testing.T) {
+	requireFlawsRefused(t, "in another case")
+}
+
+func requireFlawsRefused(t *testing.T, flaw string) {
+	t.Helper()
+	k := newTestKey(t)
+	v := newTestVerifier(t, Config{})
+	found := false
+	for _, p := range k.flawedProofs(t, validClaims()) {
+		if !strings.Contains(p.name, flaw) {
+			continue
+		}
+		found = true
+		t.Run(p.name, func(t *testing.T) {
+			_, err := v.Verify(t.Context(), withProof(p.proof), testRequest())
+			requireRefused(t, err, CodeInvalidProof, p.description)
+		})
+	}
+	if !found {
+		t.Fatalf("no flawed proof is %q", flaw)
+	}
+}

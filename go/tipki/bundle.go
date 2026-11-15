@@ -26,7 +26,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -55,7 +56,7 @@ type Bundle struct {
 const bundleFormatVersion = 2
 
 // ParseBundle decodes a bundle. Like ti-pki it takes no unknown fields, no repeated ones and no other
-// spelling of a field's name; encoding/json alone would let all three pass.
+// spelling of a field's name.
 func ParseBundle(data []byte) (*Bundle, error) {
 	fields, err := strictObject(data,
 		[]string{"format_version", "label", "anchor_sha256", "roots", "tsl", "roots_meta", "tsl_meta"},
@@ -70,7 +71,7 @@ func ParseBundle(data []byte) (*Bundle, error) {
 	return bundle, nil
 }
 
-func decodeBundle(fields map[string]json.RawMessage) (*Bundle, error) {
+func decodeBundle(fields map[string]jsontext.Value) (*Bundle, error) {
 	var version uint32
 	if err := json.Unmarshal(fields["format_version"], &version); err != nil {
 		return nil, fmt.Errorf("format_version: %w", err)
@@ -150,7 +151,7 @@ func (b *Bundle) CheckAnchor(anchorDER []byte) error {
 	return nil
 }
 
-func bodyField(fields map[string]json.RawMessage, name string) ([]byte, error) {
+func bodyField(fields map[string]jsontext.Value, name string) ([]byte, error) {
 	var encoded string
 	if bytes.Equal(fields[name], []byte("null")) {
 		return nil, fmt.Errorf("%s: null", name)
@@ -167,7 +168,7 @@ func bodyField(fields map[string]json.RawMessage, name string) ([]byte, error) {
 
 var bundleSources = []string{"http", "file", "bundle", "cache", "embedded"}
 
-func metaField(raw json.RawMessage) (int64, error) {
+func metaField(raw jsontext.Value) (int64, error) {
 	fields, err := strictObject(raw, []string{"fetched_at", "source"}, []string{"etag", "last_modified", "max_age_secs"})
 	if err != nil {
 		return 0, err
@@ -202,41 +203,37 @@ func metaField(raw json.RawMessage) (int64, error) {
 }
 
 // strictObject reads one JSON object whose keys are exactly as given, each at most once.
-func strictObject(data []byte, required, optional []string) (map[string]json.RawMessage, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	token, err := decoder.Token()
-	if err != nil {
-		return nil, err
-	}
-	if token != json.Delim('{') {
+func strictObject(data []byte, required, optional []string) (map[string]jsontext.Value, error) {
+	decoder := jsontext.NewDecoder(bytes.NewReader(data))
+	if decoder.PeekKind() != '{' {
 		return nil, errors.New("not an object")
 	}
-	fields := make(map[string]json.RawMessage)
-	for decoder.More() {
-		token, err := decoder.Token()
+	if _, err := decoder.ReadToken(); err != nil {
+		return nil, err
+	}
+	fields := make(map[string]jsontext.Value)
+	for decoder.PeekKind() != '}' {
+		token, err := decoder.ReadToken()
+		if errors.Is(err, jsontext.ErrDuplicateName) {
+			return nil, errors.New("repeated field")
+		}
 		if err != nil {
 			return nil, err
 		}
-		name, ok := token.(string)
-		if !ok {
-			return nil, errors.New("not an object")
-		}
+		name := token.String()
 		if !slices.Contains(required, name) && !slices.Contains(optional, name) {
 			return nil, fmt.Errorf("unknown field %q", name)
 		}
-		if _, repeated := fields[name]; repeated {
-			return nil, fmt.Errorf("repeated field %q", name)
-		}
-		var value json.RawMessage
-		if err := decoder.Decode(&value); err != nil {
+		value, err := decoder.ReadValue()
+		if err != nil {
 			return nil, err
 		}
-		fields[name] = value
+		fields[name] = value.Clone()
 	}
-	if _, err := decoder.Token(); err != nil {
+	if _, err := decoder.ReadToken(); err != nil {
 		return nil, err
 	}
-	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("data after the object")
 	}
 	for _, name := range required {

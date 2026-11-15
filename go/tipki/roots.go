@@ -25,7 +25,8 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"slices"
@@ -45,10 +46,16 @@ type RootsEntry struct {
 // ParseRoots reads a roots.json in either form gematik ships: a bare array, or an object with the
 // array under roots (ROOTS-001). Cross certificates are decoded only when the walk reaches them.
 func ParseRoots(data []byte) ([]RootsEntry, error) {
-	var raw []map[string]json.RawMessage
+	var raw []map[string]jsontext.Value
 	if err := json.Unmarshal(data, &raw); err != nil {
-		var wrapped map[string]json.RawMessage
-		if json.Unmarshal(data, &wrapped) != nil {
+		// Only a document that is an object is read again, so a refusal of the array form
+		// keeps its reason.
+		var semantic *json.SemanticError
+		if !errors.As(err, &semantic) || semantic.JSONKind != '{' || semantic.JSONPointer != "" {
+			return nil, fmt.Errorf("tipki: roots.json: %w", err)
+		}
+		var wrapped map[string]jsontext.Value
+		if err := json.Unmarshal(data, &wrapped); err != nil {
 			return nil, fmt.Errorf("tipki: roots.json: %w", err)
 		}
 		list, ok := wrapped["roots"]
@@ -73,7 +80,7 @@ func ParseRoots(data []byte) ([]RootsEntry, error) {
 	return entries, nil
 }
 
-func parseRootsEntry(fields map[string]json.RawMessage) (RootsEntry, error) {
+func parseRootsEntry(fields map[string]jsontext.Value) (RootsEntry, error) {
 	var entry RootsEntry
 	if fields == nil {
 		return entry, errors.New("not an object")
@@ -110,7 +117,7 @@ func parseRootsEntry(fields map[string]json.RawMessage) (RootsEntry, error) {
 	return entry, nil
 }
 
-func crossField(fields map[string]json.RawMessage, name string) ([]byte, error) {
+func crossField(fields map[string]jsontext.Value, name string) ([]byte, error) {
 	var encoded *string
 	if value, ok := fields[name]; ok {
 		if err := json.Unmarshal(value, &encoded); err != nil {

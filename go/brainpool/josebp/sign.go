@@ -23,7 +23,7 @@ package josebp
 
 import (
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"hash"
 
@@ -71,12 +71,12 @@ func (b *JWTBuilder) Claim(key string, value any) *JWTBuilder {
 // hashFunc and signing the digest with signFunc (an opaque SignFunc — software key, smartcard, or
 // connector). The signature is the raw fixed-width r‖s ECDSA encoding (RFC 7518 §3.4).
 func (b *JWTBuilder) Sign(hashFunc hash.Hash, signFunc brainpool.SignFunc) ([]byte, error) {
-	headersJSON, err := json.Marshal(b.headers)
+	headersJSON, err := json.Marshal(b.headers, json.Deterministic(true))
 	if err != nil {
 		return nil, fmt.Errorf("marshaling headers: %w", err)
 	}
 
-	claimsJSON, err := json.Marshal(b.claims)
+	claimsJSON, err := json.Marshal(b.claims, json.Deterministic(true))
 	if err != nil {
 		return nil, fmt.Errorf("marshaling claims: %w", err)
 	}

@@ -29,7 +29,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"hash"
@@ -100,7 +100,7 @@ func (b *JWEBuilder) EncryptECDHES(recipient any) ([]byte, error) {
 		Key: &ephemeralKey.PublicKey,
 	}
 
-	headersJSON, err := json.Marshal(b.headers)
+	headersJSON, err := json.Marshal(b.headers, json.Deterministic(true))
 	if err != nil {
 		return nil, fmt.Errorf("marshalling headers: %w", err)
 	}

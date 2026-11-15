@@ -26,7 +26,7 @@ import (
 	"crypto/elliptic"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"math/big"
 
@@ -93,12 +93,10 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 			}
 
 			jwkAlias.Key = &ecdsa.PrivateKey{
-				PublicKey: ecdsa.PublicKey{
-					Curve: curve,
-					X:     x,
-					Y:     y,
-				},
-				D: d,
+				Curve: curve,
+				X:     x,
+				Y:     y,
+				D:     d,
 			}
 		} else {
 			jwkAlias.Key = &ecdsa.PublicKey{

@@ -25,7 +25,7 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"math/big"

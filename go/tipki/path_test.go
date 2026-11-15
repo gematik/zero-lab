@@ -327,8 +327,32 @@ func TestBUNDLE002AnotherEnvironmentsBundleIsRefused(t *testing.T) {
 	}
 }
 
+// flawedBundles name a field twice, are not UTF-8 or spell a field in another case, each with
+// what its refusal says (servers.md rule 28).
+var flawedBundles = []struct{ name, json, refusal string }{
+	{"field twice", `{"format_version":2,"format_version":2}`, "repeated field"},
+	{"not UTF-8", `{"format_version":2,"label":"` + "\xff" + `"}`, "invalid UTF-8"},
+	{"field in another case", `{"FORMAT_VERSION":2}`, `unknown field "FORMAT_VERSION"`},
+}
+
+// Server rule 28: a bundle that names a field twice or is not UTF-8 is refused, and a field's
+// name is exact.
+func TestServerRule28_AFlawedBundleIsRefused(t *testing.T) {
+	for _, flawed := range flawedBundles {
+		t.Run(flawed.name, func(t *testing.T) {
+			_, err := ParseBundle([]byte(flawed.json))
+			if err == nil || !strings.Contains(err.Error(), flawed.refusal) {
+				t.Fatalf("got %v, want %q", err, flawed.refusal)
+			}
+		})
+	}
+}
+
 func FuzzParseBundle(f *testing.F) {
 	f.Add([]byte(`{"format_version":2}`))
+	for _, flawed := range flawedBundles {
+		f.Add([]byte(flawed.json))
+	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		bundle, err := ParseBundle(data)
 		if (bundle == nil) != (err != nil) {
