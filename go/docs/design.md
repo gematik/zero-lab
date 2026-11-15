@@ -156,15 +156,20 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   `WriteTimeout`, `IdleTimeout`; proxies without whole-request deadlines), body limits
   (`http.MaxBytesReader`) and graceful shutdown on SIGTERM. Routing uses `http.ServeMux`
   with method and path patterns; middleware is `func(http.Handler) http.Handler`.
-- Request decoding is strict: `json.Decoder` with `DisallowUnknownFields`, explicit
-  `Validate()` methods, and URL, header and form values parsed into types before use.
+- Request decoding is strict: JSON through `encoding/json/v2`, explicit `Validate()`
+  methods, and URL, header and form values parsed into types before use.
   Rule 28 has a few concrete consequences in Go:
   - `ServeMux` method patterns, which answer 405 with `Allow` themselves.
   - `r.URL.RawPath` and `EscapedPath()` checked, so `ServeMux`'s path cleaning never turns
     a non-canonical path into a match.
   - `url.Values` read through a helper that refuses a repeated key.
-  - `encoding/json` with `DisallowUnknownFields`, plus a check for duplicate keys, because
-    `encoding/json` keeps the last one silently.
+  - `encoding/json/v2` only; no module imports `encoding/json`. Its defaults refuse a
+    member named twice and invalid UTF-8, and match names exactly, where v1 keeps the last
+    duplicate, replaces bad UTF-8 and folds case. `json.RejectUnknownMembers(true)` where
+    the format is ours; someone else's format (OAuth, OIDC, JOSE, gematik APIs) ignores
+    unknown members as its specification says. `json.Deterministic(true)` wherever output
+    is hashed, signed or compared. Size, depth and member bounds come first, from a
+    `jsontext` walk (`openid.CheckJSONObject`) or a length check.
   - `http.Server.MaxHeaderBytes` and `http.MaxBytesReader`.
   - Validators as `Parse…`/`Check…` functions next to the protocol package (`openid`,
     `oidf`) that return sentinel errors naming the field, each with its `Fuzz…` target.
