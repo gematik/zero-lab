@@ -75,6 +75,9 @@ type Config struct {
 	// Clock is the time sessions, snapshots, revocations and tokens are judged at; nil means the system
 	// clock.
 	Clock func() time.Time
+
+	// Logger receives the proxy's operational events; nil logs nothing.
+	Logger *slog.Logger
 }
 
 // clockSetter is a Backend that keeps the server's clock for the token expiries it records.
@@ -99,6 +102,7 @@ type Server struct {
 	revocations Revocations
 	gateway     *Gateway // nil in forward_auth-only mode (no Routes)
 	now         func() time.Time
+	log         *slog.Logger
 }
 
 // New returns a Server for cfg. It fails without a Backend, Sessions or Revocations and on a key file that
@@ -113,7 +117,11 @@ func New(cfg Config) (*Server, error) {
 	if cfg.CookieName == "" {
 		cfg.CookieName = "ZERO-PEP-SID"
 	}
-	r, err := newRenderer(cfg.TemplateDir)
+	log := cfg.Logger
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	r, err := newRenderer(cfg.TemplateDir, log)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +145,7 @@ func New(cfg Config) (*Server, error) {
 		snap.now = now
 	}
 
-	sessions := newSessionManager(cfg.Sessions, cfg.SessionTTL)
+	sessions := newSessionManager(cfg.Sessions, cfg.SessionTTL, log)
 	sessions.now = now
 	s := &Server{
 		sessions:    sessions,
@@ -148,6 +156,7 @@ func New(cfg Config) (*Server, error) {
 		snapTTL:     snapTTL,
 		revocations: cfg.Revocations,
 		now:         now,
+		log:         log,
 	}
 	if snap != nil {
 		// The snapshot covers the whole session, so the stored session must live as long (it holds the refresh
@@ -155,11 +164,11 @@ func New(cfg Config) (*Server, error) {
 		sessions.ttl = snapTTL
 		sessions.maxLifetime = snapTTL
 		s.snapCookie = newCookieTemplate(cfg.CookieName+"-SNAP", cfg.InsecureCookie)
-		slog.Info("snapshot fast path enabled", "ttl", snapTTL)
+		s.log.Info("snapshot fast path enabled", "ttl", snapTTL)
 	}
 
 	if len(cfg.Routes) > 0 {
-		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now, transport: cfg.UpstreamTransport, revocations: s.revocations}
+		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now, transport: cfg.UpstreamTransport, revocations: s.revocations, log: log}
 		if snap != nil {
 			deps.cookieName = s.snapCookie.Name // the snapshot gate validates the -SNAP cookie
 			deps.snapshotKeys = snap.decKeys
@@ -169,7 +178,7 @@ func New(cfg Config) (*Server, error) {
 			return nil, fmt.Errorf("gateway: %w", err)
 		}
 		s.gateway = gw
-		slog.Info("standalone gateway enabled", "routes", len(cfg.Routes))
+		s.log.Info("standalone gateway enabled", "routes", len(cfg.Routes))
 	}
 	return s, nil
 }
@@ -230,7 +239,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 			if claims, ok := s.snap.open(c.Value); ok {
 				revoked, err := s.revocations.Revoked(r.Context(), claims.SID)
 				if err != nil {
-					slog.Error("revocation check failed, denying", "session_ref", logRef(claims.SID), "error", err)
+					s.log.Error("revocation check failed, denying", "session_ref", logRef(claims.SID), "error", err)
 				}
 				if revoked || err != nil {
 					w.WriteHeader(http.StatusUnauthorized)
@@ -247,7 +256,7 @@ func (s *Server) handleAuth(w http.ResponseWriter, r *http.Request) {
 	sess, ok := s.currentSession(r)
 	if !ok || !sess.Authenticated() {
 		_, cookieErr := r.Cookie(s.cookie.Name)
-		slog.Debug("forward_auth deny", "uri", withoutQuery(r.Header.Get("X-Forwarded-Uri")),
+		s.log.Debug("forward_auth deny", "uri", withoutQuery(r.Header.Get("X-Forwarded-Uri")),
 			"cookie_present", cookieErr == nil, "session_found", ok)
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -264,7 +273,7 @@ func (s *Server) setSnapshot(w http.ResponseWriter, sess *Session) {
 	}
 	tok, err := s.snap.mint(sess.ID, sess.Identity)
 	if err != nil {
-		slog.Warn("mint snapshot failed", "session_ref", logRef(sess.ID), "error", err)
+		s.log.Warn("mint snapshot failed", "session_ref", logRef(sess.ID), "error", err)
 		return
 	}
 	setCookie(w, s.snapCookie, tok)
@@ -343,7 +352,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	setCookie(w, s.cookie, sess.token)
 
-	slog.Info("login start", "session_ref", logRef(sess.ID), "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
+	s.log.Info("login start", "session_ref", logRef(sess.ID), "idp_iss", idpIss, "mode", start.Mode, "auth_endpoint", withoutQuery(start.AuthURL))
 
 	var name string
 	if start.Provider != nil {
@@ -389,7 +398,7 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		// snapshot before handing back control.
 		oldID := sess.ID
 		if err := s.sessions.rotate(r.Context(), sess); err != nil {
-			slog.Warn("session rotation failed", "session_ref", logRef(sess.ID), "error", err)
+			s.log.Warn("session rotation failed", "session_ref", logRef(sess.ID), "error", err)
 		} else {
 			s.revoke(r.Context(), oldID)
 			setCookie(w, s.cookie, sess.token)
@@ -436,7 +445,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		idpIss, rd = sess.IDPIss, sess.ReturnTo
 	}
 	if e := q.Get("error"); e != "" {
-		slog.Warn("identity provider refused the login", "idp_iss", idpIss, "error", e, "description", q.Get("error_description"))
+		s.log.Warn("identity provider refused the login", "idp_iss", idpIss, "error", e, "description", q.Get("error_description"))
 		s.renderError(w, "login_failed", "The identity provider refused the login.", idpIss, rd)
 		return
 	}
@@ -465,7 +474,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// the cookie. Show a success page; the originating device (polling /oauth2/poll) proceeds to rd and rotates
 	// the id there.
 	if !s.requestOwnsSession(r, sess) {
-		slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "decoupled", true)
+		s.log.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "decoupled", true)
 		s.render.render(w, http.StatusOK, "complete.html", nil)
 		return
 	}
@@ -479,7 +488,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	s.revoke(r.Context(), oldID)
 	setCookie(w, s.cookie, sess.token)
 	s.setSnapshot(w, sess)
-	slog.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "return_to", dest)
+	s.log.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 
@@ -535,7 +544,7 @@ func (s *Server) currentSession(r *http.Request) (*Session, bool) {
 // browser goes away mid-request, as the session it ends is gone already.
 func (s *Server) revoke(ctx context.Context, sid string) {
 	if err := s.revocations.Revoke(context.WithoutCancel(ctx), sid, s.now().Add(s.snapTTL)); err != nil {
-		slog.Warn("revocation did not reach every replica", "session_ref", logRef(sid), "error", err)
+		s.log.Warn("revocation did not reach every replica", "session_ref", logRef(sid), "error", err)
 	}
 }
 
@@ -562,7 +571,7 @@ func (s *Server) renderFailure(w http.ResponseWriter, code, description string, 
 			detail = strings.ReplaceAll(detail, secret, "[redacted]")
 		}
 	}
-	slog.Error(description, "code", code, "idp_iss", idpIss, "error", detail)
+	s.log.Error(description, "code", code, "idp_iss", idpIss, "error", detail)
 	s.renderError(w, code, description, idpIss, returnTo)
 }
 

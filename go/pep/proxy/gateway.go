@@ -48,6 +48,8 @@ type gatewayDeps struct {
 	now func() time.Time
 	// transport reaches the upstreams; nil is only allowed when none is https.
 	transport http.RoundTripper
+	// log receives the gateway's events and is the enforcers' logger; nil logs nothing.
+	log *slog.Logger
 }
 
 // Gateway gates and reverse-proxies the configured routes. Gating runs as a pep.Enforcer chain (the gate,
@@ -61,6 +63,9 @@ type Gateway struct {
 func newGateway(routes []Route, deps gatewayDeps) (*Gateway, error) {
 	if deps.now == nil {
 		deps.now = time.Now
+	}
+	if deps.log == nil {
+		deps.log = slog.New(slog.DiscardHandler)
 	}
 	validated, err := validateRoutes(routes)
 	if err != nil {
@@ -106,7 +111,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.proxy.ServeHTTP(w, r)
 		return
 	}
-	gctx := newGatewayContext(w, r, g.deps.now)
+	gctx := newGatewayContext(w, r, g.deps.now, g.deps.log)
 	served := false
 	g.policyFor(rt).Apply(gctx, func(pep.Context) {
 		served = true
@@ -148,7 +153,7 @@ func (g *Gateway) injectAndProxy(rt *Route, gctx *gatewayContext) {
 	if rt.Inject == InjectDPoP {
 		token, err := g.deps.backend.FreshAccessToken(gctx.r.Context(), gctx.state.session)
 		if err != nil || token == "" {
-			slog.Warn("gateway upstream token unavailable", "route", rt.PathPrefix, "error", err)
+			g.deps.log.Warn("gateway upstream token unavailable", "route", rt.PathPrefix, "error", err)
 			g.handleUnauthenticated(gctx.w, gctx.r)
 			return
 		}
@@ -197,12 +202,12 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 				setIdentityHeaders(pr.Out.Header, inj.identity)
 			case InjectDPoP:
 				if err := g.injectDPoP(pr.Out, inj.sess, inj.token); err != nil {
-					slog.Error("gateway DPoP injection", "route", rt.PathPrefix, "error", err)
+					g.deps.log.Error("gateway DPoP injection", "route", rt.PathPrefix, "error", err)
 				}
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
-			slog.Error("gateway upstream unreachable", "upstream", rt.upstream.String(), "error", err)
+			g.deps.log.Error("gateway upstream unreachable", "upstream", rt.upstream.String(), "error", err)
 			respondGatewayJSON(w, http.StatusBadGateway, "bad_gateway", "upstream unavailable")
 		},
 	}

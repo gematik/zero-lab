@@ -58,9 +58,16 @@ func (f *fakeBackend) FreshAccessToken(_ context.Context, _ *Session) (string, e
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
-	s, err := New(testConfig(&fakeBackend{identity: map[string]any{
+	return newLoggingTestServer(t, nil)
+}
+
+func newLoggingTestServer(t *testing.T, log *slog.Logger) *Server {
+	t.Helper()
+	cfg := testConfig(&fakeBackend{identity: map[string]any{
 		"sub": "user-1", "email": "u@example.com", "groups": []any{"admin", "dev"},
-	}}))
+	}})
+	cfg.Logger = log
+	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,11 +94,9 @@ func (f *failingBackend) Complete(_ context.Context, _ *Session, code string) er
 // Server rule 2: uniform error responses that leak no internals.
 func TestServerRule2_AFailedLoginShowsTheBrowserGenericText(t *testing.T) {
 	var logs bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
-
-	s, err := New(testConfig(&failingBackend{}))
+	cfg := testConfig(&failingBackend{})
+	cfg.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,20 +306,38 @@ func TestRFC9700_4_11_1_SanitizeReturnTo(t *testing.T) {
 	}
 }
 
-func captureDebugLogs(t *testing.T) *bytes.Buffer {
-	t.Helper()
+// go/docs/design.md §2: a library logs only through the logger it was given, so a proxy without one is silent, even
+// where it fails.
+func TestProxyWithoutLoggerLogsNothing(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(previous) })
-	return &logs
+
+	cfg := testConfig(&failingBackend{})
+	cfg.Revocations = failingRevocations{}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/oauth2/start?idp_iss=https%3A%2F%2Fidp.example", nil))
+	s.Handler().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil))
+	s.revoke(t.Context(), "sid")
+	if logs.Len() != 0 {
+		t.Errorf("the default logger was used: %s", logs.String())
+	}
+}
+
+func debugLogger() (*slog.Logger, *bytes.Buffer) {
+	var logs bytes.Buffer
+	return slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})), &logs
 }
 
 // Server rules 5 and 14. A session's ID is the hash of its cookie, and it names the session's record, the revocation
 // entry and the snapshot's sid, so it stays out of the log as well as the cookie does.
 func TestServerRule14_ALoginLogsNoSessionIDNorCookieNorStateAtDebug(t *testing.T) {
-	logs := captureDebugLogs(t)
-	s := newTestServer(t)
+	log, logs := debugLogger()
+	s := newLoggingTestServer(t, log)
 
 	start := httptest.NewRecorder()
 	s.Handler().ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/oauth2/start?idp_iss=https://idp.example", nil))
@@ -366,9 +389,10 @@ func (failingRevocations) Follow(context.Context) error { return nil }
 
 // Server rule 14: telemetry carries no secrets and only pseudonymised identifiers.
 func TestServerRule14_ARevocationThatFailsLogsNoSid(t *testing.T) {
-	logs := captureDebugLogs(t)
+	log, logs := debugLogger()
 	cfg := testConfig(&fakeBackend{})
 	cfg.Revocations = failingRevocations{}
+	cfg.Logger = log
 	s, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -440,8 +464,8 @@ func TestServerRule14_LogRefCorrelatesAndRevealsNoPartOfTheID(t *testing.T) {
 
 // A forwarded URI's query can carry a code, or anything else of the application behind the gate.
 func TestServerRule14_AForwardAuthDenialLogsNoQuery(t *testing.T) {
-	logs := captureDebugLogs(t)
-	s := newTestServer(t)
+	log, logs := debugLogger()
+	s := newLoggingTestServer(t, log)
 	request := httptest.NewRequest(http.MethodGet, "/oauth2/auth", nil)
 	request.Header.Set("X-Forwarded-Uri", "/app/callback?code=code-value")
 	rec := httptest.NewRecorder()
@@ -459,7 +483,7 @@ func TestServerRule14_AForwardAuthDenialLogsNoQuery(t *testing.T) {
 
 // A store's error text reaches pages and logs, so a session's own lookup errors name neither the ID nor the state.
 func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
-	store := newSessionManager(newMemorySessions(), time.Hour)
+	store := newSessionManager(newMemorySessions(), time.Hour, nil)
 	if _, err := store.byID(t.Context(), "session-id-value"); err == nil || strings.Contains(err.Error(), "session-id-value") {
 		t.Errorf("err = %v", err)
 	}

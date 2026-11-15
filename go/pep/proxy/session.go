@@ -128,13 +128,17 @@ type sessionManager struct {
 	ttl         time.Duration // idle timeout (sliding)
 	maxLifetime time.Duration // absolute timeout from CreatedAt
 	now         func() time.Time
+	log         *slog.Logger
 }
 
-func newSessionManager(store SessionStore, ttl time.Duration) *sessionManager {
+func newSessionManager(store SessionStore, ttl time.Duration, log *slog.Logger) *sessionManager {
 	if ttl <= 0 {
 		ttl = defaultSessionTTL
 	}
-	return &sessionManager{now: time.Now, store: store, ttl: ttl, maxLifetime: defaultSessionMaxLifetime}
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	return &sessionManager{now: time.Now, store: store, ttl: ttl, maxLifetime: defaultSessionMaxLifetime, log: log}
 }
 
 // errSessionMismatch is a record that names another session than the one it was stored under.
@@ -203,7 +207,7 @@ func (m *sessionManager) byID(ctx context.Context, id string) (*Session, error) 
 	if s.ID != id {
 		// Defense in depth (a sealed store already binds record and key): never serve a record whose own id
 		// differs from the slot it was read from. It can mean tampering with the store (server rule 14).
-		slog.Error("session record names another session, treating it as absent")
+		m.log.Error("session record names another session, treating it as absent")
 		return nil, errSessionMismatch
 	}
 	// Absolute timeout: a session past its max lifetime is treated as absent and garbage-collected on access,
