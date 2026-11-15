@@ -12,6 +12,7 @@ success or failure only, for decoders that report no reason.
 | go/pkcs12 (legacy.Decode) | legacy | full | 59 of 59 |
 | rust/ti-pkcs12 | legacy | full | 59 of 59 |
 | OpenSSL 4.1.0 CLI | legacy | coarse | 56 of 59 |
+| pyca/cryptography 50.0.2 | legacy | coarse | 52 of 59 |
 | JDK 21.0.10 KeyStore PKCS12 | legacy | coarse | 39 of 59 |
 
 ## Cases
@@ -243,6 +244,70 @@ success or failure only, for decoders that report no reason.
 | mac-iterations-limit | der | ❌ timeout after 20s |
 | work-budget-total | der | ❌ code "ok", want limit_exceeded |
 
+### pyca/cryptography 50.0.2 (profile legacy, coarse comparison, 52 of 59)
+
+| Case | Encoding | Result |
+|---|---|---|
+| openssl-default | der | ✅ |
+| openssl-default | ber | ✅ |
+| pbes2-aes128 | der | ✅ |
+| pbes2-aes128 | ber | ✅ |
+| pbes2-aes192 | der | ✅ |
+| pbes2-aes192 | ber | ✅ |
+| pbes2-des-ede3 | der | ✅ |
+| pbes2-des-ede3 | ber | ✅ |
+| legacy-rc2-40-3des | der | ✅ |
+| legacy-rc2-40-3des | ber | ✅ |
+| legacy-rc2-128-2des | der | ✅ |
+| legacy-rc2-128-2des | ber | ✅ |
+| mac-sha1 | der | ✅ |
+| mac-sha1 | ber | ✅ |
+| mac-sha224 | der | ✅ |
+| mac-sha224 | ber | ✅ |
+| mac-sha384 | der | ✅ |
+| mac-sha384 | ber | ✅ |
+| mac-sha512 | der | ✅ |
+| mac-sha512 | ber | ✅ |
+| no-mac | der | ✅ |
+| no-mac | ber | ✅ |
+| mac-iterations-default | der | ✅ |
+| mac-iterations-default | ber | ✅ |
+| high-iterations | der | ✅ |
+| high-iterations | ber | ✅ |
+| empty-password | der | ✅ |
+| empty-password | ber | ✅ |
+| unicode-password | der | ✅ |
+| unicode-password | ber | ✅ |
+| ec-key | der | ✅ |
+| ec-key | ber | ✅ |
+| certificates-only | der | ✅ |
+| certificates-only | ber | ✅ |
+| key-only | der | ✅ |
+| key-only | ber | ✅ |
+| plain-bags | der | ✅ |
+| plain-bags | ber | ✅ |
+| keybag-not-privatekeyinfo | der | ✅ |
+| keybag-not-privatekeyinfo | ber | ✅ |
+| friendly-names | der | ❌ key 5cc84740f99e: friendly name "", want "Schlüssel ä" |
+| friendly-names | ber | ❌ key 5cc84740f99e: friendly name "", want "Schlüssel ä" |
+| vendor-cgm | as-is | ❌ key 7e0400d186a4: friendly name "", want "test-cs2" |
+| vendor-secunet | as-is | ❌ key c152053c871d: friendly name "", want "valid_ec" |
+| wrong-password | der | ✅ |
+| wrong-password | ber | ✅ |
+| wrong-password-no-mac | der | ✅ |
+| wrong-password-no-mac | ber | ✅ |
+| tampered | der | ✅ |
+| truncated | der | ✅ |
+| trailing-byte | der | ❌ code "ok", want malformed |
+| random | der | ✅ |
+| pem | der | ✅ |
+| unknown-prf | der | ✅ |
+| unknown-mac-algorithm | der | ✅ |
+| pbmac1 | der | ✅ |
+| rc4 | der | ✅ |
+| mac-iterations-limit | der | ❌ timeout after 20s |
+| work-budget-total | der | ❌ code "ok", want limit_exceeded |
+
 ### JDK 21.0.10 KeyStore PKCS12 (profile legacy, coarse comparison, 39 of 59)
 
 | Case | Encoding | Result |
@@ -281,14 +346,14 @@ success or failure only, for decoders that report no reason.
 | ec-key | ber | ✅ |
 | certificates-only | der | ❌ 0 certificates, want 2 |
 | certificates-only | ber | ❌ 0 certificates, want 2 |
-| key-only | der | ❌ key 2d91f8de1c6d missing |
-| key-only | ber | ❌ key 2d91f8de1c6d missing |
+| key-only | der | ❌ key 5cc84740f99e missing |
+| key-only | ber | ❌ key 5cc84740f99e missing |
 | plain-bags | der | ❌ 0 certificates, want 2 |
 | plain-bags | ber | ❌ 0 certificates, want 2 |
 | keybag-not-privatekeyinfo | der | ❌ code "ok", want malformed |
 | keybag-not-privatekeyinfo | ber | ❌ code "ok", want malformed |
-| friendly-names | der | ❌ certificate 029689d4c2ef: friendly name "schlüssel ä", want "Schlüssel ä" |
-| friendly-names | ber | ❌ certificate 029689d4c2ef: friendly name "schlüssel ä", want "Schlüssel ä" |
+| friendly-names | der | ❌ certificate 73bdd39a51a0: friendly name "schlüssel ä", want "Schlüssel ä" |
+| friendly-names | ber | ❌ certificate 73bdd39a51a0: friendly name "schlüssel ä", want "Schlüssel ä" |
 | vendor-cgm | as-is | ✅ |
 | vendor-secunet | as-is | ✅ |
 | wrong-password | der | ✅ |
