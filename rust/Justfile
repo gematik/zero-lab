@@ -702,11 +702,11 @@ fuzz-ti-connector-client seconds="30":
         [ -z "$(ls -A "artifacts/$target" 2>/dev/null)" ] || { echo "$target: crash in artifacts/$target" >&2; exit 1; }
     done
 
-# Fuzz ti-pkcs12's decoder and its BER to DER normalisation for `seconds` each (design
-# time; nightly, cargo-fuzz and Go). The decoder's seeds are a fresh spec/pkcs12
-# conformance corpus and its vendor files, each as a length byte, the password and the
-# file; ber_to_der's are committed in ti-pkcs12/fuzz/seeds/ber_to_der; corpora grow in
-# ti-pkcs12/fuzz/corpus (not committed).
+# Fuzz ti-pkcs12's decoder, its BER to DER normalisation and its PrivateKeyInfo check for
+# `seconds` each (design time; nightly, cargo-fuzz and Go). The decoder's seeds are a
+# fresh spec/pkcs12 conformance corpus and its vendor files, each as a length byte, the
+# password and the file; ber_to_der's and private_key_info's are committed in
+# ti-pkcs12/fuzz/seeds; corpora grow in ti-pkcs12/fuzz/corpus (not committed).
 fuzz-ti-pkcs12 seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -737,6 +737,12 @@ fuzz-ti-pkcs12 seconds="30":
         -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
         | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
     [ -z "$(ls -A artifacts/ber_to_der 2>/dev/null)" ] || { echo "ber_to_der: crash in artifacts/ber_to_der" >&2; exit 1; }
+    # The P12-041 check and the join of a keyBag's publicKey, from their committed seeds.
+    mkdir -p corpus/private_key_info
+    cargo +{{JWZ_NIGHTLY}} fuzz run -O private_key_info corpus/private_key_info seeds/private_key_info -- \
+        -max_total_time={{seconds}} -max_len=4096 -print_final_stats=1 2>&1 \
+        | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
+    [ -z "$(ls -A artifacts/private_key_info 2>/dev/null)" ] || { echo "private_key_info: crash in artifacts/private_key_info" >&2; exit 1; }
 
 # Chrome for Testing (headless shell and its chromedriver) for `jwz-browser`; override
 # the location with JWZ_CHROME_DIR=<dir>
