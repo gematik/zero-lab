@@ -137,7 +137,11 @@ The check reads the octets as DER (X.690 §10) and refuses, as `malformed`, anyt
   PrintableString, TeletexString, VideotexString, IA5String, UTCTime, GeneralizedTime,
   VisibleString, GeneralString and BMPString primitive. Every other universal tag (0, 7, 8, 11, 14,
   15, 25, 28, 29, 31 and above, among them a primitive SEQUENCE or a constructed string) is
-  refused. Context-specific, application and private tags may take either form.
+  refused. Context-specific, application and private tags may take either form. Refusing
+  GraphicString (25), UniversalString (28), the other unlisted types and a constructed UTCTime or
+  GeneralizedTime is a deliberate restriction, narrower than X.520 and BER allow: neither the vendor
+  files nor keys written by OpenSSL, the JDK or pyca/cryptography use them, and every implementation
+  of this specification refuses them alike, in the normalisation below too.
 - **BIT STRING**, wherever it occurs, and the publicKey `[1]`: an initial octet of 0 to 7 unused
   bits, 0 when no octet follows, the unused bits zero (X.690 §8.6.2, §11.2.1).
 - **version**: an INTEGER of one octet, `00` or `01`.

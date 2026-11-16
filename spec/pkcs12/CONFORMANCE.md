@@ -39,7 +39,9 @@ the authSafe), `patch` bytes in place (an OID, a version), rewrite the MAC itera
 (`mac-iterations`; MacData lies outside the MAC, so the rest stays valid), or write every keyBag's
 PrivateKeyInfo in BER (`keybag-ber`; the `ber` encoding leaves the octets of the safes as they are,
 so this is the only way BER reaches inside a safe; it changes the authSafe octets, so the case has
-no MAC).
+no MAC), or write every friendlyName BMPString as a constructed string of one-character segments
+(`friendly-name-segments`; the `ber` encoding segments OCTET STRINGs only, so this case covers the
+other string types; no MAC either).
 
 ## Manifest
 
@@ -165,8 +167,9 @@ As of the run recorded in `interop/matrix.md`:
 |---|---|---|
 | OpenSSL 4.0 CLI, pyca/cryptography 50, JDK 21 | `trailing-byte` | accept bytes after the PFX (P12-003) |
 | OpenSSL 4.0 CLI, pyca/cryptography 50 | `mac-iterations-limit` | no iteration limit, run into the timeout (P12-036) |
-| pyca/cryptography 50 | `friendly-names`, `vendor-*` | reports no friendly name for keys (API limitation) |
+| pyca/cryptography 50 | `friendly-names`, `friendly-names-segmented`, `vendor-*` | reports no friendly name for keys (API limitation) |
 | JDK 21 | `pbes2-aes192`, `pbes2-des-ede3`, `legacy-rc2-128-2des` | rejects AES-192 and DES-EDE3 in PBES2, RC2-128 and two-key Triple DES |
 | JDK 21 | `unicode-password` | rejects a password with a character outside the BMP |
 | JDK 21 | `certificates-only`, `plain-bags`, `key-only` | loads certificates without key only with Oracle's trustedKeyUsage attribute, and keys only with a certificate |
 | JDK 21 | `friendly-names` | lower-cases friendly names (aliases) |
+| JDK 21 | `friendly-names-segmented` | rejects the file, also without the segments: unencrypted certificates in a file without MAC |

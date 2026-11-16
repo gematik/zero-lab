@@ -701,6 +701,51 @@
       }
     },
     {
+      "id": "friendly-names-segmented",
+      "description": "friendlyName BMPStrings as constructed strings of one-character segments inside the safes; certificates unencrypted, no MAC",
+      "rules": [
+        "P12-002",
+        "P12-044"
+      ],
+      "profile": "legacy",
+      "openssl": [
+        "-name",
+        "Schlüssel ä",
+        "-caname",
+        "Wurzel-CA",
+        "-certpbe",
+        "NONE",
+        "-nomac"
+      ],
+      "key": "rsa",
+      "chain": true,
+      "password": "test",
+      "mutation": {
+        "kind": "friendly-name-segments"
+      },
+      "encodings": [
+        "der",
+        "ber"
+      ],
+      "expect": {
+        "code": "ok",
+        "certificates": [
+          "leaf",
+          "ca"
+        ],
+        "keys": [
+          "leaf"
+        ],
+        "pairs": 1,
+        "mac": null,
+        "friendly_names": {
+          "leaf": "Schlüssel ä",
+          "leaf-key": "Schlüssel ä",
+          "ca": "Wurzel-CA"
+        }
+      }
+    },
+    {
       "id": "vendor-cgm",
       "description": "CGM KoCoBox client identity as delivered: BER, RC2-40, 3DES, HMAC-SHA-1 with 102400 iterations, brainpoolP256r1 key",
       "rules": [

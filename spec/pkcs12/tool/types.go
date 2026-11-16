@@ -56,7 +56,7 @@ type Case struct {
 
 // Mutation alters the produced file to build a negative case.
 type Mutation struct {
-	Kind    string `json:"kind"` // truncate, append, patch, flip, mac-iterations
+	Kind    string `json:"kind"` // truncate, append, patch, flip, mac-iterations, keybag-ber, friendly-name-segments
 	Hex     string `json:"hex,omitempty"`
 	Find    string `json:"find,omitempty"`
 	Replace string `json:"replace,omitempty"`
