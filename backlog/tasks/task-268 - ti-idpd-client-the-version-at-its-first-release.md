@@ -4,7 +4,7 @@ title: 'ti-idpd-client: the version at its first release'
 status: To Do
 assignee: []
 created_date: '2026-11-08T06:34:00Z'
-updated_date: '2026-11-08T09:33:00Z'
+updated_date: '2026-11-16T20:36:00Z'
 labels:
   - rust
   - release
@@ -27,4 +27,6 @@ ti-idpd was published as 0.1.0; TASK-246 renamed it to ti-idpd-client. Decide at
 
 <!-- SECTION:NOTES:BEGIN -->
 Decision (maintainer, 2026-11-08): ti-idpd-client's first release is 0.2.0, following ti-idpd 0.1.0. just release ti-idpd-client=0.2.0 sets it at the release.
+
+Decision (maintainer, 2026-11-17): ti-idpd-client starts at 0.2.0, above the old git tag rust/ti-idpd/v0.1.0, so the two names never share a version. Neither ti-idpd nor ti-idpd-client is on crates.io (the workspace has publish = false), so there is no old crate to yank or redirect; the old tag stays as history. The version is set at the first release, as the release steps say (no version edits while developing).
 <!-- SECTION:NOTES:END -->
