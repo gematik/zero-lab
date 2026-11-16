@@ -27,11 +27,24 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"math/big"
 
 	"github.com/gematik/zero-lab/go/brainpool"
 )
+
+// decodeError is a JSON text from outside that did not decode. Its text names what was decoded, never the input: the
+// decoder's own message quotes member names and values (servers.md rule 14). The decoder's error stays reachable
+// through errors.Is and errors.As, so a caller can still tell a member named twice from a mismatched type.
+type decodeError struct {
+	what string
+	err  error
+}
+
+func (e *decodeError) Error() string { return e.what + ": does not decode" }
+
+func (e *decodeError) Unwrap() error { return e.err }
 
 // JSONWebKey is a Brainpool-aware JWK (RFC 7517) — it understands the "BP-256/384/512" crv names
 // and parses x5c Brainpool certificates via brainpool.ParseCertificate (crypto/x509 cannot).
@@ -55,7 +68,7 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 	type Alias JSONWebKey
 	var jwkAlias Alias
 	if err := json.Unmarshal(data, &jwkAlias); err != nil {
-		return err
+		return &decodeError{what: "JWK", err: err}
 	}
 
 	switch jwkAlias.KeyType {
@@ -107,7 +120,7 @@ func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 		}
 
 	default:
-		return fmt.Errorf("unsupported key type: %s", jwkAlias.KeyType)
+		return errors.New("unsupported key type")
 	}
 
 	if len(jwkAlias.CertificatesRaw) > 0 {
