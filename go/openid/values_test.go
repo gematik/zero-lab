@@ -22,6 +22,7 @@
 package openid
 
 import (
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"regexp"
@@ -129,7 +130,8 @@ func TestServerRule28_IDTokenClaimsAreReadStrictly(t *testing.T) {
 		"invalid UTF-8":  {"eyJpc3MiOiJh_2IifQ", "invalid UTF-8"},
 	} {
 		err := (&TokenResponse{IDTokenRaw: "a." + test.payload + ".c"}).Claims(&claims)
-		if err == nil || !strings.Contains(err.Error(), test.reason) {
+		var syntactic *jsontext.SyntacticError
+		if !errors.As(err, &syntactic) || !strings.Contains(syntactic.Error(), test.reason) {
 			t.Errorf("%s: %v, want %q", name, err, test.reason)
 		}
 	}

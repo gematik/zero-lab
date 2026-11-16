@@ -94,3 +94,12 @@ func TestListingAndLookup(t *testing.T) {
 		t.Errorf("%+v, %v", infos, err)
 	}
 }
+
+// Server rule 14: an issuer that names no provider may come from a request, so the refusal does not repeat it.
+func TestServerRule14_AnUnknownIssuerIsNotQuoted(t *testing.T) {
+	const asked = "https://PEER-INPUT-7f3a"
+	_, err := New(nil, fake("https://a", "idpd")).Provider(t.Context(), asked)
+	if err == nil || strings.Contains(err.Error(), asked) {
+		t.Errorf("got %v, want a refusal without the issuer", err)
+	}
+}
