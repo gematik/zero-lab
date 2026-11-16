@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/cloudflare/circl v1.6.5
 	github.com/fxamacker/cbor/v2 v2.10.0
-	github.com/gematik/zero-lab/go/tipki v0.32.0
+	github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261116183316-63278b6c3071
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6

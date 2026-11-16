@@ -6,7 +6,7 @@ require (
 	github.com/caddyserver/caddy/v2 v2.11.9
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3
 	github.com/gematik/zero-lab/go/nonce v0.24.0
-	github.com/gematik/zero-lab/go/pep v0.28.0
+	github.com/gematik/zero-lab/go/pep v0.28.1-0.20261116183316-63278b6c3071
 )
 
 require (
@@ -71,7 +71,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.13.0 // indirect
-	github.com/jackc/puddle/v2 v2.2.3 // indirect
+	github.com/jackc/puddle/v2 v2.2.4 // indirect
 	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect

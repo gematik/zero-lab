@@ -5,8 +5,8 @@ github.com/fxamacker/cbor/v2 v2.10.0 h1:HVF3T5vYwLqO81ebPirWEPNv2SMrUMD3HLnKgEr6
 github.com/fxamacker/cbor/v2 v2.10.0/go.mod h1:uSwlToFuT9BZAKRxxVm3qQC8DR4tlWl7D6pf20iRYH4=
 github.com/gematik/zero-lab/go/brainpool v1.4.0 h1:RHD/AwQ5VEWgZt49xctdfHOXZvQR2uF4MQsykwvj7BY=
 github.com/gematik/zero-lab/go/brainpool v1.4.0/go.mod h1:Xnlw3vNWuuX7zZEGAYS9JOAuQPd/iNz0QVl8y/91Q7g=
-github.com/gematik/zero-lab/go/tipki v0.32.0 h1:pinicbXuUzAdplHU0knHzIXfOjkB9WEhjuhdyn+N/BU=
-github.com/gematik/zero-lab/go/tipki v0.32.0/go.mod h1:+QVYLNHhjmN1Xl8xZ/5X0ms3YO9EwlnFuBkHnu/WuXM=
+github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261116183316-63278b6c3071 h1:Ndj1P/xZ/WE2WHnlqFnY9mmISmouevakYTzm2ch+mKk=
+github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261116183316-63278b6c3071/go.mod h1:+XhbUkfPJrvJjAFKJ6UOXWy3RhNJQLbvs4ED8GO8lhI=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
