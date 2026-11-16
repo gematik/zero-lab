@@ -1,9 +1,10 @@
 ---
 id: TASK-343
 title: 'epa/vau: Kyber768 v3.02 on crypto/mlkem, circl out of go/epa'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T18:21:00Z'
+updated_date: '2026-11-16T19:48:00Z'
 labels: []
 dependencies: []
 ordinal: 358000

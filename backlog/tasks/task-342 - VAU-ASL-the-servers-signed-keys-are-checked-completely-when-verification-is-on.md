@@ -3,9 +3,10 @@ id: TASK-342
 title: >-
   VAU/ASL: the server's signed keys are checked completely when verification is
   on
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T18:19:00Z'
+updated_date: '2026-11-16T19:48:00Z'
 labels: []
 dependencies: []
 ordinal: 357000

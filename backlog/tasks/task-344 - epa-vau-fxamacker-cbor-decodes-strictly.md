@@ -1,9 +1,10 @@
 ---
 id: TASK-344
 title: 'epa/vau: fxamacker/cbor decodes strictly'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T18:21:00Z'
+updated_date: '2026-11-16T19:48:00Z'
 labels: []
 dependencies: []
 ordinal: 359000

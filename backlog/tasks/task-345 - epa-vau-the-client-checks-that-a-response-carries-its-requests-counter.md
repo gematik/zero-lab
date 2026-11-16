@@ -1,9 +1,10 @@
 ---
 id: TASK-345
 title: 'epa/vau: the client checks that a response carries its request''s counter'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T18:21:00Z'
+updated_date: '2026-11-16T19:48:00Z'
 labels: []
 dependencies: []
 ordinal: 360000
