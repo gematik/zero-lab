@@ -21,60 +21,32 @@
 
 package vau
 
-import (
-	"github.com/cloudflare/circl/kem"
-	"github.com/cloudflare/circl/kem/kyber/kyber768"
-)
+import "crypto/mlkem"
 
 // KEMData is a marshalled Kyber768 public key.
 type KEMData []byte
 
-// PublicKey parses the bytes as a Kyber768 public key.
-func (kd KEMData) PublicKey() (kem.PublicKey, error) {
-	return kyber768.Scheme().UnmarshalBinaryPublicKey(kd)
-}
-
-// Encapsulate generates a shared secret and a ciphertext
+// Encapsulate generates a shared secret and a ciphertext to the key.
 func (kd KEMData) Encapsulate() (ss []byte, ct []byte, err error) {
-	publicKey, err := kd.PublicKey()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Attention: ct and ss are not in the same order as in ECDHData.Encapsulate
-	ct, ss, err = publicKey.Scheme().Encapsulate(publicKey)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return ss, ct, nil
+	return kyberEncapsulate(kd)
 }
 
-// KEMKeyPair is a KEM key pair and its public key in message form.
+// KEMKeyPair is a Kyber768 key pair and its public key in message form.
 type KEMKeyPair struct {
-	privateKey kem.PrivateKey
+	privateKey *mlkem.DecapsulationKey768
 	PublicData KEMData
 }
 
-// GenerateKEMKeyPair generates a key pair of scheme.
-func GenerateKEMKeyPair(scheme kem.Scheme) (*KEMKeyPair, error) {
-	publicKey, privateKey, err := scheme.GenerateKeyPair()
+// GenerateKEMKeyPair generates a Kyber768 key pair.
+func GenerateKEMKeyPair() (*KEMKeyPair, error) {
+	privateKey, err := mlkem.GenerateKey768()
 	if err != nil {
 		return nil, err
 	}
-
-	publicData, err := publicKey.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
-
-	return &KEMKeyPair{
-		privateKey: privateKey,
-		PublicData: publicData,
-	}, nil
+	return &KEMKeyPair{privateKey: privateKey, PublicData: privateKey.EncapsulationKey().Bytes()}, nil
 }
 
 // Decapsulate returns the shared secret of a ciphertext to this key.
 func (kp *KEMKeyPair) Decapsulate(ciphertext []byte) ([]byte, error) {
-	return kp.privateKey.Scheme().Decapsulate(kp.privateKey, ciphertext)
+	return kyberDecapsulate(kp.privateKey, ciphertext)
 }

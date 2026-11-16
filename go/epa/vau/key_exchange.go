@@ -40,7 +40,6 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/cloudflare/circl/kem/kyber/kyber768"
 	"github.com/fxamacker/cbor/v2"
 )
 
@@ -57,7 +56,7 @@ func GenerateKeyPairs() (*KeyPairs, error) {
 		return nil, fmt.Errorf("generating EC key pair: %w", err)
 	}
 
-	kemKeyPair, err := GenerateKEMKeyPair(kyber768.Scheme())
+	kemKeyPair, err := GenerateKEMKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("generating Kyber768 key pair: %w", err)
 	}
