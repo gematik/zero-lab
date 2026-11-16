@@ -8,6 +8,7 @@ generator, the command-line contract every decoder provides, and the interoperab
 ```text
 testdata/
   manifest.json      every case: source, profile, rules covered, expected result
+  private-key-info.json  PrivateKeyInfo and keyBag vectors (P12-041, P12-002, P12-004)
   vendor/            two connector client identities as delivered (BER, RC2-40, 3DES,
                      SHA-1 MAC), with their passwords and SHA256SUMS
 tool/                p12conformance: generates the corpus, verifies decoders (Go, stdlib only)
@@ -73,6 +74,20 @@ no MAC).
 `p12conformance generate` writes, next to the files, `expected.json`: one entry per case and
 encoding with file name, password file, profile, allowed codes and the expected result in the form
 of the command-line contract.
+
+## PrivateKeyInfo vectors
+
+`testdata/private-key-info.json` pins the rules of P12-041 and the normalisation of a keyBag
+(P12-002, P12-004) case by case, below what a generated file can reach. Every implementation runs it
+in its own tests (`go/pkcs12`: `internal/syntax`, `legacy`; `rust/ti-pkcs12`:
+`tests/private_key_info.rs`):
+
+| List | Input | Run as |
+|---|---|---|
+| `check` | `der`: a PrivateKeyInfo | the P12-041 check alone, as a decrypted shrouded key reaches it |
+| `key_bag` | `value`: a keyBag's value, BER | the value of the only keyBag in a file without MAC and encryption: PFX version 3, authSafe a Data ContentInfo with one Data ContentInfo whose safe is a SafeContents of that one SafeBag (`keyBag`, `[0]` around the value); the file is decoded by a legacy decoder |
+
+`expect` is `ok` or `malformed`; a `key_bag` case that decodes returns `key`, the normalised DER.
 
 ## Command-line contract
 

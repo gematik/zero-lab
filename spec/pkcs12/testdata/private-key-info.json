@@ -1,0 +1,789 @@
+{
+  "version": 1,
+  "description": "PrivateKeyInfo vectors every decoder runs in its own tests (CONFORMANCE.md, PrivateKeyInfo vectors): check holds PrivateKeyInfo encodings for the P12-041 check alone, as a shrouded key reaches it; key_bag holds keyBag values, decoded in a file whose only safe holds that one keyBag, normalised (P12-002) and then checked.",
+  "check": [
+    {
+      "id": "ed25519-v1",
+      "description": "Ed25519 OID, no parameters, a one-octet private key",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300d020100300506032b65700401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "v2-public-key",
+      "description": "v2 with an empty publicKey (initial octet 0)",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020101300506032b65700401aa810100",
+      "expect": "ok"
+    },
+    {
+      "id": "v2-public-key-unused-bits",
+      "description": "publicKey with 7 unused bits, all zero",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020101300506032b65700401aa81020780",
+      "expect": "ok"
+    },
+    {
+      "id": "v2-attributes-and-public-key",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3012020101300506032b65700401aaa000810100",
+      "expect": "ok"
+    },
+    {
+      "id": "v1-attributes",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300506032b65700401aaa000",
+      "expect": "ok"
+    },
+    {
+      "id": "empty",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "",
+      "expect": "malformed"
+    },
+    {
+      "id": "random-octets",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "4142434445464748494a4b4c4d4e4f505152535455565758595a303132333435",
+      "expect": "malformed"
+    },
+    {
+      "id": "version-2",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300d020102300506032b65700401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "version-non-minimal",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300e02020000300506032b65700401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "version-negative",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300d0201ff300506032b65700401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "trailing-octet",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300d020100300506032b65700401aa00",
+      "expect": "malformed"
+    },
+    {
+      "id": "trailing-in-sequence",
+      "description": "an element after the private key that is neither [0] nor [1]",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300506032b65700401aa0500",
+      "expect": "malformed"
+    },
+    {
+      "id": "private-key-empty",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300c020100300506032b65700400",
+      "expect": "malformed"
+    },
+    {
+      "id": "private-key-constructed",
+      "description": "DER writes an OCTET STRING primitive",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300506032b657024030401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "length-non-minimal",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "30810d020100300506032b65700401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "length-indefinite",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3080020100300506032b65700401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-39-octets",
+      "description": "the longest OID accepted",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3031020100302906272a01010101010101010101010101010101010101010101010101010101010101010101010101010401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "oid-40-octets",
+      "description": "one octet over the bound",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3032020100302a06282a0101010101010101010101010101010101010101010101010101010101010101010101010101010401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-60-octets",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3046020100303e063c2a01010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-2.1967",
+      "description": "first subidentifier 2047: arcs 2.1967",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300c020100300406028f7f0401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "oid-0.0",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300b02010030030601000401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "oid-arc-2^32-1",
+      "description": "an arc of 2^32-1, the largest accepted",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020100300806062a8fffffff7f0401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "oid-arc-2^32",
+      "description": "an arc of 2^32",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020100300806062a90808080000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-arc-2^42",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300906078fffffffff7f000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-empty",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300a020100300206000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-leading-0x80",
+      "description": "a subidentifier with a leading 0x80 octet is not minimal",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300d020100300506032a80010401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-unterminated",
+      "description": "the last octet has bit 8 set",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300c0201003004060200800401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "oid-constructed",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300d020100300526032b65700401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "algorithm-without-oid",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300802010030000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-null",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300706032b657005000401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "parameters-empty-sequence",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300706032b657030000401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "parameters-high-tag-primitive",
+      "description": "[128] primitive, high-tag-number form",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300906032b65709f8100000401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "parameters-high-tag-constructed",
+      "description": "[128] constructed, empty",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300906032b6570bf8100000401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "parameters-high-tag-constructed-content",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3013020100300b06032b6570bf81000205000401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "parameters-high-tag-2^32-1",
+      "description": "the largest tag number accepted",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3014020100300c06032b65709f8fffffff7f000401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "parameters-high-tag-2^32",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3014020100300c06032b65709f9080808000000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-high-tag-leading-zero",
+      "description": "a leading 0x80 group is not minimal (X.690 8.1.2.4.2 c)",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3012020100300a06032b65709f808100000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-high-tag-below-31",
+      "description": "tag 30 in the high form (X.690 8.1.2.2)",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020100300806032b65709f1e000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-universal-high-tag",
+      "description": "universal tag 128 is not a type this specification reads",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300906032b65701f8100000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-constructed-octet-string-empty",
+      "description": "DER writes strings primitive (X.690 10.2)",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300706032b657024000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-constructed-octet-string",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3012020100300a06032b657024030401000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-embedded-pdv-primitive",
+      "description": "universal 11 is not a type this specification reads",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300706032b65700b000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-tag-15",
+      "description": "universal 15 is reserved",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300706032b65700f000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-primitive-sequence",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300706032b657010000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-two-elements",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300906032b6570050005000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-non-minimal-length",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020100300806032b65703081000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-indefinite",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300906032b6570308000000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-boolean-content-not-interpreted",
+      "description": "contents of primitive elements other than BIT STRING are the algorithm's to judge",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020100300806032b65700101010401aa",
+      "expect": "ok"
+    },
+    {
+      "id": "parameters-bit-string-empty",
+      "description": "a BIT STRING has its initial octet",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300706032b657003000401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-bit-string-unused-without-bits",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020100300806032b65700301070401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-bit-string-unused-not-zero",
+      "description": "DER sets unused bits to zero (X.690 11.2.1)",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300906032b6570030207ff0401aa",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-empty",
+      "description": "no initial octet",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020101300506032b65700401aa8100",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-unused-above-7",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020101300506032b65700401aa81020800",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-unused-without-bits",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020101300506032b65700401aa810103",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-unused-not-zero",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020101300506032b65700401aa81020701",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-constructed",
+      "description": "DER writes [1] IMPLICIT BIT STRING primitive",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3012020101300506032b65700401aaa103030100",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-in-v1",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3010020100300506032b65700401aa810100",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-before-attributes",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3012020101300506032b65700401aa810100a000",
+      "expect": "malformed"
+    },
+    {
+      "id": "attributes-primitive",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "300f020100300506032b65700401aa8000",
+      "expect": "malformed"
+    },
+    {
+      "id": "attributes-tag-15",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "3011020100300506032b65700401aaa0020f00",
+      "expect": "malformed"
+    },
+    {
+      "id": "attributes-depth-64",
+      "description": "the NULL at depth 64, the PrivateKeyInfo at depth 0",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "30818d020100300506032b65700401aaa07e307c307a30783076307430723070306e306c306a30683066306430623060305e305c305a30583056305430523050304e304c304a30483046304430423040303e303c303a30383036303430323030302e302c302a30283026302430223020301e301c301a30183016301430123010300e300c300a30083006300430020500",
+      "expect": "ok"
+    },
+    {
+      "id": "attributes-depth-65",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "der": "308190020100300506032b65700401aaa08180307e307c307a30783076307430723070306e306c306a30683066306430623060305e305c305a30583056305430523050304e304c304a30483046304430423040303e303c303a30383036303430323030302e302c302a30283026302430223020301e301c301a30183016301430123010300e300c300a30083006300430020500",
+      "expect": "malformed"
+    }
+  ],
+  "key_bag": [
+    {
+      "id": "der",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "300d020100300506032b65700401aa",
+      "expect": "ok",
+      "key": "300d020100300506032b65700401aa"
+    },
+    {
+      "id": "private-key-segmented",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020100300506032b6570248004010104010200000000",
+      "expect": "ok",
+      "key": "300e020100300506032b657004020102"
+    },
+    {
+      "id": "public-key-segmented",
+      "description": "a BER-segmented [1] IMPLICIT BIT STRING is joined like a universal one",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa180030200aa030200bb00000000",
+      "expect": "ok",
+      "key": "3012020101300506032b65700401aa810300aabb"
+    },
+    {
+      "id": "public-key-segmented-definite",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa108030200aa030204b00000",
+      "expect": "ok",
+      "key": "3012020101300506032b65700401aa810304aab0"
+    },
+    {
+      "id": "public-key-segments-nested",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa1802380030200aa000000000000",
+      "expect": "ok",
+      "key": "3011020101300506032b65700401aa810200aa"
+    },
+    {
+      "id": "public-key-segmented-empty",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa18000000000",
+      "expect": "ok",
+      "key": "3010020101300506032b65700401aa810100"
+    },
+    {
+      "id": "public-key-segment-unused-bits-not-last",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa180030204a0030200bb00000000",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-segment-unused-without-bits",
+      "description": "the last segment has unused bits but no bits; joined it would read as a valid BIT STRING",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa180030200a003010500000000",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-segment-unused-above-7",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa180030200a00302080000000000",
+      "expect": "malformed"
+    },
+    {
+      "id": "public-key-segment-not-bit-string",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020101300506032b65700401aaa1800401aa00000000",
+      "expect": "malformed"
+    },
+    {
+      "id": "bit-string-segment-unused-without-bits",
+      "description": "a segmented universal BIT STRING in the parameters, last segment with unused bits but no bits",
+      "rules": [
+        "P12-002"
+      ],
+      "value": "3080020100301006032b65702380030200a003010500000401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "bit-string-segment-unused-above-7",
+      "description": "",
+      "rules": [
+        "P12-002"
+      ],
+      "value": "3080020100301106032b65702380030200a00302080000000401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-constructed-octet-string",
+      "description": "BER inside a keyBag is normalised before the check (P12-002)",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020100300a06032b657024030401000401aa0000",
+      "expect": "ok",
+      "key": "3010020100300806032b65700401000401aa"
+    },
+    {
+      "id": "parameters-constructed-octet-string-empty",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020100300706032b657024000401aa0000",
+      "expect": "ok",
+      "key": "300f020100300706032b657004000401aa"
+    },
+    {
+      "id": "parameters-embedded-pdv-primitive",
+      "description": "",
+      "rules": [
+        "P12-041"
+      ],
+      "value": "3080020100300706032b65700b000401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-segmented-graphic-string",
+      "description": "GraphicString is not a type this specification reads, joined or not",
+      "rules": [
+        "P12-041"
+      ],
+      "value": "3080020100300c06032b6570398019014100000401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-high-tag-leading-zero",
+      "description": "a high-tag-number form with a leading 0x80 group is not BER (X.690 8.1.2.4.2 c)",
+      "rules": [
+        "P12-002"
+      ],
+      "value": "3080020100300a06032b65709f808100000401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-high-tag-below-31",
+      "description": "",
+      "rules": [
+        "P12-002"
+      ],
+      "value": "3080020100300a06032b6570bf1e8000000401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-high-tag-above-32-bits",
+      "description": "",
+      "rules": [
+        "P12-002"
+      ],
+      "value": "3080020100300c06032b65709f9080808000000401aa0000",
+      "expect": "malformed"
+    },
+    {
+      "id": "parameters-high-tag",
+      "description": "",
+      "rules": [
+        "P12-002",
+        "P12-041"
+      ],
+      "value": "3080020100300d06032b6570bf810080050000000401aa0000",
+      "expect": "ok",
+      "key": "3013020100300b06032b6570bf81000205000401aa"
+    },
+    {
+      "id": "depth-64-from-the-safe",
+      "description": "the NULL at depth 64 counted from the SafeContents of the safe",
+      "rules": [
+        "P12-002",
+        "P12-004"
+      ],
+      "value": "3080020100300506032b65700401aaa0803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308005000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": "ok",
+      "key": "308187020100300506032b65700401aaa0783076307430723070306e306c306a30683066306430623060305e305c305a30583056305430523050304e304c304a30483046304430423040303e303c303a30383036303430323030302e302c302a30283026302430223020301e301c301a30183016301430123010300e300c300a30083006300430020500"
+    },
+    {
+      "id": "depth-65-from-the-safe",
+      "description": "one level more; within 64 counted from the PrivateKeyInfo",
+      "rules": [
+        "P12-002",
+        "P12-004"
+      ],
+      "value": "3080020100300506032b65700401aaa080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080308030803080050000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "expect": "malformed"
+    }
+  ]
+}

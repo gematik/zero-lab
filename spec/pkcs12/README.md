@@ -75,9 +75,9 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | Rule | Requirement |
 |---|---|
 | P12-001 | The input MUST be a PFX: a SEQUENCE of version 3, a ContentInfo authSafe and an optional MacData. Anything else is `malformed`. |
-| P12-002 | A decoder MUST accept DER. *(legacy)* It MUST also accept BER: indefinite lengths, non-minimal definite lengths and constructed strings, in every layer: the PFX, the authSafe octets, every safe and the decrypted plaintext of an encrypted safe, each with all it holds, a keyBag's PrivateKeyInfo included. The decrypted plaintext of a shrouded key is not normalised (P12-041). |
+| P12-002 | A decoder MUST accept DER. *(legacy)* It MUST also accept BER: indefinite lengths, non-minimal definite lengths and constructed strings, in every layer: the PFX, the authSafe octets, every safe and the decrypted plaintext of an encrypted safe, each with all it holds, a keyBag's PrivateKeyInfo included. The decrypted plaintext of a shrouded key is not normalised (P12-041). What the normalisation reads, and refuses as `malformed` otherwise: see [BER normalisation](#ber-normalisation-p12-002-p12-004). |
 | P12-003 | Bytes after the PFX, and after any structure inside it, are `malformed`. |
-| P12-004 | A decoder MUST bound nesting depth (at least 32 levels accepted) and MUST NOT allocate beyond the input size because of a length field. |
+| P12-004 | A decoder MUST bound nesting depth (at least 32 levels accepted) and MUST NOT allocate beyond the input size because of a length field. *(legacy)* The BER normalisation counts depth per layer: the outermost element of the PFX, of the authSafe octets and of each safe is at depth 0, so a keyBag's PrivateKeyInfo sits at depth 3 in its safe (SafeContents, SafeBag, `[0]`) and 3 more per enclosing safeContentsBag; an element deeper than 64 is `malformed`. |
 | P12-005 | *(legacy)* `encryptedContent [0] IMPLICIT OCTET STRING` MUST be accepted in constructed form (a `[0]` holding OCTET STRING segments, joined in order); generic BER conversion cannot do this because only the schema tells that this `[0]` is a string. |
 
 ### B. Integrity
@@ -117,12 +117,61 @@ Rules marked *(legacy)* apply to the profile `legacy` only. A `modern` decoder M
 | Rule | Requirement |
 |---|---|
 | P12-040 | A certBag with certId x509Certificate yields the DER certificate (the certValue octets, unchanged). Other certificate types are `unsupported_algorithm`. |
-| P12-041 | A pkcs8ShroudedKeyBag yields the decrypted PrivateKeyInfo, a keyBag its PrivateKeyInfo; each is returned only when it is exactly one DER PrivateKeyInfo (RFC 5958: version 0 or 1, AlgorithmIdentifier, non-empty privateKey, attributes [0], publicKey [1] only in version 1, nothing after it), else the decode fails with `malformed`. The check comes last: a keyBag's PrivateKeyInfo is checked as it stands after the BER→DER normalisation of its SafeContents (P12-002, legacy); a shrouded key is checked as decrypted, without normalisation, so it must be DER. |
+| P12-041 | A pkcs8ShroudedKeyBag yields the decrypted PrivateKeyInfo, a keyBag its PrivateKeyInfo; each is returned only when it is exactly one DER PrivateKeyInfo (RFC 5958: version 0 or 1, AlgorithmIdentifier, non-empty privateKey, attributes [0], publicKey [1] only in version 1, nothing after it) as [the PrivateKeyInfo check](#the-privatekeyinfo-check-p12-041) defines it, else the decode fails with `malformed`. The check comes last: a keyBag's PrivateKeyInfo is checked as it stands after the BER→DER normalisation of its SafeContents and the join of a constructed publicKey (P12-002, legacy); a shrouded key is checked as decrypted, without normalisation, so it must be DER. |
 | P12-042 | A safeContentsBag is decoded recursively. |
 | P12-043 | CRL bags, secret bags and unknown bag types are skipped. |
 | P12-044 | The attributes friendlyName (BMPString, decoded as UTF-16 so that surrogate pairs written by Windows survive) and localKeyId (OCTET STRING) are reported per bag. Unknown attributes are ignored. |
 | P12-045 | A certificate and a key form a pair when both carry the same, non-empty localKeyId. |
 | P12-046 | Certificates and keys SHOULD be reported in file order. |
+
+#### The PrivateKeyInfo check (P12-041)
+
+The check reads the octets as DER (X.690 §10) and refuses, as `malformed`, anything that is not:
+
+- **Elements**, at every level of the PrivateKeyInfo: a tag number in the low form up to 30 and in
+  the high form from 31 on, without a leading `80` group and at most 2^32−1; a definite length in
+  the fewest octets (at most four); a constructed element holds a run of such elements; the
+  PrivateKeyInfo is at depth 0 and no element is deeper than 64.
+- **Universal types**: SEQUENCE and SET constructed; BOOLEAN, INTEGER, BIT STRING, OCTET STRING,
+  NULL, OBJECT IDENTIFIER, REAL, ENUMERATED, UTF8String, RELATIVE-OID, NumericString,
+  PrintableString, TeletexString, VideotexString, IA5String, UTCTime, GeneralizedTime,
+  VisibleString, GeneralString and BMPString primitive. Every other universal tag (0, 7, 8, 11, 14,
+  15, 25, 28, 29, 31 and above, among them a primitive SEQUENCE or a constructed string) is
+  refused. Context-specific, application and private tags may take either form.
+- **BIT STRING**, wherever it occurs, and the publicKey `[1]`: an initial octet of 0 to 7 unused
+  bits, 0 when no octet follows, the unused bits zero (X.690 §8.6.2, §11.2.1).
+- **version**: an INTEGER of one octet, `00` or `01`.
+- **privateKeyAlgorithm**: an OBJECT IDENTIFIER of 1 to 39 content octets whose last octet has bit 8
+  clear, every subidentifier minimal (no leading `80` octet, X.690 §8.19.2) and at most 2^32−1;
+  the first subidentifier holds the first two arcs, so 2.1967 (`06 02 8F 7F`) is valid. Then at
+  most one parameters element (`ANY DEFINED BY algorithm`, RFC 5280 §4.1.1.2): any element the
+  rules above accept, of any class, in the high-tag-number form too (`9F 81 00 00`, `BF 81 00 00`
+  pass; `24 00`, `24 03 04 01 00` and `0B 00` do not).
+- **privateKey**: a primitive OCTET STRING with at least one octet.
+- **attributes**: a constructed `[0]`; **publicKey**: a primitive `[1]`, only in version 1, after
+  the attributes. Nothing follows.
+
+The contents of primitive elements other than BIT STRING, the algorithm OID and the version are not
+interpreted: the algorithm defines its parameters, and the reader of the key judges them. The check
+is a guard against plaintext that is no key (P12-034), not a key parser.
+
+#### BER normalisation (P12-002, P12-004)
+
+*(legacy)* The normalisation turns each layer into DER and refuses as `malformed` what is not BER of
+the types above:
+
+- lengths: definite in up to four octets or indefinite (constructed only), written minimal;
+- tags as in the check (low form up to 30, minimal high form from 31, at most 2^32−1); universal
+  types as in the check, except that the string types (BIT STRING, OCTET STRING and the character
+  strings listed) may also be constructed and are joined, each segment of the same tag;
+- a constructed BIT STRING: each segment's initial octet 0 to 7 and 0 without further octets; only
+  the last segment may have unused bits (X.690 §8.6.4);
+- depth as in P12-004.
+
+SET OF elements keep their order. Two strings only the schema identifies are joined after the
+generic normalisation: `encryptedContent [0] IMPLICIT OCTET STRING` (P12-005) and, in a keyBag's
+PrivateKeyInfo, `publicKey [1] IMPLICIT BIT STRING`, whose segments follow the BIT STRING rule
+above.
 
 ### F. Writing
 
@@ -171,7 +220,7 @@ decode(file, password):
 collect(bags): for each bag
       certBag            → X.509 only (P12-040), with attributes (P12-044)
       pkcs8ShroudedKeyBag → decrypt(EncryptedPrivateKeyInfo), not normalised: one DER PrivateKeyInfo or malformed (P12-041)
-      keyBag             → its PrivateKeyInfo as normalised with the safe: one DER PrivateKeyInfo or malformed (P12-041)
+      keyBag             → its PrivateKeyInfo as normalised with the safe, publicKey joined: one DER PrivateKeyInfo or malformed (P12-041)
       safeContentsBag    → collect(nested) (P12-042)
       otherwise          → skip (P12-043)
 
