@@ -187,3 +187,15 @@ func TestA_24633_AReplayedResponseOfAnEarlierRequestIsRefused(t *testing.T) {
 		t.Fatalf("second request: err = %v", err)
 	}
 }
+
+// A_24633 and rule 14: a response under another key ID is refused without quoting it.
+func TestA_24633_AResponseUnderAnotherKeyIDIsRefusedWithoutQuotingIt(t *testing.T) {
+	key := bytes.Repeat([]byte{9}, 32)
+	channel := &Channel{Env: EnvNonPU, keyID: bytes.Repeat([]byte{7}, 32), k2S2CAppData: key, ChannelURL: &url.URL{}}
+	foreign := []byte("SECRET-KEY-ID-0123456789abcdefgh")
+	data := sealedResponse(t, &ChannelState{KeyID: foreign, K2S2CAppData: key}, 5)
+	_, err := channel.Decrypt(data, httptest.NewRequest(http.MethodGet, "/", nil), 5)
+	if err == nil || bytes.Contains([]byte(err.Error()), []byte("SECRET")) {
+		t.Fatalf("err = %v", err)
+	}
+}

@@ -28,6 +28,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -463,7 +464,7 @@ func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Re
 
 	// check if the keyID is the same
 	if string(header[11:43]) != string(channelState.KeyID) {
-		return nil, 0, fmt.Errorf("invalid keyID: %s", header[11:43])
+		return nil, 0, errors.New("invalid keyID: not the channel's")
 	}
 
 	aes, err := aes.NewCipher(channelState.K2C2SAppData)

@@ -182,7 +182,6 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encrypting request: %w", err)
 	}
-	// simulate the race condition by delaying the request randomly
 	encResp, err := c.PostEncryptedRequest(encrypted.Ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("posting encrypted request: %w", err)
@@ -234,17 +233,14 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 		return nil, fmt.Errorf("creating AES-GCM: %w", err)
 	}
 
-	// prepare iv
+	// A_24628-01: the IV is 32 random bits and the 64-bit counter of K2_c2s_app_data, so
+	// no IV repeats under the key while the counter is kept (see ChannelSnapshot).
 	iv := make([]byte, 12)
-
-	// read random bits to have full iv size
 	if _, err := io.ReadAtLeast(rand.Reader, iv, 4); err != nil {
 		return nil, fmt.Errorf("generating iv: %w", err)
 	}
-	// add 64 bit from counter
 	binary.LittleEndian.PutUint64(iv[4:], c.k2C2SAppDataCounter.next())
 
-	// encrypt data
 	ciphertext := aesGCM.Seal(iv, iv, data, header)
 
 	return &EncryptedRequest{
@@ -255,7 +251,6 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 
 // DecryptResponse reads and closes the body of resp and opens it with [Channel.Decrypt].
 func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request, requestCounter uint64) (*http.Response, error) {
-	// read body
 	defer resp.Body.Close()
 	data, err := readBounded(resp.Body, maxResponseSize)
 	if err != nil {
@@ -294,9 +289,9 @@ func (c *Channel) Decrypt(data []byte, req *http.Request, requestCounter uint64)
 		return nil, fmt.Errorf("%w: response carries request counter %d, want %d", ErrResponseCounter, got, requestCounter)
 	}
 
-	// check if the keyID is the same
+	// A_24633: the key ID must be the channel's; the peer's bytes are not quoted.
 	if string(header[11:43]) != string(c.keyID) {
-		return nil, fmt.Errorf("invalid keyID: %s", header[11:43])
+		return nil, errors.New("invalid keyID: not the channel's")
 	}
 
 	aes, err := aes.NewCipher(c.k2S2CAppData)
