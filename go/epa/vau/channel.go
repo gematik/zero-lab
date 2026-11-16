@@ -234,12 +234,14 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 	}
 
 	// A_24628-01: the IV is 32 random bits and the 64-bit counter of K2_c2s_app_data, so
-	// no IV repeats under the key while the counter is kept (see ChannelSnapshot).
+	// no IV repeats under the key while the counter is kept (see ChannelSnapshot). The counter
+	// is written big-endian, as gematik's lib-vau writes it (ByteBuffer.putLong) and as the
+	// header carries its counter; the receiver reads the IV from the record either way.
 	iv := make([]byte, 12)
 	if _, err := io.ReadAtLeast(rand.Reader, iv, 4); err != nil {
 		return nil, fmt.Errorf("generating iv: %w", err)
 	}
-	binary.LittleEndian.PutUint64(iv[4:], c.k2C2SAppDataCounter.next())
+	binary.BigEndian.PutUint64(iv[4:], c.k2C2SAppDataCounter.next())
 
 	ciphertext := aesGCM.Seal(iv, iv, data, header)
 
