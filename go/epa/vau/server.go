@@ -358,7 +358,7 @@ func (s *Server) HandleNestedRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	decrypted, err := s.DecryptNestedRequestData(channelState, r)
+	decrypted, requestCounter, err := s.DecryptNestedRequestData(channelState, r)
 	if err != nil {
 		slog.Error("decrypting nested request", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -382,7 +382,7 @@ func (s *Server) HandleNestedRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encrypted, err := s.EncryptNestedResponseData(channelState, nestedRespData)
+	encrypted, err := s.EncryptNestedResponseData(channelState, requestCounter, nestedRespData)
 	if err != nil {
 		slog.Error("encrypting nested response", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -397,12 +397,14 @@ func (s *Server) HandleNestedRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// EncryptNestedResponseData seals data as a nested response of channelState.
-func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []byte) ([]byte, error) {
+// EncryptNestedResponseData seals data as a nested response of channelState to the request
+// that carried requestCounter, which the header repeats (A_24632).
+func (s *Server) EncryptNestedResponseData(channelState *ChannelState, requestCounter uint64, data []byte) ([]byte, error) {
 	header := make([]byte, 43)
 	header[0] = Version
 	header[1] = byte(EnvNonPU)
 	header[2] = HeaderResponse
+	binary.BigEndian.PutUint64(header[3:11], requestCounter)
 	copy(header[11:43], channelState.KeyID)
 
 	aes, err := aes.NewCipher(channelState.K2S2CAppData)
@@ -433,44 +435,45 @@ func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []by
 	return append(header, ciphertext...), nil
 }
 
-// DecryptNestedRequestData reads, checks and opens the nested request in the body of r.
-func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Request) ([]byte, error) {
+// DecryptNestedRequestData reads, checks and opens the nested request in the body of r, and
+// returns it with the request counter of its header.
+func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Request) ([]byte, uint64, error) {
 	defer r.Body.Close()
 	data, err := readBounded(r.Body, maxResponseSize)
 	if err != nil {
-		return nil, fmt.Errorf("reading request: %w", err)
+		return nil, 0, fmt.Errorf("reading request: %w", err)
 	}
 
 	if len(data) < minEncryptedLength {
-		return nil, fmt.Errorf("invalid data length: %d", len(data))
+		return nil, 0, fmt.Errorf("invalid data length: %d", len(data))
 	}
 	header := data[:43]
 	ciphertext := data[43:]
 
 	if header[0] != Version {
-		return nil, fmt.Errorf("invalid version: %d", header[0])
+		return nil, 0, fmt.Errorf("invalid version: %d", header[0])
 	}
 	// TODO: check if the environment is the same
 	if header[1] != byte(EnvNonPU) {
-		return nil, fmt.Errorf("invalid env: %d", header[1])
+		return nil, 0, fmt.Errorf("invalid env: %d", header[1])
 	}
 	if header[2] != HeaderRequest {
-		return nil, fmt.Errorf("invalid header: %d", header[2])
+		return nil, 0, fmt.Errorf("invalid header: %d", header[2])
 	}
 
 	// check if the keyID is the same
 	if string(header[11:43]) != string(channelState.KeyID) {
-		return nil, fmt.Errorf("invalid keyID: %s", header[11:43])
+		return nil, 0, fmt.Errorf("invalid keyID: %s", header[11:43])
 	}
 
 	aes, err := aes.NewCipher(channelState.K2C2SAppData)
 	if err != nil {
-		return nil, fmt.Errorf("creating AES cipher: %w", err)
+		return nil, 0, fmt.Errorf("creating AES cipher: %w", err)
 	}
 
 	aesGCM, err := cipher.NewGCM(aes)
 	if err != nil {
-		return nil, fmt.Errorf("creating AES-GCM: %w", err)
+		return nil, 0, fmt.Errorf("creating AES-GCM: %w", err)
 	}
 
 	iv := ciphertext[:12]
@@ -478,8 +481,8 @@ func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Re
 
 	plaintext, err := aesGCM.Open(nil, iv, ciphertext, header)
 	if err != nil {
-		return nil, fmt.Errorf("decrypting: %w", err)
+		return nil, 0, fmt.Errorf("decrypting: %w", err)
 	}
 
-	return plaintext, nil
+	return plaintext, binary.BigEndian.Uint64(header[3:11]), nil
 }

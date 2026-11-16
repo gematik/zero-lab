@@ -58,6 +58,9 @@ const (
 	HeaderResponse = byte(0x02)
 )
 
+// ErrResponseCounter is a response whose header carries another request's counter (A_24633).
+var ErrResponseCounter = errors.New("vau: response to another request")
+
 // Counter is a monotonic counter safe for concurrent use; its first value is 1.
 type Counter struct {
 	mu    sync.Mutex
@@ -196,7 +199,7 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 		return nil, fmt.Errorf("server %s: %w", c.ChannelURL, statusError(encResp.StatusCode, body))
 	}
 
-	return c.DecryptResponse(encResp, req)
+	return c.DecryptResponse(encResp, req, encrypted.RequestCounter)
 }
 
 // EncryptRequest serialises r as HTTP/1.1 and seals it with [Channel.Encrypt].
@@ -251,22 +254,24 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 }
 
 // DecryptResponse reads and closes the body of resp and opens it with [Channel.Decrypt].
-func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request) (*http.Response, error) {
+func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request, requestCounter uint64) (*http.Response, error) {
 	// read body
 	defer resp.Body.Close()
 	data, err := readBounded(resp.Body, maxResponseSize)
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
-	return c.Decrypt(data, req)
+	return c.Decrypt(data, req, requestCounter)
 }
 
-// minEncryptedLength is a VAU message's header, the IV and the GCM tag: anything shorter holds no ciphertext.
-const minEncryptedLength = 43 + 12 + 16
+// minEncryptedLength is a VAU message's header, the IV, at least one byte of ciphertext and
+// the GCM tag: the 72 bytes A_24630 and A_24633 ask of a message.
+const minEncryptedLength = 43 + 12 + 1 + 16
 
-// Decrypt checks the header of a VAU response (version, environment, direction, key ID),
-// opens it and parses the inner HTTP response, for which req is the request it answers.
-func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error) {
+// Decrypt checks the header of a VAU response (version, environment, direction, request
+// counter, key ID), opens it and parses the inner HTTP response, for which req is the request
+// it answers and requestCounter the counter that request carried.
+func (c *Channel) Decrypt(data []byte, req *http.Request, requestCounter uint64) (*http.Response, error) {
 	if len(data) < minEncryptedLength {
 		return nil, fmt.Errorf("invalid data length: %d", len(data))
 	}
@@ -281,6 +286,12 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 	}
 	if header[2] != HeaderResponse {
 		return nil, fmt.Errorf("invalid header: %d", header[2])
+	}
+	// A_24633: the response must answer this request. Without the check, a response the
+	// Aktensystem or anyone on the path swaps or replays from an earlier request of the same
+	// channel decrypts under the same key and passes as this request's answer.
+	if got := binary.BigEndian.Uint64(header[3:11]); got != requestCounter {
+		return nil, fmt.Errorf("%w: response carries request counter %d, want %d", ErrResponseCounter, got, requestCounter)
 	}
 
 	// check if the keyID is the same
@@ -310,11 +321,7 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
 
-	// pick 8 bytes
-	requestCounterBytes := header[3:11]
-	requestCounter := binary.BigEndian.Uint64(requestCounterBytes)
-
-	slog.Debug("Decrypted VAU response", "channel_url", c.ChannelURL.String(), "server_request_counter", requestCounter, "status_code", resp.StatusCode)
+	slog.Debug("Decrypted VAU response", "channel_url", c.ChannelURL.String(), "request_counter", requestCounter, "status_code", resp.StatusCode)
 
 	return resp, nil
 }
