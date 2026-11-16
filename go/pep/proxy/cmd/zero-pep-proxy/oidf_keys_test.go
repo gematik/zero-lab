@@ -244,9 +244,9 @@ func relyingPartyEntry(t *testing.T, federation *oidftest.Federation, dir, inden
 		t.Fatal(err)
 	}
 	_, keys, certificate := keyFiles(t, filepath.Join(dir, "secrets"))
-	entry := fmt.Sprintf(`sub: https://rp.example
-fed_master_url: %s
-fed_master_jwk: %s
+	entry := fmt.Sprintf(`entity: https://rp.example
+master: %s
+master_jwk: %s
 sign_key: { key_pem_path: secrets/sign.pem, kid: sign }
 enc_key: { key_pem_path: secrets/enc.pem }
 client_key: { key_pem_path: secrets/client.pem, cert_pem_path: secrets/client-cert.pem, kid: client }

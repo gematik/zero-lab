@@ -66,8 +66,8 @@ func (rp *RelyingParty) Providers(ctx context.Context) ([]providers.Info, error)
 // FileConfig is one relying party as a configuration file has it: its [RelyingPartyConfig] and, beside it, the files
 // of its keys.
 type FileConfig struct {
-	RelyingPartyConfig `yaml:",inline"`
-	KeyFiles           `yaml:",inline"`
+	RelyingPartyConfig `json:",inline" yaml:",inline"`
+	KeyFiles           `json:",inline" yaml:",inline"`
 }
 
 // Validate reports a missing or misplaced field of the configuration or of its key files.
@@ -82,18 +82,18 @@ func (cfg *FileConfig) Validate() error {
 // configuration carries paths, never key material. SignKey signs the entity statement, EncKey decrypts the ID token,
 // ClientKey authenticates the self_signed_tls_client_auth calls with its certificate.
 type KeyFiles struct {
-	SignKey   KeyFile `yaml:"sign_key"`
-	EncKey    KeyFile `yaml:"enc_key"`
-	ClientKey KeyFile `yaml:"client_key"`
+	SignKey   KeyFile `json:"sign_key" yaml:"sign_key"`
+	EncKey    KeyFile `json:"enc_key" yaml:"enc_key"`
+	ClientKey KeyFile `json:"client_key" yaml:"client_key"`
 }
 
 // KeyFile names one key: KeyPEMPath its PEM private key and CertPEMPath its PEM certificate, which only the client
 // key has. Kid is its key id; when empty, the key's RFC 7638 SHA-256 thumbprint is. A relying party registered with a
 // federation master sets the kids it registered, or the IDP cannot find its keys: it looks them up by kid.
 type KeyFile struct {
-	KeyPEMPath  string `yaml:"key_pem_path"`
-	CertPEMPath string `yaml:"cert_pem_path,omitempty"`
-	Kid         string `yaml:"kid,omitempty"`
+	KeyPEMPath  string `json:"key_pem_path" yaml:"key_pem_path"`
+	CertPEMPath string `json:"cert_pem_path,omitzero" yaml:"cert_pem_path,omitempty"`
+	Kid         string `json:"kid,omitzero" yaml:"kid,omitempty"`
 }
 
 // Validate reports a key without its file, a client key without its certificate, and a certificate named for

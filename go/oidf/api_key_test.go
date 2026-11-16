@@ -125,8 +125,8 @@ func TestServerRule17_AFederationWithAGatedMasterAndAnAPIKeyIsNotRefusedForTheKe
 
 func TestServerRule17_ARelyingPartyWithAGatedMasterAndNoAPIKeyIsRefusedAtConstruction(t *testing.T) {
 	for name, change := range map[string]func(*RelyingPartyConfig){
-		"fed_master_url": func(cfg *RelyingPartyConfig) { cfg.FedMasterURL = "https://app.dev.gematik.solutions" },
-		"fed_master_entity_statement_uri": func(cfg *RelyingPartyConfig) {
+		"master": func(cfg *RelyingPartyConfig) { cfg.FedMasterURL = "https://app.dev.gematik.solutions" },
+		"master_entity_statement_uri": func(cfg *RelyingPartyConfig) {
 			cfg.FedMasterEntityStatementURI = "https://app.dev.gematik.solutions/.well-known/openid-federation"
 		},
 	} {

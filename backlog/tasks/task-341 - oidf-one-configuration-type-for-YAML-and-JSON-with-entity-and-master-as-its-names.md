@@ -3,9 +3,10 @@ id: TASK-341
 title: >-
   oidf: one configuration type for YAML and JSON, with entity and master as its
   names
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T18:14:00Z'
+updated_date: '2026-11-16T18:16:00Z'
 labels: []
 dependencies: []
 ordinal: 356000
@@ -19,7 +20,13 @@ oidf.FileConfig is read from YAML by zero-pdp and zero-pep-proxy; zeta-pdp-go re
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 FileConfig reads the same relying party from YAML and from JSON
-- [ ] #2 The names are entity, master, master_entity_statement_uri and master_jwk in both; the old ones are refused
-- [ ] #3 zero-pdp, zero-pep-proxy, their examples and tests use the new names
+- [x] #1 FileConfig reads the same relying party from YAML and from JSON
+- [x] #2 The names are entity, master, master_entity_statement_uri and master_jwk in both; the old ones are refused
+- [x] #3 zero-pdp, zero-pep-proxy, their examples and tests use the new names
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+FileConfig, RelyingPartyConfig, RelyingPartyMetadata, FederationEntity, KeyFiles and KeyFile carry json tags with the names of the yaml ones. Renamed in both: sub to entity, fed_master_url to master, fed_master_entity_statement_uri to master_entity_statement_uri, fed_master_jwk to master_jwk; the messages of Validate name the new ones. oidf/testdata has the relying party as YAML and as JSON, and zero-pep-proxy's test reads both into FileConfig and finds them equal, and the old names refused. zero-lab-k8s (values-pep.yaml) and every deployed openid-providers.yaml still have the old names and must change with the image that carries this. just check-changed in go/ passed.
+<!-- SECTION:NOTES:END -->

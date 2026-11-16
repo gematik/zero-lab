@@ -118,9 +118,9 @@ func TestTheProvidersFileHandsItsKeyFilesToTheProgramsLoader(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "openid-providers.yaml")
 	content := fmt.Sprintf(`oidf:
-  sub: https://rp.example
-  fed_master_url: %s
-  fed_master_jwk: %s
+  entity: https://rp.example
+  master: %s
+  master_jwk: %s
   sign_key: { key_pem_path: secrets/sign.pem, kid: sign }
   enc_key: { key_pem_path: secrets/enc.pem, kid: enc }
   client_key: { key_pem_path: /etc/rp/client.pem, cert_pem_path: secrets/client-cert.pem, kid: client }
@@ -166,7 +166,7 @@ func TestTheProvidersFileHandsItsKeyFilesToTheProgramsLoader(t *testing.T) {
 // Keys rule 1: without a loader from the program, an oidf entry has no keys and stops the start.
 func TestKeysRule1_AnOIDFEntryWithoutTheProgramsLoaderStopsTheStart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "openid-providers.yaml")
-	if err := os.WriteFile(path, []byte("oidf:\n  sub: https://rp.example\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("oidf:\n  entity: https://rp.example\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := loadProviders(&Config{ProvidersPath: path, OIDFDocuments: oidf.NewMemoryDocuments(16, nil)}); err == nil || !strings.Contains(err.Error(), "loader") {

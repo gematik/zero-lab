@@ -22,13 +22,48 @@
 package main
 
 import (
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/oidf"
 )
+
+// One type for both formats: the relying party of testdata is the same from its YAML and from its JSON file, and
+// a name of before the renaming (sub, fed_master_url) is an unknown field in either.
+func TestARelyingPartyFileIsTheSameFromYAMLAndJSON(t *testing.T) {
+	fromYAML := new(oidf.FileConfig)
+	if err := loadYAML("../../../../oidf/testdata/relying-party.yaml", fromYAML); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile("../../../../oidf/testdata/relying-party.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromJSON := new(oidf.FileConfig)
+	if err := json.Unmarshal(data, fromJSON, json.RejectUnknownMembers(true)); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(fromYAML, fromJSON) {
+		t.Errorf("YAML gives\n%+v\nJSON gives\n%+v", fromYAML, fromJSON)
+	}
+	if err := fromJSON.Validate(); err != nil {
+		t.Errorf("the relying party of the JSON file: %v", err)
+	}
+	old := filepath.Join(t.TempDir(), "old.yaml")
+	if err := os.WriteFile(old, []byte("sub: https://rp.example.com\nfed_master_url: https://app-ref.federationmaster.de\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := loadYAML(old, new(oidf.FileConfig)); err == nil {
+		t.Error("YAML with the names of before the renaming was read")
+	}
+	if err := json.Unmarshal([]byte(`{"sub":"https://rp.example.com"}`), new(oidf.FileConfig), json.RejectUnknownMembers(true)); err == nil {
+		t.Error("JSON with a name of before the renaming was read")
+	}
+}
 
 func TestARelyingPartyFileLoads(t *testing.T) {
 	cfg := new(oidf.FileConfig)
@@ -37,10 +72,10 @@ func TestARelyingPartyFileLoads(t *testing.T) {
 	}
 
 	if cfg.Subject != "https://rp.example.com" {
-		t.Errorf("sub = %q", cfg.Subject)
+		t.Errorf("entity = %q", cfg.Subject)
 	}
 	if cfg.FedMasterURL != "https://app-ref.federationmaster.de" {
-		t.Errorf("fed_master_url = %q", cfg.FedMasterURL)
+		t.Errorf("master = %q", cfg.FedMasterURL)
 	}
 	if cfg.RelyingParty.ClientName != "Zero Trust Lab" {
 		t.Errorf("client_name = %q", cfg.RelyingParty.ClientName)
