@@ -3,10 +3,10 @@ id: TASK-334
 title: >-
   pkcs12, ti-pkcs12: the PrivateKeyInfo check agrees on OID and parameter edge
   cases
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-15T10:02:00Z'
-updated_date: '2026-11-16T20:52:00Z'
+updated_date: '2026-11-16T23:26:00Z'
 labels:
   - pkcs12
   - rust
@@ -23,8 +23,8 @@ Found by the review of TASK-329 (2026-11-15), with a differential probe of go/pk
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 spec/pkcs12 states the OID and AlgorithmIdentifier parameter rules of P12-041
-- [ ] #2 Go and Rust agree on every edge case above, pinned by shared corpus cases or differential tests
+- [x] #1 spec/pkcs12 states the OID and AlgorithmIdentifier parameter rules of P12-041
+- [x] #2 Go and Rust agree on every edge case above, pinned by shared corpus cases or differential tests
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -32,3 +32,9 @@ Found by the review of TASK-329 (2026-11-15), with a differential probe of go/pk
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-15, from the ber_to_der fuzz target (TASK-329): rust ber.rs now refuses BER forms the der crate cannot read back: high tag numbers below 31, with a leading zero group or above 32 bits, and universal types der does not read (tag 15, a primitive SEQUENCE, a segmented GraphicString). go/pkcs12/internal/ber still accepts them. The spec should say which forms a legacy decoder normalises.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+spec/pkcs12 states the P12-041 rules (OID 1-39 octets, arcs minimal and at most 2^32-1, parameters one DER element of any class, a fixed universal type set, depth 64 from the PrivateKeyInfo); Go and Rust check them with hand-written DER readers and agree on the 62 check and 22 key_bag shared vectors (spec/pkcs12/testdata/private-key-info.json), which seed both fuzz targets. Review: 300k mutated inputs, 0 differences.
+<!-- SECTION:FINAL_SUMMARY:END -->

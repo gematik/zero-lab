@@ -1,10 +1,10 @@
 ---
 id: TASK-335
 title: 'pkcs12, ti-pkcs12: BER normalisation gaps shared by Go and Rust'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-15T10:12:00Z'
-updated_date: '2026-11-16T20:52:00Z'
+updated_date: '2026-11-16T23:26:00Z'
 labels:
   - pkcs12
   - rust
@@ -21,5 +21,11 @@ Found by the review of TASK-329's ber.rs (2026-11-15); the same in go/pkcs12/int
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each gap is fixed in both languages or written into spec/pkcs12 as accepted, with a corpus case or test per gap
+- [x] #1 Each gap is fixed in both languages or written into spec/pkcs12 as accepted, with a corpus case or test per gap
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+All four gaps fixed in both languages: a segmented publicKey [1] is joined; BIT STRING segments with more than 7 unused bits or bits without content are refused; non-minimal high tags refused in Go as in Rust; depth counted per layer from the outermost element (P12-004), Rust now normalising PFX, authSafe and every safe. New corpus case friendly-names-segmented; interop matrix rerun.
+<!-- SECTION:FINAL_SUMMARY:END -->
