@@ -31,6 +31,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -226,7 +227,54 @@ func (b *pdpBackend) fetchNonce(ctx context.Context) (string, error) {
 // which the decoder takes for what it is. Members the response adds are ignored, as OAuth requires (RFC 6749
 // Section 5.1); a member named twice or a string that is not UTF-8 refuses it (server rule 28).
 func decodeBounded(body io.Reader, into any) error {
-	return json.UnmarshalRead(io.LimitReader(body, maxASResponseBytes), into)
+	if err := json.UnmarshalRead(io.LimitReader(body, maxASResponseBytes), into); err != nil {
+		return &decodeError{what: "JSON answer", err: err}
+	}
+	return nil
+}
+
+// decodeError is a JSON answer of the authorization server that did not decode. Its text names the answer, never its
+// content: the decoder's own message quotes member names and values, and error text ends up in logs (servers.md
+// rule 14). The decoder's error stays reachable through errors.Is and errors.As, so a caller can still tell why.
+type decodeError struct {
+	what string
+	err  error
+}
+
+func (e *decodeError) Error() string { return e.what + ": does not decode" }
+
+func (e *decodeError) Unwrap() error { return e.err }
+
+// registeredOAuthErrors are the error codes of RFC 6749 sections 4.1.2.1 and 5.2, OpenID Connect Core section 3.1.2.6
+// and RFC 9449 section 12.2.
+var registeredOAuthErrors = []string{
+	"invalid_request", "unauthorized_client", "access_denied", "unsupported_response_type", "invalid_scope",
+	"server_error", "temporarily_unavailable", "invalid_client", "invalid_grant", "unsupported_grant_type",
+	"interaction_required", "login_required", "account_selection_required", "consent_required",
+	"invalid_request_uri", "invalid_request_object", "request_not_supported", "request_uri_not_supported",
+	"registration_not_supported", "invalid_dpop_proof", "use_dpop_nonce",
+}
+
+// oauthErrorCode names a peer's OAuth error code for a log or an error: a registered code is a fixed reason, anything
+// else is the peer's text and is not repeated (servers.md rule 14). error_description is free text and never named.
+func oauthErrorCode(code string) string {
+	if slices.Contains(registeredOAuthErrors, code) {
+		return code
+	}
+	if code == "" {
+		return "no error code"
+	}
+	return "an unregistered error code"
+}
+
+// oauthError is the error for an authorization server's answer other than the expected status: the endpoint, the
+// status and, from an RFC 6749 error response, a registered error code. The body is not kept.
+func oauthError(endpoint string, status int, body io.Reader) error {
+	var answer struct {
+		Error string `json:"error"`
+	}
+	_ = json.UnmarshalRead(io.LimitReader(body, maxASResponseBytes), &answer)
+	return fmt.Errorf("%s answered %d: %s", endpoint, status, oauthErrorCode(answer.Error))
 }
 
 // IsLocalHTTP reports whether rawURL is plain http on this machine by name or loopback address, the one place where
@@ -244,10 +292,10 @@ func IsLocalHTTP(rawURL string) bool {
 func checkEndpoint(location string, plainAllowed bool) error {
 	parsed, err := url.Parse(location)
 	if err != nil || parsed.Host == "" || parsed.User != nil {
-		return fmt.Errorf("%q is no endpoint URL", location)
+		return errors.New("no endpoint URL")
 	}
 	if parsed.Scheme != "https" && (parsed.Scheme != "http" || !plainAllowed) {
-		return fmt.Errorf("%q is not https", location)
+		return errors.New("not https")
 	}
 	return nil
 }
@@ -256,7 +304,7 @@ func checkEndpoint(location string, plainAllowed bool) error {
 // endpoints it names, and the issuer it names is the audience of the client's assertions.
 func checkMetadata(md asMetadata, issuer string) error {
 	if md.Issuer != issuer {
-		return fmt.Errorf("metadata names the issuer %q, configured is %q", md.Issuer, issuer)
+		return fmt.Errorf("metadata names another issuer than the configured %q", issuer)
 	}
 	if md.AuthorizationEndpoint == "" || md.TokenEndpoint == "" {
 		return errors.New("metadata missing authorization/token endpoint")
@@ -427,15 +475,14 @@ func (b *pdpBackend) pushAuthorizationRequest(ctx context.Context, sess *Session
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxASResponseBytes))
 	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("PAR endpoint returned %d: %s", resp.StatusCode, string(body))
+		return "", oauthError("PAR endpoint", resp.StatusCode, resp.Body)
 	}
 	var pr struct {
 		RequestURI string `json:"request_uri"`
 	}
-	if err := json.Unmarshal(body, &pr); err != nil {
-		return "", fmt.Errorf("decode PAR response: %w", err)
+	if err := decodeBounded(resp.Body, &pr); err != nil {
+		return "", fmt.Errorf("PAR: %w", err)
 	}
 	if pr.RequestURI == "" {
 		return "", errors.New("PAR response missing request_uri")
@@ -454,15 +501,14 @@ func (b *pdpBackend) resolveDecoupledAuthURL(authURL string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 300 || resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return "", fmt.Errorf("authorization server returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return "", oauthError("authorization endpoint", resp.StatusCode, resp.Body)
 	}
 	loc, err := resp.Location()
 	if err != nil {
 		return "", fmt.Errorf("authorization redirect without Location: %w", err)
 	}
 	if e := loc.Query().Get("error"); e != "" {
-		return "", fmt.Errorf("%s: %s", e, loc.Query().Get("error_description"))
+		return "", fmt.Errorf("authorization endpoint refused: %s", oauthErrorCode(e))
 	}
 	return loc.String(), nil
 }
@@ -561,8 +607,7 @@ func (b *pdpBackend) tokenRequest(ctx context.Context, sess *Session, form url.V
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("token endpoint %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return nil, oauthError("token endpoint", resp.StatusCode, resp.Body)
 	}
 	var tr tokenResponse
 	if err := decodeBounded(resp.Body, &tr); err != nil {

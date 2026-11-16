@@ -70,7 +70,7 @@ func newSessionDPoPKey() (*dpop.Key, []byte, error) {
 func parseSessionDPoPKey(jwkJSON []byte) (*dpop.Key, error) {
 	var jwk jose.JSONWebKey
 	if err := json.Unmarshal(jwkJSON, &jwk); err != nil {
-		return nil, fmt.Errorf("session dpop key: %w", err)
+		return nil, &decodeError{what: "session dpop key", err: err}
 	}
 	signer, ok := jwk.Key.(crypto.Signer)
 	if !ok {

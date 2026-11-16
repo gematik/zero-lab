@@ -446,7 +446,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		idpIss, rd = sess.IDPIss, sess.ReturnTo
 	}
 	if e := q.Get("error"); e != "" {
-		s.log.Warn("identity provider refused the login", "idp_iss", idpIss, "error", e, "description", q.Get("error_description"))
+		s.log.Warn("identity provider refused the login", "idp_iss", idpIss, "error", oauthErrorCode(e))
 		s.renderError(w, "login_failed", "The identity provider refused the login.", idpIss, rd)
 		return
 	}
@@ -563,8 +563,8 @@ const (
 	loginNotCompleted = "The login could not be completed."
 )
 
-// renderFailure shows the browser description alone and logs err, which may carry an authorization server's
-// response. secrets are values of this request that such a response may echo.
+// renderFailure shows the browser description alone and logs err. secrets are values of this request, redacted should
+// an error still echo one.
 func (s *Server) renderFailure(w http.ResponseWriter, code, description string, err error, idpIss, returnTo string, secrets ...string) {
 	detail := err.Error()
 	for _, secret := range secrets {
