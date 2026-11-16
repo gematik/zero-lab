@@ -212,8 +212,11 @@ func (p *testPKI) stapledOCSP(t *testing.T, status ocspStatus, producedAt time.T
 // fakeVerifier stands for the ti tool: it gives the verdict it is told.
 type fakeVerifier struct {
 	chainValid, signatureValid bool
-	err                        error
-	calls                      int
+	// profile and environment are what it reports; empty is the VAU profile and the
+	// reference environment.
+	profile, environment string
+	err                  error
+	calls                int
 }
 
 func (f *fakeVerifier) VerifyVAU(context.Context, *CertData, []byte, []byte) (*Verdict, error) {
@@ -221,7 +224,17 @@ func (f *fakeVerifier) VerifyVAU(context.Context, *CertData, []byte, []byte) (*V
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &Verdict{ChainValid: f.chainValid, SignatureValid: f.signatureValid, ChainErrors: []string{"test"}}, nil
+	verdict := &Verdict{
+		ChainValid: f.chainValid, SignatureValid: f.signatureValid, ChainErrors: []string{"test"},
+		Profile: VAUCertificateProfile, Environment: "ref",
+	}
+	if f.profile != "" {
+		verdict.Profile = f.profile
+	}
+	if f.environment != "" {
+		verdict.Environment = f.environment
+	}
+	return verdict, nil
 }
 
 // keysFixture is a test VAU whose signed keys hold every check of A_24624, until a test
@@ -369,7 +382,7 @@ func TestA_24624_AnOCSPResponseThatIsNotGoodIsRefused(t *testing.T) {
 func TestA_24624_AnOCSPResponseOlderThan24HoursIsRefused(t *testing.T) {
 	f := newKeysFixture(t)
 	f.keys.OcspResponse = f.pki.stapledOCSP(t, ocspGood, time.Now().Add(-maxOCSPAge-time.Minute))
-	f.refused(t, "ocsp_response: status unknown, not good: OCSP response is")
+	f.refused(t, "ocsp_response: status unknown, or outside its time window")
 }
 
 func TestA_24624_AnOCSPResponseForAnotherCertificateIsRefused(t *testing.T) {
@@ -377,6 +390,53 @@ func TestA_24624_AnOCSPResponseForAnotherCertificateIsRefused(t *testing.T) {
 	other := newKeysFixture(t)
 	f.keys.OcspResponse = other.pki.stapledOCSP(t, ocspGood, time.Now().Add(-time.Hour))
 	f.refused(t, "ocsp_response: ")
+}
+
+// A CA of the peer's making, named like the real one, cannot vouch for a certificate it did
+// not issue with a "good" response of its own.
+func TestA_24624_AnOCSPResponseOfACAThatDidNotIssueTheCertificateIsRefused(t *testing.T) {
+	f := newKeysFixture(t)
+	other := newTestPKI(t)
+	forged := &testPKI{caKey: other.caKey, ca: other.ca, vauCert: f.pki.vauCert}
+	f.keys.OcspResponse = forged.stapledOCSP(t, ocspGood, time.Now().Add(-time.Hour))
+	var err error
+	if f.certData, err = encMode.Marshal(CertData{Cert: f.pki.vauCert.Raw, CA: other.ca.Raw}); err != nil {
+		t.Fatal(err)
+	}
+	f.refused(t, "ocsp_response: not checked, the CertData CA did not issue the certificate")
+}
+
+func TestA_24624_ACertificateOfAnotherProfileIsRefused(t *testing.T) {
+	f := newKeysFixture(t)
+	_, err := f.open(context.Background(), t, &fakeVerifier{chainValid: true, signatureValid: true, profile: "smcb-aut"}, VerifyEnforce)
+	if !errors.Is(err, ErrServerKeys) || !strings.Contains(err.Error(), "profile: not epa-vau-aut") || f.message3s != 0 {
+		t.Fatalf("err = %v, Message3 %d", err, f.message3s)
+	}
+}
+
+func TestA_24624_ACertificateOfAnotherEnvironmentIsRefused(t *testing.T) {
+	f := newKeysFixture(t)
+	_, err := f.open(context.Background(), t, &fakeVerifier{chainValid: true, signatureValid: true, environment: "prod"}, VerifyEnforce)
+	if !errors.Is(err, ErrServerKeys) || !strings.Contains(err.Error(), "environment: ") || f.message3s != 0 {
+		t.Fatalf("err = %v, Message3 %d", err, f.message3s)
+	}
+	for _, c := range []struct {
+		verified string
+		env      Env
+		want     bool
+	}{
+		{"prod", EnvPU, true},
+		{"ref", EnvPU, false},
+		{"", EnvPU, false},
+		{"ref", EnvNonPU, true},
+		{"test", EnvNonPU, true},
+		{"prod", EnvNonPU, false},
+		{"", EnvNonPU, false},
+	} {
+		if got := environmentMatches(c.verified, c.env); got != c.want {
+			t.Errorf("%q for %d: %v", c.verified, c.env, got)
+		}
+	}
 }
 
 func TestA_24624_AChainTheVerifierRefusesIsRefused(t *testing.T) {
@@ -475,14 +535,15 @@ func TestA_24624_WarnModeLogsOneWarningNamingWhatFailed(t *testing.T) {
 	f := newKeysFixture(t)
 	f.keys.SignedPubKeys.ExpiresAt = time.Now().Add(-time.Minute).Unix()
 	f.keys.OcspResponse = nil
-	if _, err := f.open(context.Background(), t, &fakeVerifier{chainValid: false, signatureValid: false}, VerifyWarn); err != nil {
+	verifier := &fakeVerifier{chainValid: false, signatureValid: false, profile: "smcb-aut", environment: "prod"}
+	if _, err := f.open(context.Background(), t, verifier, VerifyWarn); err != nil {
 		t.Fatal(err)
 	}
 	found := w.keyWarnings()
 	if len(found) != 1 {
 		t.Fatalf("warnings = %q", found)
 	}
-	for _, check := range []string{"exp: not after now", "ocsp_response: missing", "chain: not valid", "signature: not valid"} {
+	for _, check := range []string{"exp: not after now", "ocsp_response: missing", "chain: not valid", "signature: not valid", "profile: not epa-vau-aut", "environment: "} {
 		if !strings.Contains(found[0], check) {
 			t.Errorf("warning lacks %q: %s", check, found[0])
 		}
@@ -498,8 +559,8 @@ func TestA_24624_WithoutAVerifierOrWithModeOffOneWarningSaysWhatWasNotChecked(t 
 		mode     VerifyMode
 		want     string
 	}{
-		"no verifier, enforce": {nil, VerifyEnforce, "chain and signature: not checked, no verifier configured"},
-		"no verifier, warn":    {nil, VerifyWarn, "chain and signature: not checked, no verifier configured"},
+		"no verifier, enforce": {nil, VerifyEnforce, "chain, signature, profile and environment: not checked, no verifier configured"},
+		"no verifier, warn":    {nil, VerifyWarn, "chain, signature, profile and environment: not checked, no verifier configured"},
 		"off":                  {&fakeVerifier{}, VerifyOff, "verification is off"},
 	} {
 		t.Run(name, func(t *testing.T) {

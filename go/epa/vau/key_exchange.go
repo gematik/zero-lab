@@ -30,6 +30,7 @@ import (
 	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -214,7 +215,7 @@ func OpenChannelContext(ctx context.Context, config ChannelConfig) (*Channel, er
 
 	signedPubKeys.SignedPubKeys = pubKeys
 
-	if err := validateSignedPublicVAUKeys(ctx, httpClient, baseURL, signedPubKeys, config.Verifier, config.Mode, now()); err != nil {
+	if err := validateSignedPublicVAUKeys(ctx, httpClient, baseURL, signedPubKeys, config.Verifier, config.Mode, env, now()); err != nil {
 		return nil, fmt.Errorf("validating signed public VAU keys: %w", err)
 	}
 
@@ -458,15 +459,16 @@ func (k *keyChecks) failed(note string) error {
 // as A_24624 lists the checks: exp after now, cert_hash the SHA-256 of the certificate in
 // the CertData it names, the stapled OCSP response for that certificate good and at most
 // 24 hours old, the chain to the TI roots and the signature over signed_pub_keys (the
-// verifier's verdict). Only VerifyEnforce with a verifier refuses.
-func validateSignedPublicVAUKeys(ctx context.Context, httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, mode VerifyMode, now time.Time) error {
+// verifier's verdict), the certificate's profile and its environment. Only VerifyEnforce
+// with a verifier refuses.
+func validateSignedPublicVAUKeys(ctx context.Context, httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, mode VerifyMode, env Env, now time.Time) error {
 	if mode == VerifyOff {
 		slog.Warn("VAU signed keys not verified: verification is off",
-			"not_checked", []string{"exp", "cert_hash", "ocsp_response", "chain", "signature"})
+			"not_checked", []string{"exp", "cert_hash", "ocsp_response", "chain", "signature", "profile", "environment"})
 		return nil
 	}
 	checks := &keyChecks{enforce: mode == VerifyEnforce && verifier != nil}
-	err := runKeyChecks(ctx, httpClient, baseURL, signedPubKeys, verifier, now, checks)
+	err := runKeyChecks(ctx, httpClient, baseURL, signedPubKeys, verifier, env, now, checks)
 	if err != nil {
 		return err
 	}
@@ -478,18 +480,18 @@ func validateSignedPublicVAUKeys(ctx context.Context, httpClient *http.Client, b
 	return nil
 }
 
-func runKeyChecks(ctx context.Context, httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, now time.Time, checks *keyChecks) error {
+func runKeyChecks(ctx context.Context, httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, env Env, now time.Time, checks *keyChecks) error {
 	if signedPubKeys.SignedPubKeys == nil || signedPubKeys.SignedPubKeys.ExpiresAt <= now.Unix() {
 		if err := checks.failed("exp: not after now"); err != nil {
 			return err
 		}
 	}
 	if verifier == nil {
-		_ = checks.failed("chain and signature: not checked, no verifier configured")
+		_ = checks.failed("chain, signature, profile and environment: not checked, no verifier configured")
 	}
 	certData, err := fetchCertData(ctx, httpClient, baseURL, signedPubKeys)
 	if err != nil {
-		notChecked := "; ocsp_response, chain and signature not checked"
+		notChecked := "; ocsp_response, chain, signature, profile and environment not checked"
 		if verifier == nil {
 			notChecked = "; ocsp_response not checked"
 		}
@@ -522,9 +524,46 @@ func runKeyChecks(ctx context.Context, httpClient *http.Client, baseURL *url.URL
 		}
 	}
 	if !verdict.SignatureValid {
-		return checks.failed("signature: not valid over signed_pub_keys")
+		if err := checks.failed("signature: not valid over signed_pub_keys"); err != nil {
+			return err
+		}
+	}
+	// A_24624-01: only a certificate of the component PKI with the role oid_epa_vau may sign
+	// the keys, and one of the environment the channel is for: a valid chain alone admits an
+	// SMC-B, another service's certificate or a test certificate against production.
+	if verdict.Profile != VAUCertificateProfile {
+		if err := checks.failed("profile: not " + VAUCertificateProfile); err != nil {
+			return err
+		}
+	}
+	if !environmentMatches(verdict.Environment, env) {
+		return checks.failed(fmt.Sprintf("environment: the certificate's is not the channel's (%s)", envName(env)))
 	}
 	return nil
+}
+
+// VAUCertificateProfile is the certificate profile a [CertVerifier] reports for an ePA VAU
+// certificate (C.FD.AUT with oid_epa_vau), in the names of the ti tool.
+const VAUCertificateProfile = "epa-vau-aut"
+
+// EnvironmentProduction is the environment a [CertVerifier] reports for a certificate that
+// chains to the production roots; any other name is a test or reference environment.
+const EnvironmentProduction = "prod"
+
+// environmentMatches says whether a certificate of the verifier's environment may serve a
+// channel of env: production only in PU, and only test or reference material outside it.
+func environmentMatches(verified string, env Env) bool {
+	if env == EnvPU {
+		return verified == EnvironmentProduction
+	}
+	return verified != "" && verified != EnvironmentProduction
+}
+
+func envName(env Env) string {
+	if env == EnvPU {
+		return "PU"
+	}
+	return "nonPU"
 }
 
 // fetchCertData gets the CertData that cert_hash and cdv name (A_24957).
@@ -572,7 +611,8 @@ func fetchCertData(ctx context.Context, httpClient *http.Client, baseURL *url.UR
 // checkStapledOCSP says why the stapled OCSP response does not show the VAU certificate as
 // good at now, or nothing. The response must be signed by the certificate's CA from the
 // CertData or a responder that CA certified (RFC 6960); a responder only the TSL names is
-// not recognised here, as the package holds no TSL.
+// not recognised here, as the package holds no TSL. The reasons are fixed texts: tipki's
+// messages quote names from the peer's certificates (servers.md rule 14).
 func checkStapledOCSP(response []byte, certData *CertData, now time.Time) string {
 	if len(response) == 0 {
 		return "ocsp_response: missing"
@@ -585,14 +625,26 @@ func checkStapledOCSP(response []byte, certData *CertData, now time.Time) string
 	if err != nil {
 		return "ocsp_response: not checked, the CertData CA does not parse"
 	}
+	// The CertData CA is the peer's word until it is shown to have issued the certificate:
+	// otherwise a CA of the peer's making, named like the real one, could vouch with its own
+	// "good" response for a revoked certificate that the verifier chains to the real CA.
+	path, err := tipki.ValidatePath([]*x509.Certificate{cert, issuer}, tipki.PathOptions{Now: now})
+	if err != nil || slices.ContainsFunc(path.Errors, func(f tipki.Finding) bool { return f.Code == tipki.CodeSignatureInvalid }) {
+		return "ocsp_response: not checked, the CertData CA did not issue the certificate"
+	}
 	result, err := tipki.VerifyResponse(response, cert, issuer, tipki.ResponseCheck{
 		Now: now, MaxResponseAge: maxOCSPAge, ClockTolerance: tipki.DefaultClockTolerance,
 	})
 	switch {
 	case err != nil:
-		return "ocsp_response: " + err.Error()
+		if ocspErr, ok := errors.AsType[*tipki.OCSPError](err); ok {
+			return "ocsp_response: " + string(ocspErr.Code)
+		}
+		return "ocsp_response: not valid"
+	case result.Status == tipki.RevocationUnknown:
+		return "ocsp_response: status unknown, or outside its time window of at most 24 h"
 	case result.Status != tipki.RevocationGood:
-		return fmt.Sprintf("ocsp_response: status %s, not good: %s", result.Status, result.Reason)
+		return fmt.Sprintf("ocsp_response: status %s, not good", result.Status)
 	}
 	return ""
 }

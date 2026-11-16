@@ -196,7 +196,8 @@ func TestVerifierReadsBothVerdicts(t *testing.T) {
 		t.Errorf("%+v", verdict)
 	}
 	verify := strings.Join(runner.calls[0], " ")
-	if !strings.HasPrefix(verify, "pki verify ") || !strings.Contains(verify, "--env auto") || !strings.Contains(verify, "--offline") {
+	if !strings.HasPrefix(verify, "pki verify ") || !strings.Contains(verify, "--env auto") || !strings.Contains(verify, "--offline") ||
+		!strings.Contains(verify, "--validation-profile epa-vau-aut") {
 		t.Errorf("verify args %q", verify)
 	}
 	chain := runner.calls[0][2]

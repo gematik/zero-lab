@@ -97,7 +97,9 @@ func (v *Verifier) VerifyVAU(ctx context.Context, certData *vau.CertData, signed
 	}
 
 	verdict := &vau.Verdict{}
-	args := []string{"pki", "verify", paths["chain.pem"], "--env", "auto"}
+	// The profile is named so that ti judges the certificate against the VAU's (A_24624-01);
+	// the environment stays detected, and vau compares it with the channel's.
+	args := []string{"pki", "verify", paths["chain.pem"], "--env", "auto", "--validation-profile", vau.VAUCertificateProfile}
 	if v.Offline {
 		args = append(args, "--offline")
 	}
