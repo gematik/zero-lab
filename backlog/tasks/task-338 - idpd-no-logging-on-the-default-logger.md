@@ -1,9 +1,10 @@
 ---
 id: TASK-338
 title: 'idpd: no logging on the default logger'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T14:41:00Z'
+updated_date: '2026-11-16T20:37:00Z'
 labels: []
 dependencies: []
 ordinal: 353000
