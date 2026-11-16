@@ -125,7 +125,9 @@ func FuzzMessage4(f *testing.F) {
 
 func FuzzPublicVAUKeys(f *testing.F) {
 	seeds(f, "libvau/vau_keys.cbor")
-	f.Fuzz(func(t *testing.T, data []byte) { strictDecoding(t, data, decodeInto[PublicVAUKeys]) })
+	f.Fuzz(func(t *testing.T, data []byte) {
+		strictDecoding(t, data, func(data []byte, v *PublicVAUKeys) error { return v.UnmarshalCBOR(data) })
+	})
 }
 
 func FuzzSignedPublicVAUKeys(f *testing.F) {
@@ -142,5 +144,7 @@ func FuzzCertData(f *testing.F) {
 
 func FuzzMessageError(f *testing.F) {
 	seeds(f)
-	f.Fuzz(func(t *testing.T, data []byte) { strictDecoding(t, data, decodeInto[MessageError]) })
+	f.Fuzz(func(t *testing.T, data []byte) {
+		strictDecoding(t, data, func(data []byte, v *MessageError) error { return v.UnmarshalCBOR(data) })
+	})
 }

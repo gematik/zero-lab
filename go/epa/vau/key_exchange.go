@@ -141,24 +141,20 @@ func OpenChannelContext(ctx context.Context, config ChannelConfig) (*Channel, er
 	if config.Now != nil {
 		now = config.Now
 	}
-	// validate base URL
 	baseURL, err := url.Parse(baseURLString)
 	if err != nil {
 		return nil, fmt.Errorf("parsing base URL: %w", err)
 	}
-	// generate ephemeral key pairs for key exchange
 	keys, err := GenerateKeyPairs()
 	if err != nil {
 		return nil, fmt.Errorf("generating ephemeral key pairs: %w", err)
 	}
 
-	// create Message1
 	m1 := Message1{}
 	m1.MessageType = "M1"
 	m1.ECDHPK = keys.ECKeyPair.PublicData
 	m1.Kyber768PK = keys.KEMKeyPair.PublicData
 
-	// construct URL for starting the channel
 	startChannelURL := baseURL.ResolveReference(&url.URL{Path: "VAU"})
 	slog.Debug("Sending Message1", "startChannelURL", startChannelURL.String())
 	m1CBOR, firstHTTPResponse, m2CBOR, m2, err := postMessage[Message2](ctx, httpClient, startChannelURL.String(), m1)
@@ -169,7 +165,7 @@ func OpenChannelContext(ctx context.Context, config ChannelConfig) (*Channel, er
 		return nil, fmt.Errorf("decoding Message2: %w", err)
 	}
 
-	// wouldn't it be better to have everything in the Message2?
+	// A_24622: the channel's path comes in the VAU-CID header of the answer to Message1.
 	channelID := firstHTTPResponse.Header.Get("VAU-CID")
 	matched, err := regexp.MatchString("^/[A-Za-z0-9-/]{1,200}$", channelID)
 	if err != nil {
@@ -177,7 +173,6 @@ func OpenChannelContext(ctx context.Context, config ChannelConfig) (*Channel, er
 	} else if !matched {
 		return nil, errors.New("VAU-CID does not match regex")
 	}
-	// build the channel specific URL
 	channelURL := baseURL.ResolveReference(&url.URL{Path: channelID})
 
 	slog.Debug("Received Message2", "channelID", channelID, "channelURL", channelURL.String())
@@ -209,7 +204,7 @@ func OpenChannelContext(ctx context.Context, config ChannelConfig) (*Channel, er
 	}
 
 	pubKeys := new(PublicVAUKeys)
-	if err = decode(signedPubKeys.SignedPubKeysRaw, pubKeys); err != nil {
+	if err = pubKeys.UnmarshalCBOR(signedPubKeys.SignedPubKeysRaw); err != nil {
 		return nil, fmt.Errorf("decoding public keys: %w", err)
 	}
 
@@ -219,7 +214,6 @@ func OpenChannelContext(ctx context.Context, config ChannelConfig) (*Channel, er
 		return nil, fmt.Errorf("validating signed public VAU keys: %w", err)
 	}
 
-	// prepare Message3
 	ecdhSS, ecdhCt, err := pubKeys.ECDHPK.Encapsulate()
 	if err != nil {
 		return nil, fmt.Errorf("encapsulating ECDH: %w", err)
@@ -319,14 +313,12 @@ func postMessage[M any](ctx context.Context, httpClient *http.Client, url string
 		return nil, nil, nil, nil, fmt.Errorf("marshaling Message1: %w", err)
 	}
 
-	// create request to VAU
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(requestMessageCbor))
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("creating request to VAU: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/cbor")
 
-	// send request to VAU
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("sending request to VAU: %w", err)

@@ -104,6 +104,30 @@ var decMode = func() cbor.DecMode {
 	return mode
 }()
 
+// maxSkippedNesting and maxSkippedItems bound the attributes of the VAU keys and the pairs
+// of an error that the client ignores (A_24425-01, A_24635): whatever they hold is skipped,
+// but not without limit.
+const (
+	maxSkippedNesting = 16
+	maxSkippedItems   = 1024
+)
+
+// skipDecMode splits a map whose unknown keys are ignored: their values may hold anything
+// well-formed within the bounds, tags and null included; only the known keys are then
+// decoded with decMode.
+var skipDecMode = func() cbor.DecMode {
+	options := decOptions()
+	options.TagsMd = cbor.TagsAllowed
+	options.MaxNestedLevels = maxSkippedNesting
+	options.MaxArrayElements = maxSkippedItems
+	options.MaxMapPairs = maxSkippedItems
+	mode, err := options.DecMode()
+	if err != nil {
+		panic(err)
+	}
+	return mode
+}()
+
 // pairsDecMode is decMode that lets null through, for the one field where a peer sends it.
 var pairsDecMode = func() cbor.DecMode {
 	mode, err := decOptions().DecMode()
@@ -134,8 +158,12 @@ func decode(data []byte, v any) error {
 // when the specification tells the client to ignore them, and nullable keys whose value is
 // null count as absent. The values left are decoded as strictly as decode does.
 func decodePairs(data []byte, v any, known []string, ignoreUnknown bool, nullable ...string) error {
+	split := pairsDecMode
+	if ignoreUnknown {
+		split = skipDecMode
+	}
 	var pairs map[string]cbor.RawMessage
-	if err := pairsDecMode.Unmarshal(data, &pairs); err != nil {
+	if err := split.Unmarshal(data, &pairs); err != nil {
 		return decodeError(err)
 	}
 	for key, value := range pairs {

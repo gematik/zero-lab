@@ -117,8 +117,10 @@ func (c *CertData) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
-// UnmarshalCBOR decodes the VAU keys and ignores attributes it does not know, as A_24425-01
-// asks of a client; the known ones are held to the package's strict decoding.
+// UnmarshalCBOR decodes the VAU keys and ignores attributes it does not know, whatever they
+// hold, as A_24425-01 asks of a client; the known ones are held to the package's strict
+// decoding. It is called directly, not through a decoder of the package, which would refuse
+// a tag or null in an unknown attribute before the method sees it.
 func (k *PublicVAUKeys) UnmarshalCBOR(data []byte) error {
 	type raw PublicVAUKeys
 	var decoded raw
@@ -151,8 +153,9 @@ type MessageError struct {
 	ErrorMessage string `cbor:"ErrorMessage"`
 }
 
-// UnmarshalCBOR decodes an error message and ignores pairs it does not know: A_24635 lets an
-// Aktensystem add its own.
+// UnmarshalCBOR decodes an error message and ignores pairs it does not know, whatever they
+// hold: A_24635 lets an Aktensystem add its own. It is called directly, as
+// [PublicVAUKeys.UnmarshalCBOR] is.
 func (m *MessageError) UnmarshalCBOR(data []byte) error {
 	type raw MessageError
 	var decoded raw
@@ -166,6 +169,14 @@ func (m *MessageError) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
+// maxErrorMessageText bounds how much of the peer's ErrorMessage an error carries.
+const maxErrorMessageText = 200
+
+// Error quotes the peer's ErrorMessage, escaped and cut short, since it ends up in logs.
 func (m *MessageError) Error() string {
-	return fmt.Sprintf("vau: %d %s", m.ErrorCode, m.ErrorMessage)
+	text := m.ErrorMessage
+	if runes := []rune(text); len(runes) > maxErrorMessageText {
+		text = string(runes[:maxErrorMessageText]) + "…"
+	}
+	return fmt.Sprintf("vau: %d %q", m.ErrorCode, text)
 }

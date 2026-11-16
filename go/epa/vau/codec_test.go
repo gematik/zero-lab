@@ -25,6 +25,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -151,13 +152,13 @@ func TestServerRule28_NullAnywhereElseIsRefused(t *testing.T) {
 	if err := new(SignedPublicVAUKeys).UnmarshalCBOR(signed); !errors.Is(err, ErrCBORSimpleValue) {
 		t.Errorf("signed_pub_keys: err = %v", err)
 	}
-	if err := decode(vauKeysWith(t, 0), new(PublicVAUKeys)); err != nil {
+	if err := new(PublicVAUKeys).UnmarshalCBOR(vauKeysWith(t, 0)); err != nil {
 		t.Fatal(err)
 	}
 	keys := readTestdata(t, "libvau/vau_keys.cbor")
 	at := bytes.Index(keys, text("comment"))
 	nullComment := join(keys[:at], text("comment"), unhex(t, "f6"))
-	if err := decode(nullComment, new(PublicVAUKeys)); !errors.Is(err, ErrCBORSimpleValue) {
+	if err := new(PublicVAUKeys).UnmarshalCBOR(nullComment); !errors.Is(err, ErrCBORSimpleValue) {
 		t.Errorf("comment: err = %v", err)
 	}
 }
@@ -169,11 +170,11 @@ func TestServerRule28_ADuplicateKeyIsRefused(t *testing.T) {
 	}
 	// Also in the maps whose unknown keys are ignored, and for a key they ignore.
 	keys := vauKeysWith(t, 1, text("exp"), unhex(t, "00"))
-	if err := decode(keys, new(PublicVAUKeys)); !errors.Is(err, ErrCBORDuplicateKey) {
+	if err := new(PublicVAUKeys).UnmarshalCBOR(keys); !errors.Is(err, ErrCBORDuplicateKey) {
 		t.Errorf("VAU keys, known key: err = %v", err)
 	}
 	keys = vauKeysWith(t, 2, text("extra"), unhex(t, "00"), text("extra"), unhex(t, "00"))
-	if err := decode(keys, new(PublicVAUKeys)); !errors.Is(err, ErrCBORDuplicateKey) {
+	if err := new(PublicVAUKeys).UnmarshalCBOR(keys); !errors.Is(err, ErrCBORDuplicateKey) {
 		t.Errorf("VAU keys, unknown key: err = %v", err)
 	}
 	// lib-vau's indefinite-length maps too.
@@ -196,7 +197,7 @@ func TestServerRule28_AKeyInAnotherCaseIsRefused(t *testing.T) {
 	keys := readTestdata(t, "libvau/vau_keys.cbor")
 	keys = bytes.Replace(keys, text("exp"), text("EXP"), 1)
 	var decoded PublicVAUKeys
-	if err := decode(keys, &decoded); err != nil || decoded.ExpiresAt != 0 {
+	if err := decoded.UnmarshalCBOR(keys); err != nil || decoded.ExpiresAt != 0 {
 		t.Errorf("VAU keys: exp %d, err = %v", decoded.ExpiresAt, err)
 	}
 }
@@ -224,7 +225,7 @@ func TestServerRule28_AnUnknownKeyInAFixedMessageIsRefused(t *testing.T) {
 func TestA_24425_UnknownAttributesOfTheVAUKeysAreIgnored(t *testing.T) {
 	keys := vauKeysWith(t, 1, text("future"), unhex(t, "a1 61 61 82 01 41 00"))
 	var decoded PublicVAUKeys
-	if err := decode(keys, &decoded); err != nil {
+	if err := decoded.UnmarshalCBOR(keys); err != nil {
 		t.Fatal(err)
 	}
 	if decoded.ECDHPK.Crv != "P-256" || len(decoded.Kyber768PK) != 1184 {
@@ -233,8 +234,38 @@ func TestA_24425_UnknownAttributesOfTheVAUKeysAreIgnored(t *testing.T) {
 	// Ignoring them stops at the top: the key map inside is ECDH's and fixed.
 	inner := readTestdata(t, "libvau/vau_keys.cbor")
 	inner = bytes.Replace(inner, unhex(t, "a3 63 637276"), join(unhex(t, "a4"), text("kid"), text("1"), unhex(t, "63 637276")), 1)
-	if err := decode(inner, new(PublicVAUKeys)); !errors.Is(err, ErrCBORUnknownField) {
+	if err := new(PublicVAUKeys).UnmarshalCBOR(inner); !errors.Is(err, ErrCBORUnknownField) {
 		t.Errorf("ECDH_PK: err = %v", err)
+	}
+}
+
+// A_24425-01: an unknown attribute is ignored whatever it holds, within the bounds of what
+// the client skips.
+func TestA_24425_AnUnknownAttributeIsIgnoredWhateverItHolds(t *testing.T) {
+	many := func(head string, item []byte, n int) []byte {
+		return join(unhex(t, head), bytes.Repeat(item, n))
+	}
+	pairs := unhex(t, "b8 28")
+	for i := range 40 {
+		pairs = join(pairs, text(fmt.Sprintf("k%d", i)), unhex(t, "00"))
+	}
+	for name, value := range map[string][]byte{
+		"null":                unhex(t, "f6"),
+		"undefined":           unhex(t, "f7"),
+		"tag":                 unhex(t, "c1 00"),
+		"long array":          many("98 14", unhex(t, "00"), 20),
+		"many pairs":          pairs,
+		"null inside":         unhex(t, "a1 61 61 f6"),
+		"nested a few levels": join(bytes.Repeat(unhex(t, "81"), maxNestedLevels), unhex(t, "00")),
+	} {
+		var decoded PublicVAUKeys
+		if err := decoded.UnmarshalCBOR(vauKeysWith(t, 1, text("future"), value)); err != nil || len(decoded.Kyber768PK) != 1184 {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	data := join(unhex(t, "a4"), text("MessageType"), text("Error"), text("ErrorCode"), unhex(t, "03"), text("ErrorMessage"), text("x"), text("Trace"), unhex(t, "f6"))
+	if err := new(MessageError).UnmarshalCBOR(data); err != nil {
+		t.Errorf("error message: err = %v", err)
 	}
 }
 
@@ -242,7 +273,7 @@ func TestA_24425_UnknownAttributesOfTheVAUKeysAreIgnored(t *testing.T) {
 func TestA_24635_PairsAddedToAnErrorAreIgnored(t *testing.T) {
 	data := join(unhex(t, "a4"), text("MessageType"), text("Error"), text("ErrorCode"), unhex(t, "03"), text("ErrorMessage"), text("x"), text("TraceID"), text("abc"))
 	var decoded MessageError
-	if err := decode(data, &decoded); err != nil || decoded.ErrorCode != 3 {
+	if err := decoded.UnmarshalCBOR(data); err != nil || decoded.ErrorCode != 3 {
 		t.Fatalf("err = %v, code %d", err, decoded.ErrorCode)
 	}
 }
@@ -252,10 +283,6 @@ func TestServerRule28_ATagIsRefused(t *testing.T) {
 		if err := decode(m4(t, "a2", value), new(Message4)); !errors.Is(err, ErrCBORTag) {
 			t.Errorf("%s: err = %v", value, err)
 		}
-	}
-	// Also inside an attribute of the VAU keys that is ignored.
-	if err := decode(vauKeysWith(t, 1, text("future"), unhex(t, "c1 00")), new(PublicVAUKeys)); !errors.Is(err, ErrCBORTag) {
-		t.Errorf("VAU keys: err = %v", err)
 	}
 }
 
@@ -268,14 +295,14 @@ func TestServerRule28_BytesAfterTheMessageAreRefused(t *testing.T) {
 	if err := decode(certData, new(CertData)); !errors.Is(err, ErrCBORTrailingData) {
 		t.Errorf("CertData: err = %v", err)
 	}
-	if err := decode(vauKeysWith(t, 0, unhex(t, "00")), new(PublicVAUKeys)); !errors.Is(err, ErrCBORTrailingData) {
+	if err := new(PublicVAUKeys).UnmarshalCBOR(vauKeysWith(t, 0, unhex(t, "00"))); !errors.Is(err, ErrCBORTrailingData) {
 		t.Errorf("VAU keys: err = %v", err)
 	}
 }
 
 func TestServerRule28_InputBeyondTheDepthOrSizeBoundIsRefused(t *testing.T) {
-	deep := vauKeysWith(t, 1, text("future"), bytes.Repeat(unhex(t, "81"), maxNestedLevels), unhex(t, "00"))
-	if err := decode(deep, new(PublicVAUKeys)); !errors.Is(err, ErrCBORLimit) {
+	deep := vauKeysWith(t, 1, text("future"), bytes.Repeat(unhex(t, "81"), maxSkippedNesting), unhex(t, "00"))
+	if err := new(PublicVAUKeys).UnmarshalCBOR(deep); !errors.Is(err, ErrCBORLimit) {
 		t.Errorf("depth: err = %v", err)
 	}
 	chain := join(unhex(t, "a3"), text("cert"), unhex(t, "4101"), text("ca"), unhex(t, "4101"), text("rca_chain"),
@@ -333,5 +360,14 @@ func TestServerRule28_ARefusalDoesNotQuoteTheInput(t *testing.T) {
 				t.Errorf("%s: %v", name, err)
 			}
 		}
+	}
+}
+
+// Rule 14: the peer's ErrorMessage reaches logs only escaped and cut short.
+func TestServerRule28_AnErrorMessageIsQuotedAndCutShort(t *testing.T) {
+	m := &MessageError{ErrorCode: 3, ErrorMessage: "line\nbreak" + strings.Repeat("x", 10*maxErrorMessageText)}
+	text := m.Error()
+	if strings.Contains(text, "\n") || len(text) > maxErrorMessageText+40 || !strings.HasPrefix(text, `vau: 3 "line\nbreak`) {
+		t.Errorf("Error() = %q", text)
 	}
 }
