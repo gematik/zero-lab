@@ -40,8 +40,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sync"
-
-	"github.com/fxamacker/cbor/v2"
 )
 
 // Env is the environment byte in the header of a VAU message.
@@ -190,16 +188,12 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	slog.Debug("Received VAU response", "channel_url", c.ChannelURL.String(), "requestCounter", encrypted.RequestCounter, "status", encResp.StatusCode)
 
 	if encResp.StatusCode != http.StatusOK {
-		messageError := new(MessageError)
-		body, err := io.ReadAll(encResp.Body)
+		defer encResp.Body.Close()
+		body, err := readBounded(encResp.Body, maxMessageSize)
 		if err != nil {
 			return nil, fmt.Errorf("reading error response: %w", err)
 		}
-		if err := cbor.NewDecoder(bytes.NewReader(body)).Decode(messageError); err != nil {
-			slog.Error("Decoding error response failed", "error", err, "body", string(body), "http_status", encResp.StatusCode, "header", encResp.Header)
-			return nil, fmt.Errorf("decoding error: %w", err)
-		}
-		return nil, fmt.Errorf("server %s: %w", c.ChannelURL, messageError)
+		return nil, fmt.Errorf("server %s: %w", c.ChannelURL, statusError(encResp.StatusCode, body))
 	}
 
 	return c.DecryptResponse(encResp, req)
@@ -260,7 +254,7 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request) (*http.Response, error) {
 	// read body
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := readBounded(resp.Body, maxResponseSize)
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}

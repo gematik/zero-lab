@@ -39,8 +39,6 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
-
-	"github.com/fxamacker/cbor/v2"
 )
 
 // KeyPairs are the two key pairs one side of the handshake holds: ECDH and Kyber768.
@@ -134,6 +132,9 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	if err != nil {
 		return nil, fmt.Errorf("sending Message1: %w", err)
 	}
+	if err := checkMessageType(m2.MessageType, "M2"); err != nil {
+		return nil, fmt.Errorf("decoding Message2: %w", err)
+	}
 
 	// wouldn't it be better to have everything in the Message2?
 	channelID := firstHTTPResponse.Header.Get("VAU-CID")
@@ -169,12 +170,13 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	}
 
 	signedPubKeys := new(SignedPublicVAUKeys)
-	if err = cbor.Unmarshal(plaintext, signedPubKeys); err != nil {
+	// Not through decode: decMode would refuse the null ocsp_response the method lets through.
+	if err = signedPubKeys.UnmarshalCBOR(plaintext); err != nil {
 		return nil, fmt.Errorf("decoding VAU keys: %w", err)
 	}
 
 	pubKeys := new(PublicVAUKeys)
-	if err = cbor.Unmarshal(signedPubKeys.SignedPubKeysRaw, pubKeys); err != nil {
+	if err = decode(signedPubKeys.SignedPubKeysRaw, pubKeys); err != nil {
 		return nil, fmt.Errorf("decoding public keys: %w", err)
 	}
 
@@ -207,7 +209,7 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 		ESO:        false,
 	}
 
-	m3InnerCBOR, err := cbor.Marshal(m3Inner)
+	m3InnerCBOR, err := encMode.Marshal(m3Inner)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling M3Inner: %w", err)
 	}
@@ -238,6 +240,9 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	m3CBOR, _, _, m4, err := PostMessage[Message4](httpClient, channelURL.String(), m3)
 	if err != nil {
 		return nil, fmt.Errorf("sending Message3: %w", err)
+	}
+	if err := checkMessageType(m4.MessageType, "M4"); err != nil {
+		return nil, fmt.Errorf("decoding Message4: %w", err)
 	}
 	slog.Debug("Received Message4", "channelURL", channelURL.String())
 
@@ -273,7 +278,7 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 // request bytes, the response and the response bytes, which the transcript hash takes as sent.
 func PostMessage[M any](httpClient *http.Client, url string, requestMessage any) ([]byte, *http.Response, []byte, *M, error) {
 	// marshal Message1 to CBOR
-	requestMessageCbor, err := cbor.Marshal(requestMessage)
+	requestMessageCbor, err := encMode.Marshal(requestMessage)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("marshaling Message1: %w", err)
 	}
@@ -292,22 +297,31 @@ func PostMessage[M any](httpClient *http.Client, url string, requestMessage any)
 	}
 	defer resp.Body.Close()
 
-	// unmarshal ResponseMessage from CBOR
-	responseCbor, err := io.ReadAll(resp.Body)
+	responseCbor, err := readBounded(resp.Body, maxMessageSize)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("reading response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, nil, nil, nil, fmt.Errorf("VAU returned status %v, body: %s", resp.StatusCode, responseCbor)
+		return nil, nil, nil, nil, statusError(resp.StatusCode, responseCbor)
 	}
 
 	responseMessage := new(M)
-	if err := cbor.Unmarshal(responseCbor, &responseMessage); err != nil {
+	if err := decode(responseCbor, responseMessage); err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("unmarshaling response: %w", err)
 	}
 
 	return requestMessageCbor, resp, responseCbor, responseMessage, nil
+}
+
+// statusError is the error for a VAU answer other than 200: the [MessageError] its body
+// decodes to, or the status alone, since a body that is no error message is not quoted.
+func statusError(status int, body []byte) error {
+	messageError := new(MessageError)
+	if err := messageError.UnmarshalCBOR(body); err != nil {
+		return fmt.Errorf("VAU returned status %d, body not an error message: %w", status, err)
+	}
+	return fmt.Errorf("VAU returned status %d: %w", status, messageError)
 }
 
 // kdfInput joins the shared secrets into a new buffer. append on the first secret would
@@ -402,13 +416,17 @@ func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, sign
 		return fmt.Errorf("getting CertData: %w", err)
 	}
 
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("getting certData from '%s' returned http status %v", certDataURL.String(), resp.StatusCode)
 	}
 
-	defer resp.Body.Close()
+	body, err := readBounded(resp.Body, maxMessageSize)
+	if err != nil {
+		return fmt.Errorf("reading CertData: %w", err)
+	}
 	certData := new(CertData)
-	if err := cbor.NewDecoder(resp.Body).Decode(certData); err != nil {
+	if err := decode(body, certData); err != nil {
 		return fmt.Errorf("decoding CertData: %w", err)
 	}
 

@@ -34,8 +34,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"uuid"
-
-	"github.com/fxamacker/cbor/v2"
 )
 
 // ChannelState is what Server remembers of a channel: the handshake messages, the K1
@@ -93,12 +91,12 @@ func NewServer() (s *Server, err error) {
 		Cdv: 1,
 	}
 
-	s.signedPublicKeys.SignedPubKeysRaw, err = cbor.Marshal(s.signedPublicKeys.SignedPubKeys)
+	s.signedPublicKeys.SignedPubKeysRaw, err = encMode.Marshal(s.signedPublicKeys.SignedPubKeys)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling signed public keys: %w", err)
 	}
 
-	s.signedPublicKeysRaw, err = cbor.Marshal(s.signedPublicKeys)
+	s.signedPublicKeysRaw, err = encMode.Marshal(s.signedPublicKeys)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling signed public keys: %w", err)
 	}
@@ -133,14 +131,18 @@ func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 	}
 
 	defer r.Body.Close()
-	m1cbor, err := io.ReadAll(r.Body)
+	m1cbor, err := readBounded(r.Body, maxMessageSize)
 	if err != nil {
 		slog.Error("reading Message1", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	m1 := new(Message1)
-	if err := cbor.Unmarshal(m1cbor, m1); err != nil {
+	if err := decode(m1cbor, m1); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := checkMessageType(m1.MessageType, "M1"); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -187,7 +189,7 @@ func (s *Server) HandleMessage1(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/cbor")
 	w.Header().Set("VAU-CID", vauCid)
 
-	m2cbor, err := cbor.Marshal(m2)
+	m2cbor, err := encMode.Marshal(m2)
 	if err != nil {
 		slog.Error("marshaling Message2", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -223,7 +225,7 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 
 	defer r.Body.Close()
 
-	m3cbor, err := io.ReadAll(r.Body)
+	m3cbor, err := readBounded(r.Body, maxMessageSize)
 	if err != nil {
 		slog.Error("reading Message3", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
@@ -231,7 +233,12 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m3 := new(Message3)
-	if err := cbor.Unmarshal(m3cbor, m3); err != nil {
+	if err := decode(m3cbor, m3); err != nil {
+		slog.Error("unmarshaling Message3", "error", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if err := checkMessageType(m3.MessageType, "M3"); err != nil {
 		slog.Error("unmarshaling Message3", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -245,7 +252,7 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m3Inner := new(Message3Inner)
-	if err := cbor.Unmarshal(m3InnerCBOR, m3Inner); err != nil {
+	if err := decode(m3InnerCBOR, m3Inner); err != nil {
 		slog.Error("unmarshaling Message3Inner", "error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -302,7 +309,7 @@ func (s *Server) HandleMessage3(w http.ResponseWriter, r *http.Request) {
 		AEADCtKeyConfirmation: aeadCtKeyConfirmation,
 	}
 
-	m4cbor, err := cbor.Marshal(m4)
+	m4cbor, err := encMode.Marshal(m4)
 	if err != nil {
 		slog.Error("marshaling Message4", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -429,7 +436,7 @@ func (s *Server) EncryptNestedResponseData(channelState *ChannelState, data []by
 // DecryptNestedRequestData reads, checks and opens the nested request in the body of r.
 func (s *Server) DecryptNestedRequestData(channelState *ChannelState, r *http.Request) ([]byte, error) {
 	defer r.Body.Close()
-	data, err := io.ReadAll(r.Body)
+	data, err := readBounded(r.Body, maxResponseSize)
 	if err != nil {
 		return nil, fmt.Errorf("reading request: %w", err)
 	}

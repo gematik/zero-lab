@@ -22,11 +22,8 @@
 package vau
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
-
-	"github.com/fxamacker/cbor/v2"
 )
 
 // Message1 opens the handshake with the client's ephemeral public keys.
@@ -104,14 +101,14 @@ type CertData struct {
 func (c *CertData) UnmarshalCBOR(data []byte) error {
 	type raw CertData
 	var decoded raw
-	if err := cbor.Unmarshal(data, &decoded); err != nil {
+	if err := decode(data, &decoded); err != nil {
 		return err
 	}
 	if decoded.Cert == nil {
-		return errors.New("missing certificate")
+		return fmt.Errorf("%w: cert", ErrCBORMissingField)
 	}
 	if decoded.CA == nil {
-		return errors.New("missing CA certificate")
+		return fmt.Errorf("%w: ca", ErrCBORMissingField)
 	}
 	if len(decoded.RCAChain) == 0 {
 		slog.Warn("CertData missing RCA chain")
@@ -120,11 +117,53 @@ func (c *CertData) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
+// UnmarshalCBOR decodes the VAU keys and ignores attributes it does not know, as A_24425-01
+// asks of a client; the known ones are held to the package's strict decoding.
+func (k *PublicVAUKeys) UnmarshalCBOR(data []byte) error {
+	type raw PublicVAUKeys
+	var decoded raw
+	if err := decodePairs(data, &decoded, []string{"ECDH_PK", "Kyber768_PK", "iat", "exp", "comment"}, true); err != nil {
+		return err
+	}
+	*k = PublicVAUKeys(decoded)
+	return nil
+}
+
+// UnmarshalCBOR decodes the signed VAU keys. Their format is fixed, but a null ocsp_response
+// counts as absent: gematik's libasl writes null where it has no response, and the
+// Aktensysteme run the same Java stack (Jackson). Whether a missing response is acceptable is
+// the verification's decision. It is called directly, not through a decoder of the package,
+// which would refuse that null before the method sees it.
+func (k *SignedPublicVAUKeys) UnmarshalCBOR(data []byte) error {
+	type raw SignedPublicVAUKeys
+	var decoded raw
+	if err := decodePairs(data, &decoded, nil, false, "ocsp_response"); err != nil {
+		return err
+	}
+	*k = SignedPublicVAUKeys(decoded)
+	return nil
+}
+
 // MessageError is a CBOR encoded error message
 type MessageError struct {
 	MessageType  string `cbor:"MessageType"`
 	ErrorCode    uint64 `cbor:"ErrorCode"`
 	ErrorMessage string `cbor:"ErrorMessage"`
+}
+
+// UnmarshalCBOR decodes an error message and ignores pairs it does not know: A_24635 lets an
+// Aktensystem add its own.
+func (m *MessageError) UnmarshalCBOR(data []byte) error {
+	type raw MessageError
+	var decoded raw
+	if err := decodePairs(data, &decoded, []string{"MessageType", "ErrorCode", "ErrorMessage"}, true); err != nil {
+		return err
+	}
+	if err := checkMessageType(decoded.MessageType, "Error"); err != nil {
+		return err
+	}
+	*m = MessageError(decoded)
+	return nil
 }
 
 func (m *MessageError) Error() string {
