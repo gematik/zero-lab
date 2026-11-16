@@ -32,6 +32,7 @@ package ber
 import (
 	"errors"
 	"fmt"
+	"math"
 )
 
 // ErrMalformed reports input that is not a valid BER encoding.
@@ -83,13 +84,18 @@ func readHeader(data []byte) (header, error) {
 	if data[0]&0x1f != 0x1f {
 		h.tag = uint64(data[0] & 0x1f)
 	} else {
-		// High tag number form (X.690 §8.1.2.4): base-128, most significant first.
+		// High tag number form (X.690 §8.1.2.4): base-128, most significant
+		// first, with no leading zero group, only for numbers the low form
+		// cannot hold, and at most 32 bits, as rust/ti-pkcs12 reads them.
 		for {
 			if i >= len(data) {
 				return h, fmt.Errorf("%w: truncated tag", ErrMalformed)
 			}
-			if h.tag > 1<<56 {
+			if h.tag > math.MaxUint32>>7 {
 				return h, fmt.Errorf("%w: tag number too large", ErrMalformed)
+			}
+			if i == 1 && data[i] == 0x80 {
+				return h, fmt.Errorf("%w: tag number with a leading zero group", ErrMalformed)
 			}
 			b := data[i]
 			i++
@@ -97,6 +103,9 @@ func readHeader(data []byte) (header, error) {
 			if b&0x80 == 0 {
 				break
 			}
+		}
+		if h.tag < 0x1f {
+			return h, fmt.Errorf("%w: tag number in the high form below 31", ErrMalformed)
 		}
 	}
 	h.ident = data[:i]
@@ -150,6 +159,9 @@ func convert(data []byte, depth int) (out, rest []byte, err error) {
 	h, err := readHeader(data)
 	if err != nil {
 		return nil, nil, err
+	}
+	if h.class == classUniversal && !knownUniversal(h) {
+		return nil, nil, fmt.Errorf("%w: universal type %d (constructed %t) outside what PKCS#12 holds", ErrMalformed, h.tag, h.compound)
 	}
 
 	if !h.compound {
@@ -255,9 +267,12 @@ func joinSegments(tag uint64, segments [][]byte, depth int) ([]byte, error) {
 		}
 		part := der[h.headerSize:]
 		if tag == tagBitString {
-			// Every segment starts with its unused-bits count; only the last
-			// segment may have unused bits (X.690 §8.6.4).
-			if len(part) == 0 || (i < len(segments)-1 && part[0] != 0) {
+			// Every segment starts with its unused-bits count, 0 to 7 and 0
+			// when no bits follow (X.690 §8.6.2); only the last segment may
+			// have unused bits (X.690 §8.6.4). Joined, a last segment of unused
+			// bits without bits would pass for a valid count.
+			if len(part) == 0 || part[0] > 7 || (len(part) == 1 && part[0] != 0) ||
+				(i < len(segments)-1 && part[0] != 0) {
 				return nil, fmt.Errorf("%w: invalid BIT STRING segment", ErrMalformed)
 			}
 			if i == 0 {
@@ -273,6 +288,27 @@ func joinSegments(tag uint64, segments [][]byte, depth int) ([]byte, error) {
 		value = []byte{0}
 	}
 	return value, nil
+}
+
+// knownUniversal reports whether a universal element is one of the types
+// spec/pkcs12 P12-002 normalises, in a form BER allows for it: SEQUENCE and
+// SET constructed, the string types primitive or segmented, the other types
+// primitive, each in the low tag form. rust/ti-pkcs12 reads the result with
+// the der crate, which knows no other universal type; both refuse the rest so
+// that they agree on every layer.
+func knownUniversal(h header) bool {
+	if len(h.ident) != 1 {
+		return false
+	}
+	switch h.tag {
+	case 16, 17:
+		return h.compound
+	case 1, 2, 5, 6, 9, 10, 13, 23, 24:
+		return !h.compound
+	case tagBitString, tagOctetString, 12, 18, 19, 20, 21, 22, 26, 27, 30:
+		return true
+	}
+	return false
 }
 
 // isStringType reports whether a universal tag is a string type that BER may

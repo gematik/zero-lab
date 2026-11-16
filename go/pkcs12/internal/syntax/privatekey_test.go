@@ -22,6 +22,7 @@
 package syntax
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -122,12 +123,25 @@ func TestP12_041APrivateKeyInfoIsCheckedStrictly(t *testing.T) {
 	}
 }
 
+// FuzzCheckPrivateKeyInfo: the check and the join of a keyBag's publicKey
+// return ErrParse or nothing, and the join leaves a key that passes the check
+// unchanged.
 func FuzzCheckPrivateKeyInfo(f *testing.F) {
 	f.Add(oneAsymmetricKey(f, 1, []byte{0x05, 0x00}, make([]byte, 34), []byte{0xA0, 0x00}, []byte{0x81, 0x02, 0x00, 0x01}))
+	f.Add(oneAsymmetricKey(f, 0, []byte{0xBF, 0x81, 0x00, 0x02, 0x05, 0x00}, make([]byte, 34)))
+	f.Add(oneAsymmetricKey(f, 1, nil, make([]byte, 34), []byte{0xA1, 0x08, 0x03, 0x02, 0x00, 0xAA, 0x03, 0x02, 0x04, 0xB0}))
 	f.Add([]byte{0x30, 0x00})
 	f.Fuzz(func(t *testing.T, data []byte) {
-		if err := CheckPrivateKeyInfo(data); err != nil && !errors.Is(err, ErrParse) {
+		err := CheckPrivateKeyInfo(data)
+		if err != nil && !errors.Is(err, ErrParse) {
 			t.Fatalf("error outside ErrParse: %v", err)
+		}
+		joined, joinErr := JoinPublicKey(data)
+		if joinErr != nil && !errors.Is(joinErr, ErrParse) {
+			t.Fatalf("join error outside ErrParse: %v", joinErr)
+		}
+		if err == nil && (joinErr != nil || !bytes.Equal(joined, data)) {
+			t.Fatalf("the join changed a checked key: % X", data)
 		}
 	})
 }

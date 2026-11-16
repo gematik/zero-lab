@@ -328,46 +328,6 @@ func ParseEncryptedPrivateKeyInfo(data []byte) (*EncryptedPrivateKeyInfo, error)
 	return &epki, nil
 }
 
-// CheckPrivateKeyInfo checks that data is one DER PrivateKeyInfo (P12-041; RFC 5208
-// §5, as OneAsymmetricKey in RFC 5958 §2) and nothing else. A wrong password
-// on a file without MAC leaves valid padding in about 1 of 256 decryptions;
-// the plaintext is random then, and this check is what refuses it before it
-// is returned as a key.
-func CheckPrivateKeyInfo(data []byte) error {
-	// OneAsymmetricKey ::= SEQUENCE { version INTEGER { v1(0), v2(1) },
-	//   privateKeyAlgorithm AlgorithmIdentifier, privateKey OCTET STRING,
-	//   attributes [0] IMPLICIT Attributes OPTIONAL,
-	//   publicKey [1] IMPLICIT BIT STRING OPTIONAL -- v2 only }
-	seq, err := readSequence(cryptobyte.String(data), "PrivateKeyInfo")
-	if err != nil {
-		return err
-	}
-	var version int
-	var alg, params cryptobyte.String
-	var oid asn1.ObjectIdentifier
-	var privateKey []byte
-	if !seq.ReadASN1Integer(&version) || (version != 0 && version != 1) ||
-		!seq.ReadASN1(&alg, cryptobyte_asn1.SEQUENCE) ||
-		!alg.ReadASN1ObjectIdentifier(&oid) ||
-		!seq.ReadASN1Bytes(&privateKey, cryptobyte_asn1.OCTET_STRING) || len(privateKey) == 0 {
-		return fmt.Errorf("%w: cannot read PrivateKeyInfo", ErrParse)
-	}
-	if !alg.Empty() && (!alg.ReadAnyASN1Element(&params, nil) || !alg.Empty()) {
-		return fmt.Errorf("%w: cannot read the PrivateKeyInfo algorithm parameters", ErrParse)
-	}
-	if !seq.SkipOptionalASN1(cryptobyte_asn1.Tag(0).ContextSpecific().Constructed()) {
-		return fmt.Errorf("%w: cannot read the PrivateKeyInfo attributes", ErrParse)
-	}
-	publicKey := cryptobyte_asn1.Tag(1).ContextSpecific()
-	if version == 1 && !seq.SkipOptionalASN1(publicKey) {
-		return fmt.Errorf("%w: cannot read the PrivateKeyInfo public key", ErrParse)
-	}
-	if !seq.Empty() {
-		return fmt.Errorf("%w: trailing data in PrivateKeyInfo", ErrParse)
-	}
-	return nil
-}
-
 // ParseEncryptionAlgorithm parses the parameters of a password-based
 // encryption scheme: PBES2 or one of the PKCS#12 PBEs.
 func ParseEncryptionAlgorithm(alg pkix.AlgorithmIdentifier) (*EncryptionAlgorithm, error) {

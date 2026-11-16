@@ -231,6 +231,28 @@ func TestP12_002AKeyBagInBERIsCheckedAndReturnedAsDER(t *testing.T) {
 	}
 }
 
+// TestP12_002KeyBagsAgreeWithTheSharedVectors: a keyBag's PrivateKeyInfo is
+// normalised (a segmented publicKey joined, BIT STRING segments and high tag
+// numbers checked, depth counted from the safe: P12-002, P12-004) and then
+// checked (P12-041), on the vectors rust/ti-pkcs12 runs too.
+func TestP12_002KeyBagsAgreeWithTheSharedVectors(t *testing.T) {
+	_, keyBag := conformance.PrivateKeyInfoVectors(t)
+	if len(keyBag) == 0 {
+		t.Fatal("no keyBag vectors")
+	}
+	for _, v := range keyBag {
+		t.Run(v.ID, func(t *testing.T) {
+			bags, err := Decode(conformance.KeyBagFile(t, v.Input), nil)
+			if code := conformance.Code(err); code != v.Expect {
+				t.Fatalf("code %s (%v), want %s", code, err, v.Expect)
+			}
+			if err == nil && !bytes.Equal(bags.PrivateKeys[0].Raw, v.Key) {
+				t.Errorf("key = %x, want %x", bags.PrivateKeys[0].Raw, v.Key)
+			}
+		})
+	}
+}
+
 func ecKeyDER(t *testing.T) []byte {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
