@@ -3,7 +3,6 @@ module github.com/gematik/zero-lab/go/epa
 go 1.27.0
 
 require (
-	github.com/cloudflare/circl v1.6.5
 	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261116183316-63278b6c3071
 	github.com/joho/godotenv v1.5.1
@@ -18,5 +17,4 @@ require (
 	github.com/spf13/pflag v1.1.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
-	golang.org/x/sys v0.50.0 // indirect
 )
