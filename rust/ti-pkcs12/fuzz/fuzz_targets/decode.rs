@@ -46,8 +46,14 @@ fuzz_target!(|input: &[u8]| {
                 assert!((1..=MAX_ITERATIONS).contains(&mac.iterations), "P12-036");
             }
         }
-        Err(Error::LimitExceeded { iterations, .. }) => {
-            assert!(iterations > MAX_ITERATIONS, "P12-036");
+        // The budget covers every derivation of one decode, so it can be exceeded by a sum of
+        // counts each below it: the error names the derivation that would cross it, not a count
+        // above the budget.
+        Err(Error::LimitExceeded { what, iterations }) => {
+            assert!(
+                iterations >= 1 && ["MAC", "PBE", "PBKDF2"].contains(&what),
+                "P12-036"
+            );
         }
         Err(Error::Malformed { .. }) => {}
         Err(Error::MacMismatch | Error::DecryptFailed | Error::UnsupportedAlgorithm(_)) => {
