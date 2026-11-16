@@ -4,6 +4,7 @@ title: 'zaddy: DPoP replay detection shared by its replicas'
 status: To Do
 assignee: []
 created_date: '2026-11-14T11:01:00Z'
+updated_date: '2026-11-16T22:52:00Z'
 labels: []
 dependencies: []
 ordinal: 325000
@@ -21,3 +22,9 @@ zaddy hands pep in-memory Replays (TASK-309 makes that choice explicit and logge
 - [ ] #2 A proof accepted by one zaddy replica is refused by another within its lifetime, with a test
 - [ ] #3 Without the shared state configured, zaddy logs that replay detection is per replica
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decision (maintainer, 2026-11-17): follow Caddy best practice architecture. Caddy shares state between instances through its configured storage module (caddy.Context.Storage(), a certmagic.Storage: file system on a shared volume, or a storage plugin such as Redis, Consul or Postgres), the same way a Caddy cluster shares certificates and locks. zaddy keeps DPoP replays there, through a dpop.Replays implementation over certmagic.Storage (Lock, Exists, Store with the proof expiry; Delete when expired), instead of wiring an own kv store; without a shared storage it stays per replica and logs so (AC #3).
+<!-- SECTION:NOTES:END -->
