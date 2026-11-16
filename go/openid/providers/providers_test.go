@@ -99,7 +99,7 @@ func TestListingAndLookup(t *testing.T) {
 func TestServerRule14_AnUnknownIssuerIsNotQuoted(t *testing.T) {
 	const asked = "https://PEER-INPUT-7f3a"
 	_, err := New(nil, fake("https://a", "idpd")).Provider(t.Context(), asked)
-	if err == nil || strings.Contains(err.Error(), asked) {
+	if err == nil || err.Error() != "unknown issuer" {
 		t.Errorf("got %v, want a refusal without the issuer", err)
 	}
 }

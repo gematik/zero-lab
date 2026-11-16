@@ -38,13 +38,17 @@ const (
 	numberMarker = "987654321987"
 )
 
-func requireNotQuoted(t *testing.T, err error) {
+// requireRefusedFor asserts err refuses for its fixed reason and quotes none of the input.
+func requireRefusedFor(t *testing.T, err error, reason string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("accepted")
 	}
 	if strings.Contains(err.Error(), marker) || strings.Contains(err.Error(), numberMarker) {
 		t.Fatalf("the error quotes the input: %v", err)
+	}
+	if err.Error() != reason {
+		t.Fatalf("got %v, want %q", err, reason)
 	}
 }
 
@@ -60,7 +64,7 @@ func TestServerRule14_IDTokenClaimsAreNotQuoted(t *testing.T) {
 			}
 			raw := "a." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".c"
 			err := (&TokenResponse{IDTokenRaw: raw}).Claims(&claims)
-			requireNotQuoted(t, err)
+			requireRefusedFor(t, err, "ID token claims: do not decode")
 			if name == "a member twice" && !errors.Is(err, jsontext.ErrDuplicateName) {
 				t.Fatalf("got %v, want a duplicate name to unwrap", err)
 			}
@@ -72,14 +76,16 @@ func TestServerRule14_IDTokenClaimsAreNotQuoted(t *testing.T) {
 func TestServerRule14_ARefusedClaimIsNotQuoted(t *testing.T) {
 	for _, raw := range []string{`"` + marker + `"`, `[1,"` + marker + `"]`, `{"` + marker + `":1}`} {
 		_, err := numericDateClaim(jsontext.Value(raw))
-		requireNotQuoted(t, err)
+		requireRefusedFor(t, err, "is no number")
 		if !strings.HasPrefix(raw, `"`) {
 			_, err = audienceClaim(jsontext.Value(raw))
-			requireNotQuoted(t, err)
+			requireRefusedFor(t, err, "is no string or array of strings")
 		}
 	}
 	_, err := stringClaim(jsontext.Value(numberMarker))
-	requireNotQuoted(t, err)
+	requireRefusedFor(t, err, "is no string")
+	_, err = parseClaims([]byte(`{"nonce":` + numberMarker + `}`))
+	requireRefusedFor(t, err, "token claim nonce: is no string")
 }
 
 // Server rule 14: a key set's server is named by its status code, not by the reason phrase it sent.
@@ -88,7 +94,7 @@ func TestServerRule14_AKeySetStatusIsNotQuoted(t *testing.T) {
 		return &http.Response{StatusCode: http.StatusBadGateway, Status: "502 " + marker, Body: io.NopCloser(strings.NewReader(marker))}, nil
 	})}
 	_, err := newKeySetCache("https://idp.example/jwks", client).download(t.Context())
-	requireNotQuoted(t, err)
+	requireRefusedFor(t, err, "status 502")
 }
 
 type roundTrip func(*http.Request) (*http.Response, error)
