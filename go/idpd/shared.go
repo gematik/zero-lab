@@ -30,7 +30,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"strings"
 
@@ -126,7 +125,6 @@ func NewEnvironment(s string) Environment {
 }
 
 func fetchMetadata(baseURL string, httpClient *http.Client, trust CertificateTrust) (*Metadata, error) {
-	slog.Debug("Fetching OP metadata", "url", baseURL+"/.well-known/openid-configuration")
 	resp, err := httpClient.Get(baseURL + "/.well-known/openid-configuration")
 	if err != nil {
 		return nil, fmt.Errorf("fetching discovery document: %w", err)
@@ -170,8 +168,6 @@ func fetchMetadata(baseURL string, httpClient *http.Client, trust CertificateTru
 	if strings.TrimSuffix(metadata.Issuer, "/") != strings.TrimSuffix(baseURL, "/") {
 		return nil, fmt.Errorf("discovery document names the issuer %q, asked was %q", metadata.Issuer, baseURL)
 	}
-
-	slog.Debug("Fetched OP metadata", "metadata", metadata)
 
 	return metadata, nil
 }
