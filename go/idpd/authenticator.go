@@ -200,7 +200,7 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	challenge := new(Challenge)
 	err = json.UnmarshalRead(io.LimitReader(resp.Body, maxIDPResponseBytes), challenge)
 	if err != nil {
-		return nil, fmt.Errorf("decoding challenge: %w", err)
+		return nil, &reasonError{reason: "challenge: does not decode", err: err}
 	}
 
 	token, err := josebp.ParseToken([]byte(challenge.Challenge), josebp.WithKey(idpSigKey))
@@ -211,12 +211,12 @@ func (a *Authenticator) Authenticate(authURL string) (*CodeRedirectURL, error) {
 	// What gets the card holder's signature is judged first, as ti-idpd-client does: BP256R1 alone, while josebp would take any
 	// algorithm of the key's size, and within its lifetime. An exp is required, and the response's JWE repeats it.
 	if alg := token.Headers["alg"]; alg != josebp.AlgorithmNameBP256R1 {
-		return nil, fmt.Errorf("challenge signed with alg %v, expected %s", alg, josebp.AlgorithmNameBP256R1)
+		return nil, fmt.Errorf("challenge signed with another alg than %s", josebp.AlgorithmNameBP256R1)
 	}
 	challengePayload := new(ChallengePayload)
 	err = json.Unmarshal(token.PayloadJSON, challengePayload)
 	if err != nil {
-		return nil, fmt.Errorf("parsing challenge payload: %w", err)
+		return nil, &reasonError{reason: "challenge payload: does not decode", err: err}
 	}
 	if challengePayload.Exp == 0 {
 		return nil, errors.New("challenge without exp")

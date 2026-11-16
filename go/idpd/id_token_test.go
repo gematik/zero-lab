@@ -231,7 +231,9 @@ func TestServerRule28_ATokenResponseIsReadStrictly(t *testing.T) {
 		"invalid UTF-8":  {"{\"id_token\":\"a\xffb\"}", nil},
 	} {
 		_, err := unmarshalTokenResponse(strings.NewReader(test.body))
-		if err == nil || test.want != nil && !errors.Is(err, test.want) || test.want == nil && !strings.Contains(err.Error(), "invalid UTF-8") {
+		var syntactic *jsontext.SyntacticError
+		if err == nil || test.want != nil && !errors.Is(err, test.want) ||
+			test.want == nil && (!errors.As(err, &syntactic) || !strings.Contains(syntactic.Error(), "invalid UTF-8")) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}

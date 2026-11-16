@@ -46,19 +46,50 @@ type Error struct {
 	GematikCode      string `json:"gematik_code"`
 }
 
+// Error names the status and a gematik_code of digits, the form gemSpec_IDP_Dienst gives them. error,
+// gematik_error_text and anything else are the IDP-Dienst's text, which reaches the fields but not the error text:
+// error text ends up in logs (servers.md rule 14).
 func (e *Error) Error() string {
+	text := "IDP-Dienst refused"
 	if e.HTTPCode != 0 {
-		return fmt.Sprintf("%d %s: %s (%s)", e.HTTPCode, e.ErrorCode, e.GematikErrorText, e.GematikCode)
+		text += fmt.Sprintf(" with status %d", e.HTTPCode)
 	}
-	return fmt.Sprintf("%s: %s (%s)", e.ErrorCode, e.GematikErrorText, e.GematikCode)
+	if isGematikCode(e.GematikCode) {
+		text += ", gematik_code " + e.GematikCode
+	}
+	return text
 }
+
+// isGematikCode takes the gematik_code of gemSpec_IDP_Dienst, a few digits.
+func isGematikCode(code string) bool {
+	if code == "" || len(code) > 8 {
+		return false
+	}
+	for _, c := range code {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// reasonError refuses an answer of the IDP-Dienst by a fixed reason. A decoder's message quotes member names and
+// values; the decoder's error stays reachable through errors.Is and errors.As, so a caller can still tell why.
+type reasonError struct {
+	reason string
+	err    error
+}
+
+func (e *reasonError) Error() string { return e.reason }
+
+func (e *reasonError) Unwrap() error { return e.err }
 
 // tries to parse the oath2 error from the reader, taken from the HTTP response body
 func parseErrorResponse(httpCode int, body io.Reader) error {
 	var oidcErr Error
 	err := json.UnmarshalRead(io.LimitReader(body, maxIDPResponseBytes), &oidcErr)
 	if err != nil {
-		return fmt.Errorf("status %d: unable to decode error: %w", httpCode, err)
+		return fmt.Errorf("IDP-Dienst refused with status %d; its error does not decode", httpCode)
 	}
 	oidcErr.HTTPCode = httpCode
 	return &oidcErr

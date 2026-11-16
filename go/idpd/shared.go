@@ -160,13 +160,13 @@ func fetchMetadata(baseURL string, httpClient *http.Client, trust CertificateTru
 	metadata := new(Metadata)
 	err = json.Unmarshal(token.PayloadJSON, metadata)
 	if err != nil {
-		return nil, fmt.Errorf("parsing discovery document: %w", err)
+		return nil, &reasonError{reason: "discovery document: does not decode", err: err}
 	}
 
 	// gemSpec_IDP_Dienst: the signed document names the IDP it describes. Its signature says who wrote it, not
 	// that this is the IDP asked for: another IDP's valid document must not be taken for this one.
 	if strings.TrimSuffix(metadata.Issuer, "/") != strings.TrimSuffix(baseURL, "/") {
-		return nil, fmt.Errorf("discovery document names the issuer %q, asked was %q", metadata.Issuer, baseURL)
+		return nil, fmt.Errorf("discovery document names the issuer of another IDP than %q", baseURL)
 	}
 
 	return metadata, nil
@@ -190,7 +190,7 @@ func extractKeyFromX5CHeader(data []byte) (*josebp.JSONWebKey, error) {
 
 	err = json.Unmarshal(headerBytes, &headerStruct)
 	if err != nil {
-		return nil, fmt.Errorf("parsing header: %w", err)
+		return nil, &reasonError{reason: "token header: does not decode", err: err}
 	}
 
 	if len(headerStruct.X5c) == 0 {
@@ -284,7 +284,7 @@ func fetchKey(ctx context.Context, uri string, httpClient *http.Client) (*josebp
 	key := new(josebp.JSONWebKey)
 	err = json.UnmarshalRead(io.LimitReader(resp.Body, maxIDPResponseBytes), key)
 	if err != nil {
-		return nil, fmt.Errorf("parsing JWK: %w", err)
+		return nil, &reasonError{reason: "JWK: does not decode", err: err}
 	}
 
 	return key, nil
