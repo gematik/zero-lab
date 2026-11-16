@@ -1,10 +1,10 @@
 ---
 id: TASK-12
 title: 'rsa 0.10 release: leave the release candidate'
-status: To Do
+status: In Progress
 assignee: []
-created_date: '2026-10-09 13:55'
-updated_date: '2026-10-20 16:51'
+created_date: 2026-10-09 13:55
+updated_date: '2026-11-16T19:23:00Z'
 labels:
   - watch
 dependencies: []
@@ -20,6 +20,13 @@ ordinal: 28000
 <!-- SECTION:DESCRIPTION:BEGIN -->
 rsa is pinned to =0.10.0-rc.19 with pkcs1 0.8.0-rc.5 (TASK-117), still a release candidate and the only line on the current RustCrypto stack (Known compromises). When 0.10 is released, switch to "0.10"; drop the RUSTSEC-2023-0071 ignore in deny.toml and .cargo/audit.toml once a patched rsa exists (ti-pki only verifies on public data, so the Marvin attack does not apply).
 <!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 rsa is on the released 0.10 line and pkcs1 on 0.8.0; no release candidate of the RustCrypto stack is pinned
+- [ ] #2 The RUSTSEC-2023-0071 ignore is gone from deny.toml and .cargo/audit.toml; cargo deny and cargo audit pass
+- [ ] #3 The unsafe review of the version change is done and just check passes in rust/
+<!-- AC:END -->
 
 ## Implementation Notes
 
