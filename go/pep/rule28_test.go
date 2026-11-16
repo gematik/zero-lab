@@ -61,7 +61,8 @@ func TestServerRule28_TokenClaimNameInAnotherCaseIsNotTheClaim(t *testing.T) {
 
 func TestServerRule28_TokenClaimNotUTF8IsRefused(t *testing.T) {
 	err := validateClaims([]byte("{\"sub\":\"\xff\"}"), time.Unix(100, 0), 0, "")
-	if err == nil || !strings.Contains(err.Error(), "invalid UTF-8") {
+	var syntactic *jsontext.SyntacticError
+	if !errors.As(err, &syntactic) || !strings.Contains(syntactic.Error(), "invalid UTF-8") {
 		t.Fatalf("err = %v, want invalid UTF-8", err)
 	}
 }

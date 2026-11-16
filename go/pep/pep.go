@@ -344,7 +344,7 @@ func (c *pepContext) UnmarshalClaims(claims any) error {
 		return errors.New("claims not available, authorize_bearer or dpop not used")
 	}
 	if err := json.Unmarshal(c.claimsRaw, claims); err != nil {
-		return fmt.Errorf("unable to unmarshal claims: %w", err)
+		return &reasonError{reason: "token claims: do not decode into the type asked for", err: err}
 	}
 
 	return nil

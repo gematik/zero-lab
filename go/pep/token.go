@@ -111,7 +111,7 @@ func verifyJWS(raw string, keys *jose.JSONWebKeySet) ([]byte, error) {
 	}
 	parsed, err := jose.ParseSignedCompact(raw, verificationAlgorithms)
 	if err != nil {
-		return nil, err
+		return nil, &reasonError{reason: "token is no compact JWS of an allowed algorithm", err: err}
 	}
 	header := parsed.Signatures[0].Protected
 	if header.KeyID == "" {
@@ -119,11 +119,11 @@ func verifyJWS(raw string, keys *jose.JSONWebKeySet) ([]byte, error) {
 	}
 	named := keys.Key(header.KeyID)
 	if len(named) == 0 {
-		return nil, fmt.Errorf("no key with kid %q", header.KeyID)
+		return nil, errors.New("no key with the token's kid")
 	}
 	key := &named[0]
 	if err := keyFits(key, jose.SignatureAlgorithm(header.Algorithm)); err != nil {
-		return nil, fmt.Errorf("key %q: %w", header.KeyID, err)
+		return nil, fmt.Errorf("the key of the token's kid: %w", err)
 	}
 	return parsed.Verify(key.Key)
 }
@@ -164,6 +164,18 @@ func publicKeyFits(key any, alg jose.SignatureAlgorithm) bool {
 	return false
 }
 
+// reasonError refuses a token by a fixed reason. A decoder's message quotes member names and values, here those of a
+// token, and error text ends up in logs (servers.md rule 14); the decoder's error stays reachable through errors.Is
+// and errors.As, so a caller can still tell why.
+type reasonError struct {
+	reason string
+	err    error
+}
+
+func (e *reasonError) Error() string { return e.reason }
+
+func (e *reasonError) Unwrap() error { return e.err }
+
 // validateClaims checks the payload of a verified token: its registered claims have their types, its exp, nbf and
 // iat those it has hold at now, and when resource is set the aud names it. Members are read by their exact names, so
 // "EXP" is no expiry, and a member named twice or a string that is not UTF-8 refuses the token (server rule 28).
@@ -173,7 +185,7 @@ func validateClaims(payload []byte, now time.Time, skew time.Duration, resource 
 	}
 	var members map[string]jsontext.Value
 	if err := json.Unmarshal(payload, &members); err != nil {
-		return fmt.Errorf("token claims: %w", err)
+		return &reasonError{reason: "token claims: do not decode", err: err}
 	}
 	if members == nil {
 		return errors.New("token claims: not an object")
@@ -222,7 +234,7 @@ func validateClaims(payload []byte, now time.Time, skew time.Duration, resource 
 func stringClaim(raw jsontext.Value) (string, error) {
 	var value *string
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return "", err
+		return "", &reasonError{reason: "is no string", err: err}
 	}
 	if value == nil {
 		return "", errors.New("is null")
@@ -237,7 +249,7 @@ func audienceClaim(raw jsontext.Value) ([]string, error) {
 	}
 	var list []*string
 	if err := json.Unmarshal(raw, &list); err != nil {
-		return nil, err
+		return nil, &reasonError{reason: "is no string or array of strings", err: err}
 	}
 	if list == nil {
 		return nil, errors.New("is null")
@@ -255,7 +267,7 @@ func audienceClaim(raw jsontext.Value) ([]string, error) {
 func numericDateClaim(raw jsontext.Value) (time.Time, error) {
 	var seconds *float64
 	if err := json.Unmarshal(raw, &seconds); err != nil {
-		return time.Time{}, err
+		return time.Time{}, &reasonError{reason: "is no number", err: err}
 	}
 	if seconds == nil {
 		return time.Time{}, errors.New("is null")
