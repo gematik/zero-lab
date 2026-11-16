@@ -34,13 +34,17 @@ import (
 // marker stands for the IDP-Dienst's text; an error that holds it carries that text into a log (servers.md rule 14).
 const marker = "PEER-INPUT-7f3a"
 
-func requireNotQuoted(t *testing.T, err error) {
+// requireRefusedFor asserts err refuses for its fixed reason and quotes nothing of the IDP-Dienst.
+func requireRefusedFor(t *testing.T, err error, reason string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("accepted")
 	}
 	if strings.Contains(err.Error(), marker) {
 		t.Fatalf("the error quotes the IDP-Dienst: %v", err)
+	}
+	if err.Error() != reason {
+		t.Fatalf("got %v, want %q", err, reason)
 	}
 }
 
@@ -49,23 +53,20 @@ func requireNotQuoted(t *testing.T, err error) {
 func TestServerRule14_AnIDPDienstErrorIsNotQuoted(t *testing.T) {
 	body := `{"error":"` + marker + `","gematik_error_text":"` + marker + `","gematik_code":"2012"}`
 	err := parseErrorResponse(http.StatusBadRequest, strings.NewReader(body))
-	requireNotQuoted(t, err)
-	if !strings.Contains(err.Error(), "400") || !strings.Contains(err.Error(), "2012") {
-		t.Errorf("got %v, want the status and the gematik_code", err)
-	}
+	requireRefusedFor(t, err, "IDP-Dienst refused with status 400, gematik_code 2012")
 	if typed, ok := errors.AsType[*Error](err); !ok || typed.GematikErrorText != marker {
 		t.Errorf("the typed error lost its text: %v", err)
 	}
-	requireNotQuoted(t, parseErrorResponse(http.StatusBadRequest, strings.NewReader(marker)))
-	requireNotQuoted(t, parseErrorResponse(http.StatusBadRequest, strings.NewReader(`{"gematik_code":"`+marker+`"}`)))
+	requireRefusedFor(t, parseErrorResponse(http.StatusBadRequest, strings.NewReader(marker)), "IDP-Dienst refused with status 400; its error does not decode")
+	requireRefusedFor(t, parseErrorResponse(http.StatusBadRequest, strings.NewReader(`{"gematik_code":"`+marker+`"}`)), "IDP-Dienst refused with status 400")
 	location := &url.URL{RawQuery: url.Values{"error": {marker}, "gematik_error_text": {marker}, "gematik_code": {marker}}.Encode()}
-	requireNotQuoted(t, refusalOf(location))
+	requireRefusedFor(t, refusalOf(location), "IDP-Dienst refused")
 }
 
 // Server rule 14: answers that do not decode are named, not quoted; a member named twice still unwraps.
 func TestServerRule14_AnUndecodableAnswerIsNotQuoted(t *testing.T) {
 	_, err := unmarshalTokenResponse(strings.NewReader(`{"` + marker + `":1,"` + marker + `":2}`))
-	requireNotQuoted(t, err)
+	requireRefusedFor(t, err, "token response: does not decode")
 	if !errors.Is(err, jsontext.ErrDuplicateName) {
 		t.Errorf("got %v, want a duplicate name to unwrap", err)
 	}
@@ -76,5 +77,5 @@ func TestServerRule14_AnEncryptedTokenOfAnotherAlgIsNotQuoted(t *testing.T) {
 	enc := base64.RawURLEncoding.EncodeToString
 	token := enc([]byte(`{"alg":"`+marker+`","enc":"`+marker+`"}`)) + ".." + enc([]byte("iv")) + "." + enc([]byte("ct")) + "." + enc([]byte("tag"))
 	_, err := decryptToken(token, make([]byte, 32))
-	requireNotQuoted(t, err)
+	requireRefusedFor(t, err, "decrypting token: no compact JWE of dir and A256GCM")
 }
