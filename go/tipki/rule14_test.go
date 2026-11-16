@@ -22,6 +22,7 @@
 package tipki
 
 import (
+	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -51,7 +52,8 @@ const (
 	numberMarker = "-987654321987"
 )
 
-func requireNotQuoted(t *testing.T, err error) {
+// requireRefusedFor asserts err refuses for its fixed reason and quotes none of the input.
+func requireRefusedFor(t *testing.T, err error, reason string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("accepted")
@@ -59,50 +61,55 @@ func requireNotQuoted(t *testing.T, err error) {
 	if strings.Contains(err.Error(), marker) || strings.Contains(err.Error(), numberMarker) {
 		t.Fatalf("the error quotes the input: %v", err)
 	}
+	if !strings.Contains(err.Error(), reason) {
+		t.Fatalf("got %v, want %q", err, reason)
+	}
 }
 
 // Server rule 14: a bundle is refused by naming the field that is wrong, never by quoting a value or a member's name.
 func TestServerRule14_ARefusedBundleIsNotQuoted(t *testing.T) {
 	meta := func(source string) string { return `{"fetched_at":1,"source":"` + source + `"}` }
 	head := `{"format_version":2,"label":"l","anchor_sha256":"` + strings.Repeat("0", 64) + `","roots":"","tsl":"",`
-	for name, bundle := range map[string]string{
-		"an unknown source":           head + `"roots_meta":` + meta(marker) + `,"tsl_meta":` + meta("http") + `}`,
-		"an unknown field":            `{"` + marker + `":1}`,
-		"a field twice":               `{"label":"` + marker + `","label":"` + marker + `"}`,
-		"a version out of range":      `{"format_version":` + numberMarker + `,"label":"l","anchor_sha256":"","roots":"","tsl":"","roots_meta":{},"tsl_meta":{}}`,
-		"a fetched_at out of range":   head + `"roots_meta":{"fetched_at":` + numberMarker + `,"source":"http"},"tsl_meta":` + meta("http") + `}`,
-		"a max_age_secs out of range": head + `"roots_meta":{"fetched_at":1,"source":"http","max_age_secs":` + numberMarker + `},"tsl_meta":` + meta("http") + `}`,
+	for name, test := range map[string]struct{ bundle, reason string }{
+		"an unknown source":           {head + `"roots_meta":` + meta(marker) + `,"tsl_meta":` + meta("http") + `}`, "roots_meta: source: not one of the known sources"},
+		"an unknown field":            {`{"` + marker + `":1}`, "bundle: unknown field"},
+		"a field twice":               {`{"label":"` + marker + `","label":"` + marker + `"}`, "bundle: repeated field"},
+		"a version out of range":      {`{"format_version":` + numberMarker + `,"label":"l","anchor_sha256":"","roots":"","tsl":"","roots_meta":{},"tsl_meta":{}}`, "format_version: does not decode"},
+		"a fetched_at out of range":   {head + `"roots_meta":{"fetched_at":` + numberMarker + `,"source":"http"},"tsl_meta":` + meta("http") + `}`, "roots_meta: fetched_at: does not decode"},
+		"a max_age_secs out of range": {head + `"roots_meta":{"fetched_at":1,"source":"http","max_age_secs":` + numberMarker + `},"tsl_meta":` + meta("http") + `}`, "roots_meta: max_age_secs: does not decode"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := ParseBundle([]byte(bundle))
-			requireNotQuoted(t, err)
+			_, err := ParseBundle([]byte(test.bundle))
+			requireRefusedFor(t, err, test.reason)
 		})
 	}
 }
 
-// Server rule 14: a bundle of another trust anchor is refused without its label, which is the bundle's input.
-func TestServerRule14_AnotherAnchorsBundleIsNotNamed(t *testing.T) {
-	err := (&Bundle{Label: marker}).CheckAnchor([]byte("anchor"))
-	if err == nil || strings.Contains(err.Error(), marker) {
-		t.Fatalf("got %v, want a refusal without the label", err)
-	}
+// Server rule 14: a bundle of another trust anchor or too old is refused without its label, which is the bundle's
+// input.
+func TestServerRule14_ARefusedBundleIsNotNamed(t *testing.T) {
+	bundle := &Bundle{Label: marker}
+	requireRefusedFor(t, bundle.CheckAnchor([]byte("anchor")), "belongs to a different trust anchor")
+	_, err := LoadTrustStore(bundle, AnchorProd, nil, bundle.FetchedAt.Add(MaxBundleAge), 0, nil)
+	requireRefusedFor(t, err, "the bundle is")
 }
 
 // Server rule 14: a roots.json is refused by naming the member that is wrong, never by quoting a value or a member's
 // name; a member named twice still unwraps to the decoder's reason.
 func TestServerRule14_ARefusedRootsDocumentIsNotQuoted(t *testing.T) {
-	for name, roots := range map[string]string{
-		"a member twice":         `[{"` + marker + `":1,"` + marker + `":2}]`,
-		"a mistyped member":      `[{"cert":"AAAA","` + marker + `":{"a":1 x}}]`,
-		"a mistyped cn":          `[{"cert":"AAAA","cn":` + numberMarker + `}]`,
-		"a mistyped cert":        `[{"cert":` + numberMarker + `}]`,
-		"a mistyped prev":        `[{"cert":"AAAA","prev":` + numberMarker + `}]`,
-		"a wrapper member twice": `{"roots":[],"` + marker + `":1,"` + marker + `":2}`,
+	cert := `"` + base64.StdEncoding.EncodeToString(AnchorProd) + `"`
+	for name, test := range map[string]struct{ roots, reason string }{
+		"a member twice":         {`[{"` + marker + `":1,"` + marker + `":2}]`, "roots.json: document: does not decode"},
+		"a mistyped member":      {`[{"cert":` + cert + `,"` + marker + `":{"a":1 x}}]`, "roots.json: document: does not decode"},
+		"a mistyped cn":          {`[{"cert":` + cert + `,"cn":` + numberMarker + `}]`, "entry 0: cn: does not decode"},
+		"a mistyped cert":        {`[{"cert":` + numberMarker + `}]`, "entry 0: cert: does not decode"},
+		"a mistyped prev":        {`[{"cert":` + cert + `,"prev":` + numberMarker + `}]`, "entry 0: prev: does not decode"},
+		"a wrapper member twice": {`{"roots":[],"` + marker + `":1,"` + marker + `":2}`, "roots.json: document: does not decode"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := ParseRoots([]byte(roots))
-			requireNotQuoted(t, err)
-			if name == "a member twice" && !errors.Is(err, jsontext.ErrDuplicateName) {
+			_, err := ParseRoots([]byte(test.roots))
+			requireRefusedFor(t, err, test.reason)
+			if strings.Contains(name, "twice") && !errors.Is(err, jsontext.ErrDuplicateName) {
 				t.Fatalf("got %v, want a duplicate name to unwrap", err)
 			}
 		})
