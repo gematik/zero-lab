@@ -1,10 +1,10 @@
 ---
 id: TASK-344
 title: 'epa/vau: fxamacker/cbor decodes strictly'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T18:21:00Z'
-updated_date: '2026-11-16T19:48:00Z'
+updated_date: '2026-11-16T20:25:00Z'
 labels: []
 dependencies: []
 ordinal: 359000
@@ -18,6 +18,12 @@ decision-18: CBOR stays fxamacker, with strict options instead of the defaults. 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Each input class above is refused with a reason, one TestServerRule28_ test each; the lib-vau and libasl vectors still decode
-- [ ] #2 TestEPA_Connect passes against the reference environment with the strict mode
+- [x] #1 Each input class above is refused with a reason, one TestServerRule28_ test each; the lib-vau and libasl vectors still decode
+- [x] #2 TestEPA_Connect passes against the reference environment with the strict mode
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+One strict fxamacker DecMode: duplicates, case variants, unknown keys in fixed messages, tags, null (except ocsp_response), trailing bytes and oversize refused with sentinel errors; unknown attributes of server keys and errors ignored whatever they hold (A_24425-01, A_24635). lib-vau and libasl vectors as regression tests; live ePA passed. Released in epa v0.27.0.
+<!-- SECTION:FINAL_SUMMARY:END -->

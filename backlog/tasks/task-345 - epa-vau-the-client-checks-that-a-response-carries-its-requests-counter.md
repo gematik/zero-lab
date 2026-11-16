@@ -1,10 +1,10 @@
 ---
 id: TASK-345
 title: 'epa/vau: the client checks that a response carries its request''s counter'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T18:21:00Z'
-updated_date: '2026-11-16T19:48:00Z'
+updated_date: '2026-11-16T20:25:00Z'
 labels: []
 dependencies: []
 ordinal: 360000
@@ -18,5 +18,11 @@ Found by the ASL spike (TASK-339): A_24633 asks the client to refuse a response 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A VAU response with another request's counter is refused, with a test named after A_24633
+- [x] #1 A VAU response with another request's counter is refused, with a test named after A_24633
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Decrypt/DecryptResponse take the request counter; a response carrying another counter is refused before decryption (ErrResponseCounter, A_24633); minimum record length 72 bytes. Released in epa v0.27.0.
+<!-- SECTION:FINAL_SUMMARY:END -->

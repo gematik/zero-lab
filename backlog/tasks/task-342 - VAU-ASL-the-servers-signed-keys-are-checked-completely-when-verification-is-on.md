@@ -3,10 +3,10 @@ id: TASK-342
 title: >-
   VAU/ASL: the server's signed keys are checked completely when verification is
   on
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T18:19:00Z'
-updated_date: '2026-11-16T19:48:00Z'
+updated_date: '2026-11-16T20:25:00Z'
 labels: []
 dependencies: []
 ordinal: 357000
@@ -20,7 +20,13 @@ The VAU client checks the server's signed keys after M2 and before M3 (key_excha
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 With verification on, a handshake is refused before M3 for: an empty cert_hash, a cert_hash that is not the SHA-256 of the fetched certificate, exp not after now, a stapled OCSP response that is missing, not good or older than 24 h, a chain or signature the verifier refuses; one test per case named after A_24624 / A_26938
-- [ ] #2 Without a verifier, or with mode off or warn, the handshake goes on and logs one warning naming each check that was not done or did not hold
-- [ ] #3 The CertData fetch runs under the handshake's context and reads a bounded body
+- [x] #1 With verification on, a handshake is refused before M3 for: an empty cert_hash, a cert_hash that is not the SHA-256 of the fetched certificate, exp not after now, a stapled OCSP response that is missing, not good or older than 24 h, a chain or signature the verifier refuses; one test per case named after A_24624 / A_26938
+- [x] #2 Without a verifier, or with mode off or warn, the handshake goes on and logs one warning naming each check that was not done or did not hold
+- [x] #3 The CertData fetch runs under the handshake's context and reads a bounded body
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Verification stays optional (off/warn/no verifier: one warning naming each unchecked or failed check). Under enforce the handshake is refused before M3 for empty or wrong cert_hash, expired keys, missing/not good/older than 24 h/foreign-issued stapled OCSP (checked with go/tipki), a certificate the CertData CA did not sign, another profile than epa-vau-aut, another environment, or a chain/signature the verifier refuses; CertData fetch under the handshake context, bounded. Live ePA connect and entitlement passed in enforce. Released in epa v0.27.0.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,5 +1,37 @@
 # Release Notes
 
+# Release go/epa v0.27.0
+
+### breaking
+- `vau`: `Decrypt` and `DecryptResponse` take the request's counter, and a response carrying another request's
+  counter is refused before decryption (`ErrResponseCounter`, A_24633, TASK-345). The minimum record length is
+  72 bytes. `EncryptNestedResponseData` and `DecryptNestedRequestData` change with it.
+- `vau`: CBOR is decoded strictly (TASK-344): a duplicate key, a key in another case, an unknown key in a message
+  of fixed form, a tag, null (except `ocsp_response`, read as absent), trailing bytes and bodies beyond their bound
+  (64 KiB per message, 128 MiB per response) are refused with sentinel errors that name at most a field.
+  Unknown attributes of the server's keys and of error messages are ignored whatever they hold
+  (A_24425-01, A_24635).
+
+### security
+- Kyber768 v3.02 is built on the standard library's `crypto/mlkem` and `crypto/sha3`; cloudflare/circl is
+  only a test comparison (TASK-343, decision-18).
+- Server key verification (TASK-342, A_24624) stays optional: off, warn or no verifier go on with one warning
+  naming what was not checked or did not hold. With `enforce`, the handshake is refused before M3 for an
+  empty or wrong `cert_hash`, expired keys, a missing, not good, older than 24 h or foreign-issued stapled OCSP
+  response, a certificate the CertData CA did not sign, a profile other than `epa-vau-aut`, an environment
+  other than the channel's, or a chain or signature the verifier refuses. The CertData fetch runs under the
+  handshake's context with a bounded body. `OpenChannelContext` is new; `OpenChannelVerified` is unchanged.
+
+### fixed
+- Errors no longer quote a peer's key ID; a peer's error text is quoted and cut to 200 characters.
+
+### verified
+- `just check` across all Go modules passed on 951341fc; the merge onto main changed no Go code; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- ePA connect (`TestEPA_Connect/provider2`) against the reference environment passed on 951341fc in warn and in
+  enforce mode, "VAU signed keys verified"; ePA entitlement (`TestEPA_Entitle/provider2`) in enforce mode passed,
+  run by the maintainer on 2026-11-16. Provider 1 was not tried.
+
 # Release go/oidf v0.54.0
 
 ### breaking
