@@ -40,8 +40,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sync"
-
-	"github.com/fxamacker/cbor/v2"
 )
 
 // Env is the environment byte in the header of a VAU message.
@@ -59,6 +57,9 @@ const (
 	HeaderRequest  = byte(0x01)
 	HeaderResponse = byte(0x02)
 )
+
+// ErrResponseCounter is a response whose header carries another request's counter (A_24633).
+var ErrResponseCounter = errors.New("vau: response to another request")
 
 // Counter is a monotonic counter safe for concurrent use; its first value is 1.
 type Counter struct {
@@ -181,7 +182,6 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("encrypting request: %w", err)
 	}
-	// simulate the race condition by delaying the request randomly
 	encResp, err := c.PostEncryptedRequest(encrypted.Ciphertext)
 	if err != nil {
 		return nil, fmt.Errorf("posting encrypted request: %w", err)
@@ -190,19 +190,15 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 	slog.Debug("Received VAU response", "channel_url", c.ChannelURL.String(), "requestCounter", encrypted.RequestCounter, "status", encResp.StatusCode)
 
 	if encResp.StatusCode != http.StatusOK {
-		messageError := new(MessageError)
-		body, err := io.ReadAll(encResp.Body)
+		defer encResp.Body.Close()
+		body, err := readBounded(encResp.Body, maxMessageSize)
 		if err != nil {
 			return nil, fmt.Errorf("reading error response: %w", err)
 		}
-		if err := cbor.NewDecoder(bytes.NewReader(body)).Decode(messageError); err != nil {
-			slog.Error("Decoding error response failed", "error", err, "body", string(body), "http_status", encResp.StatusCode, "header", encResp.Header)
-			return nil, fmt.Errorf("decoding error: %w", err)
-		}
-		return nil, fmt.Errorf("server %s: %w", c.ChannelURL, messageError)
+		return nil, fmt.Errorf("server %s: %w", c.ChannelURL, statusError(encResp.StatusCode, body))
 	}
 
-	return c.DecryptResponse(encResp, req)
+	return c.DecryptResponse(encResp, req, encrypted.RequestCounter)
 }
 
 // EncryptRequest serialises r as HTTP/1.1 and seals it with [Channel.Encrypt].
@@ -237,17 +233,14 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 		return nil, fmt.Errorf("creating AES-GCM: %w", err)
 	}
 
-	// prepare iv
+	// A_24628-01: the IV is 32 random bits and the 64-bit counter of K2_c2s_app_data, so
+	// no IV repeats under the key while the counter is kept (see ChannelSnapshot).
 	iv := make([]byte, 12)
-
-	// read random bits to have full iv size
 	if _, err := io.ReadAtLeast(rand.Reader, iv, 4); err != nil {
 		return nil, fmt.Errorf("generating iv: %w", err)
 	}
-	// add 64 bit from counter
 	binary.LittleEndian.PutUint64(iv[4:], c.k2C2SAppDataCounter.next())
 
-	// encrypt data
 	ciphertext := aesGCM.Seal(iv, iv, data, header)
 
 	return &EncryptedRequest{
@@ -257,22 +250,23 @@ func (c *Channel) Encrypt(data []byte) (*EncryptedRequest, error) {
 }
 
 // DecryptResponse reads and closes the body of resp and opens it with [Channel.Decrypt].
-func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request) (*http.Response, error) {
-	// read body
+func (c *Channel) DecryptResponse(resp *http.Response, req *http.Request, requestCounter uint64) (*http.Response, error) {
 	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
+	data, err := readBounded(resp.Body, maxResponseSize)
 	if err != nil {
 		return nil, fmt.Errorf("reading response: %w", err)
 	}
-	return c.Decrypt(data, req)
+	return c.Decrypt(data, req, requestCounter)
 }
 
-// minEncryptedLength is a VAU message's header, the IV and the GCM tag: anything shorter holds no ciphertext.
-const minEncryptedLength = 43 + 12 + 16
+// minEncryptedLength is a VAU message's header, the IV, at least one byte of ciphertext and
+// the GCM tag: the 72 bytes A_24630 and A_24633 ask of a message.
+const minEncryptedLength = 43 + 12 + 1 + 16
 
-// Decrypt checks the header of a VAU response (version, environment, direction, key ID),
-// opens it and parses the inner HTTP response, for which req is the request it answers.
-func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error) {
+// Decrypt checks the header of a VAU response (version, environment, direction, request
+// counter, key ID), opens it and parses the inner HTTP response, for which req is the request
+// it answers and requestCounter the counter that request carried.
+func (c *Channel) Decrypt(data []byte, req *http.Request, requestCounter uint64) (*http.Response, error) {
 	if len(data) < minEncryptedLength {
 		return nil, fmt.Errorf("invalid data length: %d", len(data))
 	}
@@ -288,10 +282,16 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 	if header[2] != HeaderResponse {
 		return nil, fmt.Errorf("invalid header: %d", header[2])
 	}
+	// A_24633: the response must answer this request. Without the check, a response the
+	// Aktensystem or anyone on the path swaps or replays from an earlier request of the same
+	// channel decrypts under the same key and passes as this request's answer.
+	if got := binary.BigEndian.Uint64(header[3:11]); got != requestCounter {
+		return nil, fmt.Errorf("%w: response carries request counter %d, want %d", ErrResponseCounter, got, requestCounter)
+	}
 
-	// check if the keyID is the same
+	// A_24633: the key ID must be the channel's; the peer's bytes are not quoted.
 	if string(header[11:43]) != string(c.keyID) {
-		return nil, fmt.Errorf("invalid keyID: %s", header[11:43])
+		return nil, errors.New("invalid keyID: not the channel's")
 	}
 
 	aes, err := aes.NewCipher(c.k2S2CAppData)
@@ -316,11 +316,7 @@ func (c *Channel) Decrypt(data []byte, req *http.Request) (*http.Response, error
 		return nil, fmt.Errorf("parsing response: %w", err)
 	}
 
-	// pick 8 bytes
-	requestCounterBytes := header[3:11]
-	requestCounter := binary.BigEndian.Uint64(requestCounterBytes)
-
-	slog.Debug("Decrypted VAU response", "channel_url", c.ChannelURL.String(), "server_request_counter", requestCounter, "status_code", resp.StatusCode)
+	slog.Debug("Decrypted VAU response", "channel_url", c.ChannelURL.String(), "request_counter", requestCounter, "status_code", resp.StatusCode)
 
 	return resp, nil
 }
