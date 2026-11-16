@@ -48,7 +48,7 @@ task.
 | cmov | 0.5.4 | constant-time conditional moves in inline assembly, so the compiler cannot branch on secrets | 2026-10-29 |
 | const-oid | 0.10.2 | cast of `[u8]` to its `repr(transparent)` OID reference | 2026-10-29 |
 | cpufeatures | 0.3.1 | CPU feature detection for the intrinsics above (cpuid, sysctl, getauxval) | 2026-10-29 |
-| crypto-bigint | 0.7.10 | casts between `repr(transparent)` limb and word types (ECDSA, RSA arithmetic) | 2026-10-29 |
+| crypto-bigint | 0.7.11 | casts between `repr(transparent)` limb and word types (ECDSA, RSA arithmetic) | 2026-10-29 |
 | curve25519-dalek | 5.0.0 | SIMD backends of Ed25519 (jwz EdDSA) | 2026-10-29 |
 | der | 0.8.2 | casts of `str`/`[u8]` to their `repr(transparent)` ASN.1 string types | 2026-10-29 |
 | elliptic-curve | 0.14.1 | casts of `repr(transparent)` non-zero scalars and non-identity points | 2026-10-29 |
