@@ -60,6 +60,10 @@ func TestToDER(t *testing.T) {
 		{"non-minimal length", "04 82 00 02 AA BB", "04 02 AA BB"},
 		{"context-specific constructed keeps form", "A0 80 04 01 AA 00 00", "A0 03 04 01 AA"},
 		{"high tag number", "BF 81 00 80 05 00 00 00", "BF 81 00 02 05 00"},
+		{"high tag number 31", "DF 1F 00", "DF 1F 00"},
+		{"high tag number 2^32-1", "9F 8F FF FF FF 7F 00", "9F 8F FF FF FF 7F 00"},
+		{"empty constructed BIT STRING", "23 80 00 00", "03 01 00"},
+		{"BIT STRING last segment empty", "23 80 03 02 00 0A 03 01 00 00 00", "03 02 00 0A"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -108,6 +112,18 @@ func TestToDERRejects(t *testing.T) {
 		{"truncated high tag", []byte{0x1f, 0x81}},
 		{"end-of-contents as element", unhex(t, "30 04 30 02 00 00")},
 		{"too deep", deep},
+		{"high tag number below 31", unhex(t, "A0 80 FF 09 00 00 00")},
+		{"high tag number with a leading zero group", unhex(t, "1F 80 1F 00")},
+		{"high tag number above 32 bits", unhex(t, "7F 9E 82 A0 FF FF FF 00 00")},
+		{"high tag number 2^32", unhex(t, "9F 90 80 80 80 00 00")},
+		{"BIT STRING segment with unused bits above 7", unhex(t, "23 80 03 02 00 0A 03 02 08 00 00 00")},
+		{"BIT STRING segment with unused bits and no bits", unhex(t, "23 80 03 02 00 A0 03 01 05 00 00")},
+		{"universal tag 15", unhex(t, "0F 00")},
+		{"primitive SEQUENCE", unhex(t, "10 00")},
+		{"constructed INTEGER", unhex(t, "22 03 02 01 00")},
+		{"segmented GraphicString", unhex(t, "39 80 19 01 41 00 00")},
+		{"UniversalString", unhex(t, "1C 00")},
+		{"universal type in the high form", unhex(t, "1F 81 00 00")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

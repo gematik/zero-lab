@@ -349,6 +349,8 @@ func mutate(data []byte, m Mutation) ([]byte, error) {
 		return setMACIterations(data, m.Value)
 	case "keybag-ber":
 		return keyBagsToBER(data)
+	case "friendly-name-segments":
+		return segmentFriendlyNames(data)
 	}
 	return nil, fmt.Errorf("unknown mutation %q", m.Kind)
 }
@@ -396,10 +398,73 @@ func keyBagsToBER(der []byte) ([]byte, error) {
 	return out, nil
 }
 
-// rewriteKeyBags walks the DER elements of der, and the OCTET STRINGs whose
-// contents are DER elements themselves (the authSafe and its safes), and
-// returns der with each keyBag's value in BER and the number of keyBags.
+// keyBagToBER rewrites the rest of a keyBag after its bagId: the value
+// [0] EXPLICIT in BER, the attributes as they are.
+func keyBagToBER(rest []byte) ([]byte, error) {
+	// SafeBag ::= SEQUENCE { bagId, bagValue [0] EXPLICIT, bagAttributes OPTIONAL }
+	valueIdent, _, _, value, valueSize, err := readTLV(rest)
+	if err != nil {
+		return nil, err
+	}
+	ber, err := toBER(value, 512)
+	if err != nil {
+		return nil, err
+	}
+	return append(appendTLV(nil, valueIdent, ber), rest[valueSize:]...), nil
+}
+
+// oidFriendlyNameDER is the DER encoding of the friendlyName OID (PKCS #9).
+var oidFriendlyNameDER = []byte{0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x09, 0x14}
+
+// segmentFriendlyNames writes the BMPString of every friendlyName attribute
+// as a constructed string of one-character segments, as BER allows for
+// every string type (X.690 §8.23). toBER segments OCTET STRINGs only, so this
+// is the case for the other string types. The rewrite changes the authSafe
+// octets; a case using it has no MAC.
+func segmentFriendlyNames(der []byte) ([]byte, error) {
+	out, n, err := rewriteElements(der, oidFriendlyNameDER, func(rest []byte) ([]byte, error) {
+		// Attribute ::= SEQUENCE { attrId, attrValues SET OF BMPString }
+		setIdent, _, _, values, _, err := readTLV(rest)
+		if err != nil {
+			return nil, err
+		}
+		var set []byte
+		for len(values) > 0 {
+			ident, _, _, value, size, err := readTLV(values)
+			if err != nil || ident[0] != 0x1e {
+				return nil, errors.New("friendly-name-segments: friendlyName is no BMPString")
+			}
+			set = append(set, ident[0]|0x20, 0x80)
+			for len(value) > 0 {
+				k := min(2, len(value))
+				set = appendTLV(set, ident, value[:k])
+				value = value[k:]
+			}
+			set = append(set, 0, 0)
+			values = values[size:]
+		}
+		return appendTLV(nil, setIdent, set), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, errors.New("friendly-name-segments: no friendlyName found")
+	}
+	return out, nil
+}
+
+// rewriteKeyBags returns der with each keyBag's value in BER and the number of
+// keyBags.
 func rewriteKeyBags(der []byte) ([]byte, int, error) {
+	return rewriteElements(der, oidKeyBagDER, keyBagToBER)
+}
+
+// rewriteElements walks the DER elements of der, and the OCTET STRINGs whose
+// contents are DER elements themselves (the authSafe and its safes), and
+// returns der with the rest of every constructed element that starts with
+// oid rewritten by rewrite, and the number of such elements.
+func rewriteElements(der, oid []byte, rewrite func(rest []byte) ([]byte, error)) ([]byte, int, error) {
 	var out []byte
 	total := 0
 	for len(der) > 0 {
@@ -408,23 +473,15 @@ func rewriteKeyBags(der []byte) ([]byte, int, error) {
 			return nil, 0, err
 		}
 		switch {
-		case compound && bytes.HasPrefix(content, oidKeyBagDER):
-			// SafeBag ::= SEQUENCE { bagId, bagValue [0] EXPLICIT, bagAttributes OPTIONAL }
-			rest := content[len(oidKeyBagDER):]
-			valueIdent, _, _, value, valueSize, err := readTLV(rest)
+		case compound && bytes.HasPrefix(content, oid):
+			rest, err := rewrite(content[len(oid):])
 			if err != nil {
 				return nil, 0, err
 			}
-			ber, err := toBER(value, 512)
-			if err != nil {
-				return nil, 0, err
-			}
-			bag := append(slices.Clone(oidKeyBagDER), appendTLV(nil, valueIdent, ber)...)
-			bag = append(bag, rest[valueSize:]...)
-			out = appendTLV(out, ident, bag)
+			out = appendTLV(out, ident, append(slices.Clone(oid), rest...))
 			total++
 		case compound || isOctetString:
-			inner, n, err := rewriteKeyBags(content)
+			inner, n, err := rewriteElements(content, oid, rewrite)
 			if err != nil || n == 0 {
 				// Not DER inside (an OCTET STRING of other content), or nothing to rewrite.
 				out = append(out, der[:size]...)

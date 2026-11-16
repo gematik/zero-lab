@@ -8,6 +8,7 @@ generator, the command-line contract every decoder provides, and the interoperab
 ```text
 testdata/
   manifest.json      every case: source, profile, rules covered, expected result
+  private-key-info.json  PrivateKeyInfo and keyBag vectors (P12-041, P12-002, P12-004)
   vendor/            two connector client identities as delivered (BER, RC2-40, 3DES,
                      SHA-1 MAC), with their passwords and SHA256SUMS
 tool/                p12conformance: generates the corpus, verifies decoders (Go, stdlib only)
@@ -38,7 +39,9 @@ the authSafe), `patch` bytes in place (an OID, a version), rewrite the MAC itera
 (`mac-iterations`; MacData lies outside the MAC, so the rest stays valid), or write every keyBag's
 PrivateKeyInfo in BER (`keybag-ber`; the `ber` encoding leaves the octets of the safes as they are,
 so this is the only way BER reaches inside a safe; it changes the authSafe octets, so the case has
-no MAC).
+no MAC), or write every friendlyName BMPString as a constructed string of one-character segments
+(`friendly-name-segments`; the `ber` encoding segments OCTET STRINGs only, so this case covers the
+other string types; no MAC either).
 
 ## Manifest
 
@@ -73,6 +76,20 @@ no MAC).
 `p12conformance generate` writes, next to the files, `expected.json`: one entry per case and
 encoding with file name, password file, profile, allowed codes and the expected result in the form
 of the command-line contract.
+
+## PrivateKeyInfo vectors
+
+`testdata/private-key-info.json` pins the rules of P12-041 and the normalisation of a keyBag
+(P12-002, P12-004) case by case, below what a generated file can reach. Every implementation runs it
+in its own tests (`go/pkcs12`: `internal/syntax`, `legacy`; `rust/ti-pkcs12`:
+`tests/private_key_info.rs`):
+
+| List | Input | Run as |
+|---|---|---|
+| `check` | `der`: a PrivateKeyInfo | the P12-041 check alone, as a decrypted shrouded key reaches it |
+| `key_bag` | `value`: a keyBag's value, BER | the value of the only keyBag in a file without MAC and encryption: PFX version 3, authSafe a Data ContentInfo with one Data ContentInfo whose safe is a SafeContents of that one SafeBag (`keyBag`, `[0]` around the value); the file is decoded by a legacy decoder |
+
+`expect` is `ok` or `malformed`; a `key_bag` case that decodes returns `key`, the normalised DER.
 
 ## Command-line contract
 
@@ -150,8 +167,9 @@ As of the run recorded in `interop/matrix.md`:
 |---|---|---|
 | OpenSSL 4.0 CLI, pyca/cryptography 50, JDK 21 | `trailing-byte` | accept bytes after the PFX (P12-003) |
 | OpenSSL 4.0 CLI, pyca/cryptography 50 | `mac-iterations-limit` | no iteration limit, run into the timeout (P12-036) |
-| pyca/cryptography 50 | `friendly-names`, `vendor-*` | reports no friendly name for keys (API limitation) |
+| pyca/cryptography 50 | `friendly-names`, `friendly-names-segmented`, `vendor-*` | reports no friendly name for keys (API limitation) |
 | JDK 21 | `pbes2-aes192`, `pbes2-des-ede3`, `legacy-rc2-128-2des` | rejects AES-192 and DES-EDE3 in PBES2, RC2-128 and two-key Triple DES |
 | JDK 21 | `unicode-password` | rejects a password with a character outside the BMP |
 | JDK 21 | `certificates-only`, `plain-bags`, `key-only` | loads certificates without key only with Oracle's trustedKeyUsage attribute, and keys only with a certificate |
 | JDK 21 | `friendly-names` | lower-cases friendly names (aliases) |
+| JDK 21 | `friendly-names-segmented` | rejects the file, also without the segments: unencrypted certificates in a file without MAC |

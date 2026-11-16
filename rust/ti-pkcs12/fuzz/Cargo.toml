@@ -31,3 +31,10 @@ path = "fuzz_targets/ber_to_der.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "private_key_info"
+path = "fuzz_targets/private_key_info.rs"
+test = false
+doc = false
+bench = false

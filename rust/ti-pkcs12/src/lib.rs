@@ -58,6 +58,7 @@ mod encode;
 mod kdf;
 mod mac;
 mod pbes2;
+mod private_key;
 
 // Public for the fuzz targets only; not an API of this crate.
 #[doc(hidden)]
@@ -69,6 +70,25 @@ pub mod fuzz {
     /// [`crate::Error::Malformed`] for input that is not one BER element.
     pub fn ber_to_der(bytes: &[u8]) -> Result<Vec<u8>, crate::Error> {
         Ok(crate::ber::to_der(bytes)?.to_vec())
+    }
+
+    /// The P12-041 check of a PrivateKeyInfo, as a shrouded key reaches it.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::Error::Malformed`] for anything but one DER PrivateKeyInfo.
+    pub fn check_private_key_info(bytes: &[u8]) -> Result<(), crate::Error> {
+        crate::private_key::check_private_key_info(bytes)
+    }
+
+    /// The join of a keyBag's constructed publicKey (P12-002) that precedes the check.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::Error::Malformed`] for a constructed publicKey that holds no valid BIT
+    /// STRING segments.
+    pub fn join_public_key(bytes: &[u8]) -> Result<Vec<u8>, crate::Error> {
+        Ok(crate::private_key::join_public_key(zeroize::Zeroizing::new(bytes.to_vec()))?.to_vec())
     }
 }
 
@@ -412,7 +432,8 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
         return Err(Error::malformed("PFX", "not a PKCS#12 file"));
     }
     // P12-001: a PFX of version 3, else malformed.
-    let pfx = Pfx::from_ber(bytes)?;
+    // P12-002: each layer is normalised to DER as a whole before `der` reads it.
+    let pfx = Pfx::from_ber(&ber::to_der(bytes)?)?;
     if pfx.version != 3 {
         return Err(Error::malformed("PFX", format!("version {}", pfx.version)));
     }
@@ -441,7 +462,7 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
         });
     }
 
-    for safe in Vec::<ContentInfo>::from_ber(auth_safe)? {
+    for safe in Vec::<ContentInfo>::from_ber(&ber::to_der(auth_safe)?)? {
         let contents = match safe.content {
             Content::Data(octets) => Zeroizing::new(octets),
             Content::Encrypted(encrypted) => {
@@ -460,7 +481,7 @@ pub fn decode(bytes: &[u8], password: &str) -> Result<Pkcs12, Error> {
             Content::Other => return Err(Error::UnsupportedAlgorithm(safe.content_type)),
         };
         collect(
-            &Vec::<SafeBag>::from_ber(&contents)?,
+            &Vec::<SafeBag>::from_ber(&ber::to_der(&contents)?)?,
             password,
             &mut p12,
             &mut budget,
@@ -505,7 +526,7 @@ fn collect(
                     shrouded.encrypted_data.as_bytes(),
                     budget,
                 )?;
-                asn1::check_private_key_info(&pkcs8)?;
+                private_key::check_private_key_info(&pkcs8)?;
                 p12.keys.push(KeyBag {
                     pkcs8,
                     friendly_name,
@@ -513,11 +534,11 @@ fn collect(
                 });
             }
             oids::KEY_BAG => {
-                // P12-002: BER inside the PrivateKeyInfo is normalised before P12-041
-                // checks it as DER, as for every other layer of the file.
-                let outer = Zeroizing::new(der::Encode::to_der(&bag.value)?);
-                let pkcs8 = ber::to_der(&outer)?;
-                asn1::check_private_key_info(&pkcs8)?;
+                // P12-002: the PrivateKeyInfo was normalised with its safe; only the
+                // schema knows that a constructed publicKey [1] is a BIT STRING to join.
+                let pkcs8 = Zeroizing::new(der::Encode::to_der(&bag.value)?);
+                let pkcs8 = private_key::join_public_key(pkcs8)?;
+                private_key::check_private_key_info(&pkcs8)?;
                 p12.keys.push(KeyBag {
                     pkcs8,
                     friendly_name,

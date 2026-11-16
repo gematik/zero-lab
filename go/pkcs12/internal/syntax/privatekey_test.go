@@ -22,6 +22,7 @@
 package syntax
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -29,7 +30,11 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/asn1"
+	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"golang.org/x/crypto/cryptobyte"
@@ -122,12 +127,77 @@ func TestP12_041APrivateKeyInfoIsCheckedStrictly(t *testing.T) {
 	}
 }
 
+// FuzzCheckPrivateKeyInfo: the check and the join of a keyBag's publicKey
+// return ErrParse or nothing; the join leaves a key that passes the check
+// unchanged, fails only on what the check refuses, and what it joins passes or
+// fails the check without panicking. The shared vectors of spec/pkcs12 seed it.
 func FuzzCheckPrivateKeyInfo(f *testing.F) {
+	for _, seed := range sharedVectors(f) {
+		f.Add(seed)
+	}
 	f.Add(oneAsymmetricKey(f, 1, []byte{0x05, 0x00}, make([]byte, 34), []byte{0xA0, 0x00}, []byte{0x81, 0x02, 0x00, 0x01}))
+	f.Add(oneAsymmetricKey(f, 0, []byte{0xBF, 0x81, 0x00, 0x02, 0x05, 0x00}, make([]byte, 34)))
+	f.Add(oneAsymmetricKey(f, 1, nil, make([]byte, 34), []byte{0xA1, 0x08, 0x03, 0x02, 0x00, 0xAA, 0x03, 0x02, 0x04, 0xB0}))
 	f.Add([]byte{0x30, 0x00})
 	f.Fuzz(func(t *testing.T, data []byte) {
-		if err := CheckPrivateKeyInfo(data); err != nil && !errors.Is(err, ErrParse) {
+		err := CheckPrivateKeyInfo(data)
+		if err != nil && !errors.Is(err, ErrParse) {
 			t.Fatalf("error outside ErrParse: %v", err)
 		}
+		joined, joinErr := JoinPublicKey(data)
+		if joinErr != nil && !errors.Is(joinErr, ErrParse) {
+			t.Fatalf("join error outside ErrParse: %v", joinErr)
+		}
+		if err == nil && (joinErr != nil || !bytes.Equal(joined, data)) {
+			t.Fatalf("the join changed a checked key: % X", data)
+		}
+		if joinErr != nil && err == nil {
+			t.Fatalf("the join refused a checked key: % X", data)
+		}
+		if joinErr == nil {
+			if err := CheckPrivateKeyInfo(joined); err != nil && !errors.Is(err, ErrParse) {
+				t.Fatalf("error outside ErrParse on the joined key: %v", err)
+			}
+		}
 	})
+}
+
+// sharedVectors returns the inputs of spec/pkcs12/testdata/private-key-info.json:
+// the PrivateKeyInfo encodings of the check and the keyBag values. Package
+// conformance reads them for the tests, but imports this package.
+func sharedVectors(t testing.TB) [][]byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "spec", "pkcs12", "testdata", "private-key-info.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors struct {
+		Check []struct {
+			DER string `json:"der"`
+		} `json:"check"`
+		KeyBag []struct {
+			Value string `json:"value"`
+		} `json:"key_bag"`
+	}
+	if err := json.Unmarshal(raw, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	var seeds [][]byte
+	add := func(h string) {
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seeds = append(seeds, b)
+	}
+	for _, v := range vectors.Check {
+		add(v.DER)
+	}
+	for _, v := range vectors.KeyBag {
+		add(v.Value)
+	}
+	if len(seeds) == 0 || len(seeds[0]) == 0 {
+		t.Fatal("no shared vectors")
+	}
+	return seeds
 }

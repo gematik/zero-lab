@@ -2,5 +2,7 @@
 /corpus
 /artifacts
 /coverage
-# Generated from spec/pkcs12 by `just fuzz-ti-pkcs12`; the ber_to_der seeds are committed.
+# Generated from spec/pkcs12 by `just fuzz-ti-pkcs12`; the ber_to_der and private_key_info
+# seeds are committed, the vector-* seeds come from spec/pkcs12/testdata/private-key-info.json.
 /seeds/decode
+/seeds/private_key_info/vector-*

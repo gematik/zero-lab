@@ -21,10 +21,13 @@
  * find details in the "Readme" file.
  */
 
-//! BER to DER (X.690 §8 to §10) for what PKCS#12 producers write inside a safe: indefinite
-//! and non-minimal lengths, constructed (segmented) strings. `der` in BER mode reads these,
-//! but an [`Any`](der::asn1::Any) keeps its nested content as written, so a plain keyBag's
-//! PrivateKeyInfo is normalised here, every layer, before P12-041 checks it as DER (P12-002).
+//! BER to DER (X.690 §8 to §10) for what PKCS#12 producers write: indefinite and
+//! non-minimal lengths, constructed (segmented) strings. The PFX, the authSafe octets and
+//! every safe are normalised here before `der` reads them (P12-002): `der` in BER mode
+//! refuses constructed strings other than OCTET STRING inside an indefinite length, and an
+//! [`Any`](der::asn1::Any) keeps its nested content as written, so a plain keyBag's
+//! PrivateKeyInfo would reach P12-041 in BER. Nesting counts from each layer's outermost
+//! element, as go/pkcs12 counts it (P12-004).
 //! Content is not reordered: no signature covers a SET in PKCS#12. go/pkcs12's
 //! internal/ber does the same.
 //!
@@ -46,7 +49,8 @@ fn malformed(reason: &str) -> Error {
     Error::malformed("BER", reason)
 }
 
-/// The DER encoding of the single BER element `bytes`; trailing bytes are an error.
+/// The DER encoding of the single BER element `bytes`, its outermost element at depth 0
+/// (P12-004); trailing bytes are an error.
 pub(crate) fn to_der(bytes: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
     let (der, rest) = convert(bytes, 0)?;
     if !rest.is_empty() {
@@ -227,9 +231,13 @@ fn join_segments(tag: u64, segments: &[&[u8]], depth: usize) -> Result<Zeroizing
         // bits (X.690 §8.6.4). The joined string carries the last count once.
         let last = parts.len().saturating_sub(1);
         for (i, part) in parts.iter_mut().enumerate() {
+            // A count of 0 to 7, 0 when no bits follow (X.690 §8.6.2): joined, a last
+            // segment of unused bits without bits would pass for a valid count.
             let (&count, bits) = part
                 .split_first()
-                .filter(|&(&count, _)| count == 0 || i == last)
+                .filter(|&(&count, bits)| {
+                    count == 0 || (i == last && count <= 7 && !bits.is_empty())
+                })
                 .ok_or_else(|| malformed("invalid BIT STRING segment"))?;
             if i == last {
                 unused.push(count);
@@ -250,9 +258,9 @@ fn join_segments(tag: u64, segments: &[&[u8]], depth: usize) -> Result<Zeroizing
     Ok(value)
 }
 
-/// Refuses a universal element whose DER form `der` does not read: P12-041's check reads
-/// the result with it, and a universal type outside its set has no place in a
-/// PrivateKeyInfo. Constructed strings are judged by the primitive form they become.
+/// Refuses a universal element whose DER form `der` does not read: every layer is read with
+/// it after this normalisation, and go/pkcs12 refuses the same set (P12-002). Constructed
+/// strings are judged by the primitive form they become.
 fn check_universal(h: &Header<'_>) -> Result<(), Error> {
     let known = match (h.tag, h.constructed) {
         (0x10 | 0x11, true)
@@ -284,7 +292,7 @@ fn is_string(tag: u64) -> bool {
 
 /// `ident`, a minimal definite length and the concatenated `parts`, in a buffer of
 /// exactly that size.
-fn element(ident: &[u8], parts: &[&[u8]]) -> Zeroizing<Vec<u8>> {
+pub(crate) fn element(ident: &[u8], parts: &[&[u8]]) -> Zeroizing<Vec<u8>> {
     let len: usize = parts.iter().map(|part| part.len()).sum();
     let octets = len.to_be_bytes();
     let long = &octets[octets.iter().take_while(|&&b| b == 0).count()..];
@@ -414,6 +422,16 @@ mod tests {
                 "BF 81 00 02 05 00",
             ),
             ("high tag number 31", "DF 1F 00", "DF 1F 00"),
+            (
+                "high tag number 2^32-1",
+                "9F 8F FF FF FF 7F 00",
+                "9F 8F FF FF FF 7F 00",
+            ),
+            (
+                "BIT STRING last segment empty",
+                "23 80 03 02 00 0A 03 01 00 00 00",
+                "03 02 00 0A",
+            ),
         ] {
             assert_eq!(*to_der(&bytes(ber)).unwrap(), bytes(der), "{name}");
         }
@@ -462,6 +480,21 @@ mod tests {
                 "high tag number above 32 bits",
                 bytes("7F 9E 82 A0 FF FF FF 00 00"),
             ),
+            ("high tag number 2^32", bytes("9F 90 80 80 80 00 00")),
+            (
+                "BIT STRING segment with unused bits above 7",
+                bytes("23 80 03 02 00 0A 03 02 08 00 00 00"),
+            ),
+            (
+                "BIT STRING segment with unused bits and no bits",
+                bytes("23 80 03 02 00 A0 03 01 05 00 00"),
+            ),
+            ("universal tag 15", bytes("0F 00")),
+            ("primitive SEQUENCE", bytes("10 00")),
+            ("constructed INTEGER", bytes("22 03 02 01 00")),
+            ("segmented GraphicString", bytes("39 80 19 01 41 00 00")),
+            ("UniversalString", bytes("1C 00")),
+            ("universal type in the high form", bytes("1F 81 00 00")),
         ] {
             assert!(
                 matches!(to_der(&ber), Err(Error::Malformed { .. })),
