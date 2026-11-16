@@ -4,7 +4,7 @@ title: 'ureq: custom TLS verifier without the unversioned API (watch)'
 status: To Do
 assignee: []
 created_date: 2026-10-09 13:55
-updated_date: '2026-11-16T20:33:00Z'
+updated_date: '2026-11-16T20:34:00Z'
 labels:
   - ti-connector-client
   - ti-tls
@@ -33,4 +33,6 @@ ti-connector-client's and ti-tls's ureq adapters use ureq's semver-exempt unvers
 2026-11-07: the bump to ureq 3.5.1 waits on branch chore/ureq-3.5 (TransportAdapter::new takes the connection's clock, details.current_time): it changes the workspace Cargo.toml, which jwz's browser stamp hashes, and jwz is stamped again only after its pending tasks. Upstream checked: CHANGELOG to 3.5.1 and src/tls/mod.rs on main have no verifier hook.
 
 2026-11-17: upstream ureq is at 3.5.2; we pin ~3.5.1. Still no custom certificate verifier or rustls ClientConfig on TlsConfig as far as the 3.5 line shows; stays parked.
+
+Correction to the note above: whether ureq 3.5.2 accepts a custom verifier was not checked in its changelog; only the version was.
 <!-- SECTION:NOTES:END -->
