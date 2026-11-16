@@ -1,10 +1,10 @@
 ---
 id: TASK-12
 title: 'rsa 0.10 release: leave the release candidate'
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-10-09 13:55
-updated_date: '2026-11-16T19:23:00Z'
+updated_date: '2026-11-16T19:41:00Z'
 labels:
   - watch
 dependencies: []
@@ -23,9 +23,9 @@ rsa is pinned to =0.10.0-rc.19 with pkcs1 0.8.0-rc.5 (TASK-117), still a release
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 rsa is on the released 0.10 line and pkcs1 on 0.8.0; no release candidate of the RustCrypto stack is pinned
-- [ ] #2 The RUSTSEC-2023-0071 ignore is gone from deny.toml and .cargo/audit.toml; cargo deny and cargo audit pass
-- [ ] #3 The unsafe review of the version change is done and just check passes in rust/
+- [x] #1 rsa is on the released 0.10 line and pkcs1 on 0.8.0; no release candidate of the RustCrypto stack is pinned
+- [x] #2 The RUSTSEC-2023-0071 ignore is gone from deny.toml and .cargo/audit.toml; cargo deny and cargo audit pass
+- [x] #3 The unsafe review of the version change is done and just check passes in rust/
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -33,3 +33,9 @@ rsa is pinned to =0.10.0-rc.19 with pkcs1 0.8.0-rc.5 (TASK-117), still a release
 <!-- SECTION:NOTES:BEGIN -->
 Also blocks just audit's semver step: rebuilding the ti-cli 0.2.0 baseline fails to compile against rsa 0.10.0-rc.18 (seen at the 0.3.0 release, 2026-10-10); TASK-34 needs that step working or skipped.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+rsa 0.10.0 and pkcs1 0.8.0 replace the release candidates; RUSTSEC-2023-0071 is fixed in 0.10.0, its ignore is gone from deny.toml and .cargo/audit.toml. ti-pki enables rsa feature pkcs1v15 and uses rsa::PublicKey. crypto-bigint 0.7.11 unsafe reviewed (unchanged); ctutils trusted by its RustCrypto/utils publisher. just check, cargo deny, cargo audit and cargo vet pass.
+<!-- SECTION:FINAL_SUMMARY:END -->
