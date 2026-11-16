@@ -42,13 +42,17 @@ const (
 	numberMarker = "987654321987"
 )
 
-func requireNotQuoted(t *testing.T, err error) {
+// requireRefusedFor asserts err refuses for its fixed reason and quotes none of the token.
+func requireRefusedFor(t *testing.T, err error, reason string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("accepted")
 	}
 	if strings.Contains(err.Error(), marker) || strings.Contains(err.Error(), numberMarker) {
 		t.Fatalf("the error quotes the token: %v", err)
+	}
+	if err.Error() != reason {
+		t.Fatalf("got %v, want %q", err, reason)
 	}
 }
 
@@ -72,26 +76,27 @@ func TestServerRule14_ARefusedTokensHeaderIsNotQuoted(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = verifyJWS(unknownKid, keys)
-	requireNotQuoted(t, err)
+	requireRefusedFor(t, err, "no key with the token's kid")
 
 	enc := base64.RawURLEncoding.EncodeToString
 	otherAlg := enc([]byte(`{"alg":"`+marker+`","kid":"k1"}`)) + "." + enc([]byte(`{}`)) + "." + enc([]byte("sig"))
 	_, err = verifyJWS(otherAlg, keys)
-	requireNotQuoted(t, err)
+	requireRefusedFor(t, err, "token is no compact JWS of an allowed algorithm")
 }
 
 // Server rule 14: a token's claims are refused by naming the claim, never by quoting a member's name or a value; a
 // member named twice still unwraps to the decoder's reason.
 func TestServerRule14_RefusedTokenClaimsAreNotQuoted(t *testing.T) {
-	for name, payload := range map[string]string{
-		"a member twice": `{"` + marker + `":1,"` + marker + `":2}`,
-		"a nested name":  `{"x":{"` + marker + `":1 2}}`,
-		"exp":            `{"exp":"` + marker + `"}`,
-		"aud":            `{"aud":[1,"` + marker + `"]}`,
+	for name, test := range map[string]struct{ payload, reason string }{
+		"a member twice": {`{"` + marker + `":1,"` + marker + `":2}`, "token claims: do not decode"},
+		"a nested name":  {`{"x":{"` + marker + `":1 2}}`, "token claims: do not decode"},
+		"exp":            {`{"exp":"` + marker + `"}`, "token claim exp: is no number"},
+		"aud":            {`{"aud":[1,"` + marker + `"]}`, "token claim aud: is no string or array of strings"},
+		"sub":            {`{"sub":` + numberMarker + `}`, "token claim sub: is no string"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			err := validateClaims([]byte(payload), time.Unix(100, 0), 0, "")
-			requireNotQuoted(t, err)
+			err := validateClaims([]byte(test.payload), time.Unix(100, 0), 0, "")
+			requireRefusedFor(t, err, test.reason)
 			if name == "a member twice" && !errors.Is(err, jsontext.ErrDuplicateName) {
 				t.Fatalf("got %v, want a duplicate name to unwrap", err)
 			}
@@ -105,5 +110,5 @@ func TestServerRule14_ClaimsOfAnotherTypeAreNotQuoted(t *testing.T) {
 	var claims struct {
 		N uint8 `json:"n"`
 	}
-	requireNotQuoted(t, c.UnmarshalClaims(&claims))
+	requireRefusedFor(t, c.UnmarshalClaims(&claims), "token claims: do not decode into the type asked for")
 }
