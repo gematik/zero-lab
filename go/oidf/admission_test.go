@@ -124,7 +124,7 @@ func TestFedMaster_StatementURI_ThatIsNotAnEntityConfigurationsIsRefused(t *test
 		"a longer last seg": "https://master.example/.well-known/openid-federationx",
 	} {
 		cfg := &RelyingPartyConfig{FedMasterEntityStatementURI: uri}
-		if _, err := cfg.fedMasterEntityID(); err == nil || !strings.Contains(err.Error(), "fed_master_entity_statement_uri") {
+		if _, err := cfg.fedMasterEntityID(); err == nil || !strings.Contains(err.Error(), "master_entity_statement_uri") {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -141,10 +141,10 @@ func TestFedMaster_StatementURI_IsExclusiveWithTheURL(t *testing.T) {
 	}
 }
 
-// The URI is a location, not a source of trust: an unlisted master needs fed_master_jwk.
+// The URI is a location, not a source of trust: an unlisted master needs master_jwk.
 func TestFedMaster_StatementURI_OfAnUnlistedMasterNeedsItsKey(t *testing.T) {
 	cfg := &RelyingPartyConfig{FedMasterEntityStatementURI: "https://unlisted.example/.well-known/openid-federation"}
-	if _, err := cfg.resolveTrustAnchor(); err == nil || !strings.Contains(err.Error(), "fed_master_jwk") {
+	if _, err := cfg.resolveTrustAnchor(); err == nil || !strings.Contains(err.Error(), "master_jwk") {
 		t.Errorf("err = %v", err)
 	}
 }

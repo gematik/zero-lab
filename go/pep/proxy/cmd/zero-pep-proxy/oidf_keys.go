@@ -57,7 +57,18 @@ func loadOIDFKeys(files oidf.KeyFiles) (oidf.Keys, error) {
 	if err != nil {
 		return oidf.Keys{}, fmt.Errorf("client_key: %w", err)
 	}
-	return oidf.Keys{Sign: sign, Decrypt: agreement, Client: certificate}, nil
+	keys := oidf.Keys{Sign: sign, Decrypt: agreement, Client: certificate}
+	if files.MasterJWKPath != "" {
+		// The master's key is public: an error may name the file and say what the parser found wrong.
+		data, err := os.ReadFile(files.MasterJWKPath)
+		if err != nil {
+			return oidf.Keys{}, fmt.Errorf("master_jwk_path: %w", err)
+		}
+		if keys.Master, err = oidf.NewJwkFromJSON(string(data)); err != nil {
+			return oidf.Keys{}, fmt.Errorf("master_jwk_path: %q: %w", files.MasterJWKPath, err)
+		}
+	}
+	return keys, nil
 }
 
 // readECPrivateKey reads the one EC private key of a file, SEC 1 or PKCS #8. Errors name the file, never its content.

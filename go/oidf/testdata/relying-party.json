@@ -1,0 +1,16 @@
+{
+  "entity": "https://rp.example.com",
+  "master": "https://app-ref.federationmaster.de",
+  "sign_key": {"key_pem_path": "sign.pem"},
+  "enc_key": {"key_pem_path": "enc.pem"},
+  "client_key": {"key_pem_path": "client.pem", "cert_pem_path": "client-cert.pem"},
+  "relying_party": {
+    "client_name": "Zero Trust Lab",
+    "organization_name": "gematik GmbH",
+    "redirect_uris": ["https://rp.example.com/callback"],
+    "keywords": ["product_type:zero-lab", "product_type_version:0.0.0"],
+    "contacts": ["support@example.invalid"],
+    "ti_features_supported": {"id_token_version_supported": ["1.0.0"]}
+  },
+  "federation_entity": {"name": "Zero Trust Lab"}
+}

@@ -72,8 +72,8 @@ idpd:
   - client_id: gid
     environment: ref
 oidf:
-  sub: https://rp.example.com
-  fed_master_url: https://app-test.federationmaster.de
+  entity: https://rp.example.com
+  master: https://app-test.federationmaster.de
 `
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)

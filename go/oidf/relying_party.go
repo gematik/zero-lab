@@ -52,54 +52,57 @@ var defaultOPScopes = []string{"openid", "urn:telematik:display_name", "urn:tele
 type RelyingPartyConfig struct {
 	// Subject is this relying party's entity identifier — its own public URL — and also the entity
 	// statement's iss/sub and the OIDF client_id.
-	Subject string `yaml:"sub"`
+	Subject string `json:"entity" yaml:"entity"`
 
 	// FedMasterURL is the federation master's entity identifier. Its trust-anchor signing key is resolved from a
 	// built-in table of known gematik masters (see knownFedMasters); set FedMasterJWK to override or for an unlisted
 	// master. Exactly one of FedMasterURL and FedMasterEntityStatementURI is set.
-	FedMasterURL string `yaml:"fed_master_url,omitempty"`
+	FedMasterURL string `json:"master,omitzero" yaml:"master,omitempty"`
 	// FedMasterEntityStatementURI names the master by the location of its entity configuration: an https URI without
 	// query, fragment or user info, ending in exactly "/.well-known/openid-federation". The entity identifier is what
 	// precedes that suffix. The URI is a location, not a source of trust: an unlisted master's key comes from
 	// FedMasterJWK, obtained out of band.
-	FedMasterEntityStatementURI string `yaml:"fed_master_entity_statement_uri,omitempty"`
-	FedMasterJWK                *Jwk   `yaml:"fed_master_jwk,omitempty"`
+	FedMasterEntityStatementURI string `json:"master_entity_statement_uri,omitzero" yaml:"master_entity_statement_uri,omitempty"`
+	// FedMasterJWK is the signing key of a master the built-in table does not know, or one to use in its place. Not
+	// serialized: a configuration file names the key's file ([KeyFiles.MasterJWKPath]), the host reads it and hands
+	// it over as [Keys.Master], or a program sets it here.
+	FedMasterJWK *Jwk `json:"-" yaml:"-"`
 
 	// RelyingParty + FederationEntity are the deployment-specific entity-statement metadata; the rest is
 	// defaulted.
-	RelyingParty     RelyingPartyMetadata `yaml:"relying_party"`
-	FederationEntity FederationEntity     `yaml:"federation_entity"`
+	RelyingParty     RelyingPartyMetadata `json:"relying_party" yaml:"relying_party"`
+	FederationEntity FederationEntity     `json:"federation_entity" yaml:"federation_entity"`
 
 	// Scopes requested from the OpenID provider's authorization endpoint (which identity claims it returns).
 	// When empty, defaultOPScopes is used.
-	Scopes []string `yaml:"scopes,omitempty"`
+	Scopes []string `json:"scopes,omitzero" yaml:"scopes,omitempty"`
 
 	// APIKey is the key of gematik's development federation (*.dev.gematik.solutions). Not serialized; the
 	// program supplies it, the library reads no environment.
-	APIKey string `yaml:"-"`
+	APIKey string `json:"-" yaml:"-"`
 
 	// HTTPClient is the base client for federation and relying-party calls. Not serialized; supplied
 	// programmatically. When nil, a client with a default timeout is created. The relying party's
 	// authenticated calls layer mutual TLS onto a copy of it.
-	HTTPClient *http.Client `yaml:"-"`
+	HTTPClient *http.Client `json:"-" yaml:"-"`
 
 	// Clock is the time statements and tokens are judged and signed at. Not serialized; supplied programmatically. When nil, the
 	// system clock.
-	Clock func() time.Time `yaml:"-"`
+	Clock func() time.Time `json:"-" yaml:"-"`
 
 	// Documents keep the federation's signed documents between fetches; see [Documents]. Not serialized; supplied
 	// programmatically, and required.
-	Documents Documents `yaml:"-"`
+	Documents Documents `json:"-" yaml:"-"`
 
 	// Hooks are applied, in order, to a copy of the entity statement each time it is signed, from New's first signing
 	// on and before the hooks added by AddEntityStatementHook (see there). A member the statement is required to have
 	// may come from them. Not serialized; supplied programmatically.
-	Hooks []func(*EntityStatement) error `yaml:"-"`
+	Hooks []func(*EntityStatement) error `json:"-" yaml:"-"`
 
 	// Logger receives the failures of Documents, which cost a fetch and nothing else, and the failures of signing the
 	// entity statement anew, after which the last one is served until it expires. Not serialized; supplied
 	// programmatically. When nil, such failures are dropped silently.
-	Logger *slog.Logger `yaml:"-"`
+	Logger *slog.Logger `json:"-" yaml:"-"`
 }
 
 // RelyingPartyMetadata holds the variable openid_relying_party fields; the OIDF boilerplate is defaulted.
@@ -107,26 +110,26 @@ type RelyingPartyConfig struct {
 // (a support address) and organization_name, and A_27505 for ti_features_supported; their content is the
 // deployment's to give.
 type RelyingPartyMetadata struct {
-	ClientName          string      `yaml:"client_name"`
-	RedirectURIs        []string    `yaml:"redirect_uris"`
-	OrganizationName    string      `yaml:"organization_name,omitempty"`
-	LogoURI             string      `yaml:"logo_uri,omitempty"`
-	Keywords            []string    `yaml:"keywords,omitempty"`
-	Contacts            []string    `yaml:"contacts,omitempty"`
-	TIFeaturesSupported *TIFeatures `yaml:"ti_features_supported,omitempty"`
-	Scope               string      `yaml:"scope,omitempty"`              // default defaultMetadataScope
-	DefaultACRValues    []string    `yaml:"default_acr_values,omitempty"` // default [defaultACRValue]
+	ClientName          string      `json:"client_name" yaml:"client_name"`
+	RedirectURIs        []string    `json:"redirect_uris" yaml:"redirect_uris"`
+	OrganizationName    string      `json:"organization_name,omitzero" yaml:"organization_name,omitempty"`
+	LogoURI             string      `json:"logo_uri,omitzero" yaml:"logo_uri,omitempty"`
+	Keywords            []string    `json:"keywords,omitzero" yaml:"keywords,omitempty"`
+	Contacts            []string    `json:"contacts,omitzero" yaml:"contacts,omitempty"`
+	TIFeaturesSupported *TIFeatures `json:"ti_features_supported,omitzero" yaml:"ti_features_supported,omitempty"`
+	Scope               string      `json:"scope,omitzero" yaml:"scope,omitempty"`                           // default defaultMetadataScope
+	DefaultACRValues    []string    `json:"default_acr_values,omitzero" yaml:"default_acr_values,omitempty"` // default [defaultACRValue]
 	// SignedJwksURI, when set, names where ServeSignedJwks publishes the relying party's keys as a signed JWK Set;
 	// the openid_relying_party metadata then carries no jwks of its own (gemSpec_IDP_FD A_23034-02).
-	SignedJwksURI string `yaml:"signed_jwks_uri,omitempty"`
+	SignedJwksURI string `json:"signed_jwks_uri,omitzero" yaml:"signed_jwks_uri,omitempty"`
 }
 
 // FederationEntity holds the variable federation_entity metadata.
 type FederationEntity struct {
-	Name             string   `yaml:"name,omitempty"`
-	OrganizationName string   `yaml:"organization_name,omitempty"`
-	Contacts         []string `yaml:"contacts,omitempty"`
-	HomepageURI      string   `yaml:"homepage_uri,omitempty"`
+	Name             string   `json:"name,omitzero" yaml:"name,omitempty"`
+	OrganizationName string   `json:"organization_name,omitzero" yaml:"organization_name,omitempty"`
+	Contacts         []string `json:"contacts,omitzero" yaml:"contacts,omitempty"`
+	HomepageURI      string   `json:"homepage_uri,omitzero" yaml:"homepage_uri,omitempty"`
 }
 
 const (
@@ -184,7 +187,7 @@ func (cfg *RelyingPartyConfig) Validate() error {
 		name    string
 		present bool
 	}{
-		{"sub", cfg.Subject != ""},
+		{"entity", cfg.Subject != ""},
 		{"relying_party.client_name", cfg.RelyingParty.ClientName != ""},
 		{"relying_party.redirect_uris", len(cfg.RelyingParty.RedirectURIs) > 0},
 	} {
@@ -205,20 +208,20 @@ const wellKnownFederation = "/.well-known/openid-federation"
 func (cfg *RelyingPartyConfig) fedMasterEntityID() (string, error) {
 	switch {
 	case cfg.FedMasterURL != "" && cfg.FedMasterEntityStatementURI != "":
-		return "", errors.New("set one of fed_master_url and fed_master_entity_statement_uri, not both")
+		return "", errors.New("set one of master and master_entity_statement_uri, not both")
 	case cfg.FedMasterURL != "":
 		return cfg.FedMasterURL, nil
 	case cfg.FedMasterEntityStatementURI != "":
 		return entityIDOfStatementURI(cfg.FedMasterEntityStatementURI)
 	default:
-		return "", errors.New("fed_master_url or fed_master_entity_statement_uri is required")
+		return "", errors.New("master or master_entity_statement_uri is required")
 	}
 }
 
 // entityIDOfStatementURI takes the location of an entity configuration as the operator configures it, so that the
 // prefix is an entity identifier the master's statement has to name as iss and sub.
 func entityIDOfStatementURI(location string) (string, error) {
-	const name = "fed_master_entity_statement_uri"
+	const name = "master_entity_statement_uri"
 	if _, _, err := checkHTTPSURL(location, maxEntityIdentifierBytes+len(wellKnownFederation)); err != nil {
 		return "", fmt.Errorf("%s: %w", name, err)
 	}
@@ -263,7 +266,12 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 	if err := checkAPIKey(rp.fedMaster, cfg.APIKey); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
-	rp.trustAnchor, err = cfg.resolveTrustAnchor()
+	// The master's key a host read from the file the configuration names counts where the program set none.
+	trusted := *cfg
+	if trusted.FedMasterJWK == nil {
+		trusted.FedMasterJWK = keys.Master
+	}
+	rp.trustAnchor, err = trusted.resolveTrustAnchor()
 	if err != nil {
 		return nil, err
 	}
@@ -577,7 +585,7 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error)
 	if cfg.FedMasterJWK != nil && cfg.FedMasterJWK.Key != nil {
 		set, err := cfg.FedMasterJWK.AsSet()
 		if err != nil {
-			return nil, fmt.Errorf("fed_master_jwk: %w", err)
+			return nil, fmt.Errorf("master_jwk_path: %w", err)
 		}
 		return set.Keys, nil
 	}
@@ -587,7 +595,7 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error)
 	}
 	known, ok := knownFedMasters[entityID]
 	if !ok {
-		return nil, fmt.Errorf("no built-in trust anchor for the master %q; set fed_master_jwk", entityID)
+		return nil, fmt.Errorf("no built-in trust anchor for the master %q; set master_jwk_path", entityID)
 	}
 	key, err := openid.ParseKey([]byte(known))
 	if err != nil {

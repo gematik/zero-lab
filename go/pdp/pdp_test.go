@@ -118,9 +118,9 @@ func TestTheProvidersFileHandsItsKeyFilesToTheProgramsLoader(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "openid-providers.yaml")
 	content := fmt.Sprintf(`oidf:
-  sub: https://rp.example
-  fed_master_url: %s
-  fed_master_jwk: %s
+  entity: https://rp.example
+  master: %s
+  master_jwk_path: secrets/master.jwk
   sign_key: { key_pem_path: secrets/sign.pem, kid: sign }
   enc_key: { key_pem_path: secrets/enc.pem, kid: enc }
   client_key: { key_pem_path: /etc/rp/client.pem, cert_pem_path: secrets/client-cert.pem, kid: client }
@@ -133,7 +133,7 @@ func TestTheProvidersFileHandsItsKeyFilesToTheProgramsLoader(t *testing.T) {
     ti_features_supported: { id_token_version_supported: ["1.0.0"] }
   federation_entity:
     name: rp
-`, federation.MasterURL(), anchor)
+`, federation.MasterURL())
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -144,16 +144,22 @@ func TestTheProvidersFileHandsItsKeyFilesToTheProgramsLoader(t *testing.T) {
 		if err != nil {
 			return oidf.Keys{}, err
 		}
-		return oidf.Keys{Sign: newKey(t), Decrypt: agreement, Client: selfSigned(t)}, nil
+		// The master's key is the loader's to read too: its file is named beside the others.
+		master, err := oidf.NewJwkFromJSON(string(anchor))
+		if err != nil {
+			return oidf.Keys{}, err
+		}
+		return oidf.Keys{Sign: newKey(t), Decrypt: agreement, Client: selfSigned(t), Master: master}, nil
 	}
 	config := &Config{ProvidersPath: path, OIDFKeys: loader, OIDFDocuments: oidf.NewMemoryDocuments(16, nil), HTTPClient: federation.Client()}
 	if err := loadProviders(config); err != nil {
 		t.Fatal(err)
 	}
 	want := oidf.KeyFiles{
-		SignKey:   oidf.KeyFile{KeyPEMPath: filepath.Join(dir, "secrets/sign.pem"), Kid: "sign"},
-		EncKey:    oidf.KeyFile{KeyPEMPath: filepath.Join(dir, "secrets/enc.pem"), Kid: "enc"},
-		ClientKey: oidf.KeyFile{KeyPEMPath: "/etc/rp/client.pem", CertPEMPath: filepath.Join(dir, "secrets/client-cert.pem"), Kid: "client"},
+		SignKey:       oidf.KeyFile{KeyPEMPath: filepath.Join(dir, "secrets/sign.pem"), Kid: "sign"},
+		EncKey:        oidf.KeyFile{KeyPEMPath: filepath.Join(dir, "secrets/enc.pem"), Kid: "enc"},
+		ClientKey:     oidf.KeyFile{KeyPEMPath: "/etc/rp/client.pem", CertPEMPath: filepath.Join(dir, "secrets/client-cert.pem"), Kid: "client"},
+		MasterJWKPath: filepath.Join(dir, "secrets/master.jwk"),
 	}
 	if got != want {
 		t.Errorf("the loader got %+v, want %+v", got, want)
@@ -166,7 +172,7 @@ func TestTheProvidersFileHandsItsKeyFilesToTheProgramsLoader(t *testing.T) {
 // Keys rule 1: without a loader from the program, an oidf entry has no keys and stops the start.
 func TestKeysRule1_AnOIDFEntryWithoutTheProgramsLoaderStopsTheStart(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "openid-providers.yaml")
-	if err := os.WriteFile(path, []byte("oidf:\n  sub: https://rp.example\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("oidf:\n  entity: https://rp.example\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := loadProviders(&Config{ProvidersPath: path, OIDFDocuments: oidf.NewMemoryDocuments(16, nil)}); err == nil || !strings.Contains(err.Error(), "loader") {
