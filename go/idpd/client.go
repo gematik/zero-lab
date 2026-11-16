@@ -32,7 +32,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -255,8 +254,6 @@ func (c *Client) Exchange(ctx context.Context, login openid.Login, code string) 
 	params.Set("redirect_uri", login.RedirectFor(c.config.RedirectURI))
 	params.Set("code", code)
 	params.Set("key_verifier", string(encryptedTokenKeySerialized))
-
-	slog.Debug("Exchanging code for token", "url", c.Metadata.TokenEndpoint)
 
 	response, err := openid.PostForm(ctx, c.httpClient, c.Metadata.TokenEndpoint, params)
 	if err != nil {

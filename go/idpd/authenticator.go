@@ -31,7 +31,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -325,7 +324,7 @@ func SignWith(signFunc brainpool.SignFunc, certFunc func() (*x509.Certificate, e
 }
 
 // SignWithSoftkeyPEM is SignWithSoftkey for a PEM-encoded Brainpool key and certificate. A parsing error
-// is logged here and returned by the signer on use.
+// is returned by the signer on use.
 func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
 	var parsingErr error
 	var err error
@@ -333,12 +332,10 @@ func SignWithSoftkeyPEM(prkPEM []byte, certPEM []byte) ChallengeSignerFunc {
 	var cert *x509.Certificate
 
 	if prk, err = brainpool.ParsePrivateKeyPEM(prkPEM); err != nil {
-		slog.Error("Parsing private key PEM", "error", err)
 		parsingErr = err
 	}
 
 	if cert, err = brainpool.ParseCertificatePEM(certPEM); err != nil {
-		slog.Error("Parsing certificate PEM", "error", err)
 		parsingErr = err
 	}
 
