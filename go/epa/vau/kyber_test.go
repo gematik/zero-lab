@@ -22,35 +22,95 @@
 package vau
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/mlkem"
+	"encoding/hex"
+	"os"
+	"strings"
 	"testing"
-
-	"github.com/cloudflare/circl/kem/kyber/kyber768"
 )
 
-// kyberRounds is how many fresh key pairs each differential test tries; circl's kyber768 passes the Kyber
-// v3.02 reference KATs, so agreeing with it on random keys both ways is agreeing with Kyber v3.02.
-func kyberRounds(_ *testing.T) int {
-	if testing.Short() {
-		return 50
+// kyberVectors reads testdata/kyber768-v302-circl.txt, made once with circl's Kyber768 v3.02, which passes the
+// Kyber reference KATs: "decapsulate" lines hold an ML-KEM-768 decapsulation key (d‖z), a ciphertext circl
+// encapsulated to its public key, and circl's shared secret; "publickey" lines hold public keys from circl's
+// Kyber key generation. The generator is in the file's header; the vectors stand in for running circl here.
+func kyberVectors(t *testing.T, kind string) [][][]byte {
+	t.Helper()
+	file, err := os.Open("testdata/kyber768-v302-circl.txt")
+	if err != nil {
+		t.Fatal(err)
 	}
-	return 2000
+	defer file.Close()
+	var out [][][]byte
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(nil, 1<<16)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) == 0 || fields[0] != kind {
+			continue
+		}
+		var row [][]byte
+		for _, field := range fields[1:] {
+			b, err := hex.DecodeString(field)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row = append(row, b)
+		}
+		out = append(out, row)
+	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(out) == 0 {
+		t.Fatalf("no %s vectors", kind)
+	}
+	return out
 }
 
 // TestA_24425_KyberEncapsulatedByTheReferenceIsDecapsulatedHere shows the standard-library construction
-// decapsulates what a Kyber v3.02 implementation encapsulates to its public key.
+// decapsulates what Kyber v3.02 encapsulated to its public key, to the same shared secret.
 func TestA_24425_KyberEncapsulatedByTheReferenceIsDecapsulatedHere(t *testing.T) {
-	scheme := kyber768.Scheme()
-	for range kyberRounds(t) {
+	for _, v := range kyberVectors(t, "decapsulate") {
+		seed, ciphertext, want := v[0], v[1], v[2]
+		key, err := mlkem.NewDecapsulationKey768(seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := kyberDecapsulate(key, ciphertext)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("shared secrets differ:\n got %x\nwant %x", got, want)
+		}
+	}
+}
+
+// TestA_24425_KyberPublicKeysAreEncapsulatedTo shows a public key of Kyber v3.02's key generation is one the
+// construction encapsulates to; that the reference decapsulates the result is shown live by TestEPA_Connect.
+func TestA_24425_KyberPublicKeysAreEncapsulatedTo(t *testing.T) {
+	for _, v := range kyberVectors(t, "publickey") {
+		secret, ciphertext, err := KEMData(v[0]).Encapsulate()
+		if err != nil {
+			t.Fatalf("a Kyber public key was refused: %v", err)
+		}
+		if len(secret) != kyberSharedSecretSize || len(ciphertext) != 1088 {
+			t.Fatalf("a %d-byte secret and a %d-byte ciphertext", len(secret), len(ciphertext))
+		}
+	}
+}
+
+// TestA_24425_WhatIsEncapsulatedHereDecapsulatesHere is an internal invariant: the construction agrees with
+// itself on fresh keys.
+func TestA_24425_WhatIsEncapsulatedHereDecapsulatesHere(t *testing.T) {
+	for range 100 {
 		ours, err := GenerateKEMKeyPair()
 		if err != nil {
 			t.Fatal(err)
 		}
-		publicKey, err := scheme.UnmarshalBinaryPublicKey(ours.PublicData)
-		if err != nil {
-			t.Fatalf("the reference does not read our public key: %v", err)
-		}
-		ciphertext, want, err := scheme.Encapsulate(publicKey)
+		want, ciphertext, err := ours.PublicData.Encapsulate()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,34 +119,7 @@ func TestA_24425_KyberEncapsulatedByTheReferenceIsDecapsulatedHere(t *testing.T)
 			t.Fatal(err)
 		}
 		if !bytes.Equal(got, want) {
-			t.Fatalf("shared secrets differ:\n got %x\nwant %x", got, want)
-		}
-	}
-}
-
-// TestA_24425_KyberEncapsulatedHereIsDecapsulatedByTheReference shows a Kyber v3.02 implementation decapsulates
-// what the standard-library construction encapsulates to its public key.
-func TestA_24425_KyberEncapsulatedHereIsDecapsulatedByTheReference(t *testing.T) {
-	scheme := kyber768.Scheme()
-	for range kyberRounds(t) {
-		publicKey, privateKey, err := scheme.GenerateKeyPair()
-		if err != nil {
-			t.Fatal(err)
-		}
-		publicData, err := publicKey.MarshalBinary()
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, ciphertext, err := KEMData(publicData).Encapsulate()
-		if err != nil {
-			t.Fatal(err)
-		}
-		want, err := scheme.Decapsulate(privateKey, ciphertext)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(got, want) {
-			t.Fatalf("shared secrets differ:\n got %x\nwant %x", got, want)
+			t.Fatal("shared secrets differ")
 		}
 	}
 }
