@@ -4,6 +4,7 @@ title: OAuth clients and servers checked against RFC 9700 (OAuth 2.0 Security BC
 status: To Do
 assignee: []
 created_date: '2026-11-07T18:04:00Z'
+updated_date: '2026-11-16T20:33:00Z'
 labels:
   - security
   - spec
@@ -29,3 +30,9 @@ RFC 9700 (January 2025) is the OAuth 2.0 Security Best Current Practice: PKCE fo
 - [ ] #1 each RFC 9700 §2 and §4 requirement that applies to a client or server here is listed per component with the code or test that meets it, or recorded as not applicable with the reason
 - [ ] #2 each gap becomes its own task
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-17: go/pdp is out of scope; zeta-pdp-go replaces zero-pdp (decision in memory: basics are cherry-picked into zeta-pdp-go). Its authorization server is checked there.
+<!-- SECTION:NOTES:END -->

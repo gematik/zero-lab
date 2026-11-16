@@ -1,11 +1,10 @@
 ---
 id: TASK-321
-title: >-
-  Servers: zero-pdp, zero-pep-proxy, zero-caddy and zero-epa checked against
-  rule 28
+title: 'Servers: zero-pep-proxy, zero-caddy and zero-epa checked against rule 28'
 status: To Do
 assignee: []
 created_date: '2026-11-14T21:07:00Z'
+updated_date: '2026-11-16T20:33:00Z'
 labels:
   - servers
   - go
@@ -23,3 +22,9 @@ servers.md rule 28 (every HTTP message is checked before the logic sees it) is n
 <!-- AC:BEGIN -->
 - [ ] #1 Each server is checked against rule 28 and every gap is a task
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-17: zero-pdp left out of scope; zeta-pdp-go replaces it.
+<!-- SECTION:NOTES:END -->
