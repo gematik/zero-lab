@@ -39,6 +39,9 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"time"
+
+	"github.com/gematik/zero-lab/go/tipki"
 )
 
 // KeyPairs are the two key pairs one side of the handshake holds: ECDH and Kyber768.
@@ -106,8 +109,37 @@ func OpenChannel(baseURLString string, env Env, httpClient *http.Client) (*Chann
 }
 
 // OpenChannelVerified opens a VAU channel and, when verifier is given and mode is not
-// off, checks the VAU's CertData and host keys with it.
+// off, checks the VAU's CertData and host keys with it; [OpenChannelContext] with a
+// background context and the system clock.
 func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client, verifier CertVerifier, mode VerifyMode) (*Channel, error) {
+	return OpenChannelContext(context.Background(), ChannelConfig{
+		BaseURL: baseURLString, Env: env, HTTPClient: httpClient, Verifier: verifier, Mode: mode,
+	})
+}
+
+// ChannelConfig is what a VAU handshake needs.
+type ChannelConfig struct {
+	BaseURL    string
+	Env        Env
+	HTTPClient *http.Client
+	// Verifier and Mode decide how the VAU's signed keys are checked (A_24624): with
+	// VerifyEnforce and a Verifier every check must hold; otherwise one warning names each
+	// check that was not done or did not hold, and the handshake goes on.
+	Verifier CertVerifier
+	Mode     VerifyMode
+	// Now is the clock the signed keys' expiry and the stapled OCSP response are judged by;
+	// nil is time.Now.
+	Now func() time.Time
+}
+
+// OpenChannelContext performs the VAU handshake under ctx, which bounds its requests and
+// the CertData fetch.
+func OpenChannelContext(ctx context.Context, config ChannelConfig) (*Channel, error) {
+	baseURLString, env, httpClient := config.BaseURL, config.Env, config.HTTPClient
+	now := time.Now
+	if config.Now != nil {
+		now = config.Now
+	}
 	// validate base URL
 	baseURL, err := url.Parse(baseURLString)
 	if err != nil {
@@ -128,7 +160,7 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 	// construct URL for starting the channel
 	startChannelURL := baseURL.ResolveReference(&url.URL{Path: "VAU"})
 	slog.Debug("Sending Message1", "startChannelURL", startChannelURL.String())
-	m1CBOR, firstHTTPResponse, m2CBOR, m2, err := PostMessage[Message2](httpClient, startChannelURL.String(), m1)
+	m1CBOR, firstHTTPResponse, m2CBOR, m2, err := postMessage[Message2](ctx, httpClient, startChannelURL.String(), m1)
 	if err != nil {
 		return nil, fmt.Errorf("sending Message1: %w", err)
 	}
@@ -182,7 +214,7 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 
 	signedPubKeys.SignedPubKeys = pubKeys
 
-	if err := validateSignedPublicVAUKeys(httpClient, baseURL, signedPubKeys, verifier, mode); err != nil {
+	if err := validateSignedPublicVAUKeys(ctx, httpClient, baseURL, signedPubKeys, config.Verifier, config.Mode, now()); err != nil {
 		return nil, fmt.Errorf("validating signed public VAU keys: %w", err)
 	}
 
@@ -237,7 +269,7 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 
 	slog.Debug("Sending Message3", "channelURL", channelURL.String())
 
-	m3CBOR, _, _, m4, err := PostMessage[Message4](httpClient, channelURL.String(), m3)
+	m3CBOR, _, _, m4, err := postMessage[Message4](ctx, httpClient, channelURL.String(), m3)
 	if err != nil {
 		return nil, fmt.Errorf("sending Message3: %w", err)
 	}
@@ -277,14 +309,17 @@ func OpenChannelVerified(baseURLString string, env Env, httpClient *http.Client,
 // PostMessage posts requestMessage as CBOR and decodes the answer as M. It returns the
 // request bytes, the response and the response bytes, which the transcript hash takes as sent.
 func PostMessage[M any](httpClient *http.Client, url string, requestMessage any) ([]byte, *http.Response, []byte, *M, error) {
-	// marshal Message1 to CBOR
+	return postMessage[M](context.Background(), httpClient, url, requestMessage)
+}
+
+func postMessage[M any](ctx context.Context, httpClient *http.Client, url string, requestMessage any) ([]byte, *http.Response, []byte, *M, error) {
 	requestMessageCbor, err := encMode.Marshal(requestMessage)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("marshaling Message1: %w", err)
 	}
 
 	// create request to VAU
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(requestMessageCbor))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(requestMessageCbor))
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("creating request to VAU: %w", err)
 	}
@@ -396,38 +431,134 @@ func AEADDecrypt(key []byte, ciphertext []byte) ([]byte, error) {
 	return aesGCM.Open(nil, nonce, cypertext, nil)
 }
 
-func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, mode VerifyMode) error {
-	if mode == VerifyOff {
-		slog.Debug("VAU certificate verification is off")
-		return nil
-	}
-	if len(signedPubKeys.CertHash) == 0 {
-		// Without a certificate hash there is no CertData document to retrieve; a real VAU
-		// server always supplies one. Nothing to fetch or validate, so skip.
-		slog.Warn("VAU key validation skipped: server provided no certificate hash")
-		return nil
-	}
+// ErrServerKeys is a handshake refused under [VerifyEnforce] because a check of A_24624 on
+// the VAU's signed keys did not hold.
+var ErrServerKeys = errors.New("vau: the VAU's signed keys did not verify")
 
+// maxOCSPAge is how old the stapled OCSP response may be (A_24624).
+const maxOCSPAge = 24 * time.Hour
+
+// keyChecks collects what A_24624 asks of the VAU's signed keys. Under enforce the first
+// check that does not hold refuses the handshake; otherwise each is noted, and one warning
+// names them all.
+type keyChecks struct {
+	enforce bool
+	notes   []string
+}
+
+func (k *keyChecks) failed(note string) error {
+	if k.enforce {
+		return fmt.Errorf("%w: %s", ErrServerKeys, note)
+	}
+	k.notes = append(k.notes, note)
+	return nil
+}
+
+// validateSignedPublicVAUKeys checks the VAU's signed keys after Message2, before Message3,
+// as A_24624 lists the checks: exp after now, cert_hash the SHA-256 of the certificate in
+// the CertData it names, the stapled OCSP response for that certificate good and at most
+// 24 hours old, the chain to the TI roots and the signature over signed_pub_keys (the
+// verifier's verdict). Only VerifyEnforce with a verifier refuses.
+func validateSignedPublicVAUKeys(ctx context.Context, httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, mode VerifyMode, now time.Time) error {
+	if mode == VerifyOff {
+		slog.Warn("VAU signed keys not verified: verification is off",
+			"not_checked", []string{"exp", "cert_hash", "ocsp_response", "chain", "signature"})
+		return nil
+	}
+	checks := &keyChecks{enforce: mode == VerifyEnforce && verifier != nil}
+	err := runKeyChecks(ctx, httpClient, baseURL, signedPubKeys, verifier, now, checks)
+	if err != nil {
+		return err
+	}
+	if len(checks.notes) > 0 {
+		slog.Warn("VAU signed keys not fully verified", "mode", string(mode), "checks", checks.notes)
+		return nil
+	}
+	slog.Info("VAU signed keys verified")
+	return nil
+}
+
+func runKeyChecks(ctx context.Context, httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys, verifier CertVerifier, now time.Time, checks *keyChecks) error {
+	if signedPubKeys.SignedPubKeys == nil || signedPubKeys.SignedPubKeys.ExpiresAt <= now.Unix() {
+		if err := checks.failed("exp: not after now"); err != nil {
+			return err
+		}
+	}
+	if verifier == nil {
+		_ = checks.failed("chain and signature: not checked, no verifier configured")
+	}
+	certData, err := fetchCertData(ctx, httpClient, baseURL, signedPubKeys)
+	if err != nil {
+		notChecked := "; ocsp_response, chain and signature not checked"
+		if verifier == nil {
+			notChecked = "; ocsp_response not checked"
+		}
+		return checks.failed(err.Error() + notChecked)
+	}
+	if hash := sha256.Sum256(certData.Cert); !bytes.Equal(hash[:], signedPubKeys.CertHash) {
+		if err := checks.failed("cert_hash: not the SHA-256 of the CertData certificate"); err != nil {
+			return err
+		}
+	}
+	if note := checkStapledOCSP(signedPubKeys.OcspResponse, certData, now); note != "" {
+		if err := checks.failed(note); err != nil {
+			return err
+		}
+	}
+	if verifier == nil {
+		return nil
+	}
+	verdict, err := verifier.VerifyVAU(ctx, certData, signedPubKeys.SignedPubKeysRaw, signedPubKeys.Signature)
+	if err != nil {
+		return checks.failed("chain and signature: verifier failed: " + err.Error())
+	}
+	slog.Debug("VAU certificate verdict",
+		"chain_valid", verdict.ChainValid, "signature_valid", verdict.SignatureValid,
+		"environment", verdict.Environment, "profile", verdict.Profile,
+		"errors", verdict.ChainErrors, "warnings", verdict.ChainWarnings)
+	if !verdict.ChainValid {
+		if err := checks.failed(fmt.Sprintf("chain: not valid %v", verdict.ChainErrors)); err != nil {
+			return err
+		}
+	}
+	if !verdict.SignatureValid {
+		return checks.failed("signature: not valid over signed_pub_keys")
+	}
+	return nil
+}
+
+// fetchCertData gets the CertData that cert_hash and cdv name (A_24957).
+func fetchCertData(ctx context.Context, httpClient *http.Client, baseURL *url.URL, signedPubKeys *SignedPublicVAUKeys) (*CertData, error) {
+	switch {
+	case len(signedPubKeys.CertHash) == 0:
+		return nil, errors.New("cert_hash: empty, no CertData to fetch")
+	case len(signedPubKeys.CertHash) != sha256.Size:
+		return nil, errors.New("cert_hash: not a SHA-256 value, no CertData to fetch")
+	case signedPubKeys.Cdv < 1:
+		return nil, errors.New("cdv: not a natural number, no CertData to fetch")
+	}
 	certDataPath := fmt.Sprintf("/CertData.%x-%d", signedPubKeys.CertHash, signedPubKeys.Cdv)
 	certDataURL := baseURL.ResolveReference(&url.URL{Path: certDataPath})
 
-	resp, err := httpClient.Get(certDataURL.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, certDataURL.String(), nil)
 	if err != nil {
-		return fmt.Errorf("getting CertData: %w", err)
+		return nil, fmt.Errorf("CertData: %w", err)
 	}
-
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("CertData: getting it: %w", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("getting certData from '%s' returned http status %v", certDataURL.String(), resp.StatusCode)
+		return nil, fmt.Errorf("CertData: %s returned HTTP status %d", certDataURL, resp.StatusCode)
 	}
-
 	body, err := readBounded(resp.Body, maxMessageSize)
 	if err != nil {
-		return fmt.Errorf("reading CertData: %w", err)
+		return nil, fmt.Errorf("CertData: reading it: %w", err)
 	}
 	certData := new(CertData)
 	if err := decode(body, certData); err != nil {
-		return fmt.Errorf("decoding CertData: %w", err)
+		return nil, fmt.Errorf("CertData: decoding it: %w", err)
 	}
 
 	rcaChain := make([]string, len(certData.RCAChain))
@@ -435,33 +566,33 @@ func validateSignedPublicVAUKeys(httpClient *http.Client, baseURL *url.URL, sign
 		rcaChain[i] = base64.StdEncoding.EncodeToString(cert)
 	}
 	slog.Debug("Received CertData", "cert", base64.StdEncoding.EncodeToString(certData.Cert), "ca", base64.StdEncoding.EncodeToString(certData.CA), "rcaChain", rcaChain)
+	return certData, nil
+}
 
-	if verifier == nil {
-		slog.Warn("VAU certificates and host keys not verified: no verifier configured", "url", certDataURL.String())
-		return nil
+// checkStapledOCSP says why the stapled OCSP response does not show the VAU certificate as
+// good at now, or nothing. The response must be signed by the certificate's CA from the
+// CertData or a responder that CA certified (RFC 6960); a responder only the TSL names is
+// not recognised here, as the package holds no TSL.
+func checkStapledOCSP(response []byte, certData *CertData, now time.Time) string {
+	if len(response) == 0 {
+		return "ocsp_response: missing"
 	}
-
-	verdict, err := verifier.VerifyVAU(context.Background(), certData, signedPubKeys.SignedPubKeysRaw, signedPubKeys.Signature)
+	cert, err := tipki.ParseCertificate(certData.Cert)
 	if err != nil {
-		if mode == VerifyEnforce {
-			return fmt.Errorf("verifying VAU certificates: %w", err)
-		}
-		slog.Warn("VAU certificates could not be verified", "error", err)
-		return nil
+		return "ocsp_response: not checked, the CertData certificate does not parse"
 	}
-	attrs := []any{
-		"chain_valid", verdict.ChainValid, "signature_valid", verdict.SignatureValid,
-		"environment", verdict.Environment, "profile", verdict.Profile,
-		"errors", verdict.ChainErrors, "warnings", verdict.ChainWarnings,
+	issuer, err := tipki.ParseCertificate(certData.CA)
+	if err != nil {
+		return "ocsp_response: not checked, the CertData CA does not parse"
 	}
-	if verdict.OK() {
-		slog.Info("VAU certificates and host keys verified", attrs...)
-		return nil
+	result, err := tipki.VerifyResponse(response, cert, issuer, tipki.ResponseCheck{
+		Now: now, MaxResponseAge: maxOCSPAge, ClockTolerance: tipki.DefaultClockTolerance,
+	})
+	switch {
+	case err != nil:
+		return "ocsp_response: " + err.Error()
+	case result.Status != tipki.RevocationGood:
+		return fmt.Sprintf("ocsp_response: status %s, not good: %s", result.Status, result.Reason)
 	}
-	if mode == VerifyEnforce {
-		return fmt.Errorf("VAU certificates or host keys not valid: chain %v (%v), signature %v",
-			verdict.ChainValid, verdict.ChainErrors, verdict.SignatureValid)
-	}
-	slog.Warn("VAU certificates or host keys not valid", attrs...)
-	return nil
+	return ""
 }

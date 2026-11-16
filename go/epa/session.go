@@ -23,6 +23,7 @@ package epa
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json/v2"
 	"errors"
@@ -267,7 +268,10 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 // Authorized for VAU-bound calls. The underlying Client (HTTP transport,
 // identity) is shared with the returned Session via embedding.
 func (c *Client) OpenSession() (*Session, error) {
-	vauChannel, err := vau.OpenChannelVerified(c.BaseURL, vauEnv(c.Env), c.HTTPClient, c.vauVerifier, c.vauVerify)
+	vauChannel, err := vau.OpenChannelContext(context.Background(), vau.ChannelConfig{
+		BaseURL: c.BaseURL, Env: vauEnv(c.Env), HTTPClient: c.HTTPClient,
+		Verifier: c.vauVerifier, Mode: c.vauVerify, Now: c.now,
+	})
 	if err != nil {
 		return nil, err
 	}
