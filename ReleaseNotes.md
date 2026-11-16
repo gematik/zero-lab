@@ -1,5 +1,32 @@
 # Release Notes
 
+# Release go/oidf v0.54.0
+
+### breaking
+- One configuration type for YAML and JSON: `FileConfig` and what it holds carry json tags with the names of the
+  yaml ones, so a program reads a relying party from either format (TASK-341).
+- The names change in both formats: `sub` is `entity`, `fed_master_url` is `master`,
+  `fed_master_entity_statement_uri` is `master_entity_statement_uri`. A file with the old names is refused at
+  start as one with an unknown field.
+- `fed_master_jwk` is gone: `master_jwk_path` names a file with the master's JWK as JSON, which the host reads
+  like the relying party's keys and hands over as `Keys.Master`. `Jwk.UnmarshalYAML` is removed.
+
+### verified
+- `just check` across all Go modules passed on 0faf2a6f; the merge onto main changed no Go code. `api-lint` was
+  skipped without `GEMATIK_API_TOOLS_DIR`.
+- The OpenID Federation suite and `TestNewAtALiveFederationMaster` passed against
+  https://app-ref.federationmaster.de on 4e8d7ee9, 2026-11-16.
+
+# Release go/pep/proxy v0.5.0
+
+### breaking
+- zero-pep-proxy reads the relying party with oidf v0.54.0's names (`entity`, `master`,
+  `master_entity_statement_uri`, `master_jwk_path`); configurations with the old names are refused at start and
+  must change with this image (TASK-341). zero-lab-k8s `values-pep.yaml` changes with it.
+
+### verified
+- As go/oidf v0.54.0; kv on Postgres (Postgres 17) passed on 4e8d7ee9.
+
 # Release go/metsubushi v0.3.1
 
 ### fixed

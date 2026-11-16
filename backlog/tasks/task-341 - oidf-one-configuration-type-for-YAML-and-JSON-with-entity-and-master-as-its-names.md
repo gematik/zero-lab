@@ -3,10 +3,10 @@ id: TASK-341
 title: >-
   oidf: one configuration type for YAML and JSON, with entity and master as its
   names
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T18:14:00Z'
-updated_date: '2026-11-16T18:26:00Z'
+updated_date: '2026-11-16T18:32:00Z'
 labels: []
 dependencies: []
 ordinal: 356000
@@ -32,3 +32,9 @@ FileConfig, RelyingPartyConfig, RelyingPartyMetadata, FederationEntity, KeyFiles
 
 The master's key (maintainer, 2026-11-16): master_jwk as a member of the configuration is gone. As a YAML mapping it went through an untyped map and back to JSON before the key parser saw it. KeyFiles.MasterJWKPath (master_jwk_path) names a file with the JWK as JSON; the host reads it like the other keys and hands it over as Keys.Master, which New takes as trust anchor where the program set no RelyingPartyConfig.FedMasterJWK. Jwk.UnmarshalYAML is removed. The loaders of zero-pdp and zero-pep-proxy read the file.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+oidf.FileConfig reads the same relying party from YAML and JSON with the names entity, master, master_entity_statement_uri and master_jwk_path (a file the host reads); old names are refused. Released as oidf v0.54.0 and pep/proxy v0.5.0; local config files renamed.
+<!-- SECTION:FINAL_SUMMARY:END -->
