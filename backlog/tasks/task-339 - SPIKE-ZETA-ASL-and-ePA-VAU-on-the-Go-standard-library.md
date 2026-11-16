@@ -1,10 +1,10 @@
 ---
 id: TASK-339
 title: 'SPIKE: ZETA/ASL and ePA VAU on the Go standard library'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-15T16:31:00Z'
-updated_date: '2026-11-15T17:38:00Z'
+updated_date: '2026-11-16T18:21:00Z'
 labels: []
 dependencies: []
 ordinal: 354000
@@ -29,3 +29,9 @@ Can ZETA/ASL (gemSpec_Krypt chapter 7, the ePA VAU protocol with ML-KEM-768) and
 <!-- SECTION:NOTES:BEGIN -->
 Result in doc-5. Branch spike/asl-stdlib at b5cabec9 (not merged): circl and fxamacker out of go/epa non-test code; live ePA connect RU provider 2 passed on it; libasl interop both ways. Awaiting the maintainer decision on the follow-ups listed in doc-5.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Yes: ASL and ePA VAU run on the standard library (doc-5). decision-18: circl out of go/epa (Kyber v3.02 on crypto/mlkem), CBOR stays fxamacker with strict options, ASL in zero-lab later with its package structure decided first. Code on spike/asl-stdlib, kept as reference.
+<!-- SECTION:FINAL_SUMMARY:END -->
