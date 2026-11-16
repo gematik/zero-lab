@@ -263,3 +263,20 @@ func TestChannelSnapshotJSONRoundtrip(t *testing.T) {
 		t.Fatalf("keyID lost across JSON roundtrip")
 	}
 }
+
+// TestA_24628_TheIVCarriesTheCounterBigEndian shows the IV is 32 random bits and the counter of
+// K2_c2s_app_data in network byte order, as gematik's lib-vau writes it, and that the counter
+// advances with each request.
+func TestA_24628_TheIVCarriesTheCounterBigEndian(t *testing.T) {
+	c := makeTestChannel(t, 0, 0x0102)
+	for want := uint64(0x0103); want < 0x0106; want++ {
+		req, err := c.Encrypt([]byte("payload"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		iv := req.Ciphertext[43 : 43+12]
+		if got := binary.BigEndian.Uint64(iv[4:]); got != want {
+			t.Fatalf("IV counter %#x, want %#x big-endian", got, want)
+		}
+	}
+}
