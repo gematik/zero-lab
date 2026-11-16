@@ -273,7 +273,9 @@ func oauthError(endpoint string, status int, body io.Reader) error {
 	var answer struct {
 		Error string `json:"error"`
 	}
-	_ = json.UnmarshalRead(io.LimitReader(body, maxASResponseBytes), &answer)
+	if err := json.UnmarshalRead(io.LimitReader(body, maxASResponseBytes), &answer); err != nil {
+		answer.Error = ""
+	}
 	return fmt.Errorf("%s answered %d: %s", endpoint, status, oauthErrorCode(answer.Error))
 }
 

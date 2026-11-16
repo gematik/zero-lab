@@ -63,22 +63,20 @@ func rule14Backend(t *testing.T, status int, body string) (*pdpBackend, *Session
 // Server rule 14: an authorization server's refusal is named by the endpoint, the status and a registered error
 // code; its body, an unregistered code and error_description are not repeated.
 func TestServerRule14_AnAuthorizationServersRefusalIsNotQuoted(t *testing.T) {
-	for name, body := range map[string]string{
-		"a registered code":   `{"error":"invalid_grant","error_description":"` + marker + `"}`,
-		"an unregistered one": `{"error":"` + marker + `"}`,
-		"text":                marker,
+	for name, test := range map[string]struct{ body, code string }{
+		"a registered code":   {`{"error":"invalid_grant","error_description":"` + marker + `"}`, "invalid_grant"},
+		"an unregistered one": {`{"error":"` + marker + `"}`, "an unregistered error code"},
+		"a code twice":        {`{"error":"invalid_grant","error":"` + marker + `"}`, "no error code"},
+		"text":                {marker, "no error code"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			b, sess := rule14Backend(t, http.StatusBadRequest, body)
+			b, sess := rule14Backend(t, http.StatusBadRequest, test.body)
 			_, parErr := b.pushAuthorizationRequest(t.Context(), sess, url.Values{})
 			_, tokenErr := b.tokenRequest(t.Context(), sess, url.Values{})
 			_, authErr := b.resolveDecoupledAuthURL(b.meta.TokenEndpoint)
-			for _, err := range []error{parErr, tokenErr, authErr} {
-				if err == nil || strings.Contains(err.Error(), marker) || !strings.Contains(err.Error(), "400") {
-					t.Errorf("got %v, want the status without the body", err)
-				}
-				if name == "a registered code" && !strings.Contains(err.Error(), "invalid_grant") {
-					t.Errorf("got %v, want the registered code", err)
+			for endpoint, err := range map[string]error{"PAR endpoint": parErr, "token endpoint": tokenErr, "authorization endpoint": authErr} {
+				if want := endpoint + " answered 400: " + test.code; err == nil || err.Error() != want {
+					t.Errorf("got %v, want %q", err, want)
 				}
 			}
 		})
@@ -97,8 +95,8 @@ func TestServerRule14_AnUndecodableAnswerIsNotQuoted(t *testing.T) {
 	b, sess = rule14Backend(t, http.StatusCreated, twice)
 	_, parErr := b.pushAuthorizationRequest(t.Context(), sess, url.Values{})
 	for _, err := range []error{tokenErr, introspectErr, providersErr, parErr} {
-		if err == nil || strings.Contains(err.Error(), marker) {
-			t.Errorf("got %v, want a refusal without the member's name", err)
+		if err == nil || strings.Contains(err.Error(), marker) || !strings.Contains(err.Error(), "JSON answer: does not decode") {
+			t.Errorf("got %v, want the answer named without the member's name", err)
 		}
 		if !errors.Is(err, jsontext.ErrDuplicateName) {
 			t.Errorf("got %v, want a duplicate name to unwrap", err)
@@ -109,17 +107,33 @@ func TestServerRule14_AnUndecodableAnswerIsNotQuoted(t *testing.T) {
 // Server rule 14: metadata naming another issuer or an endpoint that is no https URL is refused by the member's name,
 // not by the URL the authorization server sent.
 func TestServerRule14_RefusedMetadataIsNotQuoted(t *testing.T) {
-	for name, set := range map[string]func(*asMetadata){
-		"another issuer":   func(md *asMetadata) { md.Issuer = "https://" + marker },
-		"a plain endpoint": func(md *asMetadata) { md.AuthorizationEndpoint = "http://" + marker },
-		"no endpoint URL":  func(md *asMetadata) { md.TokenEndpoint = marker },
+	for name, test := range map[string]struct {
+		set  func(*asMetadata)
+		want string
+	}{
+		"another issuer":   {func(md *asMetadata) { md.Issuer = "https://" + marker }, `metadata names another issuer than the configured "https://as.example"`},
+		"a plain endpoint": {func(md *asMetadata) { md.AuthorizationEndpoint = "http://" + marker }, "authorization_endpoint: not https"},
+		"no endpoint URL":  {func(md *asMetadata) { md.TokenEndpoint = marker }, "token_endpoint: no endpoint URL"},
 	} {
 		md := fullMetadata("https://as.example")
-		set(&md)
-		err := checkMetadata(md, "https://as.example")
-		if err == nil || strings.Contains(err.Error(), marker) {
-			t.Errorf("%s: %v", name, err)
+		test.set(&md)
+		if err := checkMetadata(md, "https://as.example"); err == nil || err.Error() != test.want {
+			t.Errorf("%s: got %v, want %q", name, err, test.want)
 		}
+	}
+}
+
+// Server rule 14: claims a policy cannot read into its type are refused without the value; the gateway's context
+// words it as pep's does.
+func TestServerRule14_GatewayClaimsOfAnotherTypeAreNotQuoted(t *testing.T) {
+	c := newGatewayContext(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), nil, nil)
+	c.SetClaims([]byte(`{"n":987654321987}`))
+	var claims struct {
+		N uint8 `json:"n"`
+	}
+	err := c.UnmarshalClaims(&claims)
+	if err == nil || err.Error() != "token claims: does not decode" {
+		t.Errorf("got %v, want the claims named without the value", err)
 	}
 }
 
@@ -141,7 +155,7 @@ func TestServerRule14_AnIdentityProvidersErrorIsNotLogged(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/oauth2/callback?state=test-state&error="+marker+"&error_description="+marker, nil)
 	req.AddCookie(&http.Cookie{Name: s.cookie.Name, Value: sess.token}) //nolint:gosec // request cookie in a test
 	s.Handler().ServeHTTP(httptest.NewRecorder(), req)
-	if !strings.Contains(logs.String(), "refused the login") || strings.Contains(logs.String(), marker) {
+	if !strings.Contains(logs.String(), `refused the login" idp_iss="" error="an unregistered error code"`) || strings.Contains(logs.String(), marker) {
 		t.Errorf("log:\n%s", logs.String())
 	}
 }

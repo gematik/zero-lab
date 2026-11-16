@@ -82,7 +82,10 @@ func (c *gatewayContext) UnmarshalClaims(v any) error {
 	if c.state.claimsRaw == nil {
 		return errors.New("no claims")
 	}
-	return json.Unmarshal(c.state.claimsRaw, v)
+	if err := json.Unmarshal(c.state.claimsRaw, v); err != nil {
+		return &decodeError{what: "token claims", err: err}
+	}
+	return nil
 }
 
 // statefulGate is the gateway's opt-in kv session gate: it resolves the full session (identity + DPoP
