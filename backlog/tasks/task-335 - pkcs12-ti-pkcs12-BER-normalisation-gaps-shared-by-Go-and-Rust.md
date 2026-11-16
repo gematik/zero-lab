@@ -1,9 +1,10 @@
 ---
 id: TASK-335
 title: 'pkcs12, ti-pkcs12: BER normalisation gaps shared by Go and Rust'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T10:12:00Z'
+updated_date: '2026-11-16T20:52:00Z'
 labels:
   - pkcs12
   - rust

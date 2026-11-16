@@ -1,9 +1,10 @@
 ---
 id: TASK-337
 title: 'Go: errors and logs that quote a peer''s answer or the input (rule 14)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T14:33:00Z'
+updated_date: '2026-11-16T20:52:00Z'
 labels: []
 dependencies: []
 ordinal: 352000

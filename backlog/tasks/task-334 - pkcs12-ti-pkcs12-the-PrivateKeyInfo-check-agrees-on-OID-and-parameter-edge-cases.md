@@ -3,10 +3,10 @@ id: TASK-334
 title: >-
   pkcs12, ti-pkcs12: the PrivateKeyInfo check agrees on OID and parameter edge
   cases
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-15T10:02:00Z'
-updated_date: '2026-11-15T10:20:00Z'
+updated_date: '2026-11-16T20:52:00Z'
 labels:
   - pkcs12
   - rust

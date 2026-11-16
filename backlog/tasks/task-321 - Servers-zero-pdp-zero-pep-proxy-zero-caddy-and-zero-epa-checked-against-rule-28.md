@@ -1,10 +1,10 @@
 ---
 id: TASK-321
 title: 'Servers: zero-pep-proxy, zero-caddy and zero-epa checked against rule 28'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T21:07:00Z'
-updated_date: '2026-11-16T20:33:00Z'
+updated_date: '2026-11-16T20:52:00Z'
 labels:
   - servers
   - go
