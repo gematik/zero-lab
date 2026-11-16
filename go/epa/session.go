@@ -30,6 +30,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/gematik/zero-lab/go/epa/vau"
@@ -296,9 +297,10 @@ func (c *Client) Close() {
 	c.HTTPClient.CloseIdleConnections()
 }
 
-// ErrorType is the error body of an Aktensystem; HTTPStatusCode comes from the response. ErrorCode and ErrorDetail are
-// the Aktensystem's text: they stay in their fields for a host that reads them, and Error does not print them, since
-// error text ends up in logs and answers (servers.md rule 14).
+// ErrorType is the error body of an Aktensystem; HTTPStatusCode comes from the response. Error names the status and
+// an errorCode the ePA interfaces register, which tells a client a missing record from a missing entitlement or a
+// locked account under the same status. Another errorCode and errorDetail are the Aktensystem's text: they stay in
+// their fields for a host that reads them, since error text ends up in logs and answers (servers.md rule 14).
 type ErrorType struct {
 	HTTPStatusCode int    `json:"-"`
 	ErrorCode      string `json:"errorCode"`
@@ -306,7 +308,20 @@ type ErrorType struct {
 }
 
 func (e *ErrorType) Error() string {
-	return fmt.Sprintf("Aktensystem answered http status %d", e.HTTPStatusCode)
+	code := "no registered error code"
+	if slices.Contains(registeredErrorCodes, e.ErrorCode) {
+		code = e.ErrorCode
+	}
+	return fmt.Sprintf("Aktensystem answered http status %d: %s", e.HTTPStatusCode, code)
+}
+
+// registeredErrorCodes are the errorCode values of I_Authorization_Service, I_Entitlement_Management and
+// I_Information_Service (gematik/ePA-Basic, ePA-3.1.3), from their examples and response tables, spelling as there.
+var registeredErrorCodes = []string{
+	"accessDenied", "authorizeRep", "blockedActorId", "hcvMissing", "internalError", "invalAuth", "invalidActorId",
+	"invalidOid", "invalOid", "invalidToken", "invalToken", "invalRedir", "invalSignature", "locked",
+	"malformedRequest", "noHealthRecord", "noMail", "noResource", "notEntitled", "paramExcpected",
+	"representativeLimit", "requestMismatch", "resourceMismatch", "statusMismatch", "tokenReuse", "unregisteredDevice",
 }
 
 // maxResponseBytes bounds what is read of an Aktensystem's answer to the calls this client makes, which are small

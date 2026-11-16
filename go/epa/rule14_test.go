@@ -25,12 +25,12 @@ import (
 	"bytes"
 	"encoding/json/jsontext"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 )
 
@@ -38,17 +38,19 @@ import (
 // or an answer (servers.md rule 14).
 const marker = "PEER-INPUT-7f3a"
 
-// Server rule 14: an Aktensystem's error answer, typed or not, is named by its status; the body, its errorCode and its
-// errorDetail stay out of the error text, and the typed fields still hold what the Aktensystem said.
+// Server rule 14: an Aktensystem's error answer is named by its status and an errorCode the ePA interfaces register;
+// the body, another errorCode and errorDetail stay out of the error text, and the typed fields still hold what the
+// Aktensystem said.
 func TestServerRule14_AnAktensystemErrorIsNotQuoted(t *testing.T) {
-	for name, body := range map[string]string{
-		"a typed error":  `{"errorCode":"` + marker + `","errorDetail":"` + marker + `"}`,
-		"text":           "Fehler: " + marker,
-		"a member twice": `{"errorCode":"a","` + marker + `":1,"` + marker + `":2}`,
+	for name, test := range map[string]struct{ body, want string }{
+		"a registered code":    {`{"errorCode":"notEntitled","errorDetail":"` + marker + `"}`, "Aktensystem answered http status 403: notEntitled"},
+		"an unregistered code": {`{"errorCode":"` + marker + `","errorDetail":"` + marker + `"}`, "Aktensystem answered http status 403: no registered error code"},
+		"text":                 {"Fehler: " + marker, "Aktensystem answered http status 403: no registered error code"},
+		"a member twice":       {`{"errorCode":"locked","` + marker + `":1,"` + marker + `":2}`, "Aktensystem answered http status 403: no registered error code"},
 	} {
-		err := parseHTTPError(&http.Response{StatusCode: http.StatusForbidden, Body: io.NopCloser(strings.NewReader(body))})
-		if err == nil || strings.Contains(err.Error(), marker) || !strings.Contains(err.Error(), "403") {
-			t.Errorf("%s: %v", name, err)
+		err := parseHTTPError(&http.Response{StatusCode: http.StatusForbidden, Body: io.NopCloser(strings.NewReader(test.body))})
+		if err == nil || err.Error() != test.want {
+			t.Errorf("%s: got %v, want %q", name, err, test.want)
 		}
 	}
 	err := parseHTTPError(&http.Response{StatusCode: http.StatusForbidden, Body: io.NopCloser(strings.NewReader(`{"errorCode":"` + marker + `"}`))})
@@ -67,8 +69,8 @@ func TestServerRule14_AnUndecodableAnswerIsNotQuoted(t *testing.T) {
 	defer aktensystem.Close()
 	client := &Client{BaseURL: aktensystem.URL, HTTPClient: aktensystem.Client()}
 	_, err := client.GetConsentDecisionInformation("X000000001")
-	if err == nil || strings.Contains(err.Error(), marker) {
-		t.Fatalf("got %v, want a refusal without the member's name", err)
+	if err == nil || err.Error() != "consent decisions: does not decode" {
+		t.Fatalf("got %v, want the document named without the member's name", err)
 	}
 	if !errors.Is(err, jsontext.ErrDuplicateName) {
 		t.Errorf("got %v, want a duplicate name to unwrap", err)
@@ -83,14 +85,15 @@ func TestServerRule14_ARefusedEntitleBodyIsNotQuoted(t *testing.T) {
 		`{"provider":"` + marker + `"}`,
 	} {
 		_, err := entitleProvider(strings.NewReader(body))
-		if !errors.Is(err, errEntitleBody) || strings.Contains(err.Error(), marker) {
+		if !errors.Is(err, errEntitleBody) || err.Error() != "entitle body refused: JSON: does not decode" {
 			t.Errorf("%s: %v", body, err)
 		}
 	}
 }
 
 // Server rule 14: when no Aktensystem holds the record, the answer and the log do not name the KVNR, which is
-// personal data, and an Aktensystem's error body reaches neither.
+// personal data. An Aktensystem's error reaches the answer as its status and a registered errorCode, never as its
+// body or errorDetail.
 func TestServerRule14_ARecordSearchDoesNotNameTheKVNR(t *testing.T) {
 	var logs bytes.Buffer
 	previous := slog.Default()
@@ -98,27 +101,44 @@ func TestServerRule14_ARecordSearchDoesNotNameTheKVNR(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	const kvnr = "X123456789"
-	var calls atomic.Int32
-	aktensystem := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if calls.Add(1)%2 == 0 {
+	aktensystem := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/1/"):
+			w.WriteHeader(http.StatusNotFound)
+		case strings.HasPrefix(r.URL.Path, "/2/"):
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = io.WriteString(w, marker)
-			return
+		default:
+			w.WriteHeader(http.StatusLocked)
+			_, _ = io.WriteString(w, `{"errorCode":"locked","errorDetail":"`+marker+`"}`)
 		}
-		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer aktensystem.Close()
 	p := &Proxy{
 		sessionManager: &sessionManager{
 			sessions: map[ProviderNumber]*Session{},
 			login: func(provider ProviderNumber) (*Session, error) {
-				return &Session{Client: &Client{ProviderNumber: provider, BaseURL: aktensystem.URL, HTTPClient: aktensystem.Client()}}, nil
+				base := fmt.Sprintf("%s/%d", aktensystem.URL, provider)
+				return &Session{Client: &Client{ProviderNumber: provider, BaseURL: base, HTTPClient: aktensystem.Client()}}, nil
 			},
 		},
 	}
 	_, err := p.findRecordProvider(kvnr)
 	if err == nil {
 		t.Fatal("a record was found")
+	}
+	want := map[ProviderNumber]string{
+		ProviderNumber1: "record not found",
+		ProviderNumber2: "Aktensystem answered http status 500: no registered error code",
+		ProviderNumber3: "Aktensystem answered http status 423: locked",
+	}
+	for _, e := range err.Errors {
+		if e.Description != want[e.ProviderNumber] {
+			t.Errorf("provider %d: got %q, want %q", e.ProviderNumber, e.Description, want[e.ProviderNumber])
+		}
+	}
+	if len(err.Errors) != len(want) {
+		t.Errorf("%d answers, want %d", len(err.Errors), len(want))
 	}
 	for _, text := range []string{err.Error(), logs.String()} {
 		if strings.Contains(text, kvnr) || strings.Contains(text, marker) {
