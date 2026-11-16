@@ -706,7 +706,8 @@ fuzz-ti-connector-client seconds="30":
 # `seconds` each (design time; nightly, cargo-fuzz and Go). The decoder's seeds are a
 # fresh spec/pkcs12 conformance corpus and its vendor files, each as a length byte, the
 # password and the file; ber_to_der's and private_key_info's are committed in
-# ti-pkcs12/fuzz/seeds; corpora grow in ti-pkcs12/fuzz/corpus (not committed).
+# ti-pkcs12/fuzz/seeds, private_key_info's joined by spec/pkcs12's PrivateKeyInfo vectors;
+# corpora grow in ti-pkcs12/fuzz/corpus (not committed).
 fuzz-ti-pkcs12 seconds="30":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -737,8 +738,12 @@ fuzz-ti-pkcs12 seconds="30":
         -max_total_time={{seconds}} -max_len=65536 -print_final_stats=1 2>&1 \
         | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
     [ -z "$(ls -A artifacts/ber_to_der 2>/dev/null)" ] || { echo "ber_to_der: crash in artifacts/ber_to_der" >&2; exit 1; }
-    # The P12-041 check and the join of a keyBag's publicKey, from their committed seeds.
+    # The P12-041 check and the join of a keyBag's publicKey, from their committed seeds and
+    # the inputs of spec/pkcs12's shared PrivateKeyInfo vectors.
     mkdir -p corpus/private_key_info
+    rm -f seeds/private_key_info/vector-*
+    python3 -I -c 'import json, sys; vectors = json.load(open(sys.argv[1])); [open(f"{sys.argv[2]}/vector-{v["id"]}", "wb").write(bytes.fromhex(v.get("der", v.get("value", "")))) for v in vectors["check"] + vectors["key_bag"]]' \
+        "$spec/testdata/private-key-info.json" seeds/private_key_info
     cargo +{{JWZ_NIGHTLY}} fuzz run -O private_key_info corpus/private_key_info seeds/private_key_info -- \
         -max_total_time={{seconds}} -max_len=4096 -print_final_stats=1 2>&1 \
         | grep -E "^(stat::number_of_executed_units|Done|==|SUMMARY)" || true
