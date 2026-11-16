@@ -195,6 +195,13 @@ start = "2026-02-27"
 end = "2027-11-05"
 notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate."
 
+[[trusted.ctutils]]
+criteria = "safe-to-deploy"
+trusted-publisher = "github:RustCrypto/utils"
+start = "2026-10-25"
+end = "2027-11-05"
+notes = "RustCrypto project: published from RustCrypto's own repository by crates.io trusted publishing; the authoritative maintainers of this crate. Trusted like block-buffer and cpubits from the same repository; 0.4.6 was audited before (audits.ctutils)."
+
 [[trusted.curve25519-dalek]]
 criteria = "safe-to-deploy"
 user-id = 6979 # Michael Rosenberg (rozbb)

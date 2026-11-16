@@ -27,15 +27,9 @@
 //! The TI's historical roots GEM.RCA2/6/9 are RSA keys, and RSA end-entity keys are
 //! still admissible (gemSpec_Krypt); without RSA the cross-certificate walk cannot pass
 //! those roots, and most of the TI's roots stay unreachable.
-//!
-//! RUSTSEC-2023-0071 (the Marvin timing attack) is open against every `rsa` release. It
-//! concerns operations with the private key; verification handles public data only, so
-//! the advisory is ignored for this crate in `deny.toml` and `.cargo/audit.toml`. The
-//! crate is at a release candidate (0.10.0-rc), the only line on the current RustCrypto
-//! stack; see `docs/development.md`, "Known compromises".
 
 use digest::{Digest, FixedOutputReset, const_oid::AssociatedOid};
-use rsa::RsaPublicKey;
+use rsa::PublicKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::signature::Verifier;
 use rustls_pki_types::{InvalidSignature, SignatureVerificationAlgorithm, alg_id};
@@ -106,7 +100,7 @@ fn pkcs1<D: Digest + AssociatedOid>(
     message: &[u8],
     signature: &[u8],
 ) -> Result<(), InvalidSignature> {
-    let key = RsaPublicKey::from_pkcs1_der(public_key).map_err(|_| InvalidSignature)?;
+    let key = PublicKey::from_pkcs1_der(public_key).map_err(|_| InvalidSignature)?;
     let signature = rsa::pkcs1v15::Signature::try_from(signature).map_err(|_| InvalidSignature)?;
     rsa::pkcs1v15::VerifyingKey::<D>::new(key)
         .verify(message, &signature)
@@ -120,7 +114,7 @@ fn pss<D: Digest + FixedOutputReset>(
     message: &[u8],
     signature: &[u8],
 ) -> Result<(), InvalidSignature> {
-    let key = RsaPublicKey::from_pkcs1_der(public_key).map_err(|_| InvalidSignature)?;
+    let key = PublicKey::from_pkcs1_der(public_key).map_err(|_| InvalidSignature)?;
     let signature = rsa::pss::Signature::try_from(signature).map_err(|_| InvalidSignature)?;
     rsa::pss::VerifyingKey::<D>::new_with_salt_len(key, <D as Digest>::output_size())
         .verify(message, &signature)

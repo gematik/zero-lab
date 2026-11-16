@@ -74,7 +74,7 @@ p384 = { version = "0.14.0", default-features = false, features = ["ecdsa"] }
 bp256 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa", "sha256"] }
 bp384 = { version = "0.14.0", default-features = false, features = ["arithmetic", "ecdsa", "sha384"] }
 # Release candidate: the only rsa line on the current RustCrypto stack (docs/development.md).
-rsa = { version = "=0.10.0-rc.19", default-features = false, features = ["encoding", "sha2"] }
+rsa = { version = "0.10", default-features = false, features = ["encoding", "pkcs1v15"] }
 digest = "0.11"
 # ti-cli's HTTP: blocking ureq on rustls with ring passed explicitly, as in kartos; no
 # async runtime, no aws-lc build.

@@ -425,6 +425,13 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-pki
 
+#### security
+- `rsa` 0.10.0, the release, instead of the release candidate 0.10.0-rc.19, with `pkcs1` 0.8.0
+  (TASK-12). 0.10.0 fixes RUSTSEC-2023-0071 (the Marvin timing attack on private-key
+  operations), so `deny.toml` and `.cargo/audit.toml` no longer ignore it. ti-pki only ever
+  verified with RSA, which the advisory did not concern. PKCS#1 v1.5 verification, which the
+  TI's RSA roots and CAs sign with, needs `rsa`'s new `pkcs1v15` feature.
+
 #### added
 - `model::{ValidationProfile, TypeRequirements, TslCas, TslCa}` (TASK-250): a validation
   profile as `ti pki profiles` shows it, what it requires of each type it accepts, and the
