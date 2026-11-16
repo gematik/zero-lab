@@ -276,7 +276,7 @@ func TestTheAnchorIsTheOneOfTiPki(t *testing.T) {
 }
 
 // flawedRoots name a member twice, are not UTF-8 or spell a member in another case, each with
-// what its refusal says (servers.md rule 28).
+// what its refusal or the decoder's reason under it says (servers.md rule 28).
 var flawedRoots = []struct{ name, json, refusal string }{
 	{"member twice", `[{"cert":"AAAA","cert":"AAAA"}]`, "duplicate object member name"},
 	{"wrapper member twice", `{"roots":[],"roots":[]}`, "duplicate object member name"},
@@ -290,7 +290,7 @@ func TestServerRule28_AFlawedRootsDocumentIsRefused(t *testing.T) {
 	for _, flawed := range flawedRoots {
 		t.Run(flawed.name, func(t *testing.T) {
 			_, err := ParseRoots([]byte(flawed.json))
-			if err == nil || !strings.Contains(err.Error(), flawed.refusal) {
+			if !refusedFor(err, flawed.refusal) {
 				t.Fatalf("got %v, want %q", err, flawed.refusal)
 			}
 		})

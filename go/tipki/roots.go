@@ -52,18 +52,18 @@ func ParseRoots(data []byte) ([]RootsEntry, error) {
 		// keeps its reason.
 		var semantic *json.SemanticError
 		if !errors.As(err, &semantic) || semantic.JSONKind != '{' || semantic.JSONPointer != "" {
-			return nil, fmt.Errorf("tipki: roots.json: %w", err)
+			return nil, fmt.Errorf("tipki: roots.json: %w", &decodeError{what: "document", err: err})
 		}
 		var wrapped map[string]jsontext.Value
 		if err := json.Unmarshal(data, &wrapped); err != nil {
-			return nil, fmt.Errorf("tipki: roots.json: %w", err)
+			return nil, fmt.Errorf("tipki: roots.json: %w", &decodeError{what: "document", err: err})
 		}
 		list, ok := wrapped["roots"]
 		if !ok || bytes.Equal(list, []byte("null")) {
 			return nil, errors.New("tipki: roots.json: neither an array nor an object with roots")
 		}
 		if err := json.Unmarshal(list, &raw); err != nil {
-			return nil, fmt.Errorf("tipki: roots.json: %w", err)
+			return nil, fmt.Errorf("tipki: roots.json: %w", &decodeError{what: "roots", err: err})
 		}
 	}
 	if len(raw) == 0 {
@@ -94,12 +94,12 @@ func parseRootsEntry(fields map[string]jsontext.Value) (RootsEntry, error) {
 			return entry, errors.New("cn: null")
 		}
 		if err := json.Unmarshal(rawCN, &entry.CN); err != nil {
-			return entry, fmt.Errorf("cn: %w", err)
+			return entry, &decodeError{what: "cn", err: err}
 		}
 	}
 	var encoded string
 	if err := json.Unmarshal(rawCert, &encoded); err != nil {
-		return entry, fmt.Errorf("cert: %w", err)
+		return entry, &decodeError{what: "cert", err: err}
 	}
 	der, err := strictBase64(encoded)
 	if err != nil {
@@ -121,7 +121,7 @@ func crossField(fields map[string]jsontext.Value, name string) ([]byte, error) {
 	var encoded *string
 	if value, ok := fields[name]; ok {
 		if err := json.Unmarshal(value, &encoded); err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, &decodeError{what: name, err: err}
 		}
 	}
 	if encoded == nil || *encoded == "" {
