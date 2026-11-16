@@ -233,6 +233,40 @@ func TestLoadOIDFKeysRefusesACertificateFileWithoutACertificate(t *testing.T) {
 	}
 }
 
+// The master's key is read by the host from the file the configuration names: one JWK as JSON. A file that is
+// missing or holds something else stops the start, with the file named.
+func TestTheMastersKeyIsReadFromItsFile(t *testing.T) {
+	federation := oidftest.New(t)
+	dir := t.TempDir()
+	files, _, _ := keyFiles(t, dir)
+	anchor, err := json.Marshal(federation.TrustAnchor().Keys[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "master.jwk")
+	if err := os.WriteFile(path, anchor, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files = inDir(dir, files)
+	files.MasterJWKPath = path
+	keys, err := loadOIDFKeys(files)
+	if err != nil || keys.Master == nil || keys.Master.Key.KeyID != federation.TrustAnchor().Keys[0].KeyID {
+		t.Fatalf("keys %+v, %v", keys.Master, err)
+	}
+	for name, content := range map[string]string{"no JSON": "kty: EC", "a key set": `{"keys":[]}`, "empty": ""} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := loadOIDFKeys(files); err == nil || !strings.HasPrefix(err.Error(), "master_jwk_path: ") || !strings.Contains(err.Error(), path) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	files.MasterJWKPath = filepath.Join(dir, "none.jwk")
+	if _, err := loadOIDFKeys(files); err == nil || !strings.HasPrefix(err.Error(), "master_jwk_path: ") {
+		t.Errorf("a file that is not there: %v", err)
+	}
+}
+
 // relyingPartyEntry is an oidf entry of the federation, indented by indent, whose key files are in dir/secrets.
 func relyingPartyEntry(t *testing.T, federation *oidftest.Federation, dir, indent string) ([3]*ecdsa.PrivateKey, []byte, string) {
 	t.Helper()
@@ -244,9 +278,13 @@ func relyingPartyEntry(t *testing.T, federation *oidftest.Federation, dir, inden
 		t.Fatal(err)
 	}
 	_, keys, certificate := keyFiles(t, filepath.Join(dir, "secrets"))
+	// The master's key is a file like the others: JSON, whatever the format of the configuration.
+	if err := os.WriteFile(filepath.Join(dir, "secrets", "master.jwk"), anchor, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	entry := fmt.Sprintf(`entity: https://rp.example
 master: %s
-master_jwk: %s
+master_jwk_path: secrets/master.jwk
 sign_key: { key_pem_path: secrets/sign.pem, kid: sign }
 enc_key: { key_pem_path: secrets/enc.pem }
 client_key: { key_pem_path: secrets/client.pem, cert_pem_path: secrets/client-cert.pem, kid: client }
@@ -259,7 +297,7 @@ relying_party:
   ti_features_supported: { id_token_version_supported: ["1.0.0"] }
 federation_entity:
   name: rp
-`, federation.MasterURL(), anchor)
+`, federation.MasterURL())
 	return keys, certificate, indent + strings.ReplaceAll(strings.TrimSuffix(entry, "\n"), "\n", "\n"+indent) + "\n"
 }
 

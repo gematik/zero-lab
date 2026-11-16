@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-16T18:14:00Z'
-updated_date: '2026-11-16T18:16:00Z'
+updated_date: '2026-11-16T18:26:00Z'
 labels: []
 dependencies: []
 ordinal: 356000
@@ -29,4 +29,6 @@ oidf.FileConfig is read from YAML by zero-pdp and zero-pep-proxy; zeta-pdp-go re
 
 <!-- SECTION:NOTES:BEGIN -->
 FileConfig, RelyingPartyConfig, RelyingPartyMetadata, FederationEntity, KeyFiles and KeyFile carry json tags with the names of the yaml ones. Renamed in both: sub to entity, fed_master_url to master, fed_master_entity_statement_uri to master_entity_statement_uri, fed_master_jwk to master_jwk; the messages of Validate name the new ones. oidf/testdata has the relying party as YAML and as JSON, and zero-pep-proxy's test reads both into FileConfig and finds them equal, and the old names refused. zero-lab-k8s (values-pep.yaml) and every deployed openid-providers.yaml still have the old names and must change with the image that carries this. just check-changed in go/ passed.
+
+The master's key (maintainer, 2026-11-16): master_jwk as a member of the configuration is gone. As a YAML mapping it went through an untyped map and back to JSON before the key parser saw it. KeyFiles.MasterJWKPath (master_jwk_path) names a file with the JWK as JSON; the host reads it like the other keys and hands it over as Keys.Master, which New takes as trust anchor where the program set no RelyingPartyConfig.FedMasterJWK. Jwk.UnmarshalYAML is removed. The loaders of zero-pdp and zero-pep-proxy read the file.
 <!-- SECTION:NOTES:END -->

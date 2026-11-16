@@ -63,7 +63,10 @@ type RelyingPartyConfig struct {
 	// precedes that suffix. The URI is a location, not a source of trust: an unlisted master's key comes from
 	// FedMasterJWK, obtained out of band.
 	FedMasterEntityStatementURI string `json:"master_entity_statement_uri,omitzero" yaml:"master_entity_statement_uri,omitempty"`
-	FedMasterJWK                *Jwk   `json:"master_jwk,omitzero" yaml:"master_jwk,omitempty"`
+	// FedMasterJWK is the signing key of a master the built-in table does not know, or one to use in its place. Not
+	// serialized: a configuration file names the key's file ([KeyFiles.MasterJWKPath]), the host reads it and hands
+	// it over as [Keys.Master], or a program sets it here.
+	FedMasterJWK *Jwk `json:"-" yaml:"-"`
 
 	// RelyingParty + FederationEntity are the deployment-specific entity-statement metadata; the rest is
 	// defaulted.
@@ -263,7 +266,12 @@ func New(ctx context.Context, cfg *RelyingPartyConfig, keys Keys) (*RelyingParty
 	if err := checkAPIKey(rp.fedMaster, cfg.APIKey); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
 	}
-	rp.trustAnchor, err = cfg.resolveTrustAnchor()
+	// The master's key a host read from the file the configuration names counts where the program set none.
+	trusted := *cfg
+	if trusted.FedMasterJWK == nil {
+		trusted.FedMasterJWK = keys.Master
+	}
+	rp.trustAnchor, err = trusted.resolveTrustAnchor()
 	if err != nil {
 		return nil, err
 	}
@@ -577,7 +585,7 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error)
 	if cfg.FedMasterJWK != nil && cfg.FedMasterJWK.Key != nil {
 		set, err := cfg.FedMasterJWK.AsSet()
 		if err != nil {
-			return nil, fmt.Errorf("master_jwk: %w", err)
+			return nil, fmt.Errorf("master_jwk_path: %w", err)
 		}
 		return set.Keys, nil
 	}
@@ -587,7 +595,7 @@ func (cfg *RelyingPartyConfig) resolveTrustAnchor() (*jose.JSONWebKeySet, error)
 	}
 	known, ok := knownFedMasters[entityID]
 	if !ok {
-		return nil, fmt.Errorf("no built-in trust anchor for the master %q; set master_jwk", entityID)
+		return nil, fmt.Errorf("no built-in trust anchor for the master %q; set master_jwk_path", entityID)
 	}
 	key, err := openid.ParseKey([]byte(known))
 	if err != nil {

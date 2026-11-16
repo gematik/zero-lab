@@ -59,26 +59,6 @@ func (j *Jwk) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalYAML parses a JWK written as a YAML mapping and replaces the wrapped key.
-func (j *Jwk) UnmarshalYAML(unmarshal func(any) error) error {
-	var m map[string]any
-	if err := unmarshal(&m); err != nil {
-		return err
-	}
-
-	json, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-
-	key, err := openid.ParseKey(json)
-	if err != nil {
-		return err
-	}
-	j.Key = key
-	return nil
-}
-
 // AsSet returns a key set holding only this key. It fails if no key is set.
 func (j *Jwk) AsSet() (*Jwks, error) {
 	if j.Key == nil {

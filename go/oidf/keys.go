@@ -53,6 +53,9 @@ type Keys struct {
 	// crypto.Signer, and its Leaf is published as x5c (A_23183).
 	Client    tls.Certificate
 	ClientKID string
+	// Master is the federation master's signing key as the host read it from [KeyFiles.MasterJWKPath]: the trust
+	// anchor of a master the built-in table does not know. It is public, and nil for a master of the table.
+	Master *Jwk
 }
 
 // KeyAgreement is the ID token key: an elliptic-curve Diffie-Hellman key agreement, which ECDH-ES is. It is

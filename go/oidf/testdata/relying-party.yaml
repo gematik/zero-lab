@@ -1,5 +1,5 @@
 entity: https://rp.example.com
-# master_jwk omitted: resolved from the built-in table of known gematik masters (app-ref).
+# master_jwk_path omitted: resolved from the built-in table of known gematik masters (app-ref).
 master: https://app-ref.federationmaster.de
 
 sign_key: { key_pem_path: sign.pem }

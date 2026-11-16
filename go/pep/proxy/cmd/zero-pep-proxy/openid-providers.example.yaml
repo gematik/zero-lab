@@ -37,7 +37,7 @@ oidf:
   entity: https://<host>
   master: https://app-ref.federationmaster.de
   # Or, instead of master, the location of the master's entity configuration; the entity identifier is the
-  # part before /.well-known/openid-federation. An unlisted master needs master_jwk, obtained out of band.
+  # part before /.well-known/openid-federation. An unlisted master needs master_jwk_path, the file of its signing key as a JWK, obtained out of band.
   # master_entity_statement_uri: https://app-ref.federationmaster.de/.well-known/openid-federation
   # A registered RP MUST pin the kids it registered at the fed master (else the OP can't match the signing
   # key). Omit kid only for a brand-new RP — it then defaults to the RFC 7638 thumbprint.

@@ -85,6 +85,10 @@ type KeyFiles struct {
 	SignKey   KeyFile `json:"sign_key" yaml:"sign_key"`
 	EncKey    KeyFile `json:"enc_key" yaml:"enc_key"`
 	ClientKey KeyFile `json:"client_key" yaml:"client_key"`
+	// MasterJWKPath is the file of the federation master's signing key, one JWK as JSON (RFC 7517), for a master
+	// the built-in table does not know. The key is public; it is a file all the same, so that the trust anchor is
+	// read as the JSON it is in every format of the configuration, and replaced by replacing a file.
+	MasterJWKPath string `json:"master_jwk_path,omitzero" yaml:"master_jwk_path,omitempty"`
 }
 
 // KeyFile names one key: KeyPEMPath its PEM private key and CertPEMPath its PEM certificate, which only the client
@@ -127,6 +131,7 @@ func (files KeyFiles) under(dir string) KeyFiles {
 	for _, file := range []*KeyFile{&files.SignKey, &files.EncKey, &files.ClientKey} {
 		file.KeyPEMPath, file.CertPEMPath = join(file.KeyPEMPath), join(file.CertPEMPath)
 	}
+	files.MasterJWKPath = join(files.MasterJWKPath)
 	return files
 }
 
