@@ -1,9 +1,10 @@
 ---
 id: TASK-349
 title: 'epa: circl out of the tests too'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T20:28:00Z'
+updated_date: '2026-11-16T20:30:00Z'
 labels: []
 dependencies: []
 ordinal: 364000
@@ -17,6 +18,12 @@ decision-18 left circl as the test comparison for Kyber768 v3.02 (TASK-343). The
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 go/epa/go.mod and go.sum name no circl; no Go file in go/epa imports it
-- [ ] #2 Committed vectors from circl's Kyber768 v3.02 decapsulate to the recorded shared secret with the standard-library construction, and Kyber public keys are accepted; the generator is described in the test's comment
+- [x] #1 go/epa/go.mod and go.sum name no circl; no Go file in go/epa imports it
+- [x] #2 Committed vectors from circl's Kyber768 v3.02 decapsulate to the recorded shared secret with the standard-library construction, and Kyber public keys are accepted; the generator is described in the test's comment
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/epa names no circl in go.mod, go.sum or any test; Kyber768 v3.02 is tested on committed circl vectors (decapsulation and public keys) plus a self round trip; zaddy keeps circl indirectly through Caddy caddytls (HPKE for ECH).
+<!-- SECTION:FINAL_SUMMARY:END -->
