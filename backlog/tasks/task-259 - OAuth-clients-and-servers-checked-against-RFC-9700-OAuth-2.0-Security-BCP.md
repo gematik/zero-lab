@@ -4,7 +4,7 @@ title: OAuth clients and servers checked against RFC 9700 (OAuth 2.0 Security BC
 status: To Do
 assignee: []
 created_date: '2026-11-07T18:04:00Z'
-updated_date: '2026-11-16T20:33:00Z'
+updated_date: '2026-11-16T22:52:00Z'
 labels:
   - security
   - spec
@@ -35,4 +35,6 @@ RFC 9700 (January 2025) is the OAuth 2.0 Security Best Current Practice: PKCE fo
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-17: go/pdp is out of scope; zeta-pdp-go replaces zero-pdp (decision in memory: basics are cherry-picked into zeta-pdp-go). Its authorization server is checked there.
+
+Found by the rule 28 audit (2026-11-17): GET /oauth2/sign_out in zero-pep-proxy lets another site sign a user out (logout CSRF, RFC 9700); belongs here.
 <!-- SECTION:NOTES:END -->
