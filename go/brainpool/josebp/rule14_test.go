@@ -37,13 +37,17 @@ import (
 // marker stands for the peer's input; an error that holds it would carry that input into a log (servers.md rule 14).
 const marker = "PEER-INPUT-7f3a"
 
-func requireNoMarker(t *testing.T, err error) {
+// requireRefusedFor asserts err refuses for its fixed reason and quotes none of the input.
+func requireRefusedFor(t *testing.T, err error, reason string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("accepted")
 	}
 	if strings.Contains(err.Error(), marker) {
 		t.Fatalf("the error quotes the input: %v", err)
+	}
+	if !strings.Contains(err.Error(), reason) {
+		t.Fatalf("got %v, want %q", err, reason)
 	}
 }
 
@@ -52,23 +56,23 @@ func requireNoMarker(t *testing.T, err error) {
 // before it calls UnmarshalJSON, so a member named twice is the caller's json.Unmarshal to word, and is tried on
 // UnmarshalJSON alone.
 func TestServerRule14_ARefusedJWKIsNotQuoted(t *testing.T) {
-	for name, raw := range map[string]string{
-		"kty":              `{"kty":"` + marker + `","crv":"BP-256","x":"AA","y":"AA"}`,
-		"crv":              `{"kty":"EC","crv":"` + marker + `","x":"AA","y":"AA"}`,
-		"a mistyped value": `{"kty":"EC","crv":"BP-256","x":"AA","y":"AA","kid":["` + marker + `"]}`,
-		"a member twice":   `{"kty":"EC","` + marker + `":1,"` + marker + `":2}`,
+	for name, test := range map[string]struct{ raw, reason string }{
+		"kty":              {`{"kty":"` + marker + `","crv":"BP-256","x":"AA","y":"AA"}`, "unsupported key type"},
+		"crv":              {`{"kty":"EC","crv":"` + marker + `","x":"AA","y":"AA"}`, "unsupported Brainpool curve"},
+		"a mistyped value": {`{"kty":"EC","crv":"BP-256","x":"AA","y":"AA","kid":["` + marker + `"]}`, "JWK: does not decode"},
+		"a member twice":   {`{"kty":"EC","` + marker + `":1,"` + marker + `":2}`, "JWK: does not decode"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var jwk JSONWebKey
-			err := jwk.UnmarshalJSON([]byte(raw))
-			requireNoMarker(t, err)
+			err := jwk.UnmarshalJSON([]byte(test.raw))
+			requireRefusedFor(t, err, test.reason)
 			if name == "a member twice" {
 				if !errors.Is(err, jsontext.ErrDuplicateName) {
 					t.Fatalf("got %v, want a duplicate name to unwrap", err)
 				}
 				return
 			}
-			requireNoMarker(t, json.Unmarshal([]byte(raw), &jwk))
+			requireRefusedFor(t, json.Unmarshal([]byte(test.raw), &jwk), test.reason)
 		})
 	}
 }
@@ -81,17 +85,17 @@ func TestServerRule14_ARefusedTokenIsNotQuoted(t *testing.T) {
 		t.Fatal(err)
 	}
 	enc := base64.RawURLEncoding.EncodeToString
-	for name, parts := range map[string][2]string{
-		"alg":                     {`{"alg":"` + marker + `"}`, `{}`},
-		"a header member twice":   {`{"alg":"BP256R1","` + marker + `":1,"` + marker + `":2}`, `{}`},
-		"a claims member twice":   {`{"alg":"BP256R1"}`, `{"` + marker + `":1,"` + marker + `":2}`},
-		"a header value mistyped": {`["` + marker + `"]`, `{}`},
-		"a claims value mistyped": {`{"alg":"BP256R1"}`, `"` + marker + `"`},
+	for name, parts := range map[string][3]string{
+		"alg":                     {`{"alg":"` + marker + `"}`, `{}`, "unsupported signature algorithm"},
+		"a header member twice":   {`{"alg":"BP256R1","` + marker + `":1,"` + marker + `":2}`, `{}`, "token header: does not decode"},
+		"a claims member twice":   {`{"alg":"BP256R1"}`, `{"` + marker + `":1,"` + marker + `":2}`, "token claims: does not decode"},
+		"a header value mistyped": {`["` + marker + `"]`, `{}`, "token header: does not decode"},
+		"a claims value mistyped": {`{"alg":"BP256R1"}`, `"` + marker + `"`, "token claims: does not decode"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			token := enc([]byte(parts[0])) + "." + enc([]byte(parts[1])) + "." + enc(make([]byte, 64))
 			_, err := ParseToken([]byte(token), withECDSAPublicKey(&key.PublicKey))
-			requireNoMarker(t, err)
+			requireRefusedFor(t, err, parts[2])
 		})
 	}
 }

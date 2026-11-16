@@ -64,6 +64,11 @@ type JSONWebKey struct {
 
 // UnmarshalJSON decodes an EC JWK with a NIST or Brainpool crv, validates the
 // public point and parses the x5c certificates with brainpool.ParseCertificate.
+//
+// Its own errors quote nothing of the key. Through json.Unmarshal, though, the
+// outer decoder checks the whole text first, and its error for a member named
+// twice or a syntax error quotes the input: a caller decoding a key from
+// outside wraps that error in a reason of its own (servers.md rule 14).
 func (jwk *JSONWebKey) UnmarshalJSON(data []byte) error {
 	type Alias JSONWebKey
 	var jwkAlias Alias
