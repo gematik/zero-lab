@@ -200,7 +200,8 @@ func (s *Set) Provider(ctx context.Context, issuer string) (Provider, error) {
 	if s.federation != nil {
 		return s.federation.Provider(ctx, issuer)
 	}
-	return Provider{}, fmt.Errorf("unknown issuer: %q", issuer)
+	// The issuer may come from a request, so it is not repeated (servers.md rule 14).
+	return Provider{}, errors.New("unknown issuer")
 }
 
 // Default is the first configured provider.

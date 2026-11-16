@@ -143,7 +143,7 @@ func (s *Session) SetEntitlementPoPP(insurantID string, poppToken string) (time.
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
-	slog.Debug("Sending PoPP entitlement request", "insurantId", insurantID)
+	slog.Debug("Sending PoPP entitlement request")
 
 	resp, err := s.VAUChannel.Do(req)
 	if err != nil {
@@ -157,7 +157,7 @@ func (s *Session) SetEntitlementPoPP(insurantID string, poppToken string) (time.
 
 	var validTo ValidToResponseType
 	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), &validTo); err != nil {
-		return time.Time{}, fmt.Errorf("unmarshaling response: %w", err)
+		return time.Time{}, &decodeError{what: "entitlement answer", err: err}
 	}
 
 	return validTo.ValidTo, nil

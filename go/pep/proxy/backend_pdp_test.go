@@ -371,7 +371,8 @@ func TestServerRule28_AuthorizationServerResponseIsReadExactly(t *testing.T) {
 		t.Errorf("ACCESS_TOKEN was read as access_token")
 	}
 	err = decodeBounded(strings.NewReader("{\"access_token\":\"\xff\"}"), &tr)
-	if err == nil || !strings.Contains(err.Error(), "invalid UTF-8") {
+	var syntactic *jsontext.SyntacticError
+	if !errors.As(err, &syntactic) || !strings.Contains(syntactic.Error(), "invalid UTF-8") {
 		t.Errorf("not UTF-8: err = %v", err)
 	}
 	var introspection map[string]any

@@ -363,11 +363,10 @@ func TestServerRule28_ARefusalDoesNotQuoteTheInput(t *testing.T) {
 	}
 }
 
-// Rule 14: the peer's ErrorMessage reaches logs only escaped and cut short.
-func TestServerRule28_AnErrorMessageIsQuotedAndCutShort(t *testing.T) {
-	m := &MessageError{ErrorCode: 3, ErrorMessage: "line\nbreak" + strings.Repeat("x", 10*maxErrorMessageText)}
-	text := m.Error()
-	if strings.Contains(text, "\n") || len(text) > maxErrorMessageText+40 || !strings.HasPrefix(text, `vau: 3 "line\nbreak`) {
+// Rule 14: the peer's ErrorMessage does not reach logs; the error names its code, and the message stays in its field.
+func TestServerRule14_AnErrorMessageIsNotQuoted(t *testing.T) {
+	m := &MessageError{ErrorCode: 3, ErrorMessage: "SECRET-MESSAGE"}
+	if text := m.Error(); strings.Contains(text, "SECRET") || text != "vau: error code 3" {
 		t.Errorf("Error() = %q", text)
 	}
 }

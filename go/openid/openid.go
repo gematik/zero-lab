@@ -112,7 +112,7 @@ func (t *TokenResponse) Claims(claims any) error {
 	}
 
 	if err := json.Unmarshal(claimsBytes, claims); err != nil {
-		return fmt.Errorf("unmarshal claims: %w", err)
+		return &reasonError{reason: "ID token claims: do not decode", err: err}
 	}
 
 	return nil

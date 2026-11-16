@@ -23,7 +23,6 @@ package epa
 
 import (
 	"encoding/json/v2"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -77,7 +76,7 @@ func (c *Client) GetConsentDecisionInformation(insurantID string) (*GetConsentDe
 
 	body := new(GetConsentDecisionInformationType)
 	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), body); err != nil {
-		return nil, fmt.Errorf("unmarshaling response: %w", err)
+		return nil, &decodeError{what: "consent decisions", err: err}
 	}
 
 	return body, nil

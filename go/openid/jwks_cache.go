@@ -171,7 +171,8 @@ func (c *keySetCache) download(ctx context.Context) (*jose.JSONWebKeySet, error)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %s", resp.Status)
+		// resp.Status carries the peer's reason phrase; the code alone is ours to name.
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, jwksMaxSize+1))
 	if err != nil {

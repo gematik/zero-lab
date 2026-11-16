@@ -190,10 +190,22 @@ func parseClaims(payload []byte) (*claims, error) {
 	return &c, nil
 }
 
+// reasonError refuses a value from outside by a fixed reason. A decoder's message quotes member names and values, and
+// error text ends up in logs (servers.md rule 14); the decoder's error stays reachable through errors.Is and errors.As,
+// so a caller can still tell why.
+type reasonError struct {
+	reason string
+	err    error
+}
+
+func (e *reasonError) Error() string { return e.reason }
+
+func (e *reasonError) Unwrap() error { return e.err }
+
 func stringClaim(raw jsontext.Value) (string, error) {
 	var value *string
 	if err := json.Unmarshal(raw, &value); err != nil {
-		return "", err
+		return "", &reasonError{reason: "is no string", err: err}
 	}
 	if value == nil {
 		return "", errors.New("is null")
@@ -208,7 +220,7 @@ func audienceClaim(raw jsontext.Value) ([]string, error) {
 	}
 	var list []*string
 	if err := json.Unmarshal(raw, &list); err != nil {
-		return nil, err
+		return nil, &reasonError{reason: "is no string or array of strings", err: err}
 	}
 	if list == nil {
 		return nil, errors.New("is null")
@@ -228,7 +240,7 @@ func audienceClaim(raw jsontext.Value) ([]string, error) {
 func numericDateClaim(raw jsontext.Value) (time.Time, error) {
 	var seconds *float64
 	if err := json.Unmarshal(raw, &seconds); err != nil {
-		return time.Time{}, err
+		return time.Time{}, &reasonError{reason: "is no number", err: err}
 	}
 	if seconds == nil {
 		return time.Time{}, errors.New("is null")

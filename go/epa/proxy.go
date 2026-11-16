@@ -577,7 +577,7 @@ func (p *Proxy) findRecordProvider(insurantID string) (*Session, *MultiProviderE
 			slog.Info("Record not found", "provider", r.provider)
 			multiProviderError.Errors = append(multiProviderError.Errors, ProvidersError{
 				Code:           "record_not_found",
-				Description:    fmt.Sprintf("record not found for insurantID '%s'", insurantID),
+				Description:    "record not found",
 				ProviderNumber: r.provider,
 			})
 			continue

@@ -293,7 +293,8 @@ func (c *Client) Exchange(ctx context.Context, login openid.Login, code string) 
 func decryptToken(token string, key []byte) (string, error) {
 	encrypted, err := jose.ParseEncryptedCompact(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
-		return "", fmt.Errorf("decrypting token: %w", err)
+		// go-jose's message quotes the header's alg and enc, which come from outside.
+		return "", errors.New("decrypting token: no compact JWE of dir and A256GCM")
 	}
 	plaintext, err := encrypted.Decrypt(key)
 	if err != nil {
@@ -303,7 +304,7 @@ func decryptToken(token string, key []byte) (string, error) {
 	njwt := new(Njwt)
 	err = json.Unmarshal(plaintext, njwt)
 	if err != nil {
-		return "", fmt.Errorf("parsing NJWT: %w", err)
+		return "", &reasonError{reason: "NJWT: does not decode", err: err}
 	}
 
 	return njwt.Njwt, nil
@@ -331,7 +332,7 @@ func checkIDToken(raw string, key *josebp.JSONWebKey, checks openid.IDTokenCheck
 		return fmt.Errorf("parsing ID token: %w", err)
 	}
 	if alg := token.Headers["alg"]; alg != josebp.AlgorithmNameBP256R1 {
-		return fmt.Errorf("ID token signed with alg %v, expected %s", alg, josebp.AlgorithmNameBP256R1)
+		return fmt.Errorf("ID token signed with another alg than %s", josebp.AlgorithmNameBP256R1)
 	}
 	if err := checks.Validate(token.PayloadJSON); err != nil {
 		return fmt.Errorf("unable to parse ID token: %w", err)
@@ -362,7 +363,7 @@ func unmarshalTokenResponse(r io.Reader) (*openid.TokenResponse, error) {
 
 	tokenResponse := new(openid.TokenResponse)
 	if err = json.Unmarshal(data, tokenResponse); err != nil {
-		return nil, fmt.Errorf("unmarshalling token response: %w", err)
+		return nil, &reasonError{reason: "token response: does not decode", err: err}
 	}
 
 	return tokenResponse, nil

@@ -32,6 +32,7 @@ import (
 	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/sha512"
+	"errors"
 	"fmt"
 	"hash"
 
@@ -75,7 +76,7 @@ func bitSizeForAlg(alg string) (int, error) {
 	case algES512, algBP512R1:
 		return 512, nil
 	default:
-		return 0, fmt.Errorf("unsupported signature algorithm: %s", alg)
+		return 0, errors.New("unsupported signature algorithm")
 	}
 }
 
@@ -103,6 +104,6 @@ func curveForJWA(name string) (elliptic.Curve, error) {
 	case "BP-512":
 		return brainpool.P512r1(), nil
 	default:
-		return nil, fmt.Errorf("unsupported Brainpool curve: %s", name)
+		return nil, errors.New("unsupported Brainpool curve")
 	}
 }

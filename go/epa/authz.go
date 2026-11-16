@@ -62,7 +62,7 @@ func (s *Session) GetNonce() (string, error) {
 
 	nonce := new(Nonce)
 	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), nonce); err != nil {
-		return "", fmt.Errorf("unmarshaling response: %w", err)
+		return "", &decodeError{what: "getNonce answer", err: err}
 	}
 
 	return nonce.Nonce, nil

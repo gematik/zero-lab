@@ -74,7 +74,7 @@ func ParseBundle(data []byte) (*Bundle, error) {
 func decodeBundle(fields map[string]jsontext.Value) (*Bundle, error) {
 	var version uint32
 	if err := json.Unmarshal(fields["format_version"], &version); err != nil {
-		return nil, fmt.Errorf("format_version: %w", err)
+		return nil, &decodeError{what: "format_version", err: err}
 	}
 	if version != bundleFormatVersion {
 		return nil, fmt.Errorf("unsupported format version %d", version)
@@ -84,11 +84,11 @@ func decodeBundle(fields map[string]jsontext.Value) (*Bundle, error) {
 		return nil, errors.New("label: null")
 	}
 	if err := json.Unmarshal(fields["label"], &bundle.Label); err != nil {
-		return nil, fmt.Errorf("label: %w", err)
+		return nil, &decodeError{what: "label", err: err}
 	}
 	var anchor string
 	if err := json.Unmarshal(fields["anchor_sha256"], &anchor); err != nil {
-		return nil, fmt.Errorf("anchor_sha256: %w", err)
+		return nil, &decodeError{what: "anchor_sha256", err: err}
 	}
 	digest, err := hex.DecodeString(anchor)
 	if err != nil || len(digest) != len(bundle.AnchorSHA256) {
@@ -146,7 +146,7 @@ func decodeBundle(fields map[string]jsontext.Value) (*Bundle, error) {
 // bundle of another environment a clear refusal, ahead of a signature that does not verify.
 func (b *Bundle) CheckAnchor(anchorDER []byte) error {
 	if sha256.Sum256(anchorDER) != b.AnchorSHA256 {
-		return fmt.Errorf("tipki: bundle %q belongs to a different trust anchor", b.Label)
+		return errors.New("tipki: the bundle belongs to a different trust anchor")
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func bodyField(fields map[string]jsontext.Value, name string) ([]byte, error) {
 		return nil, fmt.Errorf("%s: null", name)
 	}
 	if err := json.Unmarshal(fields[name], &encoded); err != nil {
-		return nil, fmt.Errorf("%s: %w", name, err)
+		return nil, &decodeError{what: name, err: err}
 	}
 	body, err := base64.StdEncoding.Strict().DecodeString(encoded)
 	if err != nil || bytes.ContainsAny([]byte(encoded), "\r\n") {
@@ -180,18 +180,18 @@ func metaField(raw jsontext.Value) (int64, error) {
 		return 0, errors.New("a required field is null")
 	}
 	if err := json.Unmarshal(fields["fetched_at"], &fetchedAt); err != nil {
-		return 0, fmt.Errorf("fetched_at: %w", err)
+		return 0, &decodeError{what: "fetched_at", err: err}
 	}
 	if err := json.Unmarshal(fields["source"], &source); err != nil {
-		return 0, fmt.Errorf("source: %w", err)
+		return 0, &decodeError{what: "source", err: err}
 	}
 	if !slices.Contains(bundleSources, source) {
-		return 0, fmt.Errorf("unknown source %q", source)
+		return 0, errors.New("source: not one of the known sources")
 	}
 	for name, into := range map[string]any{"etag": &etag, "last_modified": &lastModified, "max_age_secs": &maxAge} {
 		if value, ok := fields[name]; ok {
 			if err := json.Unmarshal(value, into); err != nil {
-				return 0, fmt.Errorf("%s: %w", name, err)
+				return 0, &decodeError{what: name, err: err}
 			}
 		}
 	}
@@ -202,6 +202,18 @@ func metaField(raw jsontext.Value) (int64, error) {
 	return int64(*fetchedAt), nil
 }
 
+// decodeError is a JSON value of a bundle or a roots.json that did not decode. Its text names the field, never the
+// input: the decoder's own message quotes member names and values (servers.md rule 14). The decoder's error stays
+// reachable through errors.Is and errors.As, so a caller can still tell why.
+type decodeError struct {
+	what string
+	err  error
+}
+
+func (e *decodeError) Error() string { return e.what + ": does not decode" }
+
+func (e *decodeError) Unwrap() error { return e.err }
+
 // strictObject reads one JSON object whose keys are exactly as given, each at most once.
 func strictObject(data []byte, required, optional []string) (map[string]jsontext.Value, error) {
 	decoder := jsontext.NewDecoder(bytes.NewReader(data))
@@ -209,7 +221,7 @@ func strictObject(data []byte, required, optional []string) (map[string]jsontext
 		return nil, errors.New("not an object")
 	}
 	if _, err := decoder.ReadToken(); err != nil {
-		return nil, err
+		return nil, &decodeError{what: "object", err: err}
 	}
 	fields := make(map[string]jsontext.Value)
 	for decoder.PeekKind() != '}' {
@@ -218,20 +230,20 @@ func strictObject(data []byte, required, optional []string) (map[string]jsontext
 			return nil, errors.New("repeated field")
 		}
 		if err != nil {
-			return nil, err
+			return nil, &decodeError{what: "object", err: err}
 		}
 		name := token.String()
 		if !slices.Contains(required, name) && !slices.Contains(optional, name) {
-			return nil, fmt.Errorf("unknown field %q", name)
+			return nil, errors.New("unknown field")
 		}
 		value, err := decoder.ReadValue()
 		if err != nil {
-			return nil, err
+			return nil, &decodeError{what: "object", err: err}
 		}
 		fields[name] = value.Clone()
 	}
 	if _, err := decoder.ReadToken(); err != nil {
-		return nil, err
+		return nil, &decodeError{what: "object", err: err}
 	}
 	if _, err := decoder.ReadToken(); !errors.Is(err, io.EOF) {
 		return nil, errors.New("data after the object")

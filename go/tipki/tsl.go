@@ -720,7 +720,7 @@ type TrustStore struct {
 // none, and an older list is refused against it (TSLSIG-053); the caller keeps [VerifiedTSL.State].
 func LoadTrustStore(bundle *Bundle, anchorDER []byte, signerAnchors [][]byte, now time.Time, grace time.Duration, stored *TSLState) (*TrustStore, error) {
 	if age := now.Sub(bundle.FetchedAt); age >= MaxBundleAge {
-		return nil, fmt.Errorf("tipki: bundle %q is %s old, the limit is %s", bundle.Label, age.Round(time.Minute), MaxBundleAge)
+		return nil, fmt.Errorf("tipki: the bundle is %s old, the limit is %s", age.Round(time.Minute), MaxBundleAge)
 	}
 	walk, err := TrustedRoots(bundle, anchorDER, now)
 	if err != nil {

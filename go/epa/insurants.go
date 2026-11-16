@@ -217,7 +217,7 @@ func entitleProvider(body io.Reader) (ProviderNumber, error) {
 		Provider ProviderNumber `json:"provider"`
 	}
 	if err := json.Unmarshal(data, &request, json.RejectUnknownMembers(true)); err != nil {
-		return 0, fmt.Errorf("%w: %w", errEntitleBody, err)
+		return 0, fmt.Errorf("%w: %w", errEntitleBody, &decodeError{what: "JSON", err: err})
 	}
 	return request.Provider, nil
 }

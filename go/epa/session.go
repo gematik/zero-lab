@@ -22,7 +22,6 @@
 package epa
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json/v2"
@@ -31,7 +30,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/gematik/zero-lab/go/epa/vau"
@@ -298,7 +297,10 @@ func (c *Client) Close() {
 	c.HTTPClient.CloseIdleConnections()
 }
 
-// ErrorType is the error body of an Aktensystem; HTTPStatusCode comes from the response.
+// ErrorType is the error body of an Aktensystem; HTTPStatusCode comes from the response. Error names the status and
+// an errorCode the ePA interfaces register, which tells a client a missing record from a missing entitlement or a
+// locked account under the same status. Another errorCode and errorDetail are the Aktensystem's text: they stay in
+// their fields for a host that reads them, since error text ends up in logs and answers (servers.md rule 14).
 type ErrorType struct {
 	HTTPStatusCode int    `json:"-"`
 	ErrorCode      string `json:"errorCode"`
@@ -306,30 +308,45 @@ type ErrorType struct {
 }
 
 func (e *ErrorType) Error() string {
-	return fmt.Sprintf("http error: %d, error code: %s, error detail: %s", e.HTTPStatusCode, e.ErrorCode, e.ErrorDetail)
+	code := "no registered error code"
+	if slices.Contains(registeredErrorCodes, e.ErrorCode) {
+		code = e.ErrorCode
+	}
+	return fmt.Sprintf("Aktensystem answered http status %d: %s", e.HTTPStatusCode, code)
+}
+
+// registeredErrorCodes are the errorCode values of I_Authorization_Service, I_Entitlement_Management and
+// I_Information_Service (gematik/ePA-Basic, ePA-3.1.3), from their examples and response tables, spelling as there.
+var registeredErrorCodes = []string{
+	"accessDenied", "authorizeRep", "blockedActorId", "hcvMissing", "internalError", "invalAuth", "invalidActorId",
+	"invalidOid", "invalOid", "invalidToken", "invalToken", "invalRedir", "invalSignature", "locked",
+	"malformedRequest", "noHealthRecord", "noMail", "noResource", "notEntitled", "paramExcpected",
+	"representativeLimit", "requestMismatch", "resourceMismatch", "statusMismatch", "tokenReuse", "unregisteredDevice",
 }
 
 // maxResponseBytes bounds what is read of an Aktensystem's answer to the calls this client makes, which are small
 // JSON documents; more is cut off and fails to decode.
 const maxResponseBytes = 1 << 20
 
+// decodeError is a JSON document from outside that did not decode. Its text names the document, never the input: the
+// decoder's own message quotes member names and values (servers.md rule 14). The decoder's error stays reachable
+// through errors.Is and errors.As, so a caller can still tell why.
+type decodeError struct {
+	what string
+	err  error
+}
+
+func (e *decodeError) Error() string { return e.what + ": does not decode" }
+
+func (e *decodeError) Unwrap() error { return e.err }
+
+// parseHTTPError reads an Aktensystem's answer other than the expected status. A body that is no error document leaves
+// only the status: it is not kept, so it cannot reach a log.
 func parseHTTPError(resp *http.Response) error {
 	defer resp.Body.Close()
-	bodyData := new(bytes.Buffer)
-	if _, err := bodyData.ReadFrom(io.LimitReader(resp.Body, maxResponseBytes)); err != nil {
-		return fmt.Errorf("reading response body: %w", err)
-	}
-
-	// The body becomes error text that the proxy's JSON answers carry, so it must be valid UTF-8.
-	bodyStr := strings.ToValidUTF8(bodyData.String(), "\uFFFD")
-
-	if bodyStr == "" {
-		bodyStr = http.StatusText(resp.StatusCode)
-	}
-
 	typedError := new(ErrorType)
-	if err := json.Unmarshal(bodyData.Bytes(), typedError); err != nil {
-		return fmt.Errorf("http status %d: %s", resp.StatusCode, bodyStr)
+	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), typedError); err != nil {
+		return &ErrorType{HTTPStatusCode: resp.StatusCode}
 	}
 	typedError.HTTPStatusCode = resp.StatusCode
 	return typedError
@@ -361,13 +378,12 @@ func (s *Session) GetStatus() (*vau.Status, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("unexpected status code: %d. error: %s", resp.StatusCode, string(body))
+		return nil, parseHTTPError(resp)
 	}
 
 	status := new(vau.Status)
 	if err := json.UnmarshalRead(io.LimitReader(resp.Body, maxResponseBytes), status); err != nil {
-		return nil, fmt.Errorf("unmarshaling response: %w", err)
+		return nil, &decodeError{what: "VAU-Status", err: err}
 	}
 
 	return status, nil

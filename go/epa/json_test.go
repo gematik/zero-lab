@@ -51,7 +51,8 @@ func TestServerRule28_AnEntitleBodyIsReadStrictly(t *testing.T) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
-	if _, err := entitleProvider(strings.NewReader("{\"provider\":1,\"\xff\":2}")); err == nil || !strings.Contains(err.Error(), "invalid UTF-8") {
+	var syntactic *jsontext.SyntacticError
+	if _, err := entitleProvider(strings.NewReader("{\"provider\":1,\"\xff\":2}")); !errors.As(err, &syntactic) || !strings.Contains(syntactic.Error(), "invalid UTF-8") {
 		t.Errorf("invalid UTF-8: %v", err)
 	}
 	for _, test := range []struct {
@@ -85,7 +86,7 @@ func FuzzEntitleProvider(f *testing.F) {
 }
 
 // An Aktensystem's error answer naming a member twice or carrying invalid UTF-8 is not read as a typed error, and a
-// member in another case is not taken for the member: the error then shows the status and the body as text.
+// member in another case is not taken for the member: the error then holds the status alone.
 func TestServerRule28_AnAktensystemErrorIsReadStrictly(t *testing.T) {
 	for name, body := range map[string]string{
 		"a member twice": `{"errorCode":"a","errorCode":"b"}`,
@@ -146,7 +147,8 @@ func TestTheProxysAnswersKeepTheirShape(t *testing.T) {
 }
 
 // An Aktensystem's error answer that is not UTF-8, here Latin-1, still leaves the proxy a complete JSON answer with
-// its status, both for the insurant's information and on the way into the VAU.
+// its status, both for the insurant's information and on the way into the VAU. The body itself is not passed on
+// (servers.md rule 14).
 func TestAnAktensystemErrorInLatin1KeepsTheAnswerJSON(t *testing.T) {
 	aktensystem := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -177,7 +179,8 @@ func TestAnAktensystemErrorInLatin1KeepsTheAnswerJSON(t *testing.T) {
 			t.Errorf("%s: %d %q", name, recorder.Code, body)
 			continue
 		}
-		if len(answer.Errors) != len(AllProviders) || !strings.Contains(answer.Errors[0].Description, "Gr\uFFFDe, \uFFFD") {
+		if len(answer.Errors) != len(AllProviders) || !strings.Contains(answer.Errors[0].Description, "500") ||
+			strings.Contains(answer.Errors[0].Description, "erreichbar") {
 			t.Errorf("%s: %+v", name, answer)
 		}
 	}
