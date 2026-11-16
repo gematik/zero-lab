@@ -169,14 +169,8 @@ func (m *MessageError) UnmarshalCBOR(data []byte) error {
 	return nil
 }
 
-// maxErrorMessageText bounds how much of the peer's ErrorMessage an error carries.
-const maxErrorMessageText = 200
-
-// Error quotes the peer's ErrorMessage, escaped and cut short, since it ends up in logs.
+// Error names the peer's ErrorCode, a number, and not its ErrorMessage: error text ends up in logs, and the message is
+// the peer's text (servers.md rule 14). A host that needs it reads the field.
 func (m *MessageError) Error() string {
-	text := m.ErrorMessage
-	if runes := []rune(text); len(runes) > maxErrorMessageText {
-		text = string(runes[:maxErrorMessageText]) + "…"
-	}
-	return fmt.Sprintf("vau: %d %q", m.ErrorCode, text)
+	return fmt.Sprintf("vau: error code %d", m.ErrorCode)
 }
