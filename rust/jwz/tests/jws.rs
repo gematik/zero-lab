@@ -799,6 +799,28 @@ fn es256_only() -> Policy {
     Profile::new("es256", 1).with(&ECDSA_NIST).policy
 }
 
+/// RFC 7515 §4.1.4: `kid` is a hint. A key without one (the trait's default) names none
+/// in what it signs, and is not refused for a header that names one: the signature
+/// decides.
+#[test]
+fn rfc_7515_4_1_4_a_key_without_a_kid_names_none_and_is_not_refused_for_one() {
+    let registry = Registry::standard();
+    let policy = es256_only();
+    let key = es256_key().with_kid("k");
+    let unnamed = Stated {
+        key: &key,
+        alg: SignatureAlgorithm::ES256,
+        curve: Some(Curve::P256),
+    };
+    let token = jws::sign(b"x", HeaderParams::new(), &unnamed, &policy, &registry).unwrap();
+    let parsed = Jws::parse(&token, &policy, &registry).unwrap();
+    assert_eq!(parsed.header().kid(), None);
+    let token = jws::sign(b"x", HeaderParams::new(), &key, &policy, &registry).unwrap();
+    let parsed = Jws::parse(&token, &policy, &registry).unwrap();
+    assert_eq!(parsed.header().kid(), Some("k"));
+    assert_eq!(parsed.verify(&unnamed).unwrap().payload(), b"x");
+}
+
 /// RFC 8725 §3.1: the profile decides the algorithms, so jwz signs only what the
 /// profile it is given would verify: EdDSA under a profile of ES256 alone, HS256
 /// under one without HMAC, RS256 (reserved, not implemented) under any, are refused
