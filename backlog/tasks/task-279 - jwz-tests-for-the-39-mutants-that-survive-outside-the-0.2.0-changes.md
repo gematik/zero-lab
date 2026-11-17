@@ -4,7 +4,7 @@ title: 'jwz: tests for the 39 mutants that survive outside the 0.2.0 changes'
 status: In Progress
 assignee: []
 created_date: '2026-11-08T16:57:00Z'
-updated_date: '2026-11-17T06:28:00Z'
+updated_date: '2026-11-17T07:04:00Z'
 labels:
   - jwz
   - testing
@@ -61,6 +61,12 @@ The mutation run for jwz 0.2.0 (TASK-272, 2026-11-08, score 0.9359 before the Er
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 each of the 39 is caught by a test named after the rule it proves, or excluded as equivalent with the reason in the mutants config
+- [x] #1 each of the 39 is caught by a test named after the rule it proves, or excluded as equivalent with the reason in the mutants config
 - [ ] #2 jwz's mutation score is re-recorded and the gate passes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Done on fix/jwz-mutants (merged into fix/elder-tasks): 34 of the 39 mutants caught by new tests named after their RFC sections, 5 equivalent (StrictVisitor expecting/visit_string/visit_unit/visit_none; the JwkSet::parse guard) excluded in rust/.cargo/mutants.toml with the reason each; the maintainer approved that file as the exclusion mechanism (2026-11-17). Tests only, no behaviour change.
+<!-- SECTION:NOTES:END -->
