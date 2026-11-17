@@ -4,7 +4,11 @@ title: Rate limiter for servers
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
-labels: []
+updated_date: '2026-11-17T06:35:00Z'
+labels:
+  - go
+  - servers
+  - parked
 dependencies: []
 ordinal: 317000
 ---
@@ -19,3 +23,9 @@ docs/design/servers.md asks servers for rate limits and no module provides one. 
 <!-- AC:BEGIN -->
 - [ ] #1 A decision whether the limiter is a module here; if so, one that counts across replicas on kv.Store
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Decision (maintainer, 2026-11-17): the rate limiter is built here as a shared module, counting across replicas on kv.Store, but later; zeta-pdp-go can then take it in place of its own.
+<!-- SECTION:NOTES:END -->

@@ -4,12 +4,13 @@ title: 'ti-app: Tauri desktop app over ti-client'
 status: To Do
 assignee: []
 created_date: '2026-11-07T15:53:00Z'
-updated_date: '2026-11-07T15:53:00Z'
+updated_date: '2026-11-17T06:35:00Z'
 labels:
   - ti-app
   - architecture
   - deps
   - security
+  - parked
 dependencies:
   - TASK-250
 references:
@@ -34,3 +35,9 @@ Decision-15: the GUI is a Tauri app, ti-app, over ti-client. Tauri needs its own
 - [ ] #4 PINs, PKCS#12 passwords and comfort IDs never cross the IPC boundary; the IPC capabilities and the CSP allow only what the commands need
 - [ ] #5 TypeScript types are generated from ti-cli's JSON schemas; Linux build prerequisites (webkit2gtk) are documented
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Postponed (maintainer, 2026-11-17).
+<!-- SECTION:NOTES:END -->

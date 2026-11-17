@@ -4,9 +4,11 @@ title: 'jwz: post-quantum algorithms as a feature'
 status: To Do
 assignee: []
 created_date: '2026-11-07T10:52:00Z'
+updated_date: '2026-11-17T06:35:00Z'
 labels:
   - jwz
   - pqc
+  - parked
 dependencies: []
 ordinal: 258000
 ---
@@ -23,3 +25,9 @@ Post-quantum signatures and key establishment in jwz behind a cargo feature (off
 - [ ] #2 the chosen algorithms sign/verify or encrypt/decrypt behind the feature through the backend traits, with the drafts' examples as known-answer tests, a traceability entry per requirement, and fuzz coverage of any new key parser
 - [ ] #3 the default build and its dependency tree are unchanged; the feature builds for wasm32-unknown-unknown and its tests run there
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Postponed (maintainer, 2026-11-17).
+<!-- SECTION:NOTES:END -->
