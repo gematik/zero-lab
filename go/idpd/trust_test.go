@@ -22,6 +22,8 @@
 package idpd
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -37,6 +39,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -333,7 +336,25 @@ func (a answering) Check(context.Context, *x509.Certificate, *x509.Certificate, 
 	return &tipki.RevocationResult{Status: tipki.RevocationStatus(a), RevokedAt: captured.Add(-time.Hour)}, nil
 }
 
-func bundleTrust(t *testing.T) (*BundleTrust, string) {
+// testClock is a time the test moves while the bundle's background reads look at it.
+type testClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *testClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *testClock) set(now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = now
+}
+
+func bundleTrust(t *testing.T) (*BundleTrust, string, *testClock) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "bundle.json")
 	writeBundle(t, path, captured)
@@ -341,9 +362,15 @@ func bundleTrust(t *testing.T) (*BundleTrust, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	clock := &testClock{now: captured}
 	base.checker = answering(tipki.RevocationGood)
-	base.now = func() time.Time { return captured }
-	return &BundleTrust{verifier: base, bundlePath: path}, path
+	base.now = clock.Now
+	trust, err := newBundleTrust(base, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(trust.Close)
+	return trust, path, clock
 }
 
 func idpCertificate(t *testing.T, name string) []*x509.Certificate {
@@ -356,7 +383,7 @@ func idpCertificate(t *testing.T, name string) []*x509.Certificate {
 }
 
 func TestIDPV005TheRealIDPCertificatesAreValidUnderTheRealList(t *testing.T) {
-	trust, _ := bundleTrust(t)
+	trust, _, _ := bundleTrust(t)
 	for which, name := range map[IDPCertificate]string{DiscoverySigner: "disc.ru.idp.rise.der", TokenSigner: "main.ru.idp.rise.der"} { //nolint:gosec // file names of test certificates, not credentials
 		if err := trust.Check(t.Context(), which, idpCertificate(t, name)); err != nil {
 			t.Errorf("%s: %v", name, err)
@@ -365,7 +392,7 @@ func TestIDPV005TheRealIDPCertificatesAreValidUnderTheRealList(t *testing.T) {
 }
 
 func TestIDPV005ARevokedCertificateIsRefused(t *testing.T) {
-	trust, _ := bundleTrust(t)
+	trust, _, _ := bundleTrust(t)
 	trust.checker = answering(tipki.RevocationRevoked)
 	err := trust.Check(t.Context(), DiscoverySigner, idpCertificate(t, "disc.ru.idp.rise.der"))
 	if err == nil || !strings.Contains(err.Error(), "revoked") {
@@ -374,7 +401,7 @@ func TestIDPV005ARevokedCertificateIsRefused(t *testing.T) {
 }
 
 func TestIDPV005ACertificateOfAnotherKindIsRefused(t *testing.T) {
-	trust, _ := bundleTrust(t)
+	trust, _, _ := bundleTrust(t)
 	smcb, err := brainpool.ParseCertificatePEM([]byte(idpCertPEM))
 	if err != nil {
 		t.Fatal(err)
@@ -386,38 +413,81 @@ func TestIDPV005ACertificateOfAnotherKindIsRefused(t *testing.T) {
 }
 
 func TestIDPV005ABundleTooOldRefusesEvenOnceLoaded(t *testing.T) {
-	trust, _ := bundleTrust(t)
+	trust, _, clock := bundleTrust(t)
 	certs := idpCertificate(t, "disc.ru.idp.rise.der")
 	if err := trust.Check(t.Context(), DiscoverySigner, certs); err != nil {
 		t.Fatal(err)
 	}
-	trust.now = func() time.Time { return captured.Add(tipki.MaxBundleAge) }
+	clock.set(captured.Add(tipki.MaxBundleAge))
 	if err := trust.Check(t.Context(), DiscoverySigner, certs); err == nil {
 		t.Error("a bundle at the age limit")
 	}
 }
 
-func TestIDPV005ABadOrMissingBundleDoesNotFallBackToTheLastGoodOne(t *testing.T) {
-	trust, path := bundleTrust(t)
+// The bundle in use stands only until its age limit, so a failed replacement cannot extend it; the rules for
+// a replacement are proven in go/tipki/bundlefile.
+func TestIDPV005ABadOrMissingReplacementKeepsTheBundleInUseUntilItsAgeLimit(t *testing.T) {
+	trust, path, clock := bundleTrust(t)
 	certs := idpCertificate(t, "disc.ru.idp.rise.der")
-	if err := trust.Check(t.Context(), DiscoverySigner, certs); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := trust.Check(t.Context(), DiscoverySigner, certs); err == nil {
-		t.Error("a bad bundle")
+	if err := trust.file.Reload(t.Context()); err == nil {
+		t.Fatal("a bad bundle loaded")
+	}
+	if err := trust.Check(t.Context(), DiscoverySigner, certs); err != nil {
+		t.Errorf("the bundle in use after a bad one: %v", err)
 	}
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	if err := trust.Check(t.Context(), DiscoverySigner, certs); err == nil {
-		t.Error("a missing bundle")
+	if err := trust.file.Reload(t.Context()); err == nil {
+		t.Fatal("a missing bundle loaded")
 	}
-	writeBundle(t, path, captured)
+	if err := trust.Check(t.Context(), DiscoverySigner, certs); err != nil {
+		t.Errorf("the bundle in use after a missing one: %v", err)
+	}
+	clock.set(captured.Add(tipki.MaxBundleAge))
+	if err := trust.Check(t.Context(), DiscoverySigner, certs); err == nil {
+		t.Error("the bundle in use past its age limit")
+	}
+	clock.set(captured.Add(time.Hour))
+	writeBundle(t, path, captured.Add(time.Minute))
+	if err := trust.file.Reload(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	if err := trust.Check(t.Context(), DiscoverySigner, certs); err != nil {
 		t.Errorf("a good bundle again: %v", err)
+	}
+}
+
+func TestIDPV005AGzippedBundleIsRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle.json")
+	writeBundle(t, path, captured)
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write(readFile(t, path)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, compressed.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	base, err := newVerifier(EnvironmentReference, http.DefaultClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base.checker = answering(tipki.RevocationGood)
+	base.now = func() time.Time { return captured }
+	trust, err := newBundleTrust(base, path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(trust.Close)
+	if err := trust.Check(t.Context(), DiscoverySigner, idpCertificate(t, "disc.ru.idp.rise.der")); err != nil {
+		t.Error(err)
 	}
 }
 
@@ -460,7 +530,7 @@ func TestIDPV006NoNamedEnvironmentTrustsNothing(t *testing.T) {
 func TestIDPV006AProductionTrustRefusesANonProductionBundle(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bundle.json")
 	writeBundle(t, path, time.Now())
-	if _, err := NewBundleTrust(EnvironmentProduction, path, http.DefaultClient); err == nil {
+	if _, err := NewBundleTrust(EnvironmentProduction, path, http.DefaultClient, nil); err == nil {
 		t.Error("the reference list under production anchors")
 	}
 }
@@ -484,10 +554,11 @@ func TestIDPV005TheLiveReferenceIDP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	trust, err := NewBundleTrust(EnvironmentReference, bundle, web)
+	trust, err := NewBundleTrust(EnvironmentReference, bundle, web, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(trust.Close)
 	recorded := &checked{trust: trust}
 	client, err := NewClientFromConfig(ClientConfig{
 		Environment: EnvironmentReference, ClientID: "trust-test", RedirectURI: "https://rp/cb",
@@ -509,7 +580,7 @@ func TestIDPV005TheLiveReferenceIDP(t *testing.T) {
 		t.Logf("%s: %q valid for an IDP-Dienst (idpd-sig, OCSP)", which, recorded.subjects[i])
 	}
 	// The same certificates must not pass under production's anchors.
-	if _, err := NewBundleTrust(EnvironmentProduction, bundle, http.DefaultClient); err == nil {
+	if _, err := NewBundleTrust(EnvironmentProduction, bundle, http.DefaultClient, nil); err == nil {
 		t.Error("a non-production bundle under production anchors")
 	}
 }

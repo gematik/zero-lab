@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -93,6 +94,10 @@ type ClientConfig struct {
 	// Clock is the time tokens are judged at. Not serialized; supplied programmatically. When nil, the
 	// system clock.
 	Clock func() time.Time `yaml:"-"`
+
+	// Logger receives what happens to a mounted trust bundle, a bundle that was not loaded at error level. Not
+	// serialized; supplied programmatically. When nil, nothing is logged.
+	Logger *slog.Logger `yaml:"-"`
 }
 
 // Client is a relying party of the gematik IDP-Dienst.
@@ -377,5 +382,5 @@ func trustFromConfig(config ClientConfig, httpClient *http.Client) (CertificateT
 	if config.TrustFetch {
 		return NewFetchingTrust(config.Environment, httpClient)
 	}
-	return NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient)
+	return NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient, config.Logger)
 }

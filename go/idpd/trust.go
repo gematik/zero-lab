@@ -28,14 +28,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
-	"os"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gematik/zero-lab/go/tipki"
+	"github.com/gematik/zero-lab/go/tipki/bundlefile"
 )
 
 // IDPCertificate names one of the IDP-Dienst's certificates, as the IDP names its keys.
@@ -56,10 +55,11 @@ type CertificateTrust interface {
 }
 
 const (
-	// bundleRecheck is how long a loaded bundle stands before the list's own times are read again.
-	bundleRecheck = time.Hour
-	// maxBundleBytes bounds a mounted file; a list with its roots and signatures is about a megabyte.
-	maxBundleBytes = 16 << 20
+	// bundleReread is how often the mounted bundle is read again: a ConfigMap update reaches the pod within
+	// about a minute, and a read that finds the same content costs a hash.
+	bundleReread = time.Minute
+	// bundleLoadTimeout bounds the first load, the TSL signer's responder included.
+	bundleLoadTimeout = 2 * time.Minute
 	// maxOCSPBytes bounds a responder's answer.
 	maxOCSPBytes = 1 << 20
 )
@@ -85,21 +85,6 @@ func newVerifier(env Environment, httpClient *http.Client) (verifier, error) {
 	}, nil
 }
 
-// load verifies a bundle and settles the signer's status, online if the bundle's does not answer it.
-func (v *verifier) load(ctx context.Context, bundle *tipki.Bundle, now time.Time, state *tipki.TSLState) (*tipki.TrustStore, error) {
-	store, err := tipki.LoadTrustStore(bundle, v.anchor, v.signerAnchors, now, 0, state)
-	if err != nil {
-		return nil, err
-	}
-	unqueried := slices.ContainsFunc(store.TSL.Warnings, func(warning *tipki.TSLError) bool { return warning.Code == "no_ocsp_check" })
-	if unqueried {
-		if err := store.TSL.CheckSignerStatus(ctx, v.checker); err != nil {
-			return nil, err
-		}
-	}
-	return store, nil
-}
-
 func (v *verifier) check(ctx context.Context, store *tipki.TrustStore, which IDPCertificate, certs []*x509.Certificate) error {
 	validator := tipki.ProfileIdpdSig.Validator(store, tipki.CertFdSig, tipki.RevocationHardFail)
 	result, err := validator.Validate(ctx, certs, v.now(), v.checker)
@@ -117,37 +102,50 @@ func (v *verifier) check(ctx context.Context, store *tipki.TrustStore, which IDP
 }
 
 // BundleTrust checks a certificate against a mounted bundle with the idpd-sig profile, and its revocation
-// online (IDPV-005). It fails closed: a bundle that is missing, invalid or too old refuses every certificate,
-// and the last good one is not used in its place.
+// online (IDPV-005), through [bundlefile.Trust]. A bundle missing or invalid at the start does not start; a
+// replacement that is missing, invalid or older does not replace the bundle in use, which stands until it is too
+// old (BUNDLE-003) or its list's NextUpdate has passed, and then every certificate is refused.
 type BundleTrust struct {
 	verifier
-	bundlePath string
-
-	mu        sync.Mutex
-	store     *tipki.TrustStore
-	state     *tipki.TSLState
-	modTime   time.Time
-	size      int64
-	fetchedAt time.Time
-	loadedAt  time.Time
+	file *bundlefile.Trust
 }
 
 // NewBundleTrust loads the bundle at once, so a deployment without usable trust material does not start.
-// bundlePath is the mounted file `ti pki trust export` writes, read again when it changes. httpClient carries
-// the OCSP requests.
-func NewBundleTrust(env Environment, bundlePath string, httpClient *http.Client) (*BundleTrust, error) {
+// bundlePath is the mounted file `ti pki trust export` writes, plain or gzipped, read again every minute until
+// [BundleTrust.Close]. httpClient carries the OCSP requests; logger receives the bundles that were loaded and
+// those that were not, and may be nil.
+func NewBundleTrust(env Environment, bundlePath string, httpClient *http.Client, logger *slog.Logger) (*BundleTrust, error) {
 	base, err := newVerifier(env, httpClient)
 	if err != nil {
 		return nil, err
 	}
+	return newBundleTrust(base, bundlePath, logger)
+}
+
+func newBundleTrust(base verifier, bundlePath string, logger *slog.Logger) (*BundleTrust, error) {
 	if bundlePath == "" {
 		return nil, errors.New("no trust material: the IDP-Dienst's certificates cannot be verified without trust_fetch or trust_bundle_path")
 	}
-	trust := &BundleTrust{verifier: base, bundlePath: bundlePath}
-	if _, err := trust.current(context.Background()); err != nil {
-		return nil, err
+	ctx, cancel := context.WithTimeout(context.Background(), bundleLoadTimeout)
+	defer cancel()
+	file, err := bundlefile.New(ctx, bundlefile.Config{
+		Path:          bundlePath,
+		Anchor:        base.anchor,
+		SignerAnchors: base.signerAnchors,
+		Checker:       base.checker,
+		Interval:      bundleReread,
+		Logger:        logger,
+		Clock:         base.now,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("trust bundle: %w", err)
 	}
-	return trust, nil
+	return &BundleTrust{verifier: base, file: file}, nil
+}
+
+// Close ends the background reads. The bundle in use stands until it is too old.
+func (t *BundleTrust) Close() {
+	t.file.Close()
 }
 
 // anchorsFor picks what the environment trusts (IDPV-006). Only a named environment picks anything: with
@@ -163,63 +161,16 @@ func anchorsFor(env Environment) ([]byte, [][]byte, error) {
 	}
 }
 
-// Check implements [CertificateTrust].
+// Check implements [CertificateTrust]. It never reads the file.
 func (t *BundleTrust) Check(ctx context.Context, which IDPCertificate, certs []*x509.Certificate) error {
 	if len(certs) == 0 {
 		return fmt.Errorf("%s: no certificate", which)
 	}
-	store, err := t.current(ctx)
+	store, err := t.file.Current()
 	if err != nil {
 		return fmt.Errorf("%s: %w", which, err)
 	}
 	return t.check(ctx, store, which, certs)
-}
-
-func (t *BundleTrust) current(ctx context.Context) (*tipki.TrustStore, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	now := t.now()
-	info, err := os.Stat(t.bundlePath)
-	if err != nil {
-		t.store = nil
-		return nil, fmt.Errorf("trust bundle: %w", err)
-	}
-	if t.store != nil && info.ModTime().Equal(t.modTime) && info.Size() == t.size &&
-		now.Sub(t.loadedAt) < bundleRecheck && now.Sub(t.fetchedAt) < tipki.MaxBundleAge {
-		return t.store, nil
-	}
-	t.store = nil
-	store, fetchedAt, err := t.read(ctx, now)
-	if err != nil {
-		return nil, fmt.Errorf("trust bundle: %w", err)
-	}
-	state := store.TSL.State()
-	t.store, t.state, t.modTime, t.size, t.fetchedAt, t.loadedAt = store, &state, info.ModTime(), info.Size(), fetchedAt, now
-	return store, nil
-}
-
-func (t *BundleTrust) read(ctx context.Context, now time.Time) (*tipki.TrustStore, time.Time, error) {
-	file, err := os.Open(t.bundlePath)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	defer func() { _ = file.Close() }()
-	data, err := io.ReadAll(io.LimitReader(file, maxBundleBytes+1))
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	if len(data) > maxBundleBytes {
-		return nil, time.Time{}, fmt.Errorf("larger than %d bytes", maxBundleBytes)
-	}
-	bundle, err := tipki.ParseBundle(data)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	store, err := t.load(ctx, bundle, now, t.state)
-	if err != nil {
-		return nil, time.Time{}, err
-	}
-	return store, bundle.FetchedAt, nil
 }
 
 // ocspTransport carries OCSP over the client's HTTP. The answer proves itself, so plain HTTP is enough.

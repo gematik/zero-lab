@@ -132,6 +132,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (`Verification::trust` is an `Option` now). `EnvironmentUndetected` displays one short
   line; it carries the detection steps one per line (TASK-287).
 
+#### fixed
+- The web and Konnektor transports read every `Cache-Control` field line, joined as RFC 9110
+  §5.3 combines them, where they read only the first: a second line such as `no-cache` now
+  counts (TASK-274).
+
 ### ti-tls
 
 #### changed

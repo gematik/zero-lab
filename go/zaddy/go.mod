@@ -4,6 +4,7 @@ go 1.27.0
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.9
+	github.com/caddyserver/certmagic v0.25.6
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3
 	github.com/gematik/zero-lab/go/nonce v0.24.0
 	github.com/gematik/zero-lab/go/pep v0.28.1-0.20261116183316-63278b6c3071
@@ -30,7 +31,6 @@ require (
 	github.com/aryann/difflib v0.0.0-20210328193216-ff5ff6dc229b // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.25.0 // indirect
-	github.com/caddyserver/certmagic v0.25.6 // indirect
 	github.com/caddyserver/zerossl v0.1.6 // indirect
 	github.com/ccoveille/go-safecast/v2 v2.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

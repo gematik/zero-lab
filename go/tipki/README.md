@@ -166,6 +166,15 @@ under the SHA-256 the HTTPS host names, verifies everything as a bundle, refresh
 and fails closed once the copy is 24 hours past its last good refresh or the list's `NextUpdate` has passed.
 Its `Source` is the `titls.TrustSource` it swaps on each change, and withdraws at that moment.
 
+Package `bundlefile` is the host-side piece for a workload that mounts the bundle a producer writes (a
+ConfigMap or Secret): it loads the file at the start, which must succeed, and reads it again on demand or on
+an interval the host sets, comparing content rather than modification times, since a ConfigMap update
+repoints a symlink. A bundle that does not verify, is older than the one in use, or carries an older list
+never replaces the one in use, which stands for 24 hours from its `fetched_at` and never past the list's
+`NextUpdate`. The file may be gzipped, so that a bundle of about 800 kB fits a ConfigMap's 1 MiB at about
+190 kB; it is read as a single gzip member and refused once it would decompress to more than 16 MiB. Its
+`Source` is swapped and withdrawn as `fetch`'s is.
+
 ## Security posture
 
 - **Trust comes from verification only.** Trust starts at the pinned anchors, and a TSL counts only
@@ -185,8 +194,8 @@ This library has **not** undergone an independent third-party audit.
   [`spec/pki-path`](../../spec/pki-path). `ti-pki` writes the corpora and `tipki` must read the same.
   The `ti` cases of [`spec/pki-validation`](../../spec/pki-validation) hold `ServerCheck` to the same
   codes as `ti_pki::tls`.
-- **Fuzzing** of the parsers for certificates, admission, bundles, roots, TSL, detached signatures, OCSP
-  responses and identifiers.
+- **Fuzzing** of the parsers for certificates, admission, bundles (plain and gzipped), roots, TSL,
+  detached signatures, OCSP responses and identifiers.
 - **Live tests** run through `go/idpd`, against the TSL and the IDP-Dienst of the reference environment.
 
 ## References
@@ -203,6 +212,7 @@ tipki/      Certificates, profiles, TSL, chains, OCSP, Validator, ServerCheck
   oid/      The identifiers of gemSpec_OID
   titls/    TLS client configurations for the ti and web profiles of spec/pki-validation
   fetch/    Download and background refresh of an environment's trust material
+  bundlefile/ A mounted bundle file, plain or gzipped, read again when it changes
 ```
 
 ## Development
@@ -214,4 +224,5 @@ The [repository's rules](../../docs/README.md) apply, and versions are this modu
 go test ./...
 go test -run x -fuzz FuzzParseTSL -fuzztime 30s .
 go test -run x -fuzz FuzzWebCheck -fuzztime 30s ./titls
+go test -run x -fuzz FuzzDecode -fuzztime 30s ./bundlefile
 ```

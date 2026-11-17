@@ -118,8 +118,10 @@ the caller's transport. Without a route to the responder there is no verificatio
 - **IDPV-004** `puk_idp_enc` is published without a certificate, so nothing about its standing can be verified; this is a
   known gap, the same in `ti-idpd-client`. Its address comes from the verified discovery document, TLS carries it, and it must
   be a brainpoolP256r1 key with `use` `enc`.
-- **IDPV-005** The check is the `idpd-sig` profile with hard-fail OCSP, against the bundle `ti pki trust export` writes.
-  A bundle missing, invalid or too old (BUNDLE-003) refuses every certificate, and the last good one takes no part.
+- **IDPV-005** The check is the `idpd-sig` profile with hard-fail OCSP, against the bundle `ti pki trust export` writes,
+  plain or gzipped. A bundle missing or invalid at the start does not start. A replacement that is missing, invalid,
+  fetched before the bundle in use or carrying an older list (TSLSIG-053) does not replace it, and the bundle in use
+  stands only until it is too old (BUNDLE-003) or its list's `NextUpdate` has passed; then every certificate is refused.
 - **IDPV-006** The environment decides the anchors, and both sets are compiled in (decision-11): production trusts only
   GEM.RCA7 and GEM.TSL-CA3, test and reference only the TEST-ONLY pair. A missing or unknown environment does not start.
 - **IDPV-007** The material may be downloaded instead of mounted, never both. Hosts are fixed per environment (a
@@ -183,7 +185,7 @@ anchors, and every cross certificate against every root by the step that fails.
 | VALID-001 to 003 | `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID001EveryVerdictIsThatOfTiPki` |
 | VALID-008 | `valid_001_the_corpus_is_what_ti_pki_says`, `valid_008_ocsp_for_the_end_entity_alone` | `TestVALID001EveryVerdictIsThatOfTiPki`, `TestVALID008ACAExpiredUnderTheKompromissmodellIsNotAsked` |
 | VALID-007 | `valid_007_the_tsl_states_the_types_a_ca_may_issue`, `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID007TheTypesTheListStates`, `TestVALID007TheRealListDecidesWhatACAMayIssue` |
-| IDPV-001 to 008 | | `go/idpd/trust_test.go`, `go/idpd/fetch_test.go`, `go/tipki/fetch/trust_test.go`, `TestIDPV<n>…` |
+| IDPV-001 to 008 | | `go/idpd/trust_test.go`, `go/idpd/fetch_test.go`, `go/tipki/fetch/trust_test.go`, `go/tipki/bundlefile/trust_test.go`, `TestIDPV<n>…` and, for the mounted bundle, `TestServerRule8_…`, `TestServerRule16_…` |
 | VALID-004 | `valid_004_no_responder_is_asked_for_a_certificate_that_failed` | `TestVALID004NoResponderIsAskedForACertificateThatFailed` |
 | VALID-005 | `valid_005_a_profile_refuses_a_type_it_does_not_accept` | `TestVALID005AProfileRefusesATypeItDoesNotAccept` |
 | VALID-006 | `valid_006_a_ca_the_verified_tsl_does_not_name_gives_no_standing` | `TestVALID006ACATheVerifiedListDoesNotNameGivesNoStanding`, `TestVALID006ACAUnderTheRealList` |
