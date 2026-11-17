@@ -38,3 +38,30 @@ is not watched.
 	}
 }
 ```
+
+## DPoP replays
+
+zaddy accepts a DPoP proof once (RFC 9449 Section 11.1). By default it remembers the proofs it
+accepted in the memory of its process, so a proof replayed at another replica within its lifetime is
+accepted there; zaddy logs a warning that replay detection holds for this replica only. With
+`dpop_replays storage` in the global `pep` block, it keeps them in Caddy's storage instead, which
+every replica configured with the same storage shares, the way a Caddy cluster shares its
+certificates and locks: Caddy's default file system storage on a volume every replica mounts, or a
+storage module such as Redis, Consul or Postgres set with the global `storage` option.
+
+Each accepted proof is one key under `zaddy/dpop_replays/`, named by a SHA-256 hash and holding its
+expiry; it is checked and written under the storage's lock of that key, so two replicas cannot both
+accept the proof. A storage error, or a lock not obtained within 5 seconds, refuses the proof. Expired
+records are replaced when the same proof comes again and removed by a sweep every minute, at most
+1000 per replica and sweep. The storage must be reachable by the replicas only, as for Caddy's
+certificates: whoever can delete a record can replay that proof.
+
+```caddyfile
+{
+	storage file_system /mnt/shared/caddy
+	pep {
+		resource https://api.example.com
+		dpop_replays storage
+	}
+}
+```
