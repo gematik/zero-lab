@@ -1,9 +1,10 @@
 ---
 id: TASK-274
 title: 'ti-client: Cache-Control from all its field lines'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-08T13:47:00Z'
+updated_date: '2026-11-17T06:23:00Z'
 labels:
   - rust
   - ti-client
