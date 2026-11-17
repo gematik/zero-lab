@@ -4,19 +4,19 @@ go 1.27.0
 
 require (
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3
-	github.com/gematik/zero-lab/go/idpd v0.2.1-0.20261116183316-63278b6c3071
-	github.com/gematik/zero-lab/go/kv v0.3.0
+	github.com/gematik/zero-lab/go/idpd v0.2.1-0.20261117081247-5c7a3bfb5ce1
+	github.com/gematik/zero-lab/go/kv v0.3.1-0.20261117081247-5c7a3bfb5ce1
 	github.com/gematik/zero-lab/go/oidf v0.54.0
-	github.com/gematik/zero-lab/go/openid v0.55.0
-	github.com/gematik/zero-lab/go/pep v0.28.1-0.20261116183316-63278b6c3071
-	github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261116183316-63278b6c3071
+	github.com/gematik/zero-lab/go/openid v0.55.1
+	github.com/gematik/zero-lab/go/pep v0.28.1-0.20261117081247-5c7a3bfb5ce1
+	github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261117081247-5c7a3bfb5ce1
 	github.com/go-jose/go-jose/v4 v4.1.9
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	go.yaml.in/yaml/v4 v4.0.0
 )
 
 require (
-	github.com/gematik/zero-lab/go/brainpool v1.4.0 // indirect
+	github.com/gematik/zero-lab/go/brainpool v1.4.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.13.0 // indirect
