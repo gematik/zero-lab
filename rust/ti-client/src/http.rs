@@ -399,9 +399,20 @@ fn response_meta(headers: &HeaderMap) -> ResponseMeta {
     ResponseMeta {
         etag: text(ETAG).map(str::to_owned),
         last_modified: text(LAST_MODIFIED).map(str::to_owned),
-        max_age: text(CACHE_CONTROL).and_then(|value| CacheControl::parse(value).freshness()),
+        max_age: cache_control(headers).and_then(|value| CacheControl::parse(&value).freshness()),
         source: Source::Http,
     }
+}
+
+/// Every `Cache-Control` field line, joined with `, ` as RFC 9110 §5.3 combines them; none
+/// when a line is not visible ASCII, as for a single such line.
+pub(crate) fn cache_control(headers: &HeaderMap) -> Option<String> {
+    let lines = headers
+        .get_all(CACHE_CONTROL)
+        .iter()
+        .map(|v| v.to_str().ok())
+        .collect::<Option<Vec<_>>>()?;
+    (!lines.is_empty()).then(|| lines.join(", "))
 }
 
 /// ti-idpd-client's and ti-directory-client's transport over an agent such as
@@ -578,6 +589,26 @@ mod tests {
         assert_eq!(meta("no-cache"), Some(Duration::ZERO));
         assert_eq!(meta("max-age=60, max-age=600"), Some(Duration::ZERO));
         assert_eq!(meta("public"), None);
+    }
+
+    /// RFC 9110 §5.3: `Cache-Control` field lines are one value joined with `, `, so a
+    /// second line can make a response stale that the first alone would keep fresh.
+    #[test]
+    fn rfc9110_5_3_cache_control_field_lines_are_one_value() {
+        let meta = |lines: &[&'static str]| {
+            let mut headers = HeaderMap::new();
+            for line in lines {
+                headers.append(CACHE_CONTROL, line.parse().unwrap());
+            }
+            response_meta(&headers).max_age
+        };
+        assert_eq!(
+            meta(&["public", "max-age=3600"]),
+            Some(Duration::from_secs(3600))
+        );
+        assert_eq!(meta(&["max-age=3600", "no-cache"]), Some(Duration::ZERO));
+        assert_eq!(meta(&["max-age=60", "max-age=600"]), Some(Duration::ZERO));
+        assert_eq!(meta(&[]), None);
     }
 
     #[test]

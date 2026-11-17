@@ -44,9 +44,7 @@ use ti_connector_client::{Dotkon, Error, Method, Request, Response, Transport, T
 use ti_tls::konnektor::{self, Trust};
 use ureq::Agent;
 use ureq::config::ConfigBuilder;
-use ureq::http::header::{
-    CACHE_CONTROL, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
-};
+use ureq::http::header::{CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
 use ureq::typestate::AgentScope;
 use ureq::unversioned::resolver::DefaultResolver;
 use ureq::unversioned::transport::{
@@ -168,8 +166,11 @@ impl Transport for UreqTransport {
                 .and_then(|v| v.to_str().ok())
                 .map(str::to_owned)
         };
-        let (etag, last_modified, cache_control) =
-            (header(ETAG), header(LAST_MODIFIED), header(CACHE_CONTROL));
+        let (etag, last_modified, cache_control) = (
+            header(ETAG),
+            header(LAST_MODIFIED),
+            crate::http::cache_control(response.headers()),
+        );
         let status = response.status().as_u16();
         let body = response
             .body_mut()
