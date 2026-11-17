@@ -1,9 +1,10 @@
 ---
 id: TASK-279
 title: 'jwz: tests for the 39 mutants that survive outside the 0.2.0 changes'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-08T16:57:00Z'
+updated_date: '2026-11-17T06:28:00Z'
 labels:
   - jwz
   - testing

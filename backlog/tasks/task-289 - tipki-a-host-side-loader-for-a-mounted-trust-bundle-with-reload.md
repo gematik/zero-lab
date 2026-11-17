@@ -1,9 +1,10 @@
 ---
 id: TASK-289
 title: 'tipki: a host-side loader for a mounted trust bundle, with reload'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-11T19:44:00Z'
+updated_date: '2026-11-17T06:28:00Z'
 labels:
   - tipki
   - go

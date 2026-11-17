@@ -24,6 +24,7 @@
 package zaddy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -35,6 +36,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/caddyserver/certmagic"
 
 	"github.com/gematik/zero-lab/go/dpop"
 	"github.com/gematik/zero-lab/go/nonce"
@@ -59,10 +61,16 @@ type App struct {
 	// (RFC 9449 Section 9); without one, a key of this process alone, enough for a single replica. It is read at
 	// provisioning, so a rotated file takes effect with a config reload.
 	DPoPNonceKeyringPath string `json:"dpop_nonce_keyring_path"`
+	// DPoPReplays says where accepted DPoP proofs are remembered (RFC 9449 Section 11.1): "storage" in Caddy's
+	// storage, which every replica configured with the same storage shares; "memory" or empty in this process,
+	// which detects a proof replayed at this replica only.
+	DPoPReplays string `json:"dpop_replays,omitempty"`
 
-	logger    *slog.Logger
-	nonceKeys nonce.Keys
-	pep       *pep.PEP
+	logger      *slog.Logger
+	nonceKeys   nonce.Keys
+	storage     certmagic.Storage
+	stopReplays context.CancelFunc
+	pep         *pep.PEP
 }
 
 // CaddyModule registers App under the module ID "zero".
@@ -80,23 +88,44 @@ func (a *App) Start() error {
 	if err != nil {
 		return fmt.Errorf("DPoP nonces: %w", err)
 	}
-	// zaddy has no shared store: a proof replayed at another replica is not detected there.
-	a.logger.Warn("DPoP replay detection holds for this replica only")
 	a.pep, err = pep.NewBuilder().
 		Resource(a.Resource).
 		PublicOrigin(a.PublicOrigin).
 		WithJWKSetPath(a.JWKSPath).
 		WithDPoPNonces(nonces).
-		WithDPoPReplays(dpop.NewMemoryReplays(dpopReplaysLimit, nil)).
+		WithDPoPReplays(a.dpopReplays()).
 		WithSlogger(a.logger).
 		Build()
 	if err != nil {
+		// Caddy does not stop an app that failed to start.
+		if a.stopReplays != nil {
+			a.stopReplays()
+		}
 		return fmt.Errorf("failed to create PEP: %w", err)
 	}
 
 	a.logger.Info("PEP successfully created", "jwks_path", a.JWKSPath)
 
 	return nil
+}
+
+// dpopReplays are the replays DPoPReplays names. Those in storage are swept of expired records until Stop.
+func (a *App) dpopReplays() dpop.Replays {
+	if a.DPoPReplays != dpopReplaysStorage {
+		a.logger.Warn("DPoP replay detection holds for this replica only: set dpop_replays storage to share it through Caddy's storage")
+		return dpop.NewMemoryReplays(dpopReplaysLimit, nil)
+	}
+	attrs := []any{"storage", fmt.Sprintf("%T", a.storage)}
+	if fileStorage, ok := a.storage.(*certmagic.FileStorage); ok {
+		// Caddy's default storage: shared only if every replica mounts the same path.
+		attrs = append(attrs, "path", fileStorage.Path)
+	}
+	a.logger.Info("DPoP replays kept in Caddy's storage, shared by every replica on the same storage", attrs...)
+	replays := newStorageReplays(a.storage, nil, a.logger)
+	var ctx context.Context
+	ctx, a.stopReplays = context.WithCancel(context.Background())
+	go replays.run(ctx)
+	return replays
 }
 
 // dpopNonces are the resource server nonces of nonce_required, sealed under the keys read at provisioning.
@@ -126,6 +155,10 @@ func (a *App) loadNonceKeys() error {
 const (
 	// dpopReplaysLimit bounds the proofs remembered at once; beyond it, proofs are refused until older ones expire.
 	dpopReplaysLimit = 100_000
+	// dpopReplaysStorage and dpopReplaysMemory are the values of DPoPReplays.
+	dpopReplaysStorage = "storage"
+	dpopReplaysMemory  = "memory"
+
 	dpopNoncePurpose = "zaddy/dpop-nonce"
 	// dpopNonceTTL is how long a nonce is accepted: long enough for a client's next requests, short enough
 	// that a captured one soon stops working (RFC 9449 Section 8).
@@ -135,19 +168,32 @@ const (
 // Stop closes the PEP.
 func (a *App) Stop() error {
 	a.logger.Info("Stopping Zero app")
+	if a.stopReplays != nil {
+		a.stopReplays()
+	}
 	return a.pep.Close()
 }
 
-// Provision takes the app's logger from ctx and reads the DPoP nonce keys.
+// Provision takes the app's logger and storage from ctx and reads the DPoP nonce keys.
 func (a *App) Provision(ctx caddy.Context) error {
 	a.logger = ctx.Slogger()
+	if a.DPoPReplays == dpopReplaysStorage {
+		if a.storage = ctx.Storage(); a.storage == nil {
+			return errors.New("dpop_replays storage: Caddy has no storage configured")
+		}
+	}
 	return a.loadNonceKeys()
 }
 
-// Validate rejects a configuration without jwks_path.
+// Validate rejects a configuration without jwks_path or with an unknown dpop_replays.
 func (a *App) Validate() error {
 	if a.JWKSPath == "" {
 		return errors.New("jwks_path must be set")
+	}
+	switch a.DPoPReplays {
+	case "", dpopReplaysMemory, dpopReplaysStorage:
+	default:
+		return fmt.Errorf("dpop_replays must be %q or %q", dpopReplaysMemory, dpopReplaysStorage)
 	}
 	return nil
 }
@@ -189,6 +235,11 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.DPoPNonceKeyringPath = d.Val()
+		case "dpop_replays":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.DPoPReplays = d.Val()
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}

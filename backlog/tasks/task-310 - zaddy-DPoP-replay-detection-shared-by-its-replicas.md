@@ -1,10 +1,10 @@
 ---
 id: TASK-310
 title: 'zaddy: DPoP replay detection shared by its replicas'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-14T11:01:00Z'
-updated_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-17T06:28:00Z'
 labels: []
 dependencies: []
 ordinal: 325000
