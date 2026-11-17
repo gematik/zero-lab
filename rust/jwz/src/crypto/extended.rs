@@ -104,8 +104,10 @@ impl<B: Backend> Backend for Extended<B> {
     }
 }
 
-#[cfg(all(test, feature = "crypto-rustcrypto"))]
+#[cfg(test)]
 mod tests {
+    #![cfg(feature = "crypto-rustcrypto")]
+
     use super::*;
     use crate::crypto::CryptoError;
     use crate::crypto::rustcrypto::RustCrypto;

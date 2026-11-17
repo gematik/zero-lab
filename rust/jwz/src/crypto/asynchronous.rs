@@ -436,6 +436,19 @@ mod tests {
             backend.ecdsa_async(Curve::P256).unwrap().curve(),
             Curve::P256
         );
+        assert_eq!(
+            backend.eddsa_async(Curve::ED25519).unwrap().curve(),
+            Curve::ED25519
+        );
+        assert_eq!(
+            backend.ecdh_async(Curve::P256).unwrap().curve(),
+            Curve::P256
+        );
+        #[cfg(feature = "hmac")]
+        assert_eq!(
+            backend.mac_async(HashAlgorithm::Sha384).unwrap().hash(),
+            HashAlgorithm::Sha384
+        );
 
         let aead = backend
             .aead_async(ContentEncryptionAlgorithm::A128GCM)
