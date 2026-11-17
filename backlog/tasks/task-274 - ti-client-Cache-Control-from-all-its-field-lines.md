@@ -1,10 +1,10 @@
 ---
 id: TASK-274
 title: 'ti-client: Cache-Control from all its field lines'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-08T13:47:00Z'
-updated_date: '2026-11-17T06:23:00Z'
+updated_date: '2026-11-17T08:11:00Z'
 labels:
   - rust
   - ti-client
@@ -21,5 +21,11 @@ Found by TASK-251: http::response_meta reads only the first Cache-Control field 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 response_meta joins every Cache-Control line before ti_cache::CacheControl reads it, with a test named after RFC 9110 §5.3
+- [x] #1 response_meta joins every Cache-Control line before ti_cache::CacheControl reads it, with a test named after RFC 9110 §5.3
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+ti-client joins every Cache-Control field line (RFC 9110 §5.3) in the web and Konnektor transports, where it read only the first; test rfc9110_5_3_cache_control_field_lines_are_one_value; Unreleased note under ti-client.
+<!-- SECTION:FINAL_SUMMARY:END -->

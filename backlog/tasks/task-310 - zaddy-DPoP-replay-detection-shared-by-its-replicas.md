@@ -1,10 +1,10 @@
 ---
 id: TASK-310
 title: 'zaddy: DPoP replay detection shared by its replicas'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-14T11:01:00Z'
-updated_date: '2026-11-17T06:36:00Z'
+updated_date: '2026-11-17T08:11:00Z'
 labels: []
 dependencies: []
 ordinal: 325000
@@ -30,3 +30,9 @@ Decision (maintainer, 2026-11-17): follow Caddy best practice architecture. Cadd
 
 Built on fix/zaddy-shared-replays (cfe3211e, b1f5ccc4), merged into fix/elder-tasks: `pep { dpop_replays storage }` keeps accepted proofs in caddy.Context.Storage() under zaddy/dpop_replays/<sha256>, checked and written under the record lock (5 s bound, any storage error denies), swept each minute (≤1000 records). Explicit option, default memory with the per-replica warning, because Caddy cannot tell a local file_system path from a shared one. Tests TestRFC9449_11_1_* (two FileStorage replicas on one directory, concurrent proof accepted once, expiry), TestServersRule16_AStorageErrorRefusesTheProof, TestServersRule3_*.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zaddy: pep { dpop_replays storage } keeps accepted DPoP proofs in Caddy storage under a per-record lock, shared by replicas on the same storage; storage errors deny; default memory with a per-replica warning. Released with zaddy v0.9.0.
+<!-- SECTION:FINAL_SUMMARY:END -->
