@@ -4,8 +4,8 @@ github.com/gematik/zero-lab/go/openid v0.55.1 h1:4p8m19UtfVuT11ZjXsrZQA4fQttuZ+P
 github.com/gematik/zero-lab/go/openid v0.55.1/go.mod h1:/sIAqTwaunEa8iOxyOSYXFU5Vrcp+gE3sg0pqrfrM5c=
 github.com/gematik/zero-lab/go/pkcs12 v1.0.0-rc.5 h1:nc3lZaCdmOU/dd/Ngep7+Hg65r+Vhi+YNJ5ay4aEJGo=
 github.com/gematik/zero-lab/go/pkcs12 v1.0.0-rc.5/go.mod h1:G4ibZRZKWGE3pw/i+g+t5VC2Zywje36UewXmzwPYGk4=
-github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261117081247-5c7a3bfb5ce1 h1:jDDGJD7ZSSkwUHe0gNsfaJX53Ak7ytxTkz8jJ/NFI/c=
-github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261117081247-5c7a3bfb5ce1/go.mod h1:+XhbUkfPJrvJjAFKJ6UOXWy3RhNJQLbvs4ED8GO8lhI=
+github.com/gematik/zero-lab/go/tipki v0.33.0 h1:3195ATYbnLeNV6lrBRl62m79A3pm2Yd15q0i0yANKT8=
+github.com/gematik/zero-lab/go/tipki v0.33.0/go.mod h1:xlscOJXIvSBxQE65ByJeM5KUNdFarJboBnOVUY0oM0E=
 github.com/go-jose/go-jose/v4 v4.1.9 h1:pKfeQkig1NmgK4hJrZYXLEYURXfoJB61Larw0uIW4gY=
 github.com/go-jose/go-jose/v4 v4.1.9/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=
 golang.org/x/crypto v0.59.0 h1:xS2jhqYbzNrpvkWP2YTDf4TJwBy3ykR03i8vFDxEc7c=

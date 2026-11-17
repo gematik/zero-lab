@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/fxamacker/cbor/v2 v2.10.0
-	github.com/gematik/zero-lab/go/tipki v0.32.1-0.20261117081247-5c7a3bfb5ce1
+	github.com/gematik/zero-lab/go/tipki v0.33.0
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6
