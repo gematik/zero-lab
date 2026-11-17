@@ -1,6 +1,6 @@
 [package]
 name = "ti-idpd-client"
-version = "0.1.0"
+version = "0.2.0"
 description = "Client of the gematik IDP-Dienst (the central smartcard IDP): the Authenticator-Modul flow a Primärsystem runs, sans I/O"
 keywords = ["gematik", "telematik", "idp", "oidc", "brainpool"]
 categories = ["authentication", "wasm"]

@@ -168,61 +168,6 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The `ureq` feature and the module `ureq` (decision-15, TASK-249): `agent` and `UreqFetch`
   are ti-client's (`ti_client::tls`). ti-tls holds no HTTP client.
 
-### ti-idpd-client
-
-#### added
-- `model` (TASK-250): the read-only projections of a completed flow the front ends show,
-  `IdpInfo`, `CertificateInfo` (a certificate by subject and SHA-256 fingerprint) and
-  `ChallengeInfo`; the feature `serde` derives `Serialize` for them.
-- `probe` (TASK-266): the path a connectivity probe asks (`PATH`) and what a discovery
-  document there says (`answer`, `Answer`), read without verifying it: it tells the
-  IDP-Dienst from a gateway and trusts nothing.
-
-#### removed
-- The `ureq` feature and `ureq::UreqTransport` (decision-15, TASK-249): the crate has no HTTP
-  client. ti-client's `http::UreqTransport` is the blocking transport, without
-  `UreqTransport::agent`; `ti_client::http::idp_agent` makes the agent, verified under ti-tls's
-  `web` profile.
-
-#### security
-- The discovery document's signer is checked before its key verifies the document
-  (IDPV-001): `discovery::parse` takes the `trust::CertificateTrust` and asks it about the
-  `x5c` certificate first, so a refused certificate stops the flow whatever the signature
-  says. `Discovery::signer_checked` records the answer (TASK-223).
-
-#### fixed
-- A `Location` with a `%` before a non-ASCII character no longer panics: the query is decoded
-  byte by byte, and `%+F` is no longer read as an escape. Found by the new fuzz targets.
-- A code redirect whose `code` is empty is malformed, as one without `code` is.
-
-#### changed
-- Renamed from `ti-idpd`: product clients are named `ti-<product>-client` (decision-15). The
-  package and crate are `ti-idpd-client` and `ti_idpd_client`, the fuzz recipe
-  `just fuzz-ti-idpd-client`.
-- `discovery::parse` takes the `Idp` asked and refuses a signed document that names another
-  issuer.
-- `authenticator::authenticate` takes a `trust::CertificateTrust` and hands it the
-  discovery document's signer and `PuK_IDP_SIG`'s certificate before anything is
-  signed; a refusal is `Error::Untrusted`. `trust::Unverified` keeps the former
-  behaviour and its warning. `Authenticated::certificates` records what was checked;
-  `Discovery::warnings` is gone, `Discovery::signer_chain_der` is new.
-- `PuK_IDP_SIG` must carry `x5c` with a certificate for the JWK's key
-  (`discovery::key_certificates`).
-- The card signs asynchronously: `authenticator::Identity::signer` is a
-  `jwz::keys::AsyncSigner`, so a card at the Konnektor signs without blocking;
-  `authenticator::authenticate` and `challenge::respond` are `async`. Every `Signer` is
-  an `AsyncSigner`, and with one the future is ready at its first poll (TASK-60).
-- `http::Transport::send` is `async` without a `Send` bound, as the other TI crates'
-  transports, so a browser's fetch can carry the flow (decision-15, TASK-245).
-- `trust::CertificateTrust::check` is `async` without a `Send` bound: a check may need the
-  TSL or OCSP, and a browser host cannot block for them. `discovery::parse` is `async`, as it
-  asks the trust check; `authenticator::authenticate` takes the check as a generic `&C`
-  rather than `&dyn CertificateTrust` (decision-15).
-- Time is a function `impl Fn() -> Timestamp` (ti-types) in `authenticator::authenticate`,
-  `discovery::parse` and `challenge::parse`, no longer a `now: u64`: each token is judged
-  at the time read when it arrives, not at the start of a login that may wait for a PIN
-  (decision-15).
-
 ### ti-directory-client
 
 #### added
@@ -880,6 +825,61 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   on wasm32-unknown-unknown, where std has no clock and every call would panic). Time
   enters the TI crates as a function `impl Fn() -> Timestamp`, so hosts pass
   `Timestamp::now` and tests a closure (decision-15).
+
+## Release ti-idpd-client 0.2.0, 2026-11-17
+
+### added
+- `model` (TASK-250): the read-only projections of a completed flow the front ends show,
+  `IdpInfo`, `CertificateInfo` (a certificate by subject and SHA-256 fingerprint) and
+  `ChallengeInfo`; the feature `serde` derives `Serialize` for them.
+- `probe` (TASK-266): the path a connectivity probe asks (`PATH`) and what a discovery
+  document there says (`answer`, `Answer`), read without verifying it: it tells the
+  IDP-Dienst from a gateway and trusts nothing.
+
+### removed
+- The `ureq` feature and `ureq::UreqTransport` (decision-15, TASK-249): the crate has no HTTP
+  client. ti-client's `http::UreqTransport` is the blocking transport, without
+  `UreqTransport::agent`; `ti_client::http::idp_agent` makes the agent, verified under ti-tls's
+  `web` profile.
+
+### security
+- The discovery document's signer is checked before its key verifies the document
+  (IDPV-001): `discovery::parse` takes the `trust::CertificateTrust` and asks it about the
+  `x5c` certificate first, so a refused certificate stops the flow whatever the signature
+  says. `Discovery::signer_checked` records the answer (TASK-223).
+
+### fixed
+- A `Location` with a `%` before a non-ASCII character no longer panics: the query is decoded
+  byte by byte, and `%+F` is no longer read as an escape. Found by the new fuzz targets.
+- A code redirect whose `code` is empty is malformed, as one without `code` is.
+
+### changed
+- Renamed from `ti-idpd`: product clients are named `ti-<product>-client` (decision-15). The
+  package and crate are `ti-idpd-client` and `ti_idpd_client`, the fuzz recipe
+  `just fuzz-ti-idpd-client`.
+- `discovery::parse` takes the `Idp` asked and refuses a signed document that names another
+  issuer.
+- `authenticator::authenticate` takes a `trust::CertificateTrust` and hands it the
+  discovery document's signer and `PuK_IDP_SIG`'s certificate before anything is
+  signed; a refusal is `Error::Untrusted`. `trust::Unverified` keeps the former
+  behaviour and its warning. `Authenticated::certificates` records what was checked;
+  `Discovery::warnings` is gone, `Discovery::signer_chain_der` is new.
+- `PuK_IDP_SIG` must carry `x5c` with a certificate for the JWK's key
+  (`discovery::key_certificates`).
+- The card signs asynchronously: `authenticator::Identity::signer` is a
+  `jwz::keys::AsyncSigner`, so a card at the Konnektor signs without blocking;
+  `authenticator::authenticate` and `challenge::respond` are `async`. Every `Signer` is
+  an `AsyncSigner`, and with one the future is ready at its first poll (TASK-60).
+- `http::Transport::send` is `async` without a `Send` bound, as the other TI crates'
+  transports, so a browser's fetch can carry the flow (decision-15, TASK-245).
+- `trust::CertificateTrust::check` is `async` without a `Send` bound: a check may need the
+  TSL or OCSP, and a browser host cannot block for them. `discovery::parse` is `async`, as it
+  asks the trust check; `authenticator::authenticate` takes the check as a generic `&C`
+  rather than `&dyn CertificateTrust` (decision-15).
+- Time is a function `impl Fn() -> Timestamp` (ti-types) in `authenticator::authenticate`,
+  `discovery::parse` and `challenge::parse`, no longer a `now: u64`: each token is judged
+  at the time read when it arrives, not at the start of a login that may wait for a PIN
+  (decision-15).
 
 ## Release ti-cli 0.6.2, 2026-11-14
 
