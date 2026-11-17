@@ -1,10 +1,10 @@
 ---
 id: TASK-259
 title: OAuth clients and servers checked against RFC 9700 (OAuth 2.0 Security BCP)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-07T18:04:00Z'
-updated_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-17T06:29:00Z'
 labels:
   - security
   - spec
