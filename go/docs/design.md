@@ -204,8 +204,12 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   call, the response decoded into a type whose missing `result` is a deny like any
   transport error or non-200 status (rule 16).
 - Trust material comes from a mounted directory written by the producer job, and the
-  server keeps none of it on disk; the signing key is a `crypto.Signer` backed by a KMS
-  API or the key provider sidecar, and a missing key fails start-up (rules 6 and 17).
+  server keeps none of it on disk; `tipki/bundlefile` reads the bundle, plain or gzipped
+  (a bundle of about 800 kB fits a ConfigMap's 1 MiB only gzipped; decompression is
+  bounded at 16 MiB), and reads it again when its content changes, keeping the store in
+  use when a replacement does not verify. The signing key is a `crypto.Signer` backed by
+  a KMS API or the key provider sidecar, and a missing key fails start-up (rules 6
+  and 17).
 - Images are `scratch` with a static `CGO_ENABLED=0 -trimpath` binary, `USER 65532`,
   base images pinned by digest, signed with provenance and an SBOM. Test-only code sits
   behind build tags and is not in production builds, apart from the TEST-ONLY trust

@@ -142,10 +142,11 @@ func mustWebClient(t *testing.T) *http.Client {
 func mustLiveTrust(t *testing.T) idpd.CertificateTrust {
 	t.Helper()
 	if path := os.Getenv("IDPD_TRUST_BUNDLE_PATH"); path != "" {
-		trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, path, mustWebClient(t))
+		trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, path, mustWebClient(t), nil)
 		if err != nil {
 			t.Fatalf("IDPD_TRUST_BUNDLE_PATH: %v", err)
 		}
+		t.Cleanup(trust.Close)
 		return trust
 	}
 	trust, err := idpd.NewFetchingTrust(idpd.EnvironmentReference, mustWebClient(t))
