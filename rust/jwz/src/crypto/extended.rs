@@ -103,3 +103,75 @@ impl<B: Backend> Backend for Extended<B> {
         self.base.key_wrap(kek_len)
     }
 }
+
+#[cfg(all(test, feature = "crypto-rustcrypto"))]
+mod tests {
+    use super::*;
+    use crate::crypto::CryptoError;
+    use crate::crypto::rustcrypto::RustCrypto;
+
+    const TEST_CURVE: Curve = Curve::new("X-TEST-256");
+
+    /// The base's P-256 ECDSA under another curve name.
+    struct Renamed;
+
+    impl Ecdsa for Renamed {
+        fn curve(&self) -> Curve {
+            TEST_CURVE
+        }
+        fn hash(&self) -> HashAlgorithm {
+            HashAlgorithm::Sha256
+        }
+        fn public_key(&self, secret: &[u8]) -> Result<Vec<u8>, CryptoError> {
+            RustCrypto::new()
+                .ecdsa(Curve::P256)
+                .unwrap()
+                .public_key(secret)
+        }
+        fn sign(&self, secret: &[u8], msg: &[u8], rng: &dyn Rng) -> Result<Vec<u8>, CryptoError> {
+            RustCrypto::new()
+                .ecdsa(Curve::P256)
+                .unwrap()
+                .sign(secret, msg, rng)
+        }
+        fn verify(&self, public: &[u8], msg: &[u8], sig: &[u8]) -> Result<(), CryptoError> {
+            RustCrypto::new()
+                .ecdsa(Curve::P256)
+                .unwrap()
+                .verify(public, msg, sig)
+        }
+    }
+
+    /// An added provider answers for its own curve only; every other curve and every
+    /// other primitive is the base's.
+    #[test]
+    fn an_added_curve_answers_for_itself_and_the_base_for_everything_else() {
+        let backend = Extended::new(RustCrypto::new()).with_ecdsa(Box::new(Renamed));
+        assert_eq!(backend.ecdsa(TEST_CURVE).unwrap().curve(), TEST_CURVE);
+        assert_eq!(backend.ecdsa(Curve::P256).unwrap().curve(), Curve::P256);
+        assert!(backend.ecdsa(Curve::P384).is_none());
+        assert!(backend.ecdh(TEST_CURVE).is_none());
+
+        assert_eq!(
+            backend.hash(HashAlgorithm::Sha384).unwrap().algorithm(),
+            HashAlgorithm::Sha384
+        );
+        #[cfg(feature = "hmac")]
+        assert_eq!(
+            backend.mac(HashAlgorithm::Sha512).unwrap().hash(),
+            HashAlgorithm::Sha512
+        );
+        assert_eq!(
+            backend.eddsa(Curve::ED25519).unwrap().curve(),
+            Curve::ED25519
+        );
+        assert_eq!(
+            backend
+                .aead(ContentEncryptionAlgorithm::A256GCM)
+                .unwrap()
+                .enc(),
+            ContentEncryptionAlgorithm::A256GCM
+        );
+        assert_eq!(backend.key_wrap(24).unwrap().kek_len(), 24);
+    }
+}

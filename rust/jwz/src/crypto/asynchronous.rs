@@ -423,4 +423,33 @@ mod tests {
         assert!(backend.ecdsa_async(Curve::P256).is_none());
         assert_eq!(backend.rng_async().fill(&mut [0; 4]), Err(CryptoError::Rng));
     }
+
+    /// The bridge hands out the backend's own primitive for each kind it offers, so a
+    /// host that writes against the async traits gets the algorithm it asked for.
+    #[cfg(feature = "crypto-rustcrypto")]
+    #[test]
+    fn every_sync_primitive_is_offered_through_the_async_backend() {
+        use futures_lite::future::block_on;
+
+        let backend = crate::crypto::rustcrypto::RustCrypto::new();
+        assert_eq!(
+            backend.ecdsa_async(Curve::P256).unwrap().curve(),
+            Curve::P256
+        );
+
+        let aead = backend
+            .aead_async(ContentEncryptionAlgorithm::A128GCM)
+            .unwrap();
+        assert_eq!(aead.enc(), ContentEncryptionAlgorithm::A128GCM);
+        let (key, iv) = ([1u8; 16], [2u8; 12]);
+        let sealed = block_on(aead.seal(&key, &iv, b"aad", b"plaintext")).unwrap();
+        let opened =
+            block_on(aead.open(&key, &iv, b"aad", &sealed.ciphertext, &sealed.tag)).unwrap();
+        assert_eq!(*opened, b"plaintext");
+
+        let wrap = backend.key_wrap_async(16).unwrap();
+        assert_eq!(wrap.kek_len(), 16);
+        let wrapped = block_on(wrap.wrap(&key, &[3u8; 16])).unwrap();
+        assert_eq!(*block_on(wrap.unwrap(&key, &wrapped)).unwrap(), [3u8; 16]);
+    }
 }
