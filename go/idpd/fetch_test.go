@@ -48,7 +48,7 @@ func fetched(t *testing.T) *FetchingTrust {
 	}
 	base.checker = answering(tipki.RevocationGood)
 	base.now = func() time.Time { return captured }
-	store, err := base.load(t.Context(), &tipki.Bundle{
+	store, err := tipki.LoadTrustStore(&tipki.Bundle{
 		Label:           "fetched",
 		AnchorSHA256:    sha256.Sum256(tipki.AnchorNonProd),
 		Roots:           readFile(t, "../../rust/ti-pki/src/roots-nonprod.json"),
@@ -56,7 +56,7 @@ func fetched(t *testing.T) *FetchingTrust {
 		TSLSignature:    readFile(t, refList+".sig"),
 		TSLSignerStatus: readFile(t, refList+".ocsp"),
 		FetchedAt:       captured,
-	}, captured, nil)
+	}, base.anchor, base.signerAnchors, captured, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
