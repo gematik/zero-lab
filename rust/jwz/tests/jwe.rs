@@ -30,17 +30,21 @@
 use std::sync::Arc;
 
 use jwz::ErrorCode;
+use jwz::crypto::asynchronous::BoxFuture;
 use jwz::crypto::rustcrypto::RustCrypto;
-use jwz::crypto::{Backend, CryptoError, Ecdh, Extended, KeyPair, Rng};
+use jwz::crypto::{
+    Aead, Backend, CryptoError, Ecdh, Ecdsa, EdDsa, Extended, Hash, KeyPair, KeyWrap, Mac, Rng,
+    Zeroizing,
+};
 use jwz::header::HeaderParams;
 use jwz::jwa::{
-    ContentEncryptionAlgorithm as Enc, Curve, CurveEntry, KeyEncryptionAlgorithm as Alg, KeyType,
-    Registry, Support,
+    ContentEncryptionAlgorithm as Enc, ContentEncryptionEntry, ContentEncryptionKind, Curve,
+    CurveEntry, HashAlgorithm, KeyEncryptionAlgorithm as Alg, KeyType, Registry, Support,
 };
 use jwz::jwe::json::Recipient;
 use jwz::jwe::{self, DecryptionKey, EncryptionKey, Jwe};
 use jwz::jwk::Jwk;
-use jwz::keys::{SoftwareAgreementKey, SymmetricKey};
+use jwz::keys::{AsyncKeyAgreement, KeyAgreement, SoftwareAgreementKey, SymmetricKey};
 use jwz::profile::{AES_GCM, AES_KW, DIRECT, Policy, Profile};
 use serde_json::{Value, json};
 
@@ -918,6 +922,214 @@ fn decrypt_async_with_a_key_agreement() {
     let decrypted =
         futures_lite::future::block_on(jwe.decrypt_async(&recipient, backend.as_ref())).unwrap();
     assert_eq!(decrypted.plaintext(), b"async");
+}
+
+/// Bob's key of RFC 7518 Appendix C with `kid` `bob`.
+fn bob_with_kid() -> SoftwareAgreementKey<RustCrypto> {
+    let mut jwk = Jwk::parse(BOB).unwrap();
+    jwk.kid = Some("bob".into());
+    SoftwareAgreementKey::from_jwk(&jwk, &Registry::standard(), backend()).unwrap()
+}
+
+/// An agreement key that states no `kid` (the trait's default), as an HSM handle might.
+struct Unnamed<'k>(&'k SoftwareAgreementKey<RustCrypto>);
+
+impl KeyAgreement for Unnamed<'_> {
+    fn curve(&self) -> Curve {
+        KeyAgreement::curve(self.0)
+    }
+    fn agree(&self, peer: &[u8]) -> Result<Zeroizing<Vec<u8>>, jwz::Error> {
+        self.0.agree(peer)
+    }
+}
+
+/// [`Unnamed`] for a key that answers asynchronously.
+struct UnnamedAsync<'k>(&'k SoftwareAgreementKey<RustCrypto>);
+
+impl AsyncKeyAgreement for UnnamedAsync<'_> {
+    fn curve(&self) -> Curve {
+        KeyAgreement::curve(self.0)
+    }
+    fn agree_async<'a>(
+        &'a self,
+        peer: &'a [u8],
+    ) -> BoxFuture<'a, Result<Zeroizing<Vec<u8>>, jwz::Error>> {
+        self.0.agree_async(peer)
+    }
+}
+
+/// RFC 7516 §4.1.6: the recipient key's `kid` goes into the header unless the caller sets
+/// one, and a recipient whose `kid` is not the header's is refused, sync and async alike.
+#[test]
+fn rfc_7516_4_1_6_kid_names_the_recipient_key() {
+    let registry = Registry::standard();
+    let backend = backend();
+    let bob = bob_with_kid();
+    let encrypt = |header: HeaderParams| {
+        jwe::encrypt(
+            b"kid",
+            Enc::A128GCM,
+            &jwe::Recipient {
+                alg: Alg::ECDH_ES,
+                key: EncryptionKey::Public(&bob.public_jwk()),
+                header,
+            },
+            &interop(),
+            &registry,
+            backend.as_ref(),
+        )
+        .unwrap()
+    };
+    let parse = |token: &str| Jwe::parse(token, &interop(), &registry).unwrap();
+    let own = encrypt(HeaderParams::new());
+    let other = encrypt(HeaderParams::new().kid("other"));
+    assert_eq!(parse(&own).header().kid(), Some("bob"));
+    assert_eq!(parse(&other).header().kid(), Some("other"));
+
+    let decrypted = parse(&own)
+        .decrypt(DecryptionKey::Agreement(&bob), backend.as_ref())
+        .unwrap();
+    assert_eq!(*decrypted.into_plaintext(), b"kid");
+    let decrypt_async = |token: &str| {
+        futures_lite::future::block_on(parse(token).decrypt_async(&bob, backend.as_ref()))
+            .map(|d| d.plaintext().to_vec())
+    };
+    assert_eq!(decrypt_async(&own).unwrap(), b"kid");
+    assert_eq!(code(decrypt_async(&other)), Err(ErrorCode::KeyMismatch));
+}
+
+/// RFC 7516 §4.1.6: `kid` is a hint. A recipient key that has none is not refused for a
+/// header that names one; the tag decides.
+#[test]
+fn rfc_7516_4_1_6_a_key_without_a_kid_is_not_refused_for_one() {
+    let registry = Registry::standard();
+    let backend = backend();
+    let bob = bob_with_kid();
+    let token = jwe::encrypt(
+        b"unnamed",
+        Enc::A128GCM,
+        &jwe::Recipient {
+            alg: Alg::ECDH_ES,
+            key: EncryptionKey::Public(&bob.public_jwk()),
+            header: HeaderParams::new(),
+        },
+        &interop(),
+        &registry,
+        backend.as_ref(),
+    )
+    .unwrap();
+    let parse = || Jwe::parse(&token, &interop(), &registry).unwrap();
+    assert_eq!(parse().header().kid(), Some("bob"));
+    let decrypted = parse()
+        .decrypt(DecryptionKey::Agreement(&Unnamed(&bob)), backend.as_ref())
+        .unwrap();
+    assert_eq!(decrypted.plaintext(), b"unnamed");
+    let decrypted = futures_lite::future::block_on(
+        parse().decrypt_async(&UnnamedAsync(&bob), backend.as_ref()),
+    )
+    .unwrap();
+    assert_eq!(decrypted.plaintext(), b"unnamed");
+}
+
+/// RFC 7518 §4.6.1.1: an `epk` on a curve the registry knows but jwz does not implement
+/// (P-384) is refused as an unknown curve, even under a policy that lists it.
+#[test]
+fn rfc_7518_4_6_1_1_an_epk_on_a_reserved_curve_is_refused_whatever_the_policy_lists() {
+    let registry = Registry::standard();
+    let mut policy = interop();
+    policy.key_agreement_curves.push(Curve::P384);
+    let mut header = appendix_c_header();
+    header["epk"]["crv"] = json!("P-384");
+    header["epk"]["x"] = json!(b64(&[1; 48]));
+    header["epk"]["y"] = json!(b64(&[2; 48]));
+    let token = handmade(&header, b"", None);
+    assert_eq!(
+        code(Jwe::parse(&token, &policy, &registry)).map(|_| ()),
+        Err(ErrorCode::UnknownCurve)
+    );
+}
+
+/// A backend that seals every `enc` it is asked for with AES-128-GCM: a stand-in for a
+/// backend that offers a cipher under any name.
+struct AnyNameGcm(RustCrypto);
+
+impl Backend for AnyNameGcm {
+    fn rng(&self) -> &dyn Rng {
+        self.0.rng()
+    }
+    fn hash(&self, alg: HashAlgorithm) -> Option<&dyn Hash> {
+        self.0.hash(alg)
+    }
+    fn mac(&self, alg: HashAlgorithm) -> Option<&dyn Mac> {
+        self.0.mac(alg)
+    }
+    fn ecdsa(&self, curve: Curve) -> Option<&dyn Ecdsa> {
+        self.0.ecdsa(curve)
+    }
+    fn eddsa(&self, curve: Curve) -> Option<&dyn EdDsa> {
+        self.0.eddsa(curve)
+    }
+    fn ecdh(&self, curve: Curve) -> Option<&dyn Ecdh> {
+        self.0.ecdh(curve)
+    }
+    fn aead(&self, _: Enc) -> Option<&dyn Aead> {
+        self.0.aead(Enc::A128GCM)
+    }
+    fn key_wrap(&self, kek_len: usize) -> Option<&dyn KeyWrap> {
+        self.0.key_wrap(kek_len)
+    }
+}
+
+/// RFC 7516 §4.1.2: `enc` is an AEAD algorithm. jwz encrypts only with an `enc` the
+/// registry holds as an available AEAD: one registered as reserved, or as available but
+/// of another construction, is refused before the backend is asked, even by a backend
+/// that would seal under its name and a policy that lists it.
+#[test]
+fn rfc_7516_4_1_2_only_an_available_aead_encrypts() {
+    let entry = |name: &'static str, kind, support| ContentEncryptionEntry {
+        enc: Enc::new(name),
+        kind,
+        key_len: 16,
+        iv_len: 12,
+        tag_len: 16,
+        support,
+    };
+    let mut registry = Registry::standard();
+    for e in [
+        entry("X-RESERVED", ContentEncryptionKind::Aead, Support::Reserved),
+        entry("X-CBC", ContentEncryptionKind::CbcHmac, Support::Available),
+        entry("X-GCM", ContentEncryptionKind::Aead, Support::Available),
+    ] {
+        registry.register_content_encryption(e).unwrap();
+    }
+    let mut policy = interop();
+    for name in ["X-RESERVED", "X-CBC", "X-GCM"] {
+        policy.content_encryption_algorithms.push(Enc::new(name));
+    }
+    let backend = AnyNameGcm(RustCrypto::new());
+    let key = SymmetricKey::new(vec![9; 16]);
+    let encrypt = |enc: &'static str| {
+        code(jwe::encrypt(
+            b"x",
+            Enc::new(enc),
+            &jwe::Recipient {
+                alg: Alg::DIR,
+                key: EncryptionKey::Symmetric(&key),
+                header: HeaderParams::new(),
+            },
+            &policy,
+            &registry,
+            &backend,
+        ))
+    };
+    assert!(encrypt("X-GCM").is_ok());
+    for enc in ["X-RESERVED", "X-CBC"] {
+        assert_eq!(
+            encrypt(enc).map(|_| ()),
+            Err(ErrorCode::UnsupportedAlgorithm),
+            "{enc}"
+        );
+    }
 }
 
 /// P-256 ECDH under another curve name: a stand-in for a curve the base backend lacks.
