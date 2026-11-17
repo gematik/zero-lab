@@ -1,5 +1,105 @@
 # Release Notes
 
+# Release 2026-11-17: errors without peer input (rule 14), mounted trust bundles, shared DPoP replays in zaddy, pkcs12 P12-041 parity
+
+Errors refusing a peer's input name the field, a fixed reason, an HTTP status or a registered error code; they
+no longer quote what the peer sent, nor the JSON decoder's message, which quotes member names and values
+(TASK-337, servers.md rule 14). The decoder's error still unwraps, so `errors.Is` and `errors.As` work as before.
+Apart from tipki's new package, idpd's BundleTrust and zaddy's new option, no exported API changes.
+
+## go/brainpool v1.4.1
+
+### fixed
+- A refused JWK or token no longer names the key type, curve or alg it carried (TASK-337).
+
+## go/tipki v0.33.0
+
+### added
+- `bundlefile` (TASK-289): the current TrustStore of a mounted trust bundle, plain or gzipped (one member, 16 MiB
+  read and decompressed), read again when its content changes, so a ConfigMap's symlink swap is seen. A replacement
+  that does not verify, is older or carries an older list never replaces the store in use, which stands until
+  `fetched_at` plus 24 h or the list's NextUpdate. `New` fails when no valid bundle loads; `Current` never hands out
+  an empty store.
+
+### fixed
+- A refused bundle or `roots.json` is not quoted, and a bundle too old is refused without its label (TASK-337).
+
+## go/openid v0.55.1
+
+### fixed
+- ID token claims that do not decode are named, not quoted; a key set's server is named by its status code, not
+  its reason phrase; an unknown issuer is not repeated (TASK-337).
+
+## go/pep v0.28.1
+
+### fixed
+- A refused token's kid, alg and claims stay out of errors; each refusal names the claim or a fixed reason
+  (TASK-337).
+
+## go/pep/proxy v0.5.1
+
+### fixed
+- A refusal by the PAR, authorization or token endpoint names the endpoint, the status and a registered OAuth
+  error code; the body, an unregistered code and `error_description` stay out of errors and the callback's log.
+  Gateway claims and an undecodable OAuth error are named, not quoted (TASK-337).
+
+## go/idpd v0.3.0
+
+### breaking
+- `NewBundleTrust` takes a `*slog.Logger`; `ClientConfig.Logger` is new; `BundleTrust` has `Close` (TASK-289).
+
+### changed
+- `BundleTrust` reads its bundle through `tipki/bundlefile`: gzipped bundles are accepted, the file is read again
+  every minute, and a bad or missing replacement keeps the bundle in use until its age limit instead of refusing at
+  once (IDPV-005, TASK-289).
+- idpd logs nothing on the default logger (TASK-338): the PEM errors of `SignWithSoftkeyPEM` reach the caller
+  through the signer, and the debug lines, one of them the whole discovery document, are gone.
+
+### fixed
+- An IDP-Dienst's error, in a body or a redirect, is named by its status and a numeric `gematik_code`;
+  `error` and `gematik_error_text` stay in the fields (TASK-337).
+
+## go/zaddy v0.9.0
+
+### added
+- `dpop_replays storage` in the global `pep` block (TASK-310): accepted DPoP proofs are kept in Caddy's configured
+  storage, shared by every replica on the same storage, so a proof replayed at another replica is refused (RFC 9449
+  §11.1). Each record is checked and written under its storage lock; any storage error refuses the proof (rule 16);
+  expired records are swept every minute. Without the option replays stay in memory per replica, with a warning.
+
+## go/epa v0.28.0
+
+### changed
+- `vau`: the IV's counter is written big-endian, as gematik lib-vau writes it (A_24628-01, TASK-346). Receivers
+  read the IV from the record, so both orders interoperate.
+- cloudflare/circl leaves go/epa: the Kyber tests decapsulate committed vectors made once with circl v1.6.5
+  (TASK-349).
+- The proxy's answers name an Aktensystem's errorCode again when I_Authorization_Service,
+  I_Entitlement_Management or I_Information_Service register it, so a client tells a missing record from a
+  missing entitlement or a locked account; another code is named generically, `errorDetail` never (TASK-337).
+
+### fixed
+- An Aktensystem's answers, VAU error messages, decoder messages and the KVNR stay out of errors and logs; a
+  VAU error message is named by its code (TASK-337).
+
+## go/pkcs12 v1.0.0-rc.5
+
+### changed
+- The P12-041 check of PrivateKeyInfo follows the rules now stated in spec/pkcs12 (TASK-334): OIDs of 1 to 39
+  octets with minimal arcs of at most 2^32-1, parameters one DER element, a fixed set of universal types, depth
+  64. A keyBag's segmented publicKey [1] is joined before the check (TASK-335).
+- Refused now, as ti-pkcs12 refuses them (TASK-335): BIT STRING segments with more than 7 unused bits or unused
+  bits without content, and non-minimal high tag numbers. Depth is counted per layer from the outermost element
+  (P12-004).
+- Go and Rust agree on the 62 check and 22 keyBag vectors in `spec/pkcs12/testdata/private-key-info.json`, which
+  seed `FuzzCheckPrivateKeyInfo`, and on 300,000 mutated inputs.
+
+## verified
+- `just check` across all Go modules passed on 2f5a36fe and again on 34d7228e, the branch with TASK-289 and TASK-310 as merged (main 6c6c7a43 has the same Go code); there idpd's `mod-check` waited on the tipki tag with `bundlefile`, which `just sync` pins in this release. `go get -u` changed nothing in the modules released; `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- OpenID Federation (`TestFederation`, `TestNewAtALiveFederationMaster`) against app-ref, kv on Postgres 17.
+- idpd: trust download (IDPV-007), IDP certificates with the exported reference bundle (IDPV-005), SMC-B login, on 2f5a36fe and again on ae88a976 with `bundlefile`.
+- ePA connect at provider 1 and provider 2 with `EPA_VAU_CERT_VERIFY=enforce`. ePA entitlement passed, run by the maintainer on 2026-11-17.
+
 # Release go/epa v0.27.0
 
 ### breaking
