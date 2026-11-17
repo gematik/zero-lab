@@ -16,14 +16,14 @@
 "ti-pki" = 0.8
 
 [scores."jwz"]
-version = "0.1.0"
-commit = "3a6f9f8d5bfb5c2d977ed30e0c5933ee4853deb0"
-date = "2026-11-08"
-caught = 621
-missed = 33
-timeout = 32
+version = "0.2.1"
+commit = "912209f79649f51027ac1eb87f47f5510c8250a0"
+date = "2026-11-17"
+caught = 658
+missed = 0
+timeout = 23
 unviable = 549
-score = 0.9519
+score = 1.0
 
 [scores."ti-pkcs12"]
 version = "0.1.0"
