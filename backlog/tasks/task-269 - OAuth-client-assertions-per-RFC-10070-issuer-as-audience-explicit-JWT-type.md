@@ -1,9 +1,10 @@
 ---
 id: TASK-269
 title: 'OAuth client assertions per RFC 10070: issuer as audience, explicit JWT type'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-08T09:35:00Z'
+updated_date: '2026-11-17T06:44:00Z'
 labels:
   - oauth
   - zeta
@@ -26,3 +27,9 @@ RFC 10070 (2026-11-07, https://www.rfc-editor.org/rfc/rfc10070.html) updates RFC
 - [ ] #2 servers accept only their issuer identifier as audience and check the type as the RFC prescribes, with tests named after the RFC's requirements
 - [ ] #3 the ZETA / OAuth 2.0 design in Rust follows the RFC from the start
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Not applicable (maintainer, 2026-11-17). RFC 10070 closes a mix-up where a client talking to several authorization servers sends an assertion whose aud a malicious AS chose. zero-pep-proxy, the only RFC 7523 client here, talks to one configured AS (PEP_AS_ISSUER), refuses metadata naming another issuer, and its aud is already that issuer, so the attack does not reach it. Its server will be zeta-pdp-go, which checks gemSpec_ZETA client-assertion-jwt.yaml (aud = token endpoint, typ JWT); pep/proxy follows that profile. RFC 10070 applies to any future client of a non-ZETA server and to the Rust OAuth design when it starts.
+<!-- SECTION:FINAL_SUMMARY:END -->
