@@ -100,10 +100,9 @@ fn rfc_8037_a_3_thumbprint_and_a_4_signature() {
         "hgyY0il_MGCjP0JzlnLWG1PPOt7-09PGcvMg3AIbQR6dWbhijcNR4ki4iylGjg5BhVsPt9g7sVvpAr_MuM0KAg",
     );
     // Ed25519 is deterministic: the signature must be the RFC's exactly.
-    assert_eq!(
-        jwz::keys::Signer::try_sign(&key, input).unwrap().as_bytes(),
-        expected
-    );
+    let signature = jwz::keys::Signer::try_sign(&key, input).unwrap();
+    assert_eq!(signature.as_bytes(), expected);
+    assert_eq!(Vec::<u8>::from(signature), expected);
     key.verify(input, &Signature::from(expected)).unwrap();
 }
 
@@ -803,6 +802,46 @@ fn rfc_7518_6_3_2_crt_parameters_come_together_or_not_at_all() {
     }
 }
 
+/// The public key of a private RSA key keeps `n` and `e` and drops `d` with the CRT
+/// parameters; RFC 7518 §6.2.2 and RFC 8037 §2 likewise for the `d` of EC and OKP keys.
+#[test]
+fn rfc_7518_6_3_2_the_public_key_holds_no_private_member() {
+    let rsa = Jwk::parse(
+        r#"{"kty":"RSA","n":"AQ","e":"AQAB","d":"AQ","p":"AQ","q":"AQ","dp":"AQ","dq":"AQ","qi":"AQ","kid":"r"}"#,
+    )
+    .unwrap();
+    assert!(rsa.is_private());
+    assert_eq!(
+        rsa.public(),
+        Jwk::parse(r#"{"kty":"RSA","n":"AQ","e":"AQAB","kid":"r"}"#).unwrap()
+    );
+    for text in [RFC7515_A3_KEY, RFC8037_A1] {
+        let key = Jwk::parse(text).unwrap();
+        assert!(key.is_private(), "{text}");
+        assert!(!key.public().is_private(), "{text}");
+    }
+}
+
+/// RFC 7518 §6.2.1.1 and RFC 8037 §2: a `crv` names a curve of one key type; the same
+/// name under another `kty` is no curve at all.
+#[test]
+fn rfc_7518_6_2_1_1_a_crv_is_a_curve_of_its_key_type_only() {
+    use jwz::jwa::{Curve, KeyType};
+    use jwz::jwk::curve_for;
+    let registry = Registry::standard();
+    assert_eq!(
+        curve_for(&registry, "P-256", KeyType::EC),
+        Some(Curve::P256)
+    );
+    assert_eq!(curve_for(&registry, "P-256", KeyType::OKP), None);
+    assert_eq!(
+        curve_for(&registry, "Ed25519", KeyType::OKP),
+        Some(Curve::ED25519)
+    );
+    assert_eq!(curve_for(&registry, "Ed25519", KeyType::EC), None);
+    assert_eq!(curve_for(&registry, "P-257", KeyType::EC), None);
+}
+
 #[test]
 fn rfc_7518_6_4_a_symmetric_key_has_a_non_empty_k() {
     assert_eq!(
@@ -975,6 +1014,9 @@ fn rfc_7517_4_5_a_set_offers_the_keys_with_the_headers_kid_or_all() {
     // A key without a kid cannot match a header that names one.
     assert_eq!(kids(Some("c")), Vec::<Option<String>>::new());
     assert_eq!(kids(None).len(), 3);
+    let by_kid = |kid| set.by_kid(kid).map(|k| k.kid.clone()).collect::<Vec<_>>();
+    assert_eq!(by_kid("b"), [Some("b".to_owned())]);
+    assert_eq!(by_kid("c"), Vec::<Option<String>>::new());
 }
 
 /// A set offers for a signature only keys whose `use` is `sig` and whose `key_ops` allow
