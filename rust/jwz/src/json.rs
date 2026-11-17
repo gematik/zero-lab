@@ -181,6 +181,19 @@ mod tests {
         }
     }
 
+    /// Refusing duplicates changes nothing else: every other value reads as serde_json
+    /// reads it, so a header or claim means the same to jwz as to any JSON parser.
+    #[test]
+    fn every_value_reads_as_written() {
+        let text =
+            br#"{"t":true,"f":false,"n":-7,"u":7,"x":1.5,"s":"a\u0062","z":null,"a":[{"k":[]}]}"#;
+        let expected: Map<String, Value> = serde_json::from_slice(text).unwrap();
+        assert_eq!(parse_object(text, "t").unwrap(), expected);
+        assert_eq!(expected["t"], Value::Bool(true));
+        assert_eq!(expected["n"], Value::from(-7));
+        assert_eq!(expected["s"], Value::from("ab"));
+    }
+
     #[test]
     fn the_error_never_carries_the_member_name() {
         let e = parse_object(br#"{"secret-name":1,"secret-name":2}"#, "jwk").unwrap_err();

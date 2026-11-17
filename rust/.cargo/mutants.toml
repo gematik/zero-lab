@@ -1,0 +1,19 @@
+# cargo-mutants configuration for the workspace (`just mutants`, `just mutants-record`).
+#
+# Only equivalent mutants are excluded: mutants no observable behaviour can tell apart
+# from the code, each with the reason. A mutant that a test could catch is never
+# excluded; it gets the test. Revisit an entry when the code it names changes.
+exclude_re = [
+    # jwz/src/json.rs, StrictVisitor. parse_object drives the visitor only through
+    # serde_json's slice deserializer, whose deserialize_any hands strings to visit_str
+    # (never visit_string), null to visit_unit (never visit_none), and never fails with
+    # `expecting`, whose text a jwz error would not carry anyway. visit_unit and
+    # visit_none return Value::Null, which is Value's Default, so replacing either body
+    # with Ok(Default::default()) is the same code.
+    'jwz/src/json\.rs:.*StrictVisitor>::(expecting|visit_string|visit_unit|visit_none) ',
+    # jwz/src/jwk.rs, JwkSet::parse. Every error Jwk::from_members can return today
+    # (UnsupportedKeyType, MissingMember, InvalidMember, Base64) is in SKIPPED_IN_A_SET,
+    # so a guard of `true` skips the same keys; the other arm keeps a fault added to
+    # from_members later from being skipped silently. Drop this entry when it can be hit.
+    'jwz/src/jwk\.rs:.*replace match guard SKIPPED_IN_A_SET\.contains\(&e\.code\(\)\) with true in JwkSet::parse',
+]
