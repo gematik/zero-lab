@@ -4,7 +4,7 @@ title: 'zaddy: DPoP replay detection shared by its replicas'
 status: In Progress
 assignee: []
 created_date: '2026-11-14T11:01:00Z'
-updated_date: '2026-11-17T06:28:00Z'
+updated_date: '2026-11-17T06:36:00Z'
 labels: []
 dependencies: []
 ordinal: 325000
@@ -18,13 +18,15 @@ zaddy hands pep in-memory Replays (TASK-309 makes that choice explicit and logge
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The choice of shared state is recorded in the task or as a backlog decision
-- [ ] #2 A proof accepted by one zaddy replica is refused by another within its lifetime, with a test
-- [ ] #3 Without the shared state configured, zaddy logs that replay detection is per replica
+- [x] #1 The choice of shared state is recorded in the task or as a backlog decision
+- [x] #2 A proof accepted by one zaddy replica is refused by another within its lifetime, with a test
+- [x] #3 Without the shared state configured, zaddy logs that replay detection is per replica
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Decision (maintainer, 2026-11-17): follow Caddy best practice architecture. Caddy shares state between instances through its configured storage module (caddy.Context.Storage(), a certmagic.Storage: file system on a shared volume, or a storage plugin such as Redis, Consul or Postgres), the same way a Caddy cluster shares certificates and locks. zaddy keeps DPoP replays there, through a dpop.Replays implementation over certmagic.Storage (Lock, Exists, Store with the proof expiry; Delete when expired), instead of wiring an own kv store; without a shared storage it stays per replica and logs so (AC #3).
+
+Built on fix/zaddy-shared-replays (cfe3211e, b1f5ccc4), merged into fix/elder-tasks: `pep { dpop_replays storage }` keeps accepted proofs in caddy.Context.Storage() under zaddy/dpop_replays/<sha256>, checked and written under the record lock (5 s bound, any storage error denies), swept each minute (≤1000 records). Explicit option, default memory with the per-replica warning, because Caddy cannot tell a local file_system path from a shared one. Tests TestRFC9449_11_1_* (two FileStorage replicas on one directory, concurrent proof accepted once, expiry), TestServersRule16_AStorageErrorRefusesTheProof, TestServersRule3_*.
 <!-- SECTION:NOTES:END -->

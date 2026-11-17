@@ -4,7 +4,7 @@ title: 'tipki: a host-side loader for a mounted trust bundle, with reload'
 status: In Progress
 assignee: []
 created_date: '2026-11-11T19:44:00Z'
-updated_date: '2026-11-17T06:28:00Z'
+updated_date: '2026-11-17T06:44:00Z'
 labels:
   - tipki
   - go
@@ -24,7 +24,13 @@ Server rule: trust material comes from a mounted directory a producer job writes
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A package beside tipki/fetch hands out the current TrustStore of a mounted bundle file and rereads it, with the same fail-closed rules
-- [ ] #2 It accepts a gzipped bundle, or ti pki trust export writes one that fits a ConfigMap, and the choice is documented
-- [ ] #3 idpd uses it instead of its own loader
+- [x] #1 A package beside tipki/fetch hands out the current TrustStore of a mounted bundle file and rereads it, with the same fail-closed rules
+- [x] #2 It accepts a gzipped bundle, or ti pki trust export writes one that fits a ConfigMap, and the choice is documented
+- [x] #3 idpd uses it instead of its own loader
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Built on fix/tipki-bundle-loader (fcf499b4, 6d644a93), merged into fix/elder-tasks. go/tipki/bundlefile: New/Current/Source/Reload/Close; change detected by SHA-256 of the content (ConfigMap symlink swap); a replacement that does not verify, is older or carries an older list never replaces the store in use, which stands until fetched_at + 24 h or NextUpdate. Gzip accepted in the loader (one member, 16 MiB read and decompressed), ti pki trust export unchanged. idpd BundleTrust uses it; IDPV-005 reworded: a bad replacement keeps the bundle in use until its age limit (maintainer agreed 2026-11-17). Breaking for idpd: NewBundleTrust takes a *slog.Logger, ClientConfig.Logger, BundleTrust.Close.
+<!-- SECTION:NOTES:END -->

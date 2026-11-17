@@ -25,6 +25,16 @@ timeout = 23
 unviable = 549
 score = 1.0
 
+[scores."ti-idpd-client"]
+version = "0.1.0"
+commit = "0e9f49267bc1556448a164b9e6ddc1776d899de5"
+date = "2026-11-17"
+caught = 82
+missed = 6
+timeout = 2
+unviable = 30
+score = 0.9333
+
 [scores."ti-pkcs12"]
 version = "0.1.0"
 commit = "f870478608caaa21bbdcfce8858897e0930502a4"

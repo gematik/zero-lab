@@ -4,7 +4,7 @@ title: 'ureq: custom TLS verifier without the unversioned API (watch)'
 status: To Do
 assignee: []
 created_date: 2026-10-09 13:55
-updated_date: '2026-11-16T20:34:00Z'
+updated_date: '2026-11-17T06:29:00Z'
 labels:
   - ti-connector-client
   - ti-tls
@@ -35,4 +35,6 @@ ti-connector-client's and ti-tls's ureq adapters use ureq's semver-exempt unvers
 2026-11-17: upstream ureq is at 3.5.2; we pin ~3.5.1. Still no custom certificate verifier or rustls ClientConfig on TlsConfig as far as the 3.5 line shows; stays parked.
 
 Correction to the note above: whether ureq 3.5.2 accepts a custom verifier was not checked in its changelog; only the version was.
+
+2026-11-17, checked: ureq 3.5.2 CHANGELOG (body limits after decoding, size limit exact, next address on NetworkDown) and src/tls/mod.rs: TlsConfig still takes provider, client_cert, root_certs, use_sni, disable_verification and the unversioned crypto provider; no custom certificate verifier and no rustls ClientConfig. Stays parked.
 <!-- SECTION:NOTES:END -->
