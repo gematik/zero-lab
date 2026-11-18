@@ -65,8 +65,35 @@ The decoupled flow has two independent channels that must be tied to the same se
 
 `/oauth2/callback` fills `sess.Identity` on the session identified by `state`; the next poll resolves that
 same session by cookie and sees it authenticated. So the cookie binds the browser that will be logged in,
-and `state` (RFC 6749 §10.12 / RFC 9700) binds the out-of-band completion to it — and prevents a callback
-from completing a session the user didn't initiate.
+and `state` (RFC 6749 §10.12 / RFC 9700) binds the out-of-band completion to it.
+
+### Who may complete a login
+
+`/oauth2/start` records the login's mode on the session (`login_mode`), and the callback applies its rule
+before it redeems the code:
+
+- **redirect** (plain OIDC, and the PDP backend for providers that are not OIDF): the callback must carry the
+  cookie of the session its `state` names (RFC 9700 §2.1.1). Without it, the session and its `state` are
+  removed and the code is never redeemed, so a victim lured to an authorization URL another browser started
+  cannot sign that browser in. A session stored without a mode gets this rule.
+- **decoupled** (OIDF QR) and **authenticator** (idpd): the login completes on a second device or in the app
+  the deep link opened, which hold no cookie by design. The `state` alone names the session.
+
+### Cross-device risk that remains
+
+A cross-device login cannot be bound to the browser that started it, so the attack the cookie check stops
+for redirect logins stays possible in principle (draft-ietf-oauth-cross-device-security, "cross-device
+consent phishing"): an attacker starts a login, hands a victim the QR code or the deep link, and if the
+victim confirms it, the attacker's browser holds a session with the victim's identity. In force against it:
+
+- the `state` index lives for `LoginStateTTL` (15 minutes) and is used once, so a started login is good for
+  one completion within that window;
+- nothing completes without the victim confirming the login on their own device, at the identity provider
+  or in the gematik Authenticator;
+- only the cookie holder learns the outcome (`/oauth2/poll`), and the session id is rotated there.
+
+pep cannot detect that the person who confirms is not the person who started; the remaining defence is that
+user's attention. A shorter window for cross-device logins would narrow it further.
 
 ### Security properties
 

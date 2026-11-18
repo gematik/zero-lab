@@ -507,3 +507,103 @@ func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// modeBackend starts its logins in one mode and counts the codes it redeems.
+type modeBackend struct {
+	fakeBackend
+	mode     string
+	redeemed int
+}
+
+func (b *modeBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scope string) (LoginStart, error) {
+	start, err := b.fakeBackend.StartLogin(ctx, sess, idpIss, scope)
+	start.Mode = b.mode
+	return start, err
+}
+
+func (b *modeBackend) Complete(ctx context.Context, sess *Session, code string) error {
+	b.redeemed++
+	return b.fakeBackend.Complete(ctx, sess, code)
+}
+
+// startLogin starts a login on s and returns the session cookie the starting browser holds.
+func startLogin(t *testing.T, s *Server) *http.Cookie {
+	t.Helper()
+	start := httptest.NewRecorder()
+	s.Handler().ServeHTTP(start, httptest.NewRequest(http.MethodGet, "/oauth2/start?idp_iss=https://idp.example", nil))
+	for _, c := range start.Result().Cookies() {
+		if strings.Contains(c.Name, "TEST-SID") {
+			return c
+		}
+	}
+	t.Fatalf("no session cookie: %d", start.Code)
+	return nil
+}
+
+// RFC 9700 section 2.1.1: the code of a redirect login is redeemed only for the browser that started it. A
+// callback without that browser's cookie is refused before the code is redeemed, and its state is gone.
+func TestRFC9700_2_1_1_ARedirectLoginCompletesOnlyInTheBrowserThatStartedIt(t *testing.T) {
+	backend := &modeBackend{identity: map[string]any{"sub": "victim"}, mode: "redirect"}
+	s, err := New(testConfig(backend))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := startLogin(t, s)
+
+	for name, cookie := range map[string]*http.Cookie{
+		"no cookie":              nil,
+		"another session cookie": {Name: started.Name, Value: "another-session"}, //nolint:gosec // request cookie in a test: only name and value go on the wire
+	} {
+		t.Run(name, func(t *testing.T) {
+			callback := httptest.NewRequest(http.MethodGet, "/oauth2/callback?state=test-state&code=code-value", nil)
+			if cookie != nil {
+				callback.AddCookie(cookie)
+			}
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, callback)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("callback = %d", rec.Code)
+			}
+		})
+	}
+	if backend.redeemed != 0 {
+		t.Errorf("redeemed %d codes", backend.redeemed)
+	}
+
+	// The state is consumed: the starting browser cannot complete the login either.
+	callback := httptest.NewRequest(http.MethodGet, "/oauth2/callback?state=test-state&code=code-value", nil)
+	callback.AddCookie(&http.Cookie{Name: started.Name, Value: started.Value}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, callback)
+	if rec.Code != http.StatusBadRequest || backend.redeemed != 0 {
+		t.Errorf("after a refused callback, the starter's = %d, redeemed %d", rec.Code, backend.redeemed)
+	}
+}
+
+// The decoupled and the authenticator login complete on another device or in an app, without the cookie; the
+// starting browser then takes the session over by polling.
+func TestRFC9700_2_1_1_ACrossDeviceLoginCompletesWithoutTheCookie(t *testing.T) {
+	for _, mode := range []string{"decoupled", "authenticator"} {
+		t.Run(mode, func(t *testing.T) {
+			backend := &modeBackend{identity: map[string]any{"sub": "user-1"}, mode: mode}
+			s, err := New(testConfig(backend))
+			if err != nil {
+				t.Fatal(err)
+			}
+			started := startLogin(t, s)
+
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/callback?state=test-state&code=code-value", nil))
+			if rec.Code != http.StatusOK || backend.redeemed != 1 {
+				t.Fatalf("callback = %d, redeemed %d", rec.Code, backend.redeemed)
+			}
+			poll := httptest.NewRequest(http.MethodGet, "/oauth2/poll", nil)
+			poll.AddCookie(&http.Cookie{Name: started.Name, Value: started.Value}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+			polled := httptest.NewRecorder()
+			s.Handler().ServeHTTP(polled, poll)
+			if polled.Code != http.StatusOK {
+				t.Errorf("poll = %d", polled.Code)
+			}
+		})
+	}
+}

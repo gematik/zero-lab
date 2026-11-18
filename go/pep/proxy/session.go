@@ -66,6 +66,9 @@ type Session struct {
 	Identity             map[string]any `json:"identity,omitempty"`
 	ReturnTo             string         `json:"return_to,omitempty"`
 	CreatedAt            time.Time      `json:"created_at"`
+	// LoginMode is LoginStart.Mode of the login this session began, which decides who may complete it at the
+	// callback (crossDevice). Empty, as on a session stored before it was recorded, is the redirect rule.
+	LoginMode string `json:"login_mode,omitempty"`
 
 	// PDP backend: tokens keyed by AS issuer (one entry in S4) and the per-session DPoP private key (JWK
 	// JSON). The provider backend leaves both zero. DPoPKeyJWK holds the private key in S4; the T3 stage
