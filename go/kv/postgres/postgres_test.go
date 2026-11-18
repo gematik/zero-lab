@@ -439,3 +439,87 @@ func TestPostgres_SwapHasExactlyOneWinner(t *testing.T) {
 		}
 	}
 }
+
+// Server rule 22: beside each record the store keeps the mark its writer derives from the value, and finds
+// the records with another mark or none without reading them. A replica of a version before the marks leaves
+// the mark of a row standing when it writes the row: that mark does not count.
+func TestPostgres_MarksFindWhatIsOfAnotherKind(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	ctx := context.Background()
+	mark := func(_ string, value []byte) string { return string(value[:1]) }
+	s, err := postgres.Open(ctx, dsn, postgres.WithMark(mark))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := fmt.Sprintf("test:%d:%s:", time.Now().UnixNano(), t.Name())
+	t.Cleanup(func() {
+		keys, _ := s.Keys(ctx, prefix)
+		for _, k := range keys {
+			_ = s.Delete(ctx, k)
+		}
+		_ = s.Close()
+	})
+	marker := s.(kv.Marker)
+	others := func(after string, limit int) string {
+		t.Helper()
+		keys, err := marker.MarkedOther(ctx, prefix, "b", after, limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.ReplaceAll(strings.Join(keys, " "), prefix, "")
+	}
+	for key, value := range map[string]string{"1": "a-old", "2": "b-new", "3": "a-old", "4": "a-old"} {
+		if err := s.Set(ctx, prefix+key, []byte(value), time.Hour); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if set, err := s.SetIfAbsent(ctx, prefix+"5", []byte("a-old"), time.Hour); err != nil || !set {
+		t.Fatal(set, err)
+	}
+	if got := others("", 10); got != "1 3 4 5" {
+		t.Errorf("of another mark: %s", got)
+	}
+	if got := others(prefix+"1", 2); got != "3 4" {
+		t.Errorf("a page: %s", got)
+	}
+	// Each way of writing takes the mark along.
+	if err := s.Set(ctx, prefix+"1", []byte("b-new"), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.(kv.Swapper).Swap(ctx, prefix+"3", []byte("a-old"), []byte("b-new"), time.Hour); err != nil || !ok {
+		t.Fatal(ok, err)
+	}
+	if err := s.SetMany(ctx, kv.Entry{Key: prefix + "4", Value: []byte("b-new"), TTL: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := marker.CountMarkedOther(ctx, prefix, "b"); err != nil || n != 1 || others("", 10) != "5" {
+		t.Errorf("after rewriting: %d, %s, %v", n, others("", 10), err)
+	}
+
+	// The statement of a replica before the marks: it names neither column.
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO kv(key, value, expires_at) VALUES($1, $2, now() + interval '1 hour')
+		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at`,
+		prefix+"1", []byte("a-old")); err != nil {
+		t.Fatal(err)
+	}
+	if got := others("", 10); got != "1 5" {
+		t.Errorf("after the write of a replica without marks: %s", got)
+	}
+	plain, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer plain.Close()
+	if _, err := plain.(kv.Marker).CountMarkedOther(ctx, prefix, "b"); !errors.Is(err, kv.ErrNotMarker) {
+		t.Errorf("a store without marks: %v", err)
+	}
+}
