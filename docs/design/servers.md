@@ -87,9 +87,9 @@ everything outside the workload untrusted.
      container started from the same image with the helper as its command; protocol and
      client are the same in both modes.
    - **Sidecars inside the enclave** (a helper, OPA, a key provider) are reached over a
-     Unix socket in a shared memory-backed `emptyDir` (`medium: Memory`: a tmpfs in the
-     guest's memory, where a disk-backed volume can be host storage the host sees and
-     replaces), with file permissions and a peer check
+     Unix socket as rule 29 has it, in a shared memory-backed `emptyDir` (`medium: Memory`:
+     a tmpfs in the guest's memory, where a disk-backed volume can be host storage the host
+     sees and replaces), with a peer check
      (`SO_PEERCRED`; on Linux the peer's executable through a pidfd), have no network
      listener, receive no secret across the socket, bound their frames and version their
      handshake. A sidecar serves its client only the operations it needs and offers none
@@ -210,9 +210,11 @@ everything outside the workload untrusted.
     language profiles name them). The image holds no peer address, transport mode or
     trust source: the deployment sets them through environment and mounted paths, which
     are measured or hashed and reported (rule 7), and a URL's scheme picks the mode
-    (`unix://`, `https://`). Start-up refuses every inconsistent combination: plaintext to
-    a peer outside the pod, TLS without a trust source, two trust sources at once, a
-    client certificate without its key.
+    (`unix://`, `https://`; rule 29 has the grammar). Start-up refuses every inconsistent
+    combination: plaintext to a peer outside the pod, TLS without a trust source, two
+    trust sources for one connection, a client certificate without its key, a key and a
+    certificate that do not match, a certificate that has expired or is not yet valid, an
+    empty CA bundle, an mTLS peer without an expected name.
 18. **Business APIs follow the gematik API rules, including versioning.** Every business
     API has a machine-readable OpenAPI contract in the repository, versioned as the rules
     require, and passes the gematik OpenAPI ruleset with no errors and no warnings. A
@@ -277,7 +279,10 @@ everything outside the workload untrusted.
     and dynamic scanning (OWASP ZAP or equivalent) of every exposed endpoint. A sidecar
     is tested at its socket: a process with another UID or executable is refused, a
     write to its configuration through its API is refused, and a stopped or slow sidecar,
-    or one without a decision, leads to deny.
+    or one without a decision, leads to deny. Transport (rules 29 and 30) is tested on the
+    image: the same image started in each mode (https, mTLS, unix, the http opt-out);
+    certificate rotation under load without a dropped request; a wrong SAN, an expired
+    certificate and an unknown client refused; the egress client through a CONNECT proxy.
 27. **Runs under any UID, as on OpenShift.** The platform picks the identity, not the
     image: OpenShift's `restricted-v2` SCC starts a container with an arbitrary UID from
     the namespace's range, primary GID `0` and no `/etc/passwd` entry, sets `fsGroup` and
@@ -400,3 +405,68 @@ everything outside the workload untrusted.
         does not contain the input; a refused value never reaches the logic, the store or
         the network.
       - Dynamic scanning (rule 26) runs against the same endpoints.
+29. **One transport grammar for listeners and peers, secure by default.** Rule 17's scheme
+    that picks the mode, for every connection a server accepts or opens inside its
+    deployment; connections to external hosts are rule 30.
+    - **The URL is the mode.** Every listener and every peer is one URL, `https://`,
+      `unix://` or `http://`; no separate TLS switch can disagree with its scheme. Without
+      an explicit scheme it is https. Plaintext is an opt-out the deployment writes out as
+      `http://`: it is logged at start and refused where the tier does not allow it.
+    - **TLS from files.**
+      - Per listener and per peer: certificate, key and CA bundle, each a `*_PATH`. Who
+        wrote the file is the deployment's assurance, not the server's concern (rule 6).
+        The server never generates a self-signed certificate and has no option to skip
+        verification.
+      - mTLS is configuration, not a mode of its own: a listener with a client CA bundle
+        requires client certificates; a peer with a certificate and key presents them.
+      - Identity is pinned, not only chained: each peer has an expected name (DNS SAN or
+        SPIFFE ID), an mTLS listener an allowlist of client identities. A valid chain
+        under a shared CA does not say which workload is calling.
+      - Reload without restart: certificate, key and CA bundle are re-read on change. A
+        new pair is swapped in only if key and certificate match and the certificate is
+        valid; a failed reload keeps the old pair and raises a metric. Certificate expiry
+        is a metric, and an expired certificate fails readiness.
+      - The profile is fixed: protocol version, curves and suites follow gemSpec_Krypt and
+        are constants in code, not configuration.
+    - **Unix sockets are first-class listeners.** Path sockets only, no abstract
+      namespace. A socket is created under a restrictive umask, is group-accessible (rule
+      27) and has the peer check of rule 8. A stale socket file is removed only when
+      nothing answers on it. Plaintext over a Unix socket inside the pod counts as inside
+      the workload.
+    - **One declared trust source per connection.** A listener, a peer and the egress
+      client each declare one source; none is implicit, and a connection without one is
+      refused (rule 17). A source is never combined with another by fallback: if the
+      declared one fails, the connection fails. The sources are:
+      - a CA bundle from a path, for peers inside the deployment;
+      - anchors compiled into the binary, for TI roots and the production tier check
+        ([decision-11](../../backlog/decisions/));
+      - trust material the workload verifies itself: the TSL, an OpenID Federation trust
+        chain, an attestation root;
+      - a workload identity bundle from the platform (SPIFFE), where it is mounted;
+      - the web PKI, for egress to public hosts, as a bundle shipped in the image or
+        mounted, and the system store where the image has one.
+    - **Reported.** The mode of each listener and peer, a plaintext opt-out included, and
+      the trust source of each connection are part of the reported configuration (rule 7).
+      The admin listener shows, per listener and peer, the mode, the certificate
+      fingerprint and expiry, and the trust source, never a key.
+30. **Egress is a separate client with its own rules.**
+    - **Two classes of peers.** Peers inside the pod or the cluster (OPA socket, kv,
+      Postgres, key service) are configured per peer under rule 29 and never go through a
+      proxy. Everything else is egress: trust material, OCSP, JWKS, entity statements.
+    - **One egress client.** All outbound fetches to external hosts go through one client,
+      which applies the allowlist of rule 2, the timeouts and limits of rule 24 and the
+      response checks of rule 28.
+    - **A forward proxy is supported, as an untrusted neighbour.**
+      - The egress client honours `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, because
+        operators and platforms set them. No other client reads them.
+      - https goes through CONNECT only, so TLS still ends at the origin and the proxy
+        sees host names and nothing else. A TLS-intercepting proxy is not supported: no
+        extra CA is accepted for egress.
+      - Proxy credentials are a secret: a proxy URL with user information in a variable is
+        refused; credentials come from a `*_PATH` file
+        ([naming and configuration](../conventions/naming-and-config.md)).
+      - Whether a proxy is in effect, and its host, is part of the reported configuration
+        (rule 7).
+    - **Plain http only for self-verifying data.** OCSP responses and CRLs are signed and
+      verified by the workload, so they may travel over http and through the proxy.
+      Nothing else does.
