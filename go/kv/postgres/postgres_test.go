@@ -523,3 +523,60 @@ func TestPostgres_MarksFindWhatIsOfAnotherKind(t *testing.T) {
 		t.Errorf("a store without marks: %v", err)
 	}
 }
+
+// A record of before the marks that the current key sealed is among the others until it is written again:
+// Reseal does that once, and then it is found no more. Otherwise a store that came from a version without
+// marks would be walked through for ever.
+func TestPostgres_ResealMarksWhatHadNoMark(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	ctx := context.Background()
+	keys, err := kv.ParseKeyring([]byte("k1 " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := fmt.Sprintf("test:%d:%s:", time.Now().UnixNano(), t.Name())
+	before, err := postgres.Open(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer before.Close()
+	marked, err := postgres.Open(ctx, dsn, postgres.WithMark(kv.SealedMarker(nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		all, _ := marked.Keys(ctx, prefix)
+		for _, k := range all {
+			_ = marked.Delete(ctx, k)
+		}
+		_ = marked.Close()
+	})
+	if err := kv.NewSealed(before, keys, "test records", kv.WithSealedExpiry(time.Now)).Set(ctx, prefix+"a", []byte("of before the marks"), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	store := kv.NewSealed(marked, keys, "test records", kv.WithSealedExpiry(time.Now))
+	if err := store.Set(ctx, prefix+"b", []byte("marked"), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	resealer := store.(kv.Resealer)
+	if n, err := resealer.CountOthers(ctx, prefix); err != nil || n != 1 {
+		t.Fatalf("without a mark: %d, %v", n, err)
+	}
+	for key, want := range map[string]bool{"a": true, "b": false} {
+		if resealed, err := resealer.Reseal(ctx, prefix+key); err != nil || resealed != want {
+			t.Errorf("%s: resealed %v, %v", key, resealed, err)
+		}
+	}
+	if n, err := resealer.CountOthers(ctx, prefix); err != nil || n != 0 {
+		t.Errorf("after resealing: %d, %v", n, err)
+	}
+	if resealed, err := resealer.Reseal(ctx, prefix+"a"); err != nil || resealed {
+		t.Errorf("again: resealed %v, %v", resealed, err)
+	}
+	if got, found, err := store.Get(ctx, prefix+"a"); err != nil || !found || string(got) != "of before the marks" {
+		t.Errorf("a: %q, found %v, %v", got, found, err)
+	}
+}
