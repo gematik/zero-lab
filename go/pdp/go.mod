@@ -7,7 +7,7 @@ require (
 	github.com/gematik/zero-lab/go/idpd v0.3.0
 	github.com/gematik/zero-lab/go/kv v0.3.1
 	github.com/gematik/zero-lab/go/nonce v0.24.0
-	github.com/gematik/zero-lab/go/oidf v0.54.1
+	github.com/gematik/zero-lab/go/oidf v0.54.2
 	github.com/gematik/zero-lab/go/openid v0.55.1
 	github.com/gematik/zero-lab/go/tipki v0.33.0
 	github.com/go-jose/go-jose/v4 v4.1.9
