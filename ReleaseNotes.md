@@ -1,5 +1,20 @@
 # Release Notes
 
+# Release 2026-11-18: oidf and kv pinned to current modules
+
+No code changes: each module's go.mod pins the current versions, so a build outside the workspace resolves the
+same code the workspace tests.
+
+## go/oidf v0.54.1
+
+### changed
+- Requires openid v0.55.1.
+
+## go/kv v0.3.1
+
+### changed
+- Requires jackc/puddle v2.2.4 (indirect).
+
 # Release 2026-11-17: errors without peer input (rule 14), mounted trust bundles, shared DPoP replays in zaddy, pkcs12 P12-041 parity
 
 Errors refusing a peer's input name the field, a fixed reason, an HTTP status or a registered error code; they
