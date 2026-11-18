@@ -36,7 +36,10 @@ _each cmd:
     #!/usr/bin/env bash
     set -uo pipefail
     fail=0
-    for dir in ${GO_MODULES:-$(find . -name go.mod -exec dirname {} \; | sort)}; do
+    # bash 3.2 on macOS refuses a pipe in a command substitution inside ${…:-…}
+    modules=${GO_MODULES:-}
+    [ -n "$modules" ] || modules=$(find . -name go.mod -exec dirname {} \; | sort)
+    for dir in $modules; do
         echo "==> $dir"
         ( cd "$dir" && {{cmd}} ) || fail=1
     done
@@ -52,7 +55,10 @@ _each_check cmd:
     out=$(mktemp -d)
     trap 'rm -rf "$out"' EXIT
     dirs=() pids=()
-    for dir in ${GO_MODULES:-$(find . -name go.mod -exec dirname {} \; | sort)}; do
+    # bash 3.2 on macOS refuses a pipe in a command substitution inside ${…:-…}
+    modules=${GO_MODULES:-}
+    [ -n "$modules" ] || modules=$(find . -name go.mod -exec dirname {} \; | sort)
+    for dir in $modules; do
         # bash 3.2 on macOS has no wait -n
         while [ "$(jobs -rp | wc -l)" -ge "${EACH_JOBS:-4}" ]; do sleep 0.1; done
         ( cd "$dir" && {{cmd}} ) > "$out/${#dirs[@]}" 2>&1 &
