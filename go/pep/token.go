@@ -74,6 +74,18 @@ func (t *AccessToken) Thumbprint() string {
 	return jkt
 }
 
+// Bound says the token is sender-constrained: it carries a cnf member (RFC 7800 Section 3.1), whatever its
+// confirmation method. A payload that does not decode into members counts as bound, so it is never taken for a
+// bearer token.
+func (t *AccessToken) Bound() bool {
+	var members map[string]jsontext.Value
+	if json.Unmarshal(t.Payload, &members) != nil {
+		return true
+	}
+	_, bound := members["cnf"]
+	return bound
+}
+
 // ParseJWKSet parses a JWK Set (RFC 7517 Section 5), or a single JWK as a set of one. An entry that cannot be
 // parsed fails the whole set: the set is the operator's own trust configuration, so a typo must not go unnoticed
 // and leave a key out.

@@ -304,10 +304,6 @@ func TestEnforcerScope(t *testing.T) {
 
 func createTestAccessToken(keyBytes []byte, scopes []string, exp time.Time, jkt string) (string, error) {
 	scope := strings.Join(scopes, " ")
-	prk := jose.JSONWebKey{}
-	if err := json.Unmarshal(keyBytes, &prk); err != nil {
-		return "", err
-	}
 	claims := map[string]any{
 		"scope": scope,
 		"aud":   []string{"https://example.com"},
@@ -315,6 +311,14 @@ func createTestAccessToken(keyBytes []byte, scopes []string, exp time.Time, jkt 
 	}
 	if jkt != "" {
 		claims["cnf"] = map[string]string{"jkt": jkt}
+	}
+	return signTestClaims(keyBytes, claims)
+}
+
+func signTestClaims(keyBytes []byte, claims map[string]any) (string, error) {
+	prk := jose.JSONWebKey{}
+	if err := json.Unmarshal(keyBytes, &prk); err != nil {
+		return "", err
 	}
 	payload, err := json.Marshal(claims)
 	if err != nil {
@@ -588,5 +592,76 @@ func TestPEPWithoutLoggerLogsNothing(t *testing.T) {
 	guarded(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://example.com/", nil))
 	if logs.Len() != 0 {
 		t.Errorf("the default logger was used: %s", logs.String())
+	}
+}
+
+// RFC 9449 section 7.2 and RFC 9700 section 4.10.1: a DPoP-bound token is not accepted as a bearer token, or a
+// leaked one would be replayed without its proof.
+func TestRFC9449_7_2_RFC9700_4_10_1_ABoundTokenIsRefusedUnderTheBearerScheme(t *testing.T) {
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	p := createPEPAt(t, server.URL)
+	mux.HandleFunc("/bearer", p.GuardedHandlerFunc(&pep.EnforcerAuthorizationBearer{}, func(http.ResponseWriter, *http.Request) {
+		t.Error("the handler ran")
+	}))
+
+	for name, cnf := range map[string]string{"jkt": "test", "other confirmation method": ""} {
+		t.Run(name, func(t *testing.T) {
+			var token string
+			var err error
+			if cnf != "" {
+				token, err = createTestAccessToken([]byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour), cnf)
+			} else {
+				token, err = signTestClaims([]byte(privateJWK1), map[string]any{
+					"aud": []string{"https://example.com"},
+					"exp": time.Now().Add(time.Hour).Unix(),
+					"cnf": map[string]string{"x5t#S256": "bwcK0esc3ACC3DB2Y5_lESsXE8o9ltc05O89jdN-dg2"},
+				})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			req, err := http.NewRequest(http.MethodGet, server.URL+"/bearer", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			resp, err := server.Client().Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Errorf("status = %d", resp.StatusCode)
+			}
+			if got, want := resp.Header.Get("WWW-Authenticate"), `Bearer error="invalid_token", error_description="invalid access token"`; got != want {
+				t.Errorf("WWW-Authenticate = %s", got)
+			}
+		})
+	}
+}
+
+// RFC 9449 section 7.1: where a route takes either scheme, the DPoP-bound token is still good with its proof.
+func TestRFC9449_7_1_AnyOfBearerAndDPoPAdmitsABoundTokenWithItsProof(t *testing.T) {
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	p := createPEPAt(t, server.URL)
+	either := &pep.EnforcerAnyOf{EnforcerHolders: []pep.EnforcerHolder{
+		{&pep.EnforcerAuthorizationBearer{}},
+		{&pep.EnforcerAuthorizationDPoP{}},
+	}}
+	mux.HandleFunc("/either", p.GuardedHandlerFunc(either, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	resp, err := server.Client().Do(createRequestWithAccessTokenAndDPoP(t, server.URL+"/either", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d", resp.StatusCode)
 	}
 }
