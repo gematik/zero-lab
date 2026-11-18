@@ -1,9 +1,10 @@
 ---
 id: TASK-355
 title: 'epa: a forwarded request keeps its framing inside the VAU'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-18T06:22:00Z'
 labels: []
 dependencies: []
 priority: high
