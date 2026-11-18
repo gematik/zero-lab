@@ -755,8 +755,44 @@ func TestServerRule2_FetchSignedJwksDoesNotFollowARedirect(t *testing.T) {
 	}
 }
 
-// OpenID Federation 5.2.1 leaves exp of a signed JWK Set optional; server rule 15 makes it mandatory.
-func TestServerRule15_ASignedJwksThatIsOldOrNeverExpiresIsRefused(t *testing.T) {
+// OpenID Federation 5.2.1 leaves exp of a signed JWK Set optional. A set without it is bound to the call that fetched
+// it: it is not kept, so the set a provider has replaced is not served again.
+func TestOIDF_5_2_1_ASignedJwksWithoutExpIsTakenAndNeverKept(t *testing.T) {
+	stub := newFederationStub(t)
+	federation := stub.federation(t)
+	fetches := stub.countFetches()
+	op, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stub.signedJwks = signJWS(t, stub.opKey, "op", map[string]any{
+		"iss": stub.URL + "/op", "iat": time.Now().Unix(), "keys": keySetOf(stub.jwksKey, "idtoken").Keys,
+	})
+	jwks, err := federation.FetchSignedJwks(t.Context(), op)
+	if err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	if len(jwks.Key("idtoken")) != 1 {
+		t.Fatalf("jwks = %+v", jwks)
+	}
+
+	stub.signedJwks = signJWS(t, stub.opKey, "op", map[string]any{
+		"iss": stub.URL + "/op", "iat": time.Now().Unix(), "keys": keySetOf(newTestKey(t), "rotated").Keys,
+	})
+	jwks, err = federation.FetchSignedJwks(t.Context(), op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jwks.Key("rotated")) != 1 || len(jwks.Key("idtoken")) != 0 {
+		t.Errorf("the replaced key set was served again: %+v", jwks)
+	}
+	if n := fetches.count("/op/jwks"); n != 2 {
+		t.Errorf("%d fetches of the signed JWKS, want one per call", n)
+	}
+}
+
+func TestOIDF_5_2_1_ASignedJwksOutsideItsLifetimeIsRefused(t *testing.T) {
 	stub := newFederationStub(t)
 	federation := stub.federation(t)
 	op, err := federation.FetchEntityStatement(t.Context(), stub.URL+"/op")
@@ -767,7 +803,6 @@ func TestServerRule15_ASignedJwksThatIsOldOrNeverExpiresIsRefused(t *testing.T) 
 	for name, claims := range map[string]map[string]any{
 		"expired":       {"keys": keys, "exp": time.Now().Add(-time.Hour).Unix()},
 		"expires soon":  {"keys": keys, "exp": time.Now().Add(statementClockTolerance / 2).Unix()},
-		"never expires": {"keys": keys},
 		"not yet valid": {"keys": keys, "exp": time.Now().Add(2 * time.Hour).Unix(), "nbf": time.Now().Add(time.Hour).Unix()},
 	} {
 		t.Run(name, func(t *testing.T) {

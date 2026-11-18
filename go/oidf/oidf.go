@@ -481,8 +481,8 @@ func parseIdpList(payload []byte) (idps []IdentityProviderInfo, excluded int, er
 	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &members); err != nil {
 		return nil, 0, fmt.Errorf("the IdP list: %w", err)
 	}
-	if err := requireExpiry(payload); err != nil {
-		return nil, 0, fmt.Errorf("the IdP list: %w", err)
+	if _, ok := members["exp"]; !ok {
+		return nil, 0, errors.New("the IdP list has to state its exp")
 	}
 	var entries []jsontext.Value
 	raw, ok := members["idp_entity"]
@@ -645,6 +645,11 @@ func (f *OpenidFederation) FederationMasterURL() string {
 
 // FetchSignedJwks returns the key set published at op's signed_jwks_uri, verified against the keys of op's
 // entity statement, so op has to be a statement FetchEntityStatement verified.
+//
+// A key set that states exp is held to it. One that states none is taken as well: OpenID Federation 5.2.1 leaves exp
+// optional, and providers of the gematik federation publish their key set without it, so server rule 15 does not make
+// it mandatory here. Such a key set is bound to the call instead: it is never kept (keep), so every call fetches it
+// and verifies it with the keys of op, and a set the provider has replaced is not served again.
 func (f *OpenidFederation) FetchSignedJwks(ctx context.Context, op *EntityStatement) (*jose.JSONWebKeySet, error) {
 	return f.signedJwks(ctx, op, false)
 }
@@ -660,9 +665,6 @@ func (f *OpenidFederation) signedJwks(ctx context.Context, op *EntityStatement, 
 
 	jwksURL := op.Metadata.OpenidProvider.SignedJwksURI
 	jwks, err := document(ctx, f, jwksURL, fresh, op.Jwks.Keys, memberKeys, func(payload []byte) (*jose.JSONWebKeySet, error) {
-		if err := requireExpiry(payload); err != nil {
-			return nil, err
-		}
 		jwks, err := openid.ParseKeySet(payload)
 		if err != nil {
 			return nil, fmt.Errorf("parsing jwks failed: %w", err)
@@ -673,17 +675,4 @@ func (f *OpenidFederation) signedJwks(ctx context.Context, op *EntityStatement, 
 		return nil, fmt.Errorf("the signed JWKS: %w", err)
 	}
 	return jwks, nil
-}
-
-// requireExpiry refuses a signed key set without exp. The federation specification leaves exp optional, while server
-// rule 15 makes it mandatory here: without one, a key set an OP has since replaced could be replayed for ever.
-func requireExpiry(payload []byte) error {
-	var members map[string]jsontext.Value
-	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &members); err != nil {
-		return err
-	}
-	if _, ok := members["exp"]; !ok {
-		return errors.New("a signed key set or IdP list has to state its exp")
-	}
-	return nil
 }

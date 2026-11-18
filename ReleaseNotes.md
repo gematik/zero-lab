@@ -1,5 +1,25 @@
 # Release Notes
 
+# Release go/oidf v0.54.2
+
+### fixed
+- `FetchSignedJwks` takes a signed key set that states no `exp`, which OpenID Federation 5.2.1 leaves optional;
+  0.54.1 refused it, so no login could begin at a provider that publishes one, such as the reference IDP
+  https://gsi-ref.dev.gematik.solutions (TASK-376). Such a key set is never kept in the document store: every call
+  fetches it and verifies it with the keys of the provider's entity statement, so a replaced set is not served
+  again. A key set that states `exp` is held to it as before, and the master's IdP list still has to state its
+  `exp`.
+
+### verified
+- `just check` across all Go modules passed on 35375b02; `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+  The recipe loops had to be made to parse under macOS bash 3.2 first (TASK-377).
+- The OpenID Federation suite (`just oidf-test`) and `TestNewAtALiveFederationMaster` passed against
+  https://app-ref.federationmaster.de on 35375b02, 2026-11-18.
+- The entity statement and signed key set of every provider on the IdP lists of
+  https://app-ref.federationmaster.de (108) and https://app.federationmaster.de (119) were fetched and verified
+  on 35375b02, 2026-11-18: all 227 passed. Two of them, both in the reference federation, state no `exp`:
+  https://gsi-ref.dev.gematik.solutions and https://sidp-c01-ru.d-trust.net/realms/sidpdtr01.
+
 # Release 2026-11-18: oidf and kv pinned to current modules
 
 No code changes: each module's go.mod pins the current versions, so a build outside the workspace resolves the

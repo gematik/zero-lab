@@ -9,8 +9,8 @@ github.com/gematik/zero-lab/go/kv v0.3.1 h1:uPVEqLuTmIF2Z3hUZxuoxX3OgVVPXZznghi6
 github.com/gematik/zero-lab/go/kv v0.3.1/go.mod h1:pRQiYPn+JqdCFX7W6NIE/53LWkCoM1YBecmcV7VNkuU=
 github.com/gematik/zero-lab/go/nonce v0.24.0 h1:Rpevd82zBzocnjmTw+DWulXy+WQ+cQ3BKgsZ2VC30OU=
 github.com/gematik/zero-lab/go/nonce v0.24.0/go.mod h1:vaGIBw6GACwzuAR3jffMMI1zZQq60TsrtMYB2sVSuXU=
-github.com/gematik/zero-lab/go/oidf v0.54.1 h1:V3fiMx3uts05+GLxZ8B10y8e7VGo5XYaYkt4OrlTeOY=
-github.com/gematik/zero-lab/go/oidf v0.54.1/go.mod h1:HjYt2U+f10fCh/hFjH553t8CkkerOGWq+kxKLohWVNI=
+github.com/gematik/zero-lab/go/oidf v0.54.2 h1:KXPxv/cujqXseqBYJ8s+mxH32Oy9hwMAlPoqdMP/4vM=
+github.com/gematik/zero-lab/go/oidf v0.54.2/go.mod h1:HjYt2U+f10fCh/hFjH553t8CkkerOGWq+kxKLohWVNI=
 github.com/gematik/zero-lab/go/openid v0.55.1 h1:4p8m19UtfVuT11ZjXsrZQA4fQttuZ+PkWc/ZV+KOEkE=
 github.com/gematik/zero-lab/go/openid v0.55.1/go.mod h1:/sIAqTwaunEa8iOxyOSYXFU5Vrcp+gE3sg0pqrfrM5c=
 github.com/gematik/zero-lab/go/pkcs12 v1.0.0-rc.5 h1:nc3lZaCdmOU/dd/Ngep7+Hg65r+Vhi+YNJ5ay4aEJGo=
