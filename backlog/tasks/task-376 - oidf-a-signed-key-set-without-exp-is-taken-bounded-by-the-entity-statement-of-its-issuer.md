@@ -3,9 +3,10 @@ id: TASK-376
 title: >-
   oidf: a signed key set without exp is taken, bounded by the entity statement
   of its issuer
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-18 08:21'
+updated_date: '2026-11-18 08:26'
 labels:
   - oidf
   - go
