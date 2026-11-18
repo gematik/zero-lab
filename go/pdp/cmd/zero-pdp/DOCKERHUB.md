@@ -1,5 +1,8 @@
 # zero-pdp
 
+> **Frozen:** the development of zero-pdp has ended. This image is a prototype, gets no features or fixes, and
+> is not to be deployed.
+
 The authorization server (Policy Decision Point) of the [gematik Zero Trust Lab](https://github.com/gematik/zero-lab).
 It runs the OAuth 2.0 authorization-code flow against the configured IdPs (direct OIDC, gematik
 OpenID Federation / OIDF, or the gematik IDP-Dienst / idpd), authenticates as a confidential client, and

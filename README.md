@@ -8,7 +8,8 @@ FHIR-Directory clients, ePA, and `ti`, the command-line tool on top. Security-cr
 specified once, proven alike in both languages, verified, not only tested.
 
 The Zero Trust policy components (PDP, PEP) are prototypes that show what the building
-blocks make possible; they are not production software.
+blocks make possible; they are not production software. The development of the PDP
+([`go/pdp`](./go/pdp), `zero-pdp`) is frozen: it gets no features, fixes or releases.
 
 > **Note:** The work started as part of the DSR PoC: https://dsr.gematik.solutions/.
 
