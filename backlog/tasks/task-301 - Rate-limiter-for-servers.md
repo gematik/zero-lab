@@ -4,7 +4,7 @@ title: Rate limiter for servers
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
-updated_date: '2026-11-17T06:35:00Z'
+updated_date: '2026-11-18T06:22:00Z'
 labels:
   - go
   - servers
@@ -27,5 +27,5 @@ docs/design/servers.md asks servers for rate limits and no module provides one. 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
-Decision (maintainer, 2026-11-17): the rate limiter is built here as a shared module, counting across replicas on kv.Store, but later; zeta-pdp-go can then take it in place of its own.
+2026-11-18: the shared rate limiter goes into go/httpguard, the stdlib-only module TASK-360 creates for the rule 28 request checks (maintainer).
 <!-- SECTION:NOTES:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-360
 title: 'Go: one rule 28 request check that the server adapters call'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-18T06:22:00Z'
 labels: []
 dependencies: []
 priority: medium
@@ -21,3 +22,9 @@ go/docs/design.md section 10 names a helper that refuses a repeated `url.Values`
 - [ ] #1 one package offers the single-value parameter read, the canonical-path check and the Host check, each with a `Fuzz…` target seeded with the rule's hostile inputs; the profile names it.
 - [ ] #2 tasks 1, 2, 5, 7, 8 and 10 use it.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-18: the maintainer chose a new stdlib-only module go/httpguard, which will also host the shared rate limiter (TASK-301).
+<!-- SECTION:NOTES:END -->
