@@ -90,6 +90,23 @@ func (s *memoryStore) MarkedOther(_ context.Context, prefix, mark, after string,
 	return keys[:min(len(keys), limit)], nil
 }
 
+// Marks implements [Marker].
+func (s *memoryStore) Marks(_ context.Context, prefix string) (map[string]int, error) {
+	if s.mark == nil {
+		return nil, ErrNotMarker
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	marks := map[string]int{}
+	for key, entry := range s.items {
+		if strings.HasPrefix(key, prefix) && !entry.expired(now) {
+			marks[s.mark(key, entry.value)]++
+		}
+	}
+	return marks, nil
+}
+
 // CountMarkedOther implements [Marker].
 func (s *memoryStore) CountMarkedOther(ctx context.Context, prefix, mark string) (int, error) {
 	keys, err := s.MarkedOther(ctx, prefix, mark, "", len(s.items)+1)

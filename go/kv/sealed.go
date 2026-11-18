@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -302,6 +303,37 @@ type Resealer interface {
 	// need an inner [Marker] that marks a record with [SealedMarker] of the same class.
 	Others(ctx context.Context, prefix, after string, limit int) ([]string, error)
 	CountOthers(ctx context.Context, prefix string) (int, error)
+	// SealedByKeys counts the records with the prefix by the ID of the key the store below marks them as
+	// sealed by, those without a mark under "": which keys are still needed, without reading a record.
+	SealedByKeys(ctx context.Context, prefix string) (map[string]int, error)
+	// Mark is the mark of what this store writes now under a key or prefix: it changes when the current
+	// key does, or the format of the seal, or the class.
+	Mark(key string) string
+}
+
+// Mark implements [Resealer].
+func (s *sealedStore) Mark(key string) string { return s.currentMark(key) }
+
+// SealedByKeys implements [Resealer].
+func (s *sealedStore) SealedByKeys(ctx context.Context, prefix string) (map[string]int, error) {
+	marker, ok := s.inner.(Marker)
+	if !ok {
+		return nil, ErrNotMarker
+	}
+	marks, err := marker.Marks(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	keys := make(map[string]int, len(marks))
+	for mark, n := range marks {
+		// format:id:class, and an ID has no colon.
+		id := ""
+		if parts := strings.SplitN(mark, ":", 3); len(parts) == 3 {
+			id = parts[1]
+		}
+		keys[id] += n
+	}
+	return keys, nil
 }
 
 // SealedMarker returns the mark of a sealed record for a [Marker]: the format of the seal and the ID of the
