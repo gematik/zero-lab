@@ -285,7 +285,8 @@ func (s *sealedStore) Swap(ctx context.Context, key string, old, value []byte, t
 type Resealer interface {
 	// SealedBy returns the ID of the key that sealed the record under key. found is false when there is none.
 	SealedBy(ctx context.Context, key string) (id string, found bool, err error)
-	// Reseal seals the record under key again if another key than the current one sealed it, and reports
+	// Reseal seals the record under key again if it is not what this store writes now: if another key than
+	// the current one sealed it, or if the store below marks it otherwise or not at all. It reports
 	// whether it did. Value and expiry stay as they are. A record that changed in the meantime is left alone
 	// and not reported: its writer sealed it under the current key. It needs an inner [Swapper] and a record
 	// that carries its expiry ([WithSealedExpiry]).
@@ -366,6 +367,13 @@ func (s *sealedStore) CountOthers(ctx context.Context, prefix string) (int, erro
 	return marker.CountMarkedOther(ctx, prefix, s.currentMark(prefix))
 }
 
+func ignoreNotMarker(err error) error {
+	if errors.Is(err, ErrNotMarker) {
+		return nil
+	}
+	return err
+}
+
 // SealedBy implements [Resealer].
 func (s *sealedStore) SealedBy(ctx context.Context, key string) (string, bool, error) {
 	record, found, err := s.inner.Get(ctx, key)
@@ -393,7 +401,16 @@ func (s *sealedStore) Reseal(ctx context.Context, key string) (bool, error) {
 	currentID, currentKey := s.keys.Current()
 	clear(currentKey)
 	if id == currentID {
-		return false, nil
+		// Sealed by the current key, it may still be among the others: a record of before the marks, or
+		// of another class. Written again, it gets its mark, and is not found another time.
+		marker, ok := s.inner.(Marker)
+		if !ok {
+			return false, nil
+		}
+		others, err := marker.MarkedOther(ctx, key, s.currentMark(key), "", 1)
+		if err != nil || len(others) == 0 || others[0] != key {
+			return false, ignoreNotMarker(err)
+		}
 	}
 	if version != sealedVersion2 || !s.sealExpiry {
 		return false, errors.New("kv: a record without a sealed expiry cannot be sealed again")
