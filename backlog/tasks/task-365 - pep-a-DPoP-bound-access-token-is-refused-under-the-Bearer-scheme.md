@@ -1,10 +1,10 @@
 ---
 id: TASK-365
 title: 'pep: a DPoP-bound access token is refused under the Bearer scheme'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-17T06:44:00Z'
-updated_date: '2026-11-18T06:12:00Z'
+updated_date: '2026-11-18T06:17:00Z'
 labels:
   - pep
   - security
@@ -31,3 +31,9 @@ ordinal: 380000
 <!-- SECTION:NOTES:BEGIN -->
 Branch fix/rfc9700-gaps, commit e95951fc. AccessToken.Bound(): a cnf member of any confirmation method (or a payload that does not decode) makes the token sender-constrained; verifyAuthorizationBearer refuses it with 401 invalid_token under the Bearer challenge, and puts no claims on the context, so a later enforcer of an any_of never sees them. Tests: TestRFC9449_7_2_RFC9700_4_10_1_ABoundTokenIsRefusedUnderTheBearerScheme (jkt and x5t#S256; fails without the check), TestRFC9449_7_1_AnyOfBearerAndDPoPAdmitsABoundTokenWithItsProof. zaddy tests pass unchanged.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The Bearer enforcer refuses a sender-constrained token (any cnf member) with 401 invalid_token, keeping its claims off the context; an any_of of bearer and DPoP still admits it with its proof. Merged in 3be1c468; ships with the next pep release.
+<!-- SECTION:FINAL_SUMMARY:END -->
