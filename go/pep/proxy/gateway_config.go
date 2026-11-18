@@ -30,6 +30,8 @@ import (
 	"sort"
 
 	yaml "go.yaml.in/yaml/v4"
+
+	"github.com/gematik/zero-lab/go/httpguard"
 )
 
 // InjectMode selects what a protected route forwards upstream to identify/authorize the user.
@@ -126,6 +128,9 @@ func validateRoutes(routes []Route) ([]Route, error) {
 		rt := &out[i]
 		if rt.PathPrefix == "" {
 			return nil, fmt.Errorf("route %d: empty path_prefix", i)
+		}
+		if err := httpguard.CheckPath(rt.PathPrefix); err != nil {
+			return nil, fmt.Errorf("route %d: path_prefix is not a canonical path", i)
 		}
 		if seen[rt.PathPrefix] {
 			return nil, fmt.Errorf("duplicate route prefix %q", rt.PathPrefix)

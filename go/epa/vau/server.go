@@ -61,6 +61,9 @@ type Server struct {
 	signedPublicKeys    *SignedPublicVAUKeys
 	signedPublicKeysRaw []byte
 	channels            map[string]*ChannelState
+	// Inner, when set, receives every inner request as it was decrypted, so a test can check what a client
+	// sent inside the channel.
+	Inner func(raw []byte)
 }
 
 // NewServer generates the server's keys and sets up its routes.
@@ -367,6 +370,9 @@ func (s *Server) HandleNestedRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("Decrypted nested request", "bytes", len(decrypted))
+	if s.Inner != nil {
+		s.Inner(decrypted)
+	}
 
 	nestedResp := http.Response{
 		Header:     make(http.Header),
