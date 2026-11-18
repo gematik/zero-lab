@@ -32,6 +32,16 @@
   no personal data and has no counterpart in test, reference or production. The transport
   sends it only over https to hosts below `.dev.gematik.solutions`, so a deployment
   outside that environment leaves it unset and never sees it.
+- Transport ([servers](../design/servers.md), rule 29): a listener or peer is one variable
+  that holds its URL, and what its TLS needs hangs on the same name with these suffixes.
+
+  | Suffix | Meaning |
+  |---|---|
+  | `<COMPONENT>_<NAME>_URL` | Listener or peer URL; the scheme is the mode |
+  | `…_TLS_CERT_PATH` | Certificate chain, PEM |
+  | `…_TLS_KEY_PATH` | Private key, PEM |
+  | `…_TLS_CA_PATH` | CA bundle to verify the other side |
+  | `…_TLS_PEER_NAME` | Expected name of a peer, or allowlist for a listener |
 
 ## Helpers
 
