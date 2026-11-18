@@ -22,6 +22,7 @@
 package epa
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -441,7 +442,16 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		return
 	}
 
-	r2, err := http.NewRequest(r.Method, path, r.Body) //nolint:gosec // the path only travels inside the VAU channel, which posts to its own ChannelURL and nowhere else
+	// The inner request is framed by the length of the body it carries (RFC 9112 Section 6.3), never by the
+	// client's framing: a chunked body forwarded as is would leave the Aktensystem to guess where the request
+	// ends. The VAU encrypts the whole message at once, so reading the body first holds nothing more in memory.
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		slog.Warn("Failed to read the request body", "error", err)
+		http.Error(w, "failed to read the request body", http.StatusBadRequest)
+		return
+	}
+	r2, err := http.NewRequest(r.Method, path, bytes.NewReader(body)) //nolint:gosec // the path only travels inside the VAU channel, which posts to its own ChannelURL and nowhere else
 	if err != nil {
 		slog.Error("Failed to create request", "error", err)
 		http.Error(w, "failed to create request", http.StatusInternalServerError)
@@ -726,10 +736,32 @@ func (p *Proxy) GetInsurants(w http.ResponseWriter, _ *http.Request) {
 // copyAndPrepareHeaders copies headers from src to dst, while
 // 1. removing or modifying headers that should not be forwarded to the provider.
 // 2. adding necessary headers if they are not specified explicitly by the client
+// hopByHopHeaderNames are the client connection's own (RFC 9110 Section 7.6.1) and its framing (RFC 9112
+// Section 6): the inner request has its own connection and is framed anew from its body.
+var hopByHopHeaderNames = []string{
+	"connection",
+	"content-length",
+	"keep-alive",
+	"proxy-authenticate",
+	"proxy-authorization",
+	"proxy-connection",
+	"te",
+	"trailer",
+	"transfer-encoding",
+	"upgrade",
+}
+
 func copyAndPrepareHeaders(src, dst http.Header) {
+	// Connection names further headers that end with the client's connection (RFC 9110 Section 7.6.1).
+	var connectionNamed []string
+	for _, v := range src.Values("Connection") {
+		for name := range strings.SplitSeq(v, ",") {
+			connectionNamed = append(connectionNamed, strings.ToLower(strings.TrimSpace(name)))
+		}
+	}
 	for n, v := range src {
 		lowerN := strings.ToLower(n)
-		if slices.Contains(proxyBlockedHeaderNames, lowerN) {
+		if slices.Contains(proxyBlockedHeaderNames, lowerN) || slices.Contains(hopByHopHeaderNames, lowerN) || slices.Contains(connectionNamed, lowerN) {
 			continue
 		}
 		dst[n] = v

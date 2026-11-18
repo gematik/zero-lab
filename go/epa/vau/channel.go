@@ -39,6 +39,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strconv"
 	"sync"
 )
 
@@ -203,6 +204,20 @@ func (c *Channel) Do(req *http.Request) (*http.Response, error) {
 
 // EncryptRequest serialises r as HTTP/1.1 and seals it with [Channel.Encrypt].
 func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
+	if err := checkFraming(r); err != nil {
+		return nil, err
+	}
+	// DumpRequest writes Content-Length only as the header map holds it, so the header is set here from the
+	// length of the body that goes out, whatever the caller copied into the map.
+	r = r.Clone(r.Context())
+	if r.Header == nil {
+		r.Header = make(http.Header)
+	}
+	r.Header.Del("Transfer-Encoding")
+	r.Header.Del("Content-Length")
+	if r.ContentLength > 0 || r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
+		r.Header.Set("Content-Length", strconv.FormatInt(r.ContentLength, 10))
+	}
 	slog.Debug("Encrypting VAU request", "channel_url", c.ChannelURL.String(), "method", r.Method, "url", r.URL.String())
 	data, err := httputil.DumpRequest(r, true)
 	if err != nil {
@@ -210,6 +225,21 @@ func (c *Channel) EncryptRequest(r *http.Request) (*EncryptedRequest, error) {
 	}
 	slog.Debug("VAU request", "channel_url", c.ChannelURL.String(), "method", r.Method, "url", r.URL.String(), "bytes", len(data))
 	return c.Encrypt(data)
+}
+
+// ErrRequestFraming refuses an inner request whose length is not known before it is sent.
+var ErrRequestFraming = errors.New("vau: the inner request needs a known Content-Length")
+
+// checkFraming refuses a request that would be serialised without a Content-Length: a chunked or unknown
+// length, or a body with ContentLength 0, which net/http also takes for an unknown length. The Aktensystem
+// reads the inner message as one HTTP/1.1 request, and a body it cannot delimit could carry a second request
+// (RFC 9112 Section 6.3).
+func checkFraming(r *http.Request) error {
+	hasBody := r.Body != nil && r.Body != http.NoBody
+	if r.ContentLength < 0 || len(r.TransferEncoding) > 0 || (hasBody && r.ContentLength == 0) {
+		return ErrRequestFraming
+	}
+	return nil
 }
 
 // Encrypt seals data for the server. Every call takes the next request and IV counters,
