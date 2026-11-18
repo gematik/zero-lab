@@ -4,6 +4,7 @@ use (
 	./brainpool
 	./dpop
 	./epa
+	./httpguard
 	./idpd
 	./kv
 	./metsubushi

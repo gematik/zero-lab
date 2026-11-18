@@ -160,9 +160,13 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   methods, and URL, header and form values parsed into types before use.
   Rule 28 has a few concrete consequences in Go:
   - `ServeMux` method patterns, which answer 405 with `Allow` themselves.
-  - `r.URL.RawPath` and `EscapedPath()` checked, so `ServeMux`'s path cleaning never turns
-    a non-canonical path into a match.
-  - `url.Values` read through a helper that refuses a repeated key.
+  - The shared request checks are [`go/httpguard`](../httpguard), which every adapter calls
+    before routing; its checks are fuzzed once there, not rewritten per handler.
+  - The path checked as received (`httpguard.Path` on `EscapedPath()`, `httpguard.CheckPath`
+    on a forwarded URI), so `ServeMux`'s path cleaning never turns a non-canonical path into
+    a match; a route prefix matches on a segment boundary only (`httpguard.HasPrefix`).
+  - `url.Values` read through `httpguard.Value`, which refuses a repeated key.
+  - `Host` checked against the configured names (`httpguard.Host`).
   - `encoding/json/v2` only; no module imports `encoding/json`, except `go/pdp`, which
     zeta-pdp-go replaces and which stays on v1 until then. Its defaults refuse a
     member named twice and invalid UTF-8, and match names exactly, where v1 keeps the last
