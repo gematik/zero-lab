@@ -93,7 +93,14 @@ routes:
 - Env shortcuts: `PEP_API_UPSTREAM` → `{/api, dpop, gate:session, strip}`; `PEP_WEBAPP_UPSTREAM` →
   `{/, identity, gate:snapshot}`. `PEP_ROUTES_PATH` (YAML) is authoritative when set.
 
-Validation (load time): longest-prefix sort; duplicate prefix / bad upstream / bad enum → error;
+Matching (per request): the path is checked as received (`httpguard.Path`); an encoded `/`, `\` or NUL, a
+`.`/`..` segment (literal or encoded), double encoding or an empty segment gets 400 before any route is
+matched. A prefix holds a path on a segment boundary only (`/pub` holds `/pub/x`, never `/public`), and
+`strip_prefix` takes the prefix off the path as received before it is joined to the upstream's path, so the
+upstream gets its own path and the rest of a canonical path.
+
+Validation (load time): longest-prefix sort; a prefix that is not a canonical path, duplicate prefix / bad
+upstream / bad enum → error;
 an `https` upstream without `Config.UpstreamTransport` → error (zero-pep-proxy passes the `web`
 profile's transport); `inject: dpop` with `gate != session` → error; `inject: dpop` with a non-PDP
 backend → error (`requireDPoPCapability`).

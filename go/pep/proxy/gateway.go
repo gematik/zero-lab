@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/go/httpguard"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -89,9 +90,11 @@ func newGateway(routes []Route, deps gatewayDeps) (*Gateway, error) {
 	return g, nil
 }
 
-func (g *Gateway) match(path string) *Route {
+// match finds the route of an escaped path that httpguard.CheckPath accepted: the longest prefix that holds it
+// on a segment boundary, compared as received.
+func (g *Gateway) match(escaped string) *Route {
 	for i := range g.routes {
-		if strings.HasPrefix(path, g.routes[i].PathPrefix) {
+		if httpguard.HasPrefix(escaped, g.routes[i].PathPrefix) {
 			return &g.routes[i]
 		}
 	}
@@ -99,7 +102,13 @@ func (g *Gateway) match(path string) *Route {
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	rt := g.match(r.URL.Path)
+	// Server rule 28, "Method and path": a path is matched as received. An encoded separator or dot segment
+	// that an upstream would resolve could otherwise reach a gated route through an open one.
+	if err := httpguard.Path(r); err != nil {
+		respondGatewayJSON(w, http.StatusBadRequest, "invalid_request", "the path is not canonical")
+		return
+	}
+	rt := g.match(r.URL.EscapedPath())
 	if rt == nil {
 		http.NotFound(w, r)
 		return
@@ -172,15 +181,21 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 	return &httputil.ReverseProxy{
 		Transport: g.deps.transport,
 		Rewrite: func(pr *httputil.ProxyRequest) {
-			pr.SetURL(rt.upstream)
 			if rt.StripPrefix {
-				trimmed := strings.TrimPrefix(pr.Out.URL.Path, strings.TrimSuffix(rt.PathPrefix, "/"))
-				if trimmed == "" {
-					trimmed = "/"
+				// The prefix comes off the path as received, before SetURL joins it to the upstream's path, so
+				// what is forwarded is the upstream's path and the rest of a canonical path, nothing decoded
+				// again.
+				rest := strings.TrimPrefix(pr.In.URL.EscapedPath(), strings.TrimSuffix(rt.PathPrefix, "/"))
+				if rest == "" {
+					rest = "/"
 				}
-				pr.Out.URL.Path = trimmed
-				pr.Out.URL.RawPath = ""
+				path, err := url.PathUnescape(rest)
+				if err != nil {
+					path = rest
+				}
+				pr.Out.URL.Path, pr.Out.URL.RawPath = path, rest
 			}
+			pr.SetURL(rt.upstream)
 			pr.SetXForwarded()
 
 			// Never let a client forge identity or authorization to the upstream.
