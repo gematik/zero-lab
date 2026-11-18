@@ -4,7 +4,7 @@ title: 'epa: a forwarded request keeps its framing inside the VAU'
 status: In Progress
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-18T06:22:00Z'
+updated_date: '2026-11-18T06:38:00Z'
 labels: []
 dependencies: []
 priority: high
@@ -19,6 +19,12 @@ ordinal: 370000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 the inner request always carries the exact `Content-Length` of the body it is sent with, and client `Content-Length`/`Transfer-Encoding`/hop-by-hop headers are never copied into it.
-- [ ] #2 a test sends a chunked request through the proxy to a fake VAU and checks the inner message's framing and body.
+- [x] #1 the inner request always carries the exact `Content-Length` of the body it is sent with, and client `Content-Length`/`Transfer-Encoding`/hop-by-hop headers are never copied into it.
+- [x] #2 a test sends a chunked request through the proxy to a fake VAU and checks the inner message's framing and body.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch fix/rule28-gaps, aa159bc6. forwardToVAU reads the body and builds the inner request from it, so ContentLength is exact; copyAndPrepareHeaders drops Content-Length, Transfer-Encoding and the hop-by-hop headers, and those named in Connection. vau.Channel.EncryptRequest refuses an unknown length, Transfer-Encoding, or a body with ContentLength 0 (ErrRequestFraming) and sets Content-Length itself, since httputil.DumpRequest writes it only from the header map: that was the root cause. vau.Server (test VAU) has an Inner hook. Tests: TestServerRule28_AChunkedRequestIsFramedByItsLengthInsideTheVAU (chunked through the proxy to the test VAU; parses the inner message, exact length, no bytes after it, no hop-by-hop headers), TestServerRule28_TheVAUChannelRefusesARequestWithoutAKnownLength. The body read is not bounded yet: the limit is TASK-357's (limits before work).
+<!-- SECTION:NOTES:END -->
