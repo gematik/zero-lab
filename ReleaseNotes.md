@@ -1,5 +1,34 @@
 # Release Notes
 
+# Release go/kv v0.4.0
+
+What a server needs to change the keys that seal its records without losing the records that outlive a key
+(TASK-381). Nothing existing changes its signature, except that `postgres.Open` gains variadic options.
+
+### added
+- `Keychain`: a key ring of versioned entries (`<family>-v<N>`, `activeFrom`), each holding a key that seals and
+  a key for names, wrapped together under a key-encryption key that an `Unwrapper` holds (servers.md rule 19).
+  The file format is the keychain of the notification service of ZETA Guard. `LocalKEK` is the unwrapper for
+  development. A keychain follows its file like `Keyring` and asks the key service only for new entries.
+- `WithKeychainAgreement` and `Keychain.Ready`: an entry whose time has come is in force only when the caller
+  says the replicas agree on it (servers.md rule 22).
+- `Marker`: a store keeps a mark beside each record and finds the records with another mark or none.
+  `NewMemory` has `WithMemoryMark`; a wrapping store over one without marks returns `ErrNotMarker`.
+- `Resealer` on the store of `NewSealed`: `SealedBy`, `Reseal`, `Rename`, and over a marked store `Others` and
+  `CountOthers`. `SealedMarker` and `WithSealedClass` make the mark of a sealed record the format of the seal,
+  the ID of its key and a class the caller chooses.
+- `NameKey`.
+
+### changed
+- `kv/postgres` keeps marks in two nullable columns, `mark` and `marked_at`, added without rewriting the table.
+  A row written by a version before the marks counts as not marked.
+
+### verified
+- `just check` across all Go modules passed on f89259c5 (main), 2026-11-18; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- kv on Postgres (Postgres 18, `TEST_DATABASE_URL`) passed on the branch of pull request 91, whose kv code is
+  what main holds (6caf44a6); it was not run again for the tag.
+
 # Release go/oidf v0.54.2
 
 ### fixed
