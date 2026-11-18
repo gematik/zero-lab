@@ -361,14 +361,26 @@ func (c *pepContext) verifyAuthorizationBearer() error {
 	if err != nil {
 		return err
 	}
-	if err := c.verifyAccessToken(bearerToken); err != nil {
-		return Error{
-			HTTPStatus:      http.StatusUnauthorized,
-			Code:            codeInvalidToken,
-			Description:     descriptionInvalidToken,
-			WWWAuthenticate: fmt.Sprintf(`Bearer error=%q, error_description=%q`, codeInvalidToken, descriptionInvalidToken),
-		}
+	invalid := Error{
+		HTTPStatus:      http.StatusUnauthorized,
+		Code:            codeInvalidToken,
+		Description:     descriptionInvalidToken,
+		WWWAuthenticate: fmt.Sprintf(`Bearer error=%q, error_description=%q`, codeInvalidToken, descriptionInvalidToken),
 	}
+	token, err := c.pep.VerifyAccessToken(bearerToken)
+	if err != nil {
+		return invalid
+	}
+	// A sender-constrained token is only good with its proof (RFC 9449 Section 7.2, RFC 9700 Section 4.10.1):
+	// accepted as a bearer token, a leaked one would be replayed without it. The claims stay off the context,
+	// so another enforcer of an any_of never sees a token this one refused.
+	if token.Bound() {
+		c.Slogger().Warn("Sender-constrained access token presented under the Bearer scheme")
+		return invalid
+	}
+	c.accessTokenRaw = bearerToken
+	c.accessToken = token
+	c.claimsRaw = token.Payload
 	return nil
 }
 

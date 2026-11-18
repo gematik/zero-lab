@@ -282,7 +282,8 @@ func EnforcerFromFunc(apply func(Context, HandlerFunc)) Enforcer {
 }
 
 // EnforcerAuthorizationBearer requires a valid JWT access token in a Bearer Authorization header
-// (RFC 6750) and makes its claims available on the context.
+// (RFC 6750) and makes its claims available on the context. A sender-constrained token, one with a cnf member,
+// is refused: it is good only with its proof (RFC 9449 Section 7.2), under EnforcerAuthorizationDPoP.
 type EnforcerAuthorizationBearer struct {
 	TypeVal EnforcerType `json:"type"`
 }

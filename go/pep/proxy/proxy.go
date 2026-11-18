@@ -347,6 +347,7 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		s.renderFailure(w, "login_failed", loginNotStarted, err, idpIss, rd)
 		return
 	}
+	sess.LoginMode = start.Mode
 	if err := s.sessions.save(r.Context(), sess); err != nil {
 		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return
@@ -434,9 +435,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_, _ = w.Write(append(body, '\n'))
 }
 
-// handleCallback is the redirect_uri: it completes the login (by OAuth state) and returns to rd. The
-// browser already holds the cookie from /oauth2/start, so no re-set is needed (and must not happen on a
-// second device in the decoupled flow).
+// handleCallback is the redirect_uri: it completes the login (by OAuth state) and returns to rd. A redirect
+// login completes only in the browser holding the cookie from /oauth2/start; a cross-device one completes
+// without it, and the cookie is not set there (DESIGN.md §3).
 func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	// Resolve the session by state first so error pages know which provider to retry.
@@ -452,6 +453,17 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if serr != nil {
 		s.renderError(w, "invalid_state", "unknown or expired login state", "", "")
+		return
+	}
+	// RFC 9700 Section 2.1.1: a redirect login is bound to the browser that started it. Without that browser's
+	// cookie the callback may be a victim's, lured to an authorization URL another browser started; redeeming
+	// its code would sign the starter in as the victim. The session is removed with its state, so the code is
+	// never redeemed for it.
+	owns := s.requestOwnsSession(r, sess)
+	if !owns && !crossDevice(sess.LoginMode) {
+		s.sessions.remove(r.Context(), sess)
+		s.log.Warn("login callback refused: not from the browser that started it", "idp_iss", idpIss)
+		s.renderError(w, "invalid_state", "unknown or expired login state", idpIss, rd)
 		return
 	}
 	if err := s.backend.Complete(r.Context(), sess, q.Get("code")); err != nil {
@@ -474,7 +486,7 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// the login here, so it holds no session cookie — redirecting it to rd is meaningless, and it can't rotate
 	// the cookie. Show a success page; the originating device (polling /oauth2/poll) proceeds to rd and rotates
 	// the id there.
-	if !s.requestOwnsSession(r, sess) {
+	if !owns {
 		s.log.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "decoupled", true)
 		s.render.render(w, http.StatusOK, "complete.html", nil)
 		return
@@ -491,6 +503,13 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	s.setSnapshot(w, sess)
 	s.log.Info("login complete", "session_ref", logRef(sess.ID), "idp_iss", sess.IDPIss, "return_to", dest)
 	http.Redirect(w, r, dest, http.StatusFound)
+}
+
+// crossDevice says a login of mode may complete in a browser without the session's cookie: the decoupled
+// (OIDF QR) login completes on a second device, and the authenticator login in the app the deep link opened. What
+// guards them instead is in DESIGN.md (cross-device logins).
+func crossDevice(mode string) bool {
+	return mode == "decoupled" || mode == "authenticator"
 }
 
 // requestOwnsSession reports whether the request carries the session cookie set at /oauth2/start for this
