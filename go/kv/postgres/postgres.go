@@ -60,14 +60,43 @@ DO $$ BEGIN
   END IF;
 END $$;
 ALTER TABLE kv ADD COLUMN IF NOT EXISTS metadata jsonb;
+ALTER TABLE kv ADD COLUMN IF NOT EXISTS mark text;
+ALTER TABLE kv ADD COLUMN IF NOT EXISTS marked_at timestamptz;
 `
 
+// The mark of a record (kv.Marker) is two columns, both added without rewriting the table: mark, and
+// marked_at, which every write of this version sets to the same now() as created_at. A replica of a version
+// before the marks names neither in its statements, so a row it wrote has a created_at of its own and no
+// longer the marked_at of the mark it left standing: such a mark does not count (server rule 22).
+const markedOther = `(mark IS DISTINCT FROM $2 OR marked_at IS DISTINCT FROM created_at)`
+
 type store struct {
-	db *sql.DB
+	db   *sql.DB
+	mark func(key string, value []byte) string
+}
+
+// Option adjusts the store [Open] returns.
+type Option func(*store)
+
+// WithMark makes the store a kv.Marker: beside each record it keeps what mark says of the record's key and
+// value, kv.SealedMarker for a store that is sealed.
+func WithMark(mark func(key string, value []byte) string) Option {
+	return func(s *store) { s.mark = mark }
+}
+
+// markOf is the statement parameter for the mark of a value: NULL without one.
+func (s *store) markOf(key string, value []byte) any {
+	if s.mark == nil {
+		return nil
+	}
+	if mark := s.mark(key, value); mark != "" {
+		return mark
+	}
+	return nil
 }
 
 // Open connects to Postgres at dsn, applies the kv schema, and returns a kv.Store.
-func Open(ctx context.Context, dsn string) (kv.Store, error) {
+func Open(ctx context.Context, dsn string, opts ...Option) (kv.Store, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("kv/postgres: open: %w", err)
@@ -80,7 +109,49 @@ func Open(ctx context.Context, dsn string) (kv.Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("kv/postgres: schema: %w", err)
 	}
-	return &store{db: db}, nil
+	s := &store{db: db}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s, nil
+}
+
+// MarkedOther implements kv.Marker.
+func (s *store) MarkedOther(ctx context.Context, prefix, mark, after string, limit int) ([]string, error) {
+	if s.mark == nil {
+		return nil, kv.ErrNotMarker
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT key FROM kv WHERE (expires_at IS NULL OR expires_at > now()) AND key LIKE $1 AND `+markedOther+`
+		   AND key > $3 ORDER BY key LIMIT $4`, likePrefix(prefix), mark, after, limit)
+	if err != nil {
+		return nil, fmt.Errorf("kv/postgres: marked other: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return nil, err
+		}
+		out = append(out, k)
+	}
+	return out, rows.Err()
+}
+
+// CountMarkedOther implements kv.Marker.
+func (s *store) CountMarkedOther(ctx context.Context, prefix, mark string) (int, error) {
+	if s.mark == nil {
+		return 0, kv.ErrNotMarker
+	}
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM kv WHERE (expires_at IS NULL OR expires_at > now()) AND key LIKE $1 AND `+markedOther,
+		likePrefix(prefix), mark).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("kv/postgres: count marked other: %w", err)
+	}
+	return n, nil
 }
 
 func (s *store) Get(ctx context.Context, key string) ([]byte, bool, error) {
@@ -113,11 +184,13 @@ func ttlMicroseconds(ttl time.Duration) any {
 	return ttl.Microseconds()
 }
 
-func upsert(ctx context.Context, e execer, ent kv.Entry) error {
+func (s *store) upsert(ctx context.Context, e execer, ent kv.Entry) error {
 	_, err := e.ExecContext(ctx,
-		`INSERT INTO kv(key, value, expires_at) VALUES($1, $2, now() + $3::bigint * interval '1 microsecond')
-		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at`,
-		ent.Key, ent.Value, ttlMicroseconds(ent.TTL))
+		`INSERT INTO kv(key, value, expires_at, mark, marked_at)
+		   VALUES($1, $2, now() + $3::bigint * interval '1 microsecond', $4, now())
+		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at,
+		     mark=excluded.mark, marked_at=now()`,
+		ent.Key, ent.Value, ttlMicroseconds(ent.TTL), s.markOf(ent.Key, ent.Value))
 	if err != nil {
 		return fmt.Errorf("kv/postgres: set: %w", err)
 	}
@@ -125,17 +198,19 @@ func upsert(ctx context.Context, e execer, ent kv.Entry) error {
 }
 
 func (s *store) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	return upsert(ctx, s.db, kv.Entry{Key: key, Value: value, TTL: ttl})
+	return s.upsert(ctx, s.db, kv.Entry{Key: key, Value: value, TTL: ttl})
 }
 
 // SetIfAbsent is one statement, so two replicas cannot both win: the loser of a race for an expired row waits
 // for the winner's commit and then re-evaluates the WHERE on the new row, which is no longer expired.
 func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO kv(key, value, expires_at) VALUES($1, $2, now() + $3::bigint * interval '1 microsecond')
-		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at
+		`INSERT INTO kv(key, value, expires_at, mark, marked_at)
+		   VALUES($1, $2, now() + $3::bigint * interval '1 microsecond', $4, now())
+		   ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at,
+		     mark=excluded.mark, marked_at=now()
 		   WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= now()`,
-		key, value, ttlMicroseconds(ttl))
+		key, value, ttlMicroseconds(ttl), s.markOf(key, value))
 	if err != nil {
 		return false, fmt.Errorf("kv/postgres: set if absent: %w", err)
 	}
@@ -150,9 +225,10 @@ func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl t
 // value the second finds the first one's.
 func (s *store) Swap(ctx context.Context, key string, old, value []byte, ttl time.Duration) (bool, error) {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE kv SET value=$3, created_at=now(), expires_at=now() + $4::bigint * interval '1 microsecond'
+		`UPDATE kv SET value=$3, created_at=now(), expires_at=now() + $4::bigint * interval '1 microsecond',
+		        mark=$5, marked_at=now()
 		  WHERE key=$1 AND value=$2 AND (expires_at IS NULL OR expires_at > now())`,
-		key, old, value, ttlMicroseconds(ttl))
+		key, old, value, ttlMicroseconds(ttl), s.markOf(key, value))
 	if err != nil {
 		return false, fmt.Errorf("kv/postgres: swap: %w", err)
 	}
@@ -170,7 +246,7 @@ func (s *store) SetMany(ctx context.Context, entries ...kv.Entry) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, e := range entries {
-		if err := upsert(ctx, tx, e); err != nil {
+		if err := s.upsert(ctx, tx, e); err != nil {
 			return err
 		}
 	}

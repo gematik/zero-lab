@@ -24,6 +24,7 @@ package kv
 import (
 	"bytes"
 	"context"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -35,6 +36,7 @@ type memoryStore struct {
 	items  map[string]memEntry
 	closed bool
 	now    func() time.Time
+	mark   func(key string, value []byte) string
 }
 
 type memEntry struct {
@@ -63,6 +65,35 @@ type MemoryOption func(*memoryStore)
 // WithMemoryClock sets the time records expire by; the default is the system clock.
 func WithMemoryClock(now func() time.Time) MemoryOption {
 	return func(s *memoryStore) { s.now = now }
+}
+
+// WithMemoryMark makes the store a [Marker], with the mark of a record being what mark says of its value.
+func WithMemoryMark(mark func(key string, value []byte) string) MemoryOption {
+	return func(s *memoryStore) { s.mark = mark }
+}
+
+// MarkedOther implements [Marker].
+func (s *memoryStore) MarkedOther(_ context.Context, prefix, mark, after string, limit int) ([]string, error) {
+	if s.mark == nil {
+		return nil, ErrNotMarker
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.now()
+	var keys []string
+	for key, entry := range s.items {
+		if strings.HasPrefix(key, prefix) && key > after && !entry.expired(now) && s.mark(key, entry.value) != mark {
+			keys = append(keys, key)
+		}
+	}
+	slices.Sort(keys)
+	return keys[:min(len(keys), limit)], nil
+}
+
+// CountMarkedOther implements [Marker].
+func (s *memoryStore) CountMarkedOther(ctx context.Context, prefix, mark string) (int, error) {
+	keys, err := s.MarkedOther(ctx, prefix, mark, "", len(s.items)+1)
+	return len(keys), err
 }
 
 func (s *memoryStore) ttlExpiry(ttl time.Duration) time.Time {

@@ -32,6 +32,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -107,6 +108,8 @@ type sealedStore struct {
 	// now is the clock sealed expiries are set and checked by; sealExpiry that new records carry one.
 	now        func() time.Time
 	sealExpiry bool
+	// class is what records under a key are told apart by beyond their seal, see [WithSealedClass].
+	class func(key string) string
 }
 
 // aead derives a key per record from a random salt. Every accepted proof and nonce seals a record, so a key shared
@@ -274,6 +277,175 @@ func (s *sealedStore) Swap(ctx context.Context, key string, old, value []byte, t
 		return false, err
 	}
 	return swapper.Swap(ctx, key, current, record, ttl)
+}
+
+// Resealer is what a store from [NewSealed] is besides a [Store]: it says which key sealed a record and seals
+// a record again under the current key, which is how records that outlive a key are taken along when the
+// keys rotate (server rule 22).
+type Resealer interface {
+	// SealedBy returns the ID of the key that sealed the record under key. found is false when there is none.
+	SealedBy(ctx context.Context, key string) (id string, found bool, err error)
+	// Reseal seals the record under key again if another key than the current one sealed it, and reports
+	// whether it did. Value and expiry stay as they are. A record that changed in the meantime is left alone
+	// and not reported: its writer sealed it under the current key. It needs an inner [Swapper] and a record
+	// that carries its expiry ([WithSealedExpiry]).
+	Reseal(ctx context.Context, key string) (resealed bool, err error)
+	// Rename moves the record under from to the key to, sealed under the current key, with the value and the
+	// expiry it had, and reports whether there was one to move. A record that to already holds stays: it was
+	// moved before, or written since. The two keys are not changed in one step: whoever reads looks under to
+	// first.
+	Rename(ctx context.Context, from, to string) (moved bool, err error)
+	// Others returns up to limit keys with the prefix, in order and after the key after, of the records that
+	// are not what this store writes now under that prefix: sealed by another key than the current one, in
+	// another format of the seal, or of another class ([WithSealedClass]). CountOthers counts them. Both
+	// need an inner [Marker] that marks a record with [SealedMarker] of the same class.
+	Others(ctx context.Context, prefix, after string, limit int) ([]string, error)
+	CountOthers(ctx context.Context, prefix string) (int, error)
+}
+
+// SealedMarker returns the mark of a sealed record for a [Marker]: the format of the seal and the ID of the
+// key that sealed it, both of which stand in the clear at the head of the value, and the class of the key,
+// which is whatever the caller has to tell records under one prefix apart by, the version of what they
+// hold above all. class may be nil. A value that is no sealed record has the mark "".
+//
+// A change of the keys, of the seal's format or of a class then all show the same way: the records that
+// are not what is written now are the ones with another mark ([Resealer]).
+func SealedMarker(class func(key string) string) func(key string, record []byte) string {
+	return func(key string, record []byte) string {
+		version, id, _, _, _, _, err := parseSealed(record)
+		if err != nil {
+			return ""
+		}
+		return sealedMark(version, id, classOf(class, key))
+	}
+}
+
+func classOf(class func(key string) string, key string) string {
+	if class == nil {
+		return ""
+	}
+	return class(key)
+}
+
+func sealedMark(version byte, id, class string) string {
+	return strconv.Itoa(int(version)) + ":" + id + ":" + class
+}
+
+// WithSealedClass tells the store the class of the records under a key or a prefix, as [SealedMarker] of
+// the store below has it, so that [Resealer.Others] finds the records of another class.
+func WithSealedClass(class func(key string) string) SealedOption {
+	return func(s *sealedStore) { s.class = class }
+}
+
+// currentMark is the mark of what this store writes now under a key or prefix.
+func (s *sealedStore) currentMark(key string) string {
+	id, current := s.keys.Current()
+	clear(current)
+	version := sealedVersion1
+	if s.sealExpiry {
+		version = sealedVersion2
+	}
+	return sealedMark(byte(version), id, classOf(s.class, key))
+}
+
+// Others implements [Resealer].
+func (s *sealedStore) Others(ctx context.Context, prefix, after string, limit int) ([]string, error) {
+	marker, ok := s.inner.(Marker)
+	if !ok {
+		return nil, ErrNotMarker
+	}
+	return marker.MarkedOther(ctx, prefix, s.currentMark(prefix), after, limit)
+}
+
+// CountOthers implements [Resealer].
+func (s *sealedStore) CountOthers(ctx context.Context, prefix string) (int, error) {
+	marker, ok := s.inner.(Marker)
+	if !ok {
+		return 0, ErrNotMarker
+	}
+	return marker.CountMarkedOther(ctx, prefix, s.currentMark(prefix))
+}
+
+// SealedBy implements [Resealer].
+func (s *sealedStore) SealedBy(ctx context.Context, key string) (string, bool, error) {
+	record, found, err := s.inner.Get(ctx, key)
+	if err != nil || !found {
+		return "", false, err
+	}
+	_, id, _, _, _, _, err := parseSealed(record)
+	return id, err == nil, err
+}
+
+// Reseal implements [Resealer].
+func (s *sealedStore) Reseal(ctx context.Context, key string) (bool, error) {
+	swapper, ok := s.inner.(Swapper)
+	if !ok {
+		return false, ErrNotSwapper
+	}
+	current, found, err := s.inner.Get(ctx, key)
+	if err != nil || !found {
+		return false, err
+	}
+	version, id, expiry, _, _, _, err := parseSealed(current)
+	if err != nil {
+		return false, err
+	}
+	currentID, currentKey := s.keys.Current()
+	clear(currentKey)
+	if id == currentID {
+		return false, nil
+	}
+	if version != sealedVersion2 || !s.sealExpiry {
+		return false, errors.New("kv: a record without a sealed expiry cannot be sealed again")
+	}
+	value, found, err := s.open(key, current)
+	if err != nil || !found {
+		return false, err
+	}
+	defer clear(value)
+	var ttl time.Duration
+	if ends := int64(binary.BigEndian.Uint64(expiry)); ends != 0 {
+		ttl = time.UnixMilli(ends).Sub(s.now())
+	}
+	record, err := s.seal(key, value, ttl)
+	if err != nil {
+		return false, err
+	}
+	return swapper.Swap(ctx, key, current, record, ttl)
+}
+
+// Rename implements [Resealer].
+func (s *sealedStore) Rename(ctx context.Context, from, to string) (bool, error) {
+	current, found, err := s.inner.Get(ctx, from)
+	if err != nil || !found {
+		return false, err
+	}
+	version, _, expiry, _, _, _, err := parseSealed(current)
+	if err != nil {
+		return false, err
+	}
+	if version != sealedVersion2 || !s.sealExpiry {
+		return false, errors.New("kv: a record without a sealed expiry cannot be moved")
+	}
+	value, found, err := s.open(from, current)
+	if err != nil {
+		return false, err
+	}
+	if found {
+		defer clear(value)
+		var ttl time.Duration
+		if ends := int64(binary.BigEndian.Uint64(expiry)); ends != 0 {
+			ttl = time.UnixMilli(ends).Sub(s.now())
+		}
+		record, err := s.seal(to, value, ttl)
+		if err != nil {
+			return false, err
+		}
+		if _, err := s.inner.SetIfAbsent(ctx, to, record, ttl); err != nil {
+			return false, err
+		}
+	}
+	return found, s.inner.Delete(ctx, from)
 }
 
 func (s *sealedStore) SetMany(ctx context.Context, entries ...Entry) error {

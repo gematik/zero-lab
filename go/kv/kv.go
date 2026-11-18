@@ -44,6 +44,22 @@ import (
 // ErrClosed is returned by every method after Close.
 var ErrClosed = errors.New("kv: store closed")
 
+// Marker is a store that keeps beside each record a mark its writer derives from key and value (the option
+// WithMark of a backend), and finds the records whose mark is another one or that have none: what a change
+// of keys or of a format still has to take along, without reading every record to see (server rule 22). A
+// record that a replica without marks wrote counts as having none. A mark is a hint for finding records and
+// nothing is trusted to it: what a record is, its value says.
+type Marker interface {
+	// MarkedOther returns up to limit keys with the prefix, in order and after the key after, of the records
+	// whose mark is not mark.
+	MarkedOther(ctx context.Context, prefix, mark, after string, limit int) ([]string, error)
+	// CountMarkedOther counts the records with the prefix whose mark is not mark.
+	CountMarkedOther(ctx context.Context, prefix, mark string) (int, error)
+}
+
+// ErrNotMarker is what a wrapping store returns when the store below keeps no marks.
+var ErrNotMarker = errors.New("kv: the store keeps no marks")
+
 // ErrNotSwapper is what [Swapper.Swap] of a wrapping store returns when the store below cannot swap.
 var ErrNotSwapper = errors.New("kv: the store cannot swap")
 
