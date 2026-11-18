@@ -4,7 +4,7 @@ title: 'pep/proxy: a login completes only in the browser that started it'
 status: In Progress
 assignee: []
 created_date: '2026-11-17T06:44:00Z'
-updated_date: '2026-11-18T06:05:00Z'
+updated_date: '2026-11-18T06:12:00Z'
 labels:
   - pep-proxy
   - security
@@ -22,7 +22,13 @@ ordinal: 379000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 In redirect mode a callback without the cookie of the session its `state` names is refused before the code is redeemed, and the state is consumed. Test named after RFC 9700 §2.1.1.
+- [x] #1 In redirect mode a callback without the cookie of the session its `state` names is refused before the code is redeemed, and the state is consumed. Test named after RFC 9700 §2.1.1.
 - [ ] #2 The login mode is recorded on the session at `/oauth2/start`, so the callback knows which rule applies. Decoupled and authenticator modes keep working (e2e).
-- [ ] #3 The remaining cross-device risk of decoupled and authenticator logins is written down in the pep/proxy docs, with the mitigations in force.
+- [x] #3 The remaining cross-device risk of decoupled and authenticator logins is written down in the pep/proxy docs, with the mitigations in force.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Branch fix/rfc9700-gaps, commit 944a3110. Session.LoginMode (login_mode) is set from LoginStart.Mode at /oauth2/start. handleCallback: when the request does not own the session and the mode is not decoupled/authenticator, the session and its state are removed before Complete, and invalid_state is rendered; an empty mode (sessions stored before) gets the redirect rule. Tests: TestRFC9700_2_1_1_ARedirectLoginCompletesOnlyInTheBrowserThatStartedIt (no cookie, another cookie, then the starter is refused too; fails without the check), TestRFC9700_2_1_1_ACrossDeviceLoginCompletesWithoutTheCookie (decoupled, authenticator: callback 200 and poll 200). docs/DESIGN.md §3: who may complete a login, and the cross-device risk that remains with the mitigations in force. AC #2: unit-tested; the e2e of the OIDF QR and idpd logins is the maintainer's HITL. Rollout: zero-pep-proxy refuses unknown session members, so an older instance cannot read a session a newer one wrote; mixed versions only during a rolling update.
+<!-- SECTION:NOTES:END -->
