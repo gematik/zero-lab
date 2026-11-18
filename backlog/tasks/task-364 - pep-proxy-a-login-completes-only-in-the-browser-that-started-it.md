@@ -1,9 +1,10 @@
 ---
 id: TASK-364
 title: 'pep/proxy: a login completes only in the browser that started it'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-17T06:44:00Z'
+updated_date: '2026-11-18T06:05:00Z'
 labels:
   - pep-proxy
   - security
