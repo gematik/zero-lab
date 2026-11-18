@@ -3,10 +3,10 @@ id: TASK-376
 title: >-
   oidf: a signed key set without exp is taken, bounded by the entity statement
   of its issuer
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-18 08:21'
-updated_date: '2026-11-18 08:26'
+updated_date: '2026-11-18 08:45'
 labels:
   - oidf
   - go
@@ -31,9 +31,15 @@ The maintainer decided on 2026-11-18 to relax the module. A key set without exp 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A signed key set without exp from an OP of the federation is taken, and a login at https://gsi-ref.dev.gematik.solutions can begin
-- [ ] #2 A key set without exp is kept and used no longer than a stated bound that does not outlast the entity statement it was verified with; the bound is documented at the check and tested
-- [ ] #3 A key set that states exp is held to it as before, and an expired one is refused
-- [ ] #4 The IdP list without exp is still refused
-- [ ] #5 docs/design/servers.md rule 15 or the module's documentation says where this module is no stricter than the specification and why
+- [x] #1 A signed key set without exp from an OP of the federation is taken, and a login at https://gsi-ref.dev.gematik.solutions can begin
+- [x] #2 A key set without exp is kept and used no longer than a stated bound that does not outlast the entity statement it was verified with; the bound is documented at the check and tested
+- [x] #3 A key set that states exp is held to it as before, and an expired one is refused
+- [x] #4 The IdP list without exp is still refused
+- [x] #5 docs/design/servers.md rule 15 or the module's documentation says where this module is no stricter than the specification and why
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Bound settled: a key set without exp is never kept in the document store (keep already skips a document without exp), so it lives for the one call that fetched it and is verified with the keys of the statement that call was given; this cannot outlast the statement. Cost: one fetch of the key set per resolution at such a provider, single-flighted by fetchOnce. Documented at FetchSignedJwks; servers.md rule 15 already allows a documented interoperability need. requireExpiry is gone; the IdP list checks its exp in parseIdpList. Live on 2026-11-18: all 108 IdPs of app-ref.federationmaster.de and all 119 of app.federationmaster.de verify; without exp are gsi-ref.dev.gematik.solutions and sidp-c01-ru.d-trust.net/realms/sidpdtr01 (ref only). Released as go/oidf v0.54.2; pdp and pep/proxy pin it.
+<!-- SECTION:NOTES:END -->
