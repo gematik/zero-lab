@@ -32,9 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"slices"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,6 +45,14 @@ const (
 	keychainUnwrapTimeout = 10 * time.Second
 )
 
+// The names of the keys an entry of a [Keychain] can hold.
+const (
+	// KeychainSeal is the key that seals, which every entry has.
+	KeychainSeal = "seal"
+	// KeychainName is the key for names, which an entry has when the names are to change.
+	KeychainName = "name"
+)
+
 // Unwrapper is the key service that holds the key-encryption keys of a [Keychain]: an HSM, a KMS, or for
 // development a key in a file ([LocalKEK]). The key-encryption key never leaves it; what it hands out is the
 // key material of one entry.
@@ -56,39 +62,63 @@ type Unwrapper interface {
 	Unwrap(ctx context.Context, kekID string, iv, ciphertext, tag, associatedData []byte) ([]byte, error)
 }
 
-// NameKey is the key of one keychain entry for deriving names: pseudonyms of what must not stand in a database
-// key in the clear.
+// NameKey is a key of a keychain for deriving names: pseudonyms of what must not stand in a database key in
+// the clear.
 type NameKey struct {
-	// ID is the ID of the entry.
+	// ID is the ID of the entry that brought the key.
 	ID  string
 	Key []byte
-	// Since is from when the entry is in force by its own word.
+	// Since is from when that entry is in force by its own word.
 	Since time.Time
 }
 
-// Keychain is a key ring of versioned entries whose keys are wrapped: each entry holds a key that seals and
-// a key for names, encrypted together under a key-encryption key that an [Unwrapper] holds (envelope
-// encryption, server rule 19). The file can lie beside the data: without the key service it opens nothing.
+// KeychainEntry is what a keychain file says of one entry, without its keys.
+type KeychainEntry struct {
+	ID         string
+	Version    int
+	ActiveFrom time.Time
+	KEKID      string
+	// Keys names the keys the entry holds, sorted.
+	Keys []string
+}
+
+// Keychain is the keys of a service that seals what it stores, in one file: entries of rising version, each
+// holding named keys that are wrapped together under a key-encryption key an [Unwrapper] holds (envelope
+// encryption, server rule 19). No key stands in the file in the clear, so it may lie where the data does;
+// the key-encryption key must not.
 //
-// The file is the keychain of the notification service of ZETA Guard, so that one generator serves both: a
-// JSON array of entries
+//	{
+//	  "purpose": "<what the keys are for>",
+//	  "entries": [
+//	    {"id": "v2", "version": 2, "activeFrom": "<RFC 3339>", "kekId": "…",
+//	     "keys": ["name", "seal"], "wrapped": "<base64 of IV, ciphertext, tag>"}
+//	  ],
+//	  "revoked": ["v1"]
+//	}
 //
-//	{"id": "<family>-v<N>", "kekId": "…", "activeFrom": "<RFC 3339>", "keys": "<base64 of iv, ciphertext, tag>"}
+// What is wrapped is a JSON object of the named keys, 32 bytes each in base64. Everything else an entry
+// says, and the purpose of the file, is the associated data of the wrapping: nobody who cannot wrap can put
+// an entry to another use, give it another time, or move it to another file.
 //
-// with an optional "emergency": true. The ciphertext is 64 bytes, the sealing key and the name key; the
-// associated data is the entry's ID, followed by "/emergency" for such an entry, so that neither can be
-// changed without the unwrapping failing.
+// Every entry has the key [KeychainSeal]. The newest entry whose time has come seals; every entry opens.
+// An entry has the key [KeychainName] only when the names are to change, which costs a service far more
+// than a new key for sealing: the name key in force is that of the newest entry at or below the sealing one
+// that has one.
 //
-// The entry with the highest version whose activeFrom has passed is current: it seals, and its name key
-// comes first. Every entry opens. Rotating (server rule 22): add the new entry with an activeFrom by which
-// every pod holds it; move what has to outlive the old entry to the new one; then drop the old entry. A
-// keychain from [LoadKeychain] follows its file, so nothing needs a restart.
+// Changing the keys (server rule 22): add an entry with the next version and a time by which every replica
+// has the file; take along what has to outlive the entry of before; then drop that entry. revoked names
+// entries that were dropped although something they sealed is still there, which a consumer that watches
+// over that otherwise refuses ([WithKeychainCheck]). A keychain from [LoadKeychain] follows its file, so
+// nothing needs a restart.
 type Keychain struct {
 	mu      sync.RWMutex
 	entries []keychainEntry // by version, rising
+	revoked []string
 
+	purpose    string
 	unwrap     Unwrapper
 	agreed     func(id string) bool
+	check      func(entries []KeychainEntry, revoked []string) error
 	path       string
 	now        func() time.Time
 	checkedAt  atomic.Int64
@@ -98,23 +128,44 @@ type Keychain struct {
 }
 
 type keychainEntry struct {
-	id         string
-	version    int
-	activeFrom time.Time
+	KeychainEntry
 	wrapped    string
 	seal, name []byte
 }
 
-// keychainFileEntry is one entry as the file has it.
-type keychainFileEntry struct {
-	ID         string    `json:"id"`
-	KEKID      string    `json:"kekId"`
-	ActiveFrom time.Time `json:"activeFrom"`
-	Emergency  bool      `json:"emergency,omitempty"`
-	Keys       string    `json:"keys"`
+func (e keychainEntry) clear() {
+	clear(e.seal)
+	clear(e.name)
 }
 
-var keychainEntryID = regexp.MustCompile(`^[A-Za-z0-9._-]*-v([0-9]{1,9})$`)
+// keychainFile is the file.
+type keychainFile struct {
+	Purpose string              `json:"purpose"`
+	Entries []keychainFileEntry `json:"entries"`
+	Revoked []string            `json:"revoked,omitempty"`
+}
+
+type keychainFileEntry struct {
+	ID         string    `json:"id"`
+	Version    int       `json:"version"`
+	ActiveFrom time.Time `json:"activeFrom"`
+	KEKID      string    `json:"kekId"`
+	Keys       []string  `json:"keys"`
+	Wrapped    string    `json:"wrapped"`
+}
+
+// associatedData is what the wrapping of an entry is bound to: all the file says of it, and the purpose.
+func (e keychainFileEntry) associatedData(purpose string) []byte {
+	bound, _ := json.Marshal(struct {
+		Purpose    string   `json:"purpose"`
+		ID         string   `json:"id"`
+		Version    int      `json:"version"`
+		ActiveFrom string   `json:"activeFrom"`
+		KEKID      string   `json:"kekId"`
+		Keys       []string `json:"keys"`
+	}{purpose, e.ID, e.Version, e.ActiveFrom.UTC().Format(time.RFC3339Nano), e.KEKID, e.Keys})
+	return bound
+}
 
 // KeychainOption adjusts a [Keychain].
 type KeychainOption func(*Keychain)
@@ -134,108 +185,129 @@ func WithKeychainAgreement(agreed func(id string) bool) KeychainOption {
 	return func(k *Keychain) { k.agreed = agreed }
 }
 
-// ParseKeychain unwraps the entries of a keychain file. The keychain does not follow a file.
-func ParseKeychain(ctx context.Context, data []byte, unwrap Unwrapper, opts ...KeychainOption) (*Keychain, error) {
-	entries, err := parseKeychain(ctx, data, unwrap, nil)
+// WithKeychainCheck has check look at a changed file before its keys take the place of those in force: an
+// error keeps the keys in force, as a file that cannot be read does. A consumer refuses with it a file that
+// lacks an entry something is still sealed under. The file a keychain is first made from is not checked;
+// [Keychain.Entries] and [Keychain.Revoked] say what it holds.
+func WithKeychainCheck(check func(entries []KeychainEntry, revoked []string) error) KeychainOption {
+	return func(k *Keychain) { k.check = check }
+}
+
+// ParseKeychain unwraps the entries of a keychain file for the given purpose. The keychain does not follow
+// a file.
+func ParseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwrapper, opts ...KeychainOption) (*Keychain, error) {
+	entries, revoked, err := parseKeychain(ctx, data, purpose, unwrap, nil)
 	if err != nil {
 		return nil, err
 	}
-	k := &Keychain{entries: entries, unwrap: unwrap, now: time.Now}
+	k := &Keychain{entries: entries, revoked: revoked, purpose: purpose, unwrap: unwrap, now: time.Now}
 	for _, opt := range opts {
 		opt(k)
 	}
 	return k, nil
 }
 
-// LoadKeychain reads a keychain from the file at path, unwraps its entries, and keeps following the file as
-// [LoadKeyring] does: a changed file is read again within 30 s, only its new entries are unwrapped, and a
-// reload that fails keeps the keys in force and logs at error level until it succeeds.
-func LoadKeychain(ctx context.Context, path string, unwrap Unwrapper, opts ...KeychainOption) (*Keychain, error) {
+// LoadKeychain reads a keychain for the given purpose from the file at path, unwraps its entries, and keeps
+// following the file as [LoadKeyring] does: a changed file is read again within 30 s, only its new entries
+// are unwrapped, and a reload that fails keeps the keys in force and logs at error level until it succeeds.
+func LoadKeychain(ctx context.Context, path, purpose string, unwrap Unwrapper, opts ...KeychainOption) (*Keychain, error) {
 	info, data, err := readKeyringFile(path)
 	if err != nil {
 		return nil, err
 	}
-	entries, err := parseKeychain(ctx, data, unwrap, nil)
+	k, err := ParseKeychain(ctx, data, purpose, unwrap, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("kv: keychain %q: %w", path, err)
 	}
-	k := &Keychain{entries: entries, unwrap: unwrap, path: path, now: time.Now, fileMod: info.ModTime(), fileSize: info.Size()}
-	for _, opt := range opts {
-		opt(k)
-	}
+	k.path, k.fileMod, k.fileSize = path, info.ModTime(), info.Size()
 	k.checkedAt.Store(k.now().UnixNano())
 	return k, nil
 }
 
 // parseKeychain reads and unwraps the entries, taking from known those the file has unchanged.
-func parseKeychain(ctx context.Context, data []byte, unwrap Unwrapper, known []keychainEntry) ([]keychainEntry, error) {
+func parseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwrapper, known []keychainEntry) ([]keychainEntry, []string, error) {
 	if len(data) > maxKeyringFile {
-		return nil, errors.New("kv: keychain is too large")
+		return nil, nil, errors.New("kv: keychain is too large")
 	}
-	var file []keychainFileEntry
+	var file keychainFile
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&file); err != nil {
-		return nil, fmt.Errorf("kv: keychain is not a JSON array of entries: %w", err)
+		return nil, nil, fmt.Errorf("kv: keychain is not read: %w", err)
 	}
-	if len(file) == 0 {
-		return nil, errors.New("kv: keychain has no entry")
+	if file.Purpose != purpose || purpose == "" {
+		return nil, nil, fmt.Errorf("kv: keychain is for %q, not for %q", file.Purpose, purpose)
 	}
-	entries := make([]keychainEntry, 0, len(file))
-	fail := func(err error) ([]keychainEntry, error) {
+	if len(file.Entries) == 0 {
+		return nil, nil, errors.New("kv: keychain has no entry")
+	}
+	entries := make([]keychainEntry, 0, len(file.Entries))
+	isKnown := func(e keychainEntry) bool {
+		return slices.ContainsFunc(known, func(k keychainEntry) bool { return k.ID == e.ID && k.wrapped == e.wrapped })
+	}
+	fail := func(err error) ([]keychainEntry, []string, error) {
 		for _, e := range entries {
-			if !slices.ContainsFunc(known, func(k keychainEntry) bool { return k.id == e.id && k.wrapped == e.wrapped }) {
-				clear(e.seal)
-				clear(e.name)
+			if !isKnown(e) {
+				e.clear()
 			}
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	for _, f := range file {
-		match := keychainEntryID.FindStringSubmatch(f.ID)
-		if match == nil || len(f.ID) > maxKeyIDLen {
-			return fail(fmt.Errorf("kv: keychain entry %q: the ID must end in -v<N> and have at most %d characters", f.ID, maxKeyIDLen))
+	for _, f := range file.Entries {
+		if !validKeyID(f.ID) || f.Version < 1 || f.KEKID == "" || f.ActiveFrom.IsZero() {
+			return fail(fmt.Errorf("kv: keychain entry %q needs an id, a version from 1, kekId and activeFrom", f.ID))
 		}
-		version, _ := strconv.Atoi(match[1])
-		if f.KEKID == "" || f.ActiveFrom.IsZero() {
-			return fail(fmt.Errorf("kv: keychain entry %q: kekId and activeFrom are required", f.ID))
+		if !slices.IsSorted(f.Keys) || len(slices.Compact(slices.Clone(f.Keys))) != len(f.Keys) || !slices.Contains(f.Keys, KeychainSeal) {
+			return fail(fmt.Errorf("kv: keychain entry %q: keys must be sorted, each once, and have %q", f.ID, KeychainSeal))
 		}
-		entry := keychainEntry{id: f.ID, version: version, activeFrom: f.ActiveFrom, wrapped: f.Keys}
-		if i := slices.IndexFunc(known, func(k keychainEntry) bool { return k.id == f.ID && k.wrapped == f.Keys }); i >= 0 {
+		entry := keychainEntry{ID: f.ID, Version: f.Version, ActiveFrom: f.ActiveFrom, KEKID: f.KEKID, Keys: f.Keys, wrapped: f.Wrapped}
+		if i := slices.IndexFunc(known, func(k keychainEntry) bool { return k.ID == f.ID && k.wrapped == f.Wrapped }); i >= 0 &&
+			slices.Equal(known[i].Keys, f.Keys) && known[i].Version == f.Version && known[i].ActiveFrom.Equal(f.ActiveFrom) && known[i].KEKID == f.KEKID {
 			entry.seal, entry.name = known[i].seal, known[i].name
 		} else {
-			wrapped, err := base64.StdEncoding.DecodeString(f.Keys)
-			if err != nil || len(wrapped) != keychainIVSize+2*keySize+keychainTagSize {
-				return fail(fmt.Errorf("kv: keychain entry %q: keys must be the base64 of IV, two wrapped keys and tag", f.ID))
-			}
-			aad := f.ID
-			if f.Emergency {
-				aad += "/emergency"
+			wrapped, err := base64.StdEncoding.DecodeString(f.Wrapped)
+			if err != nil || len(wrapped) <= keychainIVSize+keychainTagSize {
+				return fail(fmt.Errorf("kv: keychain entry %q: wrapped must be the base64 of IV, wrapped keys and tag", f.ID))
 			}
 			bounded, cancel := context.WithTimeout(ctx, keychainUnwrapTimeout)
-			keys, err := unwrap.Unwrap(bounded, f.KEKID, wrapped[:keychainIVSize], wrapped[keychainIVSize:len(wrapped)-keychainTagSize], wrapped[len(wrapped)-keychainTagSize:], []byte(aad))
+			plain, err := unwrap.Unwrap(bounded, f.KEKID, wrapped[:keychainIVSize], wrapped[keychainIVSize:len(wrapped)-keychainTagSize], wrapped[len(wrapped)-keychainTagSize:], f.associatedData(purpose))
 			cancel()
 			if err != nil {
 				return fail(fmt.Errorf("kv: keychain entry %q is not unwrapped: %w", f.ID, err))
 			}
-			if len(keys) != 2*keySize {
-				clear(keys)
-				return fail(fmt.Errorf("kv: keychain entry %q: unwrapped %d bytes, want two keys", f.ID, len(keys)))
+			var keys map[string][]byte
+			err = json.Unmarshal(plain, &keys)
+			clear(plain)
+			if err != nil || len(keys) != len(f.Keys) {
+				return fail(fmt.Errorf("kv: keychain entry %q does not hold the keys it names", f.ID))
 			}
-			entry.seal, entry.name = keys[:keySize:keySize], keys[keySize:]
+			for _, name := range f.Keys {
+				if len(keys[name]) != keySize {
+					return fail(fmt.Errorf("kv: keychain entry %q: the key %q is not one of %d bytes", f.ID, name, keySize))
+				}
+			}
+			entry.seal, entry.name = keys[KeychainSeal], keys[KeychainName]
 		}
 		entries = append(entries, entry)
 	}
-	slices.SortFunc(entries, func(a, b keychainEntry) int { return a.version - b.version })
+	slices.SortFunc(entries, func(a, b keychainEntry) int { return a.Version - b.Version })
 	for i := 1; i < len(entries); i++ {
-		if entries[i].version == entries[i-1].version || entries[i].id == entries[i-1].id {
-			return fail(fmt.Errorf("kv: keychain has version %d twice", entries[i].version))
+		if entries[i].Version == entries[i-1].Version || slices.ContainsFunc(entries[:i], func(e keychainEntry) bool { return e.ID == entries[i].ID }) {
+			return fail(fmt.Errorf("kv: keychain has version %d or the id %q twice", entries[i].Version, entries[i].ID))
 		}
-		if !entries[i].activeFrom.After(entries[i-1].activeFrom) {
-			return fail(fmt.Errorf("kv: keychain entry %q is active before the version below it", entries[i].id))
+		if !entries[i].ActiveFrom.After(entries[i-1].ActiveFrom) {
+			return fail(fmt.Errorf("kv: keychain entry %q is active before the version below it", entries[i].ID))
 		}
 	}
-	return entries, nil
+	if !slices.ContainsFunc(entries, func(e keychainEntry) bool { return e.name != nil }) {
+		return fail(fmt.Errorf("kv: no entry of the keychain has the key %q", KeychainName))
+	}
+	for _, id := range file.Revoked {
+		if slices.ContainsFunc(entries, func(e keychainEntry) bool { return e.ID == id }) {
+			return fail(fmt.Errorf("kv: keychain entry %q is there and revoked", id))
+		}
+	}
+	return entries, file.Revoked, nil
 }
 
 // current is the entry that seals: the highest version whose time has come and that the replicas agree on.
@@ -243,11 +315,31 @@ func parseKeychain(ctx context.Context, data []byte, unwrap Unwrapper, known []k
 func (k *Keychain) current() (keychainEntry, bool) {
 	now := k.now()
 	for _, entry := range slices.Backward(k.entries) {
-		if !entry.activeFrom.After(now) && (k.agreed == nil || k.agreed(entry.id)) {
+		if !entry.ActiveFrom.After(now) && (k.agreed == nil || k.agreed(entry.ID)) {
 			return entry, true
 		}
 	}
 	return keychainEntry{}, false
+}
+
+// Entries returns what the file says of each entry, by rising version.
+func (k *Keychain) Entries() []KeychainEntry {
+	k.followFile()
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	entries := make([]KeychainEntry, len(k.entries))
+	for i, entry := range k.entries {
+		entries[i] = entry.KeychainEntry
+	}
+	return entries
+}
+
+// Revoked returns the IDs of the entries the file says were dropped with what they sealed.
+func (k *Keychain) Revoked() []string {
+	k.followFile()
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	return slices.Clone(k.revoked)
 }
 
 // Ready returns the IDs of the entries whose time has come by this replica's clock, whatever the others say:
@@ -259,22 +351,20 @@ func (k *Keychain) Ready() []string {
 	now := k.now()
 	var ids []string
 	for _, entry := range k.entries {
-		if !entry.activeFrom.After(now) {
-			ids = append(ids, entry.id)
+		if !entry.ActiveFrom.After(now) {
+			ids = append(ids, entry.ID)
 		}
 	}
 	return ids
 }
 
-// Current implements [Keys]. Before the first entry is active there is no current key and the ID is empty:
-// a keychain that takes over from other keys is rolled out with an entry for later, and until then those
-// keys seal.
+// Current implements [Keys]. Before the first entry is in force there is no current key and the ID is empty.
 func (k *Keychain) Current() (string, []byte) {
 	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	entry, _ := k.current()
-	return entry.id, slices.Clone(entry.seal)
+	return entry.ID, slices.Clone(entry.seal)
 }
 
 // Lookup implements [Keys].
@@ -283,28 +373,35 @@ func (k *Keychain) Lookup(id string) ([]byte, bool) {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	for _, entry := range k.entries {
-		if entry.id == id {
+		if entry.ID == id {
 			return slices.Clone(entry.seal), true
 		}
 	}
 	return nil, false
 }
 
-// NameKeys returns the name keys of all entries, that of the current entry first and then from the newest
-// to the oldest: the order in which to look for something that was named under any of them. While no entry
-// is active, none comes first. The slices are fresh copies the caller owns and clears.
+// NameKeys returns the name keys of the entries that have one. The key in force comes first: that of the
+// newest entry at or below the one that seals. The others follow from the newest to the oldest, the order
+// in which to look for something that was named under any of them. While no entry is in force, none comes
+// first. The slices are fresh copies the caller owns and clears.
 func (k *Keychain) NameKeys() []NameKey {
 	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	var keys []NameKey
-	current, active := k.current()
-	if active {
-		keys = append(keys, NameKey{ID: current.id, Key: slices.Clone(current.name), Since: current.activeFrom})
+	first := ""
+	if current, active := k.current(); active {
+		for _, entry := range slices.Backward(k.entries) {
+			if entry.name != nil && entry.Version <= current.Version {
+				first = entry.ID
+				keys = append(keys, NameKey{ID: entry.ID, Key: slices.Clone(entry.name), Since: entry.ActiveFrom})
+				break
+			}
+		}
 	}
 	for _, entry := range slices.Backward(k.entries) {
-		if entry.id != current.id {
-			keys = append(keys, NameKey{ID: entry.id, Key: slices.Clone(entry.name), Since: entry.activeFrom})
+		if entry.name != nil && entry.ID != first {
+			keys = append(keys, NameKey{ID: entry.ID, Key: slices.Clone(entry.name), Since: entry.ActiveFrom})
 		}
 	}
 	return keys
@@ -315,7 +412,7 @@ func (k *Keychain) String() string {
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	current, _ := k.current()
-	return fmt.Sprintf("kv.Keychain{current: %q, entries: %d}", current.id, len(k.entries))
+	return fmt.Sprintf("kv.Keychain{purpose: %q, current: %q, entries: %d}", k.purpose, current.ID, len(k.entries))
 }
 
 // GoString keeps %#v as silent as %v.
@@ -333,7 +430,7 @@ func (k *Keychain) followFile() {
 	k.reloadLock.Lock()
 	defer k.reloadLock.Unlock()
 	if err := k.reload(); err != nil {
-		slog.Error("kv: reloading the keychain failed, keeping the keys in force", "path", k.path, "error", err)
+		slog.Error("kv: the changed keychain is not taken, the keys in force stay", "path", k.path, "error", err)
 	}
 }
 
@@ -348,27 +445,43 @@ func (k *Keychain) reload() error {
 	k.mu.RLock()
 	known := slices.Clone(k.entries)
 	k.mu.RUnlock()
-	entries, err := parseKeychain(context.Background(), data, k.unwrap, known)
+	entries, revoked, err := parseKeychain(context.Background(), data, k.purpose, k.unwrap, known)
 	if err != nil {
 		return err
 	}
+	isIn := func(in []keychainEntry, e keychainEntry) bool {
+		return slices.ContainsFunc(in, func(o keychainEntry) bool { return o.ID == e.ID && o.wrapped == e.wrapped })
+	}
+	if k.check != nil {
+		said := make([]KeychainEntry, len(entries))
+		for i, entry := range entries {
+			said[i] = entry.KeychainEntry
+		}
+		if err := k.check(said, revoked); err != nil {
+			for _, entry := range entries {
+				if !isIn(known, entry) {
+					entry.clear()
+				}
+			}
+			return err
+		}
+	}
 	k.mu.Lock()
-	k.entries = entries
+	k.entries, k.revoked = entries, revoked
 	k.mu.Unlock()
 	for _, old := range known {
-		if !slices.ContainsFunc(entries, func(e keychainEntry) bool { return e.id == old.id && e.wrapped == old.wrapped }) {
-			clear(old.seal)
-			clear(old.name)
+		if !isIn(entries, old) {
+			old.clear()
 		}
 	}
 	k.fileMod, k.fileSize = info.ModTime(), info.Size()
 	current, _ := k.current()
-	slog.Info("kv: keychain reloaded", "path", k.path, "current", current.id, "entries", len(entries))
+	slog.Info("kv: keychain reloaded", "path", k.path, "current", current.ID, "entries", len(entries))
 	return nil
 }
 
 // LocalKEK is a key-encryption key held in memory, for development and for tests: an [Unwrapper] for
-// installations without a key service, and the means to make a keychain entry for them. Whatever key ID an
+// installations without a key service, and the means to make a keychain for them. Whatever key ID an
 // entry names, it is this key.
 type LocalKEK []byte
 
@@ -395,22 +508,54 @@ func (kek LocalKEK) Unwrap(_ context.Context, _ string, iv, ciphertext, tag, ass
 	return aead.Open(nil, iv, slices.Concat(ciphertext, tag), associatedData)
 }
 
-// NewEntry makes fresh keys and returns them as one keychain entry, wrapped under this key: one element of
-// the JSON array a keychain file is.
-func (kek LocalKEK) NewEntry(id, kekID string, activeFrom time.Time) ([]byte, error) {
+// Extend returns the keychain file with one entry more, of fresh keys wrapped under this key: the first
+// entry of a new file for the purpose when file is empty, else the next version of the file given. The
+// entry has the ID "v" and its version, is in force from activeFrom, and holds a key for sealing and, if
+// names is set or the entry is the first, one for names.
+func (kek LocalKEK) Extend(file []byte, purpose, kekID string, activeFrom time.Time, names bool) ([]byte, error) {
 	aead, err := kek.aead()
 	if err != nil {
 		return nil, err
 	}
-	if !keychainEntryID.MatchString(id) {
-		return nil, fmt.Errorf("kv: keychain entry %q: the ID must end in -v<N>", id)
+	chain := keychainFile{Purpose: purpose}
+	if len(bytes.TrimSpace(file)) > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(file))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&chain); err != nil {
+			return nil, fmt.Errorf("kv: keychain is not read: %w", err)
+		}
+		if chain.Purpose != purpose {
+			return nil, fmt.Errorf("kv: keychain is for %q, not for %q", chain.Purpose, purpose)
+		}
 	}
-	material := make([]byte, keychainIVSize+2*keySize)
-	defer clear(material)
-	if _, err := rand.Read(material); err != nil {
+	entry := keychainFileEntry{Version: 1, ActiveFrom: activeFrom.UTC(), KEKID: kekID, Keys: []string{KeychainSeal}}
+	for _, e := range chain.Entries {
+		entry.Version = max(entry.Version, e.Version+1)
+	}
+	entry.ID = fmt.Sprintf("v%d", entry.Version)
+	if names || len(chain.Entries) == 0 {
+		entry.Keys = []string{KeychainName, KeychainSeal}
+	}
+	keys := make(map[string][]byte, len(entry.Keys))
+	for _, name := range entry.Keys {
+		keys[name] = make([]byte, keySize)
+		if _, err := rand.Read(keys[name]); err != nil {
+			return nil, err
+		}
+	}
+	plain, err := json.Marshal(keys)
+	for _, key := range keys {
+		clear(key)
+	}
+	if err != nil {
 		return nil, err
 	}
-	iv, keys := material[:keychainIVSize], material[keychainIVSize:]
-	wrapped := aead.Seal(slices.Clone(iv), iv, keys, []byte(id))
-	return json.Marshal(keychainFileEntry{ID: id, KEKID: kekID, ActiveFrom: activeFrom.UTC(), Keys: base64.StdEncoding.EncodeToString(wrapped)})
+	defer clear(plain)
+	iv := make([]byte, keychainIVSize)
+	if _, err := rand.Read(iv); err != nil {
+		return nil, err
+	}
+	entry.Wrapped = base64.StdEncoding.EncodeToString(aead.Seal(slices.Clone(iv), iv, plain, entry.associatedData(purpose)))
+	chain.Entries = append(chain.Entries, entry)
+	return json.MarshalIndent(chain, "", "  ")
 }

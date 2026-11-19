@@ -55,6 +55,8 @@ type Marker interface {
 	MarkedOther(ctx context.Context, prefix, mark, after string, limit int) ([]string, error)
 	// CountMarkedOther counts the records with the prefix whose mark is not mark.
 	CountMarkedOther(ctx context.Context, prefix, mark string) (int, error)
+	// Marks counts the records with the prefix by their mark, those without one under "".
+	Marks(ctx context.Context, prefix string) (map[string]int, error)
 }
 
 // ErrNotMarker is what a wrapping store returns when the store below keeps no marks.

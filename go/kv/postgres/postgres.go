@@ -139,6 +139,30 @@ func (s *store) MarkedOther(ctx context.Context, prefix, mark, after string, lim
 	return out, rows.Err()
 }
 
+// Marks implements kv.Marker.
+func (s *store) Marks(ctx context.Context, prefix string) (map[string]int, error) {
+	if s.mark == nil {
+		return nil, kv.ErrNotMarker
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT CASE WHEN marked_at IS DISTINCT FROM created_at THEN '' ELSE coalesce(mark, '') END, count(*)
+		   FROM kv WHERE (expires_at IS NULL OR expires_at > now()) AND key LIKE $1 GROUP BY 1`, likePrefix(prefix))
+	if err != nil {
+		return nil, fmt.Errorf("kv/postgres: marks: %w", err)
+	}
+	defer rows.Close()
+	marks := map[string]int{}
+	for rows.Next() {
+		var mark string
+		var n int
+		if err := rows.Scan(&mark, &n); err != nil {
+			return nil, err
+		}
+		marks[mark] = n
+	}
+	return marks, rows.Err()
+}
+
 // CountMarkedOther implements kv.Marker.
 func (s *store) CountMarkedOther(ctx context.Context, prefix, mark string) (int, error) {
 	if s.mark == nil {

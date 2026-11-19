@@ -22,7 +22,6 @@
 package kv_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
@@ -34,6 +33,8 @@ import (
 
 	"github.com/gematik/zero-lab/go/kv"
 )
+
+const purpose = "test records"
 
 // counting is a key service that counts what it is asked to unwrap.
 type counting struct {
@@ -59,60 +60,70 @@ func newKEK(t *testing.T) kv.LocalKEK {
 	return kek
 }
 
-func entry(t *testing.T, kek kv.LocalKEK, id string, activeFrom time.Time) string {
-	t.Helper()
-	e, err := kek.NewEntry(id, "zeta-test-db-kek-v1", activeFrom)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(e)
+// entry is one more entry for a keychain file: when it is in force, and whether it brings a name key.
+type entry struct {
+	activeFrom time.Time
+	names      bool
 }
 
-func keychainOf(entries ...string) []byte { return []byte("[" + strings.Join(entries, ",") + "]") }
+// extend returns the file with the entries added, each the next version.
+func extend(t *testing.T, kek kv.LocalKEK, file []byte, entries ...entry) []byte {
+	t.Helper()
+	for _, e := range entries {
+		var err error
+		if file, err = kek.Extend(file, purpose, "zeta-test-db-kek-v1", e.activeFrom, e.names); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return file
+}
+
+func nameIDs(chain *kv.Keychain) string {
+	var ids []string
+	for _, name := range chain.NameKeys() {
+		ids = append(ids, name.ID)
+	}
+	return strings.Join(ids, " ")
+}
 
 // Server rule 19: the keys of a keychain are wrapped under a key the key service holds. The newest entry
-// whose time has come seals, every entry opens, and the name keys come current first.
+// whose time has come seals and every entry opens. An entry brings a name key only when the names are to
+// change: the name key in force is that of the newest such entry at or below the one that seals.
 func TestKeychainCurrentIsTheNewestActiveEntry(t *testing.T) {
 	kek := newKEK(t)
 	start := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
-	data := keychainOf(
-		entry(t, kek, "records-v2", start.Add(time.Hour)),
-		entry(t, kek, "records-v1", start.Add(-time.Hour)),
-		entry(t, kek, "records-v3", start.Add(48*time.Hour)),
+	file := extend(t, kek, nil,
+		entry{start.Add(-time.Hour), false}, // the first entry has a name key whatever is asked
+		entry{start.Add(time.Hour), false},
+		entry{start.Add(48 * time.Hour), true},
 	)
 	now := start
-	chain, err := kv.ParseKeychain(context.Background(), data, kek, kv.WithKeychainClock(func() time.Time { return now }))
+	chain, err := kv.ParseKeychain(context.Background(), file, purpose, kek, kv.WithKeychainClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := func() (ids []string) {
-		for _, name := range chain.NameKeys() {
-			ids = append(ids, name.ID)
-		}
-		return ids
-	}
 	for _, step := range []struct {
-		at      time.Time
-		current string
-		names   string
+		at             time.Time
+		current, names string
 	}{
-		{start, "records-v1", "records-v1 records-v3 records-v2"},
-		{start.Add(time.Hour), "records-v2", "records-v2 records-v3 records-v1"},
-		{start.Add(72 * time.Hour), "records-v3", "records-v3 records-v2 records-v1"},
-		// Before its first entry is active a keychain seals nothing: other keys do until then.
-		{start.Add(-24 * time.Hour), "", "records-v3 records-v2 records-v1"},
+		{start, "v1", "v1 v3"},
+		// A new key for sealing leaves the names as they are.
+		{start.Add(time.Hour), "v2", "v1 v3"},
+		{start.Add(72 * time.Hour), "v3", "v3 v1"},
+		// Before its first entry is in force a keychain seals nothing.
+		{start.Add(-24 * time.Hour), "", "v3 v1"},
 	} {
 		now = step.at
 		id, key := chain.Current()
 		if id != step.current || (len(key) != 32) != (id == "") {
 			t.Errorf("at %s: current %q with %d bytes, want %q", step.at, id, len(key), step.current)
 		}
-		if got := strings.Join(ids(), " "); got != step.names {
+		if got := nameIDs(chain); got != step.names {
 			t.Errorf("at %s: name keys of %s, want %s", step.at, got, step.names)
 		}
 	}
 	seen := map[string]bool{}
-	for _, id := range []string{"records-v1", "records-v2", "records-v3"} {
+	for _, id := range []string{"v1", "v2", "v3"} {
 		key, ok := chain.Lookup(id)
 		if !ok || len(key) != 32 || seen[string(key)] {
 			t.Errorf("%s: found %v, %d bytes, or the key of another entry", id, ok, len(key))
@@ -121,54 +132,80 @@ func TestKeychainCurrentIsTheNewestActiveEntry(t *testing.T) {
 	}
 	for _, name := range chain.NameKeys() {
 		if len(name.Key) != 32 || seen[string(name.Key)] {
-			t.Errorf("%s: the name key has %d bytes or is a sealing key", name.ID, len(name.Key))
+			t.Errorf("%s: the name key has %d bytes or is another key", name.ID, len(name.Key))
 		}
 		seen[string(name.Key)] = true
 	}
-	if _, ok := chain.Lookup("records-v4"); ok {
+	if _, ok := chain.Lookup("v4"); ok {
 		t.Error("found an entry the keychain does not have")
 	}
-	if s := chain.String(); !strings.Contains(s, "entries: 3") || len(s) > 80 {
+	entries := chain.Entries()
+	if len(entries) != 3 || entries[1].ID != "v2" || entries[1].Version != 2 || strings.Join(entries[1].Keys, " ") != "seal" || strings.Join(entries[2].Keys, " ") != "name seal" {
+		t.Errorf("entries: %+v", entries)
+	}
+	if s := chain.String(); !strings.Contains(s, "entries: 3") || len(s) > 100 {
 		t.Errorf("String() = %s", s)
 	}
 }
 
-// What a keychain file may not be: nothing of it is taken then.
+// Everything a file says of an entry is bound into the wrapping of its keys, and so is what the file is
+// for: changed, moved or under another key, an entry is not unwrapped, and nothing of the file is taken.
 func TestKeychainRefusals(t *testing.T) {
 	kek := newKEK(t)
 	at := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
-	v1 := entry(t, kek, "records-v1", at)
+	file := string(extend(t, kek, nil, entry{at, true}, entry{at.Add(time.Hour), false}))
+	change := func(from, to string) []byte {
+		t.Helper()
+		if strings.Count(file, from) != 1 {
+			t.Fatalf("the file has %q %d times", from, strings.Count(file, from))
+		}
+		return []byte(strings.Replace(file, from, to, 1))
+	}
+	// The file without its first entry, which is the one with the name key.
+	head, rest, _ := strings.Cut(file, `"entries": [`)
+	_, second, _ := strings.Cut(rest, `    },`)
+	onlyLater := []byte(head + `"entries": [` + second)
 	for name, data := range map[string][]byte{
-		"no JSON":                          []byte("records-v1 AAAA"),
-		"no entry":                         []byte("[]"),
-		"an unknown member":                []byte(strings.Replace(v1, `"id"`, `"note":"x","id"`, 1)),
-		"an ID without a version":          keychainOf(strings.ReplaceAll(v1, "records-v1", "records")),
-		"another ID than was wrapped":      keychainOf(strings.ReplaceAll(v1, "records-v1", "records-v7")),
-		"marked as emergency afterwards":   keychainOf(strings.Replace(v1, `"id"`, `"emergency":true,"id"`, 1)),
-		"keys that are no base64":          keychainOf(strings.Replace(v1, `"keys":"`, `"keys":"%`, 1)),
-		"no kekId":                         keychainOf(strings.Replace(v1, `"kekId":"zeta-test-db-kek-v1"`, `"kekId":""`, 1)),
-		"a version twice":                  keychainOf(v1, entry(t, kek, "other-v1", at.Add(time.Hour))),
-		"a version active before the last": keychainOf(v1, entry(t, kek, "records-v2", at.Add(-time.Hour))),
-		"wrapped under another key":        keychainOf(entry(t, newKEK(t), "records-v1", at)),
+		"no JSON":                        []byte("v1 AAAA"),
+		"no entry":                       []byte(`{"purpose":"test records","entries":[]}`),
+		"an unknown member":              change(`"purpose"`, `"note": "x", "purpose"`),
+		"a file for something else":      change(`"purpose": "test records"`, `"purpose": "other records"`),
+		"an entry given another time":    change(`"activeFrom": "2026-11-18T13:00:00Z"`, `"activeFrom": "2027-11-18T13:00:00Z"`),
+		"an entry given another version": change(`"version": 2`, `"version": 7`),
+		"an entry given another id":      change(`"id": "v2"`, `"id": "v9"`),
+		"an entry given another kekId": change(`"kekId": "zeta-test-db-kek-v1",
+      "keys": [
+        "seal"`, `"kekId": "another",
+      "keys": [
+        "seal"`),
+		"an entry said to hold a key more": change(`"keys": [
+        "seal"`, `"keys": [
+        "name",
+        "seal"`),
+		"an entry that is there and revoked": change(`"purpose"`, `"revoked": ["v1"], "purpose"`),
+		"no entry with a name key":           onlyLater,
+		"wrapped under another key":          extend(t, newKEK(t), nil, entry{at, true}),
 	} {
-		if chain, err := kv.ParseKeychain(context.Background(), data, kek); err == nil {
+		if chain, err := kv.ParseKeychain(context.Background(), data, purpose, kek); err == nil {
 			t.Errorf("%s: taken as %v", name, chain)
 		}
 	}
+	if _, err := kv.ParseKeychain(context.Background(), []byte(file), "other records", kek); err == nil {
+		t.Error("a keychain was taken for another purpose than its own")
+	}
 	away := &counting{LocalKEK: kek, fail: errors.New("the key service is away")}
-	if _, err := kv.ParseKeychain(context.Background(), keychainOf(v1), away); err == nil || !strings.Contains(err.Error(), "the key service is away") {
+	if _, err := kv.ParseKeychain(context.Background(), []byte(file), purpose, away); err == nil || !strings.Contains(err.Error(), "the key service is away") {
 		t.Errorf("without the key service: %v", err)
 	}
 }
 
 // Server rules 6 and 22: a keychain follows its file without a restart, asks the key service only for
-// entries it does not have yet, keeps its keys when the file is broken or the key service is away, and
-// seals with a new entry from the time that entry names.
+// entries it does not have yet, and keeps its keys when the file is broken, the key service is away, or the
+// consumer's check refuses the file: as when it lacks an entry something is still sealed under.
 func TestKeychainFollowsItsFile(t *testing.T) {
 	kek := &counting{LocalKEK: newKEK(t)}
 	start := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	path := filepath.Join(t.TempDir(), "keychain.json")
-	v1 := entry(t, kek.LocalKEK, "records-v1", start.Add(-time.Hour))
 	write := func(data []byte, mod time.Time) {
 		t.Helper()
 		if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -178,9 +215,26 @@ func TestKeychainFollowsItsFile(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write(keychainOf(v1), start)
+	one := extend(t, kek.LocalKEK, nil, entry{start.Add(-time.Hour), true})
+	write(one, start)
 	now := start
-	chain, err := kv.LoadKeychain(context.Background(), path, kek, kv.WithKeychainClock(func() time.Time { return now }))
+	needed := map[string]bool{}
+	check := func(entries []kv.KeychainEntry, revoked []string) error {
+		for id := range needed {
+			has := false
+			for _, e := range entries {
+				has = has || e.ID == id
+			}
+			for _, r := range revoked {
+				has = has || r == id
+			}
+			if !has {
+				return errors.New("records are still sealed under " + id)
+			}
+		}
+		return nil
+	}
+	chain, err := kv.LoadKeychain(context.Background(), path, purpose, kek, kv.WithKeychainClock(func() time.Time { return now }), kv.WithKeychainCheck(check))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,67 +243,83 @@ func TestKeychainFollowsItsFile(t *testing.T) {
 	if err := store.Set(ctx, "a", []byte("sealed under v1"), time.Hour); err != nil {
 		t.Fatal(err)
 	}
+	needed["v1"] = true
 
-	v2 := entry(t, kek.LocalKEK, "records-v2", start.Add(2*time.Hour))
+	two := extend(t, kek.LocalKEK, one, entry{start.Add(2 * time.Hour), false})
 	now = start.Add(time.Minute)
-	write(keychainOf(v1, v2), now)
-	if id, _ := chain.Current(); id != "records-v1" || kek.calls != 2 {
-		t.Fatalf("after adding an entry for later: current %q, %d calls to the key service, want records-v1 and 2", id, kek.calls)
+	write(two, now)
+	if id, _ := chain.Current(); id != "v1" || kek.calls != 2 {
+		t.Fatalf("after adding an entry for later: current %q, %d calls to the key service, want v1 and 2", id, kek.calls)
 	}
 	now = start.Add(3 * time.Hour)
-	if id, _ := chain.Current(); id != "records-v2" {
+	if id, _ := chain.Current(); id != "v2" {
 		t.Fatalf("after its time: current %q", id)
 	}
 	if err := store.Set(ctx, "b", []byte("sealed under v2"), time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	for key, want := range map[string]string{"a": "sealed under v1", "b": "sealed under v2"} {
-		if got, found, err := store.Get(ctx, key); err != nil || !found || string(got) != want {
-			t.Errorf("%s: %q, found %v, %v", key, got, found, err)
-		}
-	}
 
-	// A broken file and an absent key service change nothing.
+	// A broken file, an absent key service and a file without a needed entry change nothing.
 	now = now.Add(time.Minute)
 	write([]byte("{"), now)
-	if id, _ := chain.Current(); id != "records-v2" {
+	if id, _ := chain.Current(); id != "v2" {
 		t.Errorf("with a broken file: current %q", id)
 	}
 	kek.fail = errors.New("the key service is away")
 	now = now.Add(time.Minute)
-	write(keychainOf(v1, v2, entry(t, kek.LocalKEK, "records-v3", now)), now)
-	if id, _ := chain.Current(); id != "records-v2" {
+	write(extend(t, kek.LocalKEK, two, entry{now, false}), now)
+	if id, _ := chain.Current(); id != "v2" {
 		t.Errorf("without the key service: current %q", id)
 	}
 	kek.fail = nil
-
-	// Without the old entry its records are gone, and no other.
+	withoutFirst := []byte(strings.Replace(string(two), string(two)[strings.Index(string(two), `    {
+      "id": "v1"`):strings.Index(string(two), `    {
+      "id": "v2"`)], "", 1))
+	// v2 alone has no name key, so the file is given one by a third entry.
+	withoutFirst = extend(t, kek.LocalKEK, withoutFirst, entry{now.Add(time.Hour), true})
 	now = now.Add(time.Minute)
-	write(keychainOf(v2), now)
+	write(withoutFirst, now)
 	chain.Current()
-	if _, _, err := store.Get(ctx, "a"); !errors.Is(err, kv.ErrIntegrity) {
-		t.Errorf("a record of a dropped entry: %v", err)
+	if got, found, err := store.Get(ctx, "a"); err != nil || !found || string(got) != "sealed under v1" {
+		t.Errorf("a file without a needed entry was taken: %q, found %v, %v", got, found, err)
 	}
-	if got, found, err := store.Get(ctx, "b"); err != nil || !found || !bytes.Equal(got, []byte("sealed under v2")) {
+
+	// Said to be revoked, the entry goes, and with it what it sealed and nothing else.
+	now = now.Add(time.Minute)
+	write([]byte(strings.Replace(string(withoutFirst), `"purpose"`, `"revoked": ["v1"], "purpose"`, 1)), now)
+	chain.Current()
+	if revoked := chain.Revoked(); len(revoked) != 1 || revoked[0] != "v1" {
+		t.Errorf("revoked: %v", revoked)
+	}
+	if _, _, err := store.Get(ctx, "a"); !errors.Is(err, kv.ErrIntegrity) {
+		t.Errorf("a record of a revoked entry: %v", err)
+	}
+	if got, found, err := store.Get(ctx, "b"); err != nil || !found || string(got) != "sealed under v2" {
 		t.Errorf("b: %q, found %v, %v", got, found, err)
 	}
 }
 
 // Server rule 22: a record that outlives a key is sealed again under the current one, with the value and
-// the expiry it had, so that the old key can go. A record the current key sealed is left alone.
+// the expiry it had, so that the old key can go. The store below finds such records by their marks, and
+// says by which keys records are still sealed.
 func TestResealTakesARecordToTheCurrentKey(t *testing.T) {
 	kek := newKEK(t)
 	start := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	now := start
-	chain, err := kv.ParseKeychain(context.Background(), keychainOf(
-		entry(t, kek, "records-v1", start.Add(-time.Hour)), entry(t, kek, "records-v2", start.Add(time.Hour)),
-	), kek, kv.WithKeychainClock(func() time.Time { return now }))
+	chain, err := kv.ParseKeychain(context.Background(), extend(t, kek, nil, entry{start.Add(-time.Hour), true}, entry{start.Add(time.Hour), false}),
+		purpose, kek, kv.WithKeychainClock(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The class of a record is the version of what it holds, which a later release raises for some keys.
-	version := map[string]string{"": "0", "a": "0", "forever": "0", "nothing": "0", "b": "0", "c": "0"}
-	class := func(key string) string { return version[key] }
+	// The class of a record is the version of what it holds. A later release writes another one: here that
+	// of what is written now is asked for the prefix, and what is stored keeps the class it was written in.
+	version := "0"
+	class := func(key string) string {
+		if key == "" {
+			return version
+		}
+		return "0"
+	}
 	inner := kv.NewMemory(kv.WithMemoryClock(func() time.Time { return now }), kv.WithMemoryMark(kv.SealedMarker(class)))
 	store := kv.NewSealed(inner, chain, "test records", kv.WithSealedExpiry(func() time.Time { return now }), kv.WithSealedClass(class))
 	resealer := store.(kv.Resealer)
@@ -263,54 +333,61 @@ func TestResealTakesARecordToTheCurrentKey(t *testing.T) {
 		}
 		return strings.Join(keys, " ")
 	}
+	sealedBy := func() map[string]int {
+		t.Helper()
+		by, err := resealer.SealedByKeys(ctx, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return by
+	}
 	if err := store.Set(ctx, "a", []byte("lives a year"), 365*24*time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Set(ctx, "forever", []byte("never ends"), 0); err != nil {
 		t.Fatal(err)
 	}
-	if resealed, err := resealer.Reseal(ctx, "a"); err != nil || resealed {
-		t.Fatalf("under the current key: resealed %v, %v", resealed, err)
+	if resealed, err := resealer.Reseal(ctx, "a"); err != nil || resealed || others() != "" {
+		t.Fatalf("under the current key: resealed %v, others %q, %v", resealed, others(), err)
 	}
 
-	if got := others(); got != "" {
-		t.Errorf("sealed by another key, before the change: %s", got)
-	}
 	now = start.Add(2 * time.Hour)
-	// The store finds what the key of before sealed without reading it.
 	if got := others(); got != "a forever" {
 		t.Errorf("sealed by another key, after the change: %s", got)
 	}
+	if by := sealedBy(); len(by) != 1 || by["v1"] != 2 {
+		t.Errorf("sealed by: %v", by)
+	}
+	if mark := resealer.Mark(""); mark != "2:v2:0" {
+		t.Errorf("the mark of what is written now: %q", mark)
+	}
 	for _, key := range []string{"a", "forever"} {
-		if id, found, err := resealer.SealedBy(ctx, key); err != nil || !found || id != "records-v1" {
+		if id, found, err := resealer.SealedBy(ctx, key); err != nil || !found || id != "v1" {
 			t.Fatalf("%s before: sealed by %q, found %v, %v", key, id, found, err)
 		}
 		if resealed, err := resealer.Reseal(ctx, key); err != nil || !resealed {
 			t.Fatalf("%s: resealed %v, %v", key, resealed, err)
 		}
-		if id, _, _ := resealer.SealedBy(ctx, key); id != "records-v2" {
-			t.Errorf("%s after: sealed by %q", key, id)
-		}
 		if resealed, err := resealer.Reseal(ctx, key); err != nil || resealed {
 			t.Errorf("%s again: resealed %v, %v", key, resealed, err)
 		}
 	}
+	if by := sealedBy(); len(by) != 1 || by["v2"] != 2 || others() != "" {
+		t.Errorf("after resealing: sealed by %v, others %q", by, others())
+	}
 	if got, found, err := store.Get(ctx, "a"); err != nil || !found || string(got) != "lives a year" {
 		t.Errorf("a: %q, found %v, %v", got, found, err)
-	}
-	if got := others(); got != "" {
-		t.Errorf("sealed by another key, after resealing: %s", got)
 	}
 	if resealed, err := resealer.Reseal(ctx, "nothing"); err != nil || resealed {
 		t.Errorf("no record: resealed %v, %v", resealed, err)
 	}
 
 	// A release that writes another version of what the records hold finds those of the version before.
-	version[""] = "1"
+	version = "1"
 	if got := others(); got != "a forever" {
 		t.Errorf("of the version before: %s", got)
 	}
-	version[""] = "0"
+	version = "0"
 
 	// A record moves to another key with what it had, once; what is there already stays.
 	if moved, err := resealer.Rename(ctx, "a", "b"); err != nil || !moved {
@@ -318,9 +395,6 @@ func TestResealTakesARecordToTheCurrentKey(t *testing.T) {
 	}
 	if _, found, _ := store.Get(ctx, "a"); found {
 		t.Error("the record is still under its old key")
-	}
-	if got, found, err := store.Get(ctx, "b"); err != nil || !found || string(got) != "lives a year" {
-		t.Errorf("b: %q, found %v, %v", got, found, err)
 	}
 	if err := store.Set(ctx, "a", []byte("an older copy"), time.Hour); err != nil {
 		t.Fatal(err)
@@ -350,29 +424,28 @@ func TestKeychainEntryWaitsForTheOtherReplicas(t *testing.T) {
 	kek := newKEK(t)
 	start := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	now := start
-	agreed := map[string]bool{"records-v1": true}
-	chain, err := kv.ParseKeychain(context.Background(), keychainOf(
-		entry(t, kek, "records-v1", start.Add(-time.Hour)), entry(t, kek, "records-v2", start.Add(time.Hour)),
-	), kek, kv.WithKeychainClock(func() time.Time { return now }), kv.WithKeychainAgreement(func(id string) bool { return agreed[id] }))
+	agreed := map[string]bool{"v1": true}
+	chain, err := kv.ParseKeychain(context.Background(), extend(t, kek, nil, entry{start.Add(-time.Hour), true}, entry{start.Add(time.Hour), true}),
+		purpose, kek, kv.WithKeychainClock(func() time.Time { return now }), kv.WithKeychainAgreement(func(id string) bool { return agreed[id] }))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(chain.Ready(), " "); got != "records-v1" {
+	if got := strings.Join(chain.Ready(), " "); got != "v1" {
 		t.Errorf("ready before the time: %s", got)
 	}
 	now = start.Add(2 * time.Hour)
-	if got := strings.Join(chain.Ready(), " "); got != "records-v1 records-v2" {
+	if got := strings.Join(chain.Ready(), " "); got != "v1 v2" {
 		t.Errorf("ready after the time: %s", got)
 	}
-	if id, _ := chain.Current(); id != "records-v1" {
-		t.Errorf("before the others are ready: current %q", id)
+	if id, _ := chain.Current(); id != "v1" || nameIDs(chain) != "v1 v2" {
+		t.Errorf("before the others are ready: current %q, name keys of %s", id, nameIDs(chain))
 	}
-	if names := chain.NameKeys(); names[0].ID != "records-v1" || !names[0].Since.Equal(start.Add(-time.Hour)) {
-		t.Errorf("before the others are ready: first name key %q since %s", names[0].ID, names[0].Since)
+	if names := chain.NameKeys(); !names[0].Since.Equal(start.Add(-time.Hour)) {
+		t.Errorf("the name key in force is since %s", names[0].Since)
 	}
-	agreed["records-v2"] = true
-	if id, _ := chain.Current(); id != "records-v2" {
-		t.Errorf("once all are ready: current %q", id)
+	agreed["v2"] = true
+	if id, _ := chain.Current(); id != "v2" || nameIDs(chain) != "v2 v1" {
+		t.Errorf("once all are ready: current %q, name keys of %s", id, nameIDs(chain))
 	}
 	agreed = map[string]bool{}
 	if id, key := chain.Current(); id != "" || key != nil {

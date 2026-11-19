@@ -514,6 +514,10 @@ func TestPostgres_MarksFindWhatIsOfAnotherKind(t *testing.T) {
 	if got := others("", 10); got != "1 5" {
 		t.Errorf("after the write of a replica without marks: %s", got)
 	}
+	// Counted by mark, the row without one that counts stands under "".
+	if marks, err := marker.Marks(ctx, prefix); err != nil || len(marks) != 3 || marks[""] != 1 || marks["a"] != 1 || marks["b"] != 3 {
+		t.Errorf("marks: %v, %v", marks, err)
+	}
 	plain, err := postgres.Open(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
