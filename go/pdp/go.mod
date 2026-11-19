@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3
 	github.com/gematik/zero-lab/go/idpd v0.3.0
-	github.com/gematik/zero-lab/go/kv v0.4.0
+	github.com/gematik/zero-lab/go/kv v0.5.0
 	github.com/gematik/zero-lab/go/nonce v0.24.0
 	github.com/gematik/zero-lab/go/oidf v0.54.2
 	github.com/gematik/zero-lab/go/openid v0.55.1

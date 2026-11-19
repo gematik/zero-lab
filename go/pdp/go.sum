@@ -5,8 +5,8 @@ github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3 h1:YLabFOuJDCQ39pA4tIXVsfJ2jQs
 github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3/go.mod h1:r7onca0S7sWaAYsvGdwNQDkR6AUrZYhMzuhueQrQa9o=
 github.com/gematik/zero-lab/go/idpd v0.3.0 h1:Z+O8FWNt+fx+bDbCBhyIrYOoIwXEumP1m5P6FrjghQw=
 github.com/gematik/zero-lab/go/idpd v0.3.0/go.mod h1:b2SwwV7uKhsqgbPSC1j18p7tVuhorhWPKfIdzfDYers=
-github.com/gematik/zero-lab/go/kv v0.4.0 h1:Ob6+FnwioFgMGMBNZFgwK+LjVGbCdxaYhmQ7NRl24bQ=
-github.com/gematik/zero-lab/go/kv v0.4.0/go.mod h1:pRQiYPn+JqdCFX7W6NIE/53LWkCoM1YBecmcV7VNkuU=
+github.com/gematik/zero-lab/go/kv v0.5.0 h1:sGXIJrLHx0TeGDmvTPNUlHK4mGcLn6kVSI+wshO03bY=
+github.com/gematik/zero-lab/go/kv v0.5.0/go.mod h1:pRQiYPn+JqdCFX7W6NIE/53LWkCoM1YBecmcV7VNkuU=
 github.com/gematik/zero-lab/go/nonce v0.24.0 h1:Rpevd82zBzocnjmTw+DWulXy+WQ+cQ3BKgsZ2VC30OU=
 github.com/gematik/zero-lab/go/nonce v0.24.0/go.mod h1:vaGIBw6GACwzuAR3jffMMI1zZQq60TsrtMYB2sVSuXU=
 github.com/gematik/zero-lab/go/oidf v0.54.2 h1:KXPxv/cujqXseqBYJ8s+mxH32Oy9hwMAlPoqdMP/4vM=
