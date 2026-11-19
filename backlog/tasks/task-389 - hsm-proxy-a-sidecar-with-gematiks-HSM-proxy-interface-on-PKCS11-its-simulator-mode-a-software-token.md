@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-19 07:17'
-updated_date: '2026-11-19 12:04'
+updated_date: '2026-11-19 12:37'
 labels:
   - rust
   - security
@@ -16,6 +16,7 @@ dependencies: []
 references:
   - docs/design/servers.md
   - docs/design/keys.md
+  - zeta-backlog TASK-18
 priority: medium
 ordinal: 402000
 ---
@@ -84,4 +85,6 @@ Sources of the licence research of 2026-11-19. Utimaco: https://utimaco.com/data
 2026-11-19, step 1 done on feat/ti-hsm-spike. New crate rust/ti-hsm (publish = false, an adapter in the Rust profile's diagram) with a PKCS#11 adapter on cryptoki 0.12.1 (approved; vet exemptions for cryptoki, cryptoki-sys, libloading 0.8.9, secrecy, with notes, as ureq's). Spike suite tests/spike_softhsm2.rs, 11 tests, gated (#[ignore], TI_HSM_PKCS11_MODULE_PATH), run by just hsm-spike with a fresh token directory; row in rust/docs/development.md. Findings in rust/ti-hsm/docs/spike-softhsm2.md, SoftHSM2 2.7.0 on macOS arm64: every mechanism the interface needs is listed; keys made sensitive, never extractable, one use, a misuse refused with CKR_KEY_FUNCTION_NOT_PERMITTED; ECDSA over a digest and over a message (SHA-256/384/512) on P-256 and P-384 verified with RustCrypto; brainpoolP256r1 works (open question answered for this build); AES-GCM single-part with AAD, tamper refused with CKR_ENCRYPTED_DATA_INVALID; CKA_EC_POINT DER-wrapped. Differences: SoftHSM2 does not make the GCM IV (it encrypts under the zero IV it is given), so the adapter takes Iv::Random from C_GenerateRandom and refuses Iv::FromToken when the IV comes back unchanged; cryptoki 0.12 reports CKA_VALUE of a sensitive key as absent, not as CKR_ATTRIBUTE_SENSITIVE; SoftHSM2 does not report CKA_ENCRYPT/CKA_WRAP of a private EC key. Not covered: gRPC and the sidecar (maintainer: after the spike), multi-part operations, Linux/x86_64, deterministic keys (SoftHSM2 makes keys from its own random source), other tokens. Next decisions: the gRPC server (tonic etc., 46 new crates, or generated code committed), the simulator token (SoftHSM2 vs Kryoptic), how keys are deterministic for tests (#3).
 
 2026-11-19, session pool and benchmark on feat/ti-hsm-spike. ti_hsm::Pool (Module::pool): a fixed number of logged-in sessions, lent one per caller, a bounded wait refused with Error::Busy; a key found through one session is used through every other. Two gated tests in the spike suite. benches/softhsm2.rs (just hsm-bench, no harness, dev-dependencies serde_json and base64ct from the workspace): direct, and JSON-RPC 2.0 multiplexed over one Unix-socket connection. M3 Pro, SoftHSM2 2.7.0: ECDSA P-256 15.7k/s on one session, and SoftHSM2 stops at 25-35k/s from 2 to 8 sessions, whatever the operation and also with a key per caller, so the limit is in the module; JSON-RPC adds about 20 µs per call and matches direct from 4 calls in flight; ping without the token carries 86k-287k/s on one connection. Results in rust/ti-hsm/docs/spike-softhsm2.md. Open: reopening a broken session and logging in again after the token logs out.
+
+2026-11-19, transport compared (rust/ti-hsm/docs/spike-softhsm2.md, Transport: JSON-RPC against gRPC). gemSpec_ZETA V2.0.0_CC settles AC #1: A_28829 requires hsm-proxy.proto (gRPC), A_28830 requires that calling components can be authenticated with mTLS, A_28816 a minimal TCB. A_28830 conflicts with the maintainer's decision that the sidecar does not ask who calls; to be decided. SBOM of a sidecar on ti-hsm, without TLS: JSON-RPC 17 crates at run time (0 new) and 6 at build time; gRPC (tonic 0.14, prost, tonic-health, tokio) 61 at run time (36 new) and 38 at build time (28 new), plus protoc. Measured on M3 Pro against SoftHSM2, one connection: Sign is bound by the token for both protocols (about 25k/s from 4 calls in flight); one call in flight 82 µs JSON-RPC against 99 µs gRPC at p50; transport alone 277k/s against 82k/s; gRPC takes about 15 µs more server CPU time per call. The scratch harness and the CycloneDX files are not committed. The question whether a lighter local transport is allowed went to zeta-backlog TASK-18 (2026-11-19).
 <!-- SECTION:NOTES:END -->

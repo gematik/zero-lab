@@ -90,6 +90,85 @@ CPUs with the token.
   it, one connection carries 85 000 to 290 000 calls a second. That is ten times what
   SoftHSM2 does, and far more again than a network HSM with its millisecond round trips.
 
+## Transport: JSON-RPC against gRPC
+
+2026-11-19, for the open decision of TASK-389 (AC #1). gemSpec_ZETA V2.0.0_CC settles the
+interface. A_28829 (Kap. 5.11 HSM Proxy) requires `hsm-proxy.proto`, which is gRPC. A_28830
+requires that the calling components can be authenticated with mTLS. A_28816 (Kap. 5.11.1)
+requires a minimal trusted computing base: "DARF NICHT mehr Komponenten enthalten als für die
+Bereitstellung der HSM-Proxy-Funktionalität erforderlich". The comparison below shows what
+the required transport costs. The question to gematik is in zeta-backlog TASK-18.
+
+### Software bill of materials
+
+Two throwaway crates were resolved against this workspace's lock file: `ti-hsm` with JSON-RPC
+(`serde`, `serde_json`, `base64ct`), and `ti-hsm` with a gRPC server on a Unix socket (`tonic`
+0.14 with `server`, `router` and `codegen`, `tonic-prost`, `prost`, `tonic-health`, `tokio`,
+`tokio-stream`, build dependency `tonic-prost-build`). Neither has TLS: mTLS (A_28830) would
+add rustls and its crypto provider to both. The SBOMs are CycloneDX 1.6 for
+`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. They were made from
+`cargo metadata`, not checked against the CycloneDX schema, and not committed.
+
+| | JSON-RPC | gRPC |
+|---|---|---|
+| Crates at run time | 17 | 61 |
+| of them new to this workspace | 0 | 36 |
+| Crates at build time only | 6 | 38 |
+| of them new to this workspace | 0 | 28 |
+| Tool | none | `protoc`, or generated code committed |
+| Licences | MIT, Apache-2.0, ISC, Unlicense, Unicode-3.0, all compatible with EUPL-1.2 | the same, and BSD-3-Clause, Zlib |
+
+- **Both have these 13 crates at run time:** `ti-hsm`, `cryptoki`, `cryptoki-sys`,
+  `libloading`, `secrecy`, `thiserror`, `zeroize`, `bitflags`, `cfg-if`, `itoa`, `log`,
+  `memchr` and `serde_core`.
+- **JSON-RPC adds four:** `serde`, `serde_json`, `zmij` and `base64ct`.
+- **gRPC adds 48, these among them:** `tokio`, `mio`, `socket2`, `libc`, `hyper`,
+  `hyper-util`, `h2`, `http`, `httparse`, `axum`, `axum-core`, `tower`, `tracing`, `bytes`,
+  `futures-*`, `prost`, `tonic`, `tonic-health` and `tonic-prost`.
+
+### Throughput
+
+Each server ran as its own process with n sessions and signed a P-256 digest. One connection
+carried n calls at once. The `HealthCheck` rows do not use the token, so they measure the
+transport alone. The gRPC server uses the route `gematik.zetaguard.hsmproxy.v1.HsmProxyService/Sign`
+with the field numbers of the proto. Its messages were written with prost by hand, to need no
+`protoc`. A `Sign` call runs on tokio's blocking pool, and the client is tonic on one HTTP/2
+channel. The JSON-RPC server is a plain reader thread with a worker per session, its client
+the one from the benchmark. The test machine was an M3 Pro with 12 CPUs, running SoftHSM2
+2.7.0, 3 s per row. Client, server and token share the CPUs. The setup is in the scratch
+harness of TASK-389, which is not committed, because it would bring tonic into this workspace.
+
+| Call | n | JSON-RPC ops/s | gRPC ops/s | p50 µs JSON / gRPC | p99 µs JSON / gRPC |
+|---|---|---|---|---|---|
+| Sign | 1 | 11 600 | 9 900 | 82 / 99 | 97 / 118 |
+| Sign | 2 | 20 000 | 17 200 | 96 / 116 | 109 / 133 |
+| Sign | 4 | 25 000 | 25 300 | 158 / 157 | 256 / 207 |
+| Sign | 12 | 25 300 | 25 300 | 465 / 474 | 1 463 / 845 |
+| HealthCheck | 1 | 78 800 | 45 400 | 10 / 21 | 14 / 34 |
+| HealthCheck | 4 | 190 700 | 78 200 | 16 / 48 | 27 / 94 |
+| HealthCheck | 12 | 277 100 | 82 100 | 30 / 142 | 84 / 265 |
+
+| | JSON-RPC | gRPC |
+|---|---|---|
+| Server CPU time per `Sign`, SoftHSM2 included | 80–109 µs | 94–124 µs |
+| Server CPU time per `HealthCheck` | 7–15 µs | 10–23 µs |
+| Client CPU time per call | 4–9 µs | 20–40 µs |
+| Server binary, stripped, fat LTO, macOS arm64 | 0.5 MB | 1.2 MB |
+| Server resident memory | 6–7 MiB | 7–9 MiB |
+
+- **The token bounds signing, not the transport.** From 4 calls in flight on, both protocols
+  sign as fast as SoftHSM2 allows, about 25 000 a second. With one call in flight, gRPC adds
+  about 17 µs to each.
+- **gRPC costs more per call.** One connection carries about 82 000 calls a second over gRPC,
+  against 277 000 over JSON-RPC. gRPC also takes about 15 µs more server CPU time per call.
+  At 25 000 signatures a second that is 0.4 of a core. Against a network HSM's round trip of
+  1 to 5 ms it does not matter.
+- **gRPC's p99 under load is better** (845 against 1 463 µs at n = 12). The JSON-RPC server
+  shares one queue and one write lock among its workers, where tokio schedules more fairly.
+  That is a matter of the measured server, not of the protocol, but it was not tried.
+- **Not measured:** Linux, mTLS, tuning of tonic and h2, and the clients there are (Go's
+  gRPC in zeta-pdp-go, ngx_pep).
+
 ## Not covered by the spike
 
 - The gRPC interface and the sidecar (decided after this spike, maintainer 2026-11-19).
