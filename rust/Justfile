@@ -826,6 +826,35 @@ real-world:
 konnektor-e2e:
     cargo test -p ti-client --test konnektor_e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
 
+# The SoftHSM2 spike of ti-hsm (TASK-389) against a fresh token in a temporary directory.
+# TI_HSM_PKCS11_MODULE_PATH names the module; without it, SoftHSM2's beside softhsm2-util.
+hsm-spike:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    module="${TI_HSM_PKCS11_MODULE_PATH:-}"
+    if [ -z "$module" ]; then
+        util=$(command -v softhsm2-util || true)
+        if [ -z "$util" ]; then
+            echo "needs TI_HSM_PKCS11_MODULE_PATH, or SoftHSM2 2.7 or later (brew install softhsm; apt install softhsm2)" >&2
+            exit 1
+        fi
+        prefix=$(dirname "$(dirname "$util")")
+        for candidate in "$prefix"/lib/softhsm/libsofthsm2.so "$prefix"/lib/*/softhsm/libsofthsm2.so; do
+            if [ -f "$candidate" ]; then module=$candidate; break; fi
+        done
+        if [ -z "$module" ]; then
+            echo "SoftHSM2 is installed, but not its module under $prefix/lib: set TI_HSM_PKCS11_MODULE_PATH" >&2
+            exit 1
+        fi
+    fi
+    dir=$(mktemp -d)
+    trap 'rm -rf "$dir"' EXIT
+    mkdir "$dir/tokens"
+    printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\nslots.removable = false\n' "$dir/tokens" > "$dir/softhsm2.conf"
+    echo "==> $module"
+    SOFTHSM2_CONF="$dir/softhsm2.conf" TI_HSM_PKCS11_MODULE_PATH="$module" \
+        cargo test -p ti-hsm --test spike_softhsm2 -- --ignored
+
 # Optional TI_TEST_PDFA_PATH adds PAdES. A person enters the PIN; not part of `check`.
 # PIN entry, ExternalAuthenticate, sign and encrypt at the Konnektor of TI_TEST_KON_PATH
 konnektor-e2e-interactive:

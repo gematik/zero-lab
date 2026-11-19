@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-tls", "ti-idpd-client", "ti-directory-client", "ti-client", "unsafe-audit", "traceability"]
+members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-tls", "ti-idpd-client", "ti-directory-client", "ti-client", "unsafe-audit", "traceability", "ti-hsm"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -120,6 +120,11 @@ getrandom = { version = "0.4.3", default-features = false }
 syn = { version = "3.0.6", default-features = false, features = ["full", "visit", "parsing", "printing"] }
 proc-macro2 = { version = "1.0.107", default-features = false }
 quote = { version = "1.0.47", default-features = false }
+
+# ti-hsm: PKCS#11, the one way the key provider sidecar reaches a key. A host, never a core; its
+# FFI (dlopen of the module, the raw calls) is unsafe code inside cryptoki-sys and libloading.
+# Approved 2026-11-19 (TASK-389).
+cryptoki = { version = "=0.12.1", default-features = false }
 
 # Test-only.
 futures-lite = "2.6.1"

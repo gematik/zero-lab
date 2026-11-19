@@ -99,6 +99,16 @@ criteria = "safe-to-deploy"
 version = "0.10.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.cryptoki]]
+version = "0.12.1"
+criteria = "safe-to-deploy"
+notes = "Host only: the PKCS#11 binding of ti-hsm, the key provider sidecar's way to an HSM, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers it."
+
+[[exemptions.cryptoki-sys]]
+version = "0.5.0"
+criteria = "safe-to-deploy"
+notes = "Host only: the PKCS#11 FFI under cryptoki (TASK-389), mostly generated bindings. No imported audit covers it."
+
 [[exemptions.defmt]]
 version = "1.1.1"
 criteria = "safe-to-deploy"
@@ -205,6 +215,11 @@ criteria = "safe-to-deploy"
 version = "0.3.105"
 criteria = "safe-to-deploy"
 
+[[exemptions.libloading]]
+version = "0.8.9"
+criteria = "safe-to-deploy"
+notes = "Host only: loads the PKCS#11 module for cryptoki (TASK-389). Imported audits cover 0.9.0; cryptoki-sys 0.5.0 requires 0.8."
+
 [[exemptions.log]]
 version = "0.4.34"
 criteria = "safe-to-deploy"
@@ -277,6 +292,11 @@ criteria = "safe-to-deploy"
 version = "0.1.29"
 criteria = "safe-to-deploy"
 notes = "Host only, Windows: the system root store for rustls-native-certs (FFI). No imported audit covers this version."
+
+[[exemptions.secrecy]]
+version = "0.10.3"
+criteria = "safe-to-deploy"
+notes = "Host only: cryptoki's PIN type (TASK-389), zeroized on drop. No imported audit covers it."
 
 [[exemptions.security-framework]]
 version = "3.7.0"

@@ -3,10 +3,10 @@ id: TASK-389
 title: >-
   ti-hsm: a sidecar with gematik's HSM proxy interface on PKCS#11, its simulator
   mode a software token
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-19 07:17'
-updated_date: '2026-11-19 07:41'
+updated_date: '2026-11-19 09:29'
 labels:
   - rust
   - security
@@ -60,14 +60,26 @@ Still open: which token the simulator mode brings, and whether ngx_pep's `hsm_si
 - [ ] #4 Keys are created not extractable and with the one use they have: a signing key signs, a key-encryption key encrypts for the generator and decrypts for the workload
 - [ ] #5 A conformance suite of the interface runs against the bundled token in public CI and can be pointed at a vendor's simulator or device; it covers an IV the HSM generates, associated data, signing a digest and signing a message, and the curves asked for
 - [ ] #6 The image holds no vendor software and only components whose licences allow redistribution with EUPL-1.2; a document says how an operator mounts a vendor's module, and what was verified of each vendor's terms
-- [ ] #7 A spike drives SoftHSM2 through the sidecar's PKCS#11 path and records what worked as specified and what did not: the mechanisms, associated data, who makes the IV, key attributes
+- [x] #7 A spike drives SoftHSM2 through the sidecar's PKCS#11 path and records what worked as specified and what did not: the mechanisms, associated data, who makes the IV, key attributes
 - [ ] #8 Tests that connect a vendor's module exist and say how they are run where the vendor's software may be used, with what was found for each vendor that was tried
 - [ ] #9 docs/design/servers.md rule 6 says what crosses the channel to a key provider in the workload's own trust domain, and the vendor's module is loaded as a library pinned by its SHA-256 (rule 7)
 - [ ] #10 It is recorded which token the simulator mode brings and what becomes of ngx_pep's hsm_sim
 <!-- AC:END -->
 
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Step 1, the spike (AC #7), on branch feat/ti-hsm-spike:
+1. New crate rust/ti-hsm (publish = false, forbid(unsafe_code)) with a PKCS#11 adapter on cryptoki 0.12.1 (approved by the maintainer 2026-11-19): load a module by path, open a session on a token, find or make a key by label (EC P-256/P-384 signing key, AES-256 key-encryption key), sign a digest (CKM_ECDSA) and a message (CKM_ECDSA_SHA256/384), encrypt and decrypt with CKM_AES_GCM with and without associated data, IV given or made by the token.
+2. Spike tests against SoftHSM2 (installed with Homebrew), each operation recording what the token did: return code, signature length and form, IV length, whether the token makes the IV, the attributes it keeps (CKA_EXTRACTABLE, CKA_SENSITIVE, CKA_SIGN/ENCRYPT/DECRYPT and that a forbidden use is refused). Results go into a document under rust/ti-hsm/docs.
+3. Cross-check with pkcs11-tool (OpenSC) where it can: the key exists, is not extractable, a signature verifies with an independent library.
+Not in step 1: gRPC (decided after the spike, maintainer 2026-11-19), the sidecar, other tokens, vendor modules.
+<!-- SECTION:PLAN:END -->
+
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 Sources of the licence research of 2026-11-19. Utimaco: https://utimaco.com/data-protection/simulators-and-trials, EULA https://utimaco.com/sites/default/files/2024-02/Utimaco_IS_GmbH_EULA_2024_EN.pdf (sections 2, 3, 7), Docker guide https://integration-guides.utimaco.com/docker-container-and-cryptoserver-hsm/1.0.0/online/creating-the-dockerfile. Thales: https://thalesdocs.com/gphsm/luna/7/docs/network/Content/install/client_install/linux_minimal_install_overview-and-prep.htm, mechanisms https://thalesdocs.com/gphsm/luna/7/docs/network/Content/sdk/mechanisms/mechanism_summary_7-7-0.htm, trial https://cpl.thalesgroup.com/encryption/data-protection-on-demand/luna-cloud-hsm-trial. Entrust: https://nshielddocs.entrust.com/ncop-docs/ncop-licensing.html, mechanisms https://nshielddocs.entrust.com/security-world-docs/api-pkcs11/mechanisms.html. SoftHSM2: https://github.com/softhsm/SoftHSMv2 (LICENSE, releases). Kryoptic: https://github.com/latchset/kryoptic. cryptoki: https://github.com/parallaxsecond/rust-cryptoki. miekg/pkcs11: https://github.com/miekg/pkcs11. crypto11: https://github.com/ThalesGroup/crypto11. OASIS headers: https://github.com/oasis-tcs/pkcs11 (LICENSE.md). AWS CloudHSM mechanisms: https://docs.aws.amazon.com/cloudhsm/latest/userguide/pkcs11-mechanisms.html. EUPL-1.2 and its matrix of compatible licences: https://interoperable-europe.ec.europa.eu/collection/eupl/matrix-eupl-compatible-open-source-licences. NetHSM test image: https://docs.nitrokey.com/nethsm/container/test-image. The SECDSA report: a post of Eric Verheul on LinkedIn, November 2026. Not verified, and to be before a vendor is named as supported: Utimaco's PKCS#11 mechanism list, brainpool and arm64 or macOS builds; the Luna EULA and whether its client needs a contract; Entrust's Security World EULA and any emulator (the statements on customers under maintenance and on the image come from search summaries); brainpool in SoftHSM2; AES-GCM with associated data and macOS in Kryoptic; the key attributes each module honours.
+
+2026-11-19, step 1 done on feat/ti-hsm-spike. New crate rust/ti-hsm (publish = false, an adapter in the Rust profile's diagram) with a PKCS#11 adapter on cryptoki 0.12.1 (approved; vet exemptions for cryptoki, cryptoki-sys, libloading 0.8.9, secrecy, with notes, as ureq's). Spike suite tests/spike_softhsm2.rs, 11 tests, gated (#[ignore], TI_HSM_PKCS11_MODULE_PATH), run by just hsm-spike with a fresh token directory; row in rust/docs/development.md. Findings in rust/ti-hsm/docs/spike-softhsm2.md, SoftHSM2 2.7.0 on macOS arm64: every mechanism the interface needs is listed; keys made sensitive, never extractable, one use, a misuse refused with CKR_KEY_FUNCTION_NOT_PERMITTED; ECDSA over a digest and over a message (SHA-256/384/512) on P-256 and P-384 verified with RustCrypto; brainpoolP256r1 works (open question answered for this build); AES-GCM single-part with AAD, tamper refused with CKR_ENCRYPTED_DATA_INVALID; CKA_EC_POINT DER-wrapped. Differences: SoftHSM2 does not make the GCM IV (it encrypts under the zero IV it is given), so the adapter takes Iv::Random from C_GenerateRandom and refuses Iv::FromToken when the IV comes back unchanged; cryptoki 0.12 reports CKA_VALUE of a sensitive key as absent, not as CKR_ATTRIBUTE_SENSITIVE; SoftHSM2 does not report CKA_ENCRYPT/CKA_WRAP of a private EC key. Not covered: gRPC and the sidecar (maintainer: after the spike), multi-part operations, Linux/x86_64, deterministic keys (SoftHSM2 makes keys from its own random source), other tokens. Next decisions: the gRPC server (tonic etc., 46 new crates, or generated code committed), the simulator token (SoftHSM2 vs Kryoptic), how keys are deterministic for tests (#3).
 <!-- SECTION:NOTES:END -->
