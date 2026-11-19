@@ -49,7 +49,7 @@ use jwz::jwk::{Jwk, JwkSet, KeyResolver};
 use jwz::jws::{self, Jws};
 use jwz::jwt::{Claims, FixedClock};
 use jwz::keys::{JwsKey, Signature, SoftwareAgreementKey, SoftwareKey, SymmetricKey};
-use jwz::profile::{AES_128_GCM, AES_KW, DIRECT, EDDSA, HMAC, Policy, Profile, TypRule};
+use jwz::profile::{AES_128_GCM, AES_KW, DIRECT, HMAC, Policy, Profile, TypRule};
 use serde_json::{Value, json};
 
 fn backend() -> Arc<RustCrypto> {
@@ -332,14 +332,13 @@ fn rfc_8725_3_1_a_key_agreement_key_is_made_for_one_algorithm_and_refuses_anothe
     );
 }
 
-/// RFC 8725 §3.1, RFC 9864 §7 for resolved keys: a JWK that names no `alg` is used only
-/// where it fits a single algorithm the profile lists. One that could serve several (an
-/// `oct` key long enough for HS256 and HS512; an Ed25519 key under a profile with both
-/// `Ed25519` and `EdDSA`) is passed over, because nothing but the token's header would
-/// choose its algorithm. The same key with its `alg`, a key that fits one listed algorithm
-/// only, and another key of the set are used as before.
+/// RFC 8725 §3.1, RFC 9864 §7 for resolved keys: a JWK that names no `alg` is not used.
+/// Nothing but the token's header would choose its algorithm, however few algorithms its
+/// type and the profile leave. The same key with its `alg` verifies, and so does another
+/// key of the set. A host that knows the algorithm of a key published without one says so:
+/// in the JWK its resolver returns, or by making the key and calling `verify`.
 #[test]
-fn rfc_8725_3_1_a_resolved_key_without_alg_is_used_only_where_one_algorithm_fits() {
+fn rfc_8725_3_1_a_resolved_key_that_names_no_alg_is_not_used() {
     let registry = Registry::standard();
     let set = |keys: &[&Jwk]| {
         let keys: Vec<String> = keys.iter().map(|k| k.to_json()).collect();
@@ -357,57 +356,38 @@ fn rfc_8725_3_1_a_resolved_key_without_alg_is_used_only_where_one_algorithm_fits
         jwk.alg = None;
         jwk
     };
-
     let hmac = Profile::new("hmac", 1).with(&HMAC).policy;
-    let oct = |len: usize| {
-        let jwk = Jwk::parse(&format!(
-            r#"{{"kty":"oct","alg":"HS256","k":"{}"}}"#,
-            jwz::b64::encode(&vec![7; len])
-        ))
-        .unwrap();
-        let key =
-            SoftwareKey::from_jwk(&jwk, SignatureAlgorithm::HS256, &registry, backend()).unwrap();
-        let token = jws::sign(b"x", HeaderParams::new(), &key, &hmac, &registry).unwrap();
-        (jwk, token)
-    };
-    let (long, token) = oct(64);
-    assert_eq!(
-        verify(&token, &hmac, &[&without_alg(long.clone())]),
-        Err(ErrorCode::KeyMismatch)
-    );
-    assert_eq!(verify(&token, &hmac, &[&long]), Ok(()));
-    assert_eq!(
-        verify(&token, &hmac, &[&without_alg(long.clone()), &long]),
-        Ok(())
-    );
-    // 48 bytes are enough for HS256 and HS384; 32 only for HS256 (RFC 7518 §3.2).
-    let (medium, token) = oct(48);
-    assert_eq!(
-        verify(&token, &hmac, &[&without_alg(medium)]),
-        Err(ErrorCode::KeyMismatch)
-    );
-    let (short, token) = oct(32);
-    assert_eq!(verify(&token, &hmac, &[&without_alg(short)]), Ok(()));
-    // Under a profile that lists HS256 alone, the long key has one algorithm.
-    let mut hs256_only = hmac.clone();
-    hs256_only.signature_algorithms = vec![SignatureAlgorithm::HS256];
-    let (long, token) = oct(64);
-    assert_eq!(verify(&token, &hs256_only, &[&without_alg(long)]), Ok(()));
-
+    let hs256 = SoftwareKey::generate(SignatureAlgorithm::HS256, &registry, backend()).unwrap();
     let ed = SoftwareKey::generate(SignatureAlgorithm::ED25519, &registry, backend()).unwrap();
-    let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
-    let bare = without_alg(ed.public_jwk());
-    assert_eq!(verify(&token, &strict(), &[&bare]), Ok(()));
-    let both = Profile::strict().with(&EDDSA).policy;
-    assert_eq!(verify(&token, &both, &[&bare]), Err(ErrorCode::KeyMismatch));
-    assert_eq!(verify(&token, &both, &[&ed.public_jwk()]), Ok(()));
-
-    // A P-256 key has ES256 and nothing else, in strict and among everything interop lists.
     let ec = es256();
+    for (key, policy) in [(&hs256, hmac), (&ed, strict()), (&ec, strict())] {
+        let token = jws::sign(b"x", HeaderParams::new(), key, &policy, &registry).unwrap();
+        let named = key.public_jwk();
+        assert_eq!(named.alg.as_deref(), Some(key.algorithm().as_str()));
+        let bare = without_alg(named.clone());
+        assert_eq!(
+            verify(&token, &policy, &[&bare]),
+            Err(ErrorCode::KeyMismatch),
+            "{:?}",
+            key.algorithm()
+        );
+        assert_eq!(verify(&token, &policy, &[&named]), Ok(()));
+        assert_eq!(verify(&token, &policy, &[&bare, &named]), Ok(()));
+        // The host states the algorithm it expects of the key: the key verifies.
+        let stated = SoftwareKey::from_jwk(&bare, key.algorithm(), &registry, backend()).unwrap();
+        assert!(
+            Jws::parse(&token, &policy, &registry)
+                .unwrap()
+                .verify(&stated)
+                .is_ok()
+        );
+    }
+    // No key at all is a failed verification, not a key that was passed over.
     let token = jws::sign(b"x", HeaderParams::new(), &ec, &strict(), &registry).unwrap();
-    let bare = without_alg(ec.public_jwk());
-    assert_eq!(verify(&token, &strict(), &[&bare]), Ok(()));
-    assert_eq!(verify(&token, &interop(), &[&bare]), Ok(()));
+    assert_eq!(
+        verify(&token, &strict(), &[]),
+        Err(ErrorCode::VerificationFailed)
+    );
 }
 
 /// draft-ietf-oauth-rfc8725bis-10 §3.1 and §2.11: the accepted algorithms are an
@@ -878,7 +858,7 @@ fn rfc_8725_3_10_key_references_are_refused_and_kid_is_only_compared() {
 fn rfc_8725_3_11_a_profile_requires_the_explicit_type() {
     let registry = Registry::standard();
     let mut policy = strict();
-    policy.typ = TypRule::required("secevent+jwt");
+    policy.typ = TypRule::Required("secevent+jwt".into());
     let check = |members: Value| code(policy.check_jws(&header(&members), &registry));
     for typ in ["secevent+jwt", "application/secevent+jwt", "SecEvent+JWT"] {
         assert_eq!(
@@ -917,73 +897,40 @@ fn rfc_8725_3_11_a_profile_requires_the_explicit_type() {
 
 /// draft-ietf-oauth-rfc8725bis-10 §3.11: a kind of JWT that already exists cannot start to
 /// require `typ` without refusing the producers that do not set it yet. Its profile accepts
-/// a token without `typ` and holds one that has it to the accepted types. A profile may
-/// accept several types, and one that requires `typ` with several still refuses a token
-/// without it. A producer under such a profile may leave `typ` out and may not set another.
+/// a token without `typ` and holds one that has it to the expected type. A producer under
+/// such a profile may leave `typ` out and may not set another.
 #[test]
-fn draft_ietf_oauth_rfc8725bis_10_3_11_a_typ_that_is_present_must_be_an_accepted_one() {
+fn draft_ietf_oauth_rfc8725bis_10_3_11_a_typ_that_is_present_must_be_the_expected_one() {
     let registry = Registry::standard();
-    let check =
-        |policy: &Policy, members: Value| code(policy.check_jws(&header(&members), &registry));
-    let accepted = Ok(SignatureAlgorithm::ES256);
-    let refused = Err(ErrorCode::PolicyViolation);
-
-    let mut retrofit = strict();
-    retrofit.typ = TypRule::if_present("logout+jwt");
-    assert_eq!(check(&retrofit, json!({"alg": "ES256"})), accepted);
+    let mut policy = strict();
+    policy.typ = TypRule::IfPresent("logout+jwt".into());
+    let check = |members: Value| code(policy.check_jws(&header(&members), &registry));
+    assert_eq!(
+        check(json!({"alg": "ES256"})),
+        Ok(SignatureAlgorithm::ES256)
+    );
     for typ in ["logout+jwt", "application/logout+jwt", "Logout+JWT"] {
         assert_eq!(
-            check(&retrofit, json!({"alg": "ES256", "typ": typ})),
-            accepted,
+            check(json!({"alg": "ES256", "typ": typ})),
+            Ok(SignatureAlgorithm::ES256),
             "{typ}"
         );
     }
     for typ in ["JWT", "at+jwt", ""] {
         assert_eq!(
-            check(&retrofit, json!({"alg": "ES256", "typ": typ})),
-            refused,
+            check(json!({"alg": "ES256", "typ": typ})),
+            Err(ErrorCode::PolicyViolation),
             "{typ}"
         );
     }
-
-    let mut several = strict();
-    several.typ = TypRule::Required(vec!["at+jwt".into(), "application/secevent+jwt".into()]);
-    for typ in ["at+jwt", "secevent+jwt"] {
-        assert_eq!(
-            check(&several, json!({"alg": "ES256", "typ": typ})),
-            accepted,
-            "{typ}"
-        );
-    }
-    assert_eq!(
-        check(&several, json!({"alg": "ES256", "typ": "JWT"})),
-        refused
-    );
-    assert_eq!(check(&several, json!({"alg": "ES256"})), refused);
-
-    // A list that names no type accepts none: required, nothing passes; if present, only
-    // a token without `typ`.
-    let mut none = strict();
-    none.typ = TypRule::Required(Vec::new());
-    assert_eq!(
-        check(&none, json!({"alg": "ES256", "typ": "at+jwt"})),
-        refused
-    );
-    assert_eq!(check(&none, json!({"alg": "ES256"})), refused);
-    none.typ = TypRule::IfPresent(Vec::new());
-    assert_eq!(
-        check(&none, json!({"alg": "ES256", "typ": "at+jwt"})),
-        refused
-    );
-    assert_eq!(check(&none, json!({"alg": "ES256"})), accepted);
 
     let key = es256();
-    let sign = |params: HeaderParams| code(jws::sign(b"{}", params, &key, &retrofit, &registry));
+    let sign = |params: HeaderParams| code(jws::sign(b"{}", params, &key, &policy, &registry));
     assert!(sign(HeaderParams::new()).is_ok());
     assert!(sign(HeaderParams::new().typ("logout+jwt")).is_ok());
     assert_eq!(
-        sign(HeaderParams::new().typ("at+jwt")),
-        Err(ErrorCode::PolicyViolation)
+        sign(HeaderParams::new().typ("at+jwt")).err(),
+        Some(ErrorCode::PolicyViolation)
     );
 }
 
@@ -996,7 +943,7 @@ fn rfc_8725_3_12_each_kind_of_token_is_refused_by_the_others_profile() {
     let key = es256();
     let kind = |typ: &str, audience: &str| {
         let mut profile = Profile::strict();
-        profile.policy.typ = TypRule::required(typ);
+        profile.policy.typ = TypRule::Required(typ.into());
         profile.claims.audience = Some(audience.into());
         profile
     };
@@ -1006,10 +953,9 @@ fn rfc_8725_3_12_each_kind_of_token_is_refused_by_the_others_profile() {
     );
     let token = |profile: &Profile| {
         let claims = json!({"aud": profile.claims.audience, "exp": 60}).to_string();
-        let TypRule::Required(accepted) = &profile.policy.typ else {
+        let TypRule::Required(typ) = &profile.policy.typ else {
             unreachable!("kind() requires a typ")
         };
-        let typ = accepted[0].as_str();
         jws::sign(
             claims.as_bytes(),
             HeaderParams::new().typ(typ),
@@ -1127,7 +1073,7 @@ fn draft_ietf_oauth_rfc8725bis_10_3_14_a_compact_token_is_base64url_and_dots_onl
 fn rfc_8725_3_11_a_producer_writes_no_header_its_profile_refuses() {
     let registry = Registry::standard();
     let mut policy = strict();
-    policy.typ = TypRule::required("secevent+jwt");
+    policy.typ = TypRule::Required("secevent+jwt".into());
     policy.require_kid = true;
     let key = es256();
     let named = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend())

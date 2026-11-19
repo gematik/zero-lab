@@ -4,7 +4,7 @@ title: 'jwz: a key without alg is bound to one algorithm (RFC 8725 §3.1)'
 status: Done
 assignee: []
 created_date: '2026-11-08T15:20:00Z'
-updated_date: '2026-11-19 08:15'
+updated_date: '2026-11-19 08:55'
 labels:
   - jwz
   - security
@@ -45,4 +45,6 @@ Decision (maintainer, 2026-11-17): RFC conform. A key is bound to one algorithm 
 Built as planned. Decided along the way, recorded in ADR 0001 ('Decisions taken for jwz 0.3'): (1) 'could serve' means SoftwareKey::from_jwk succeeds for the algorithm and the profile's curve rule accepts the key, so an oct key counts for every HMAC its length allows (32 bytes: HS256 only; 48: HS256 and HS384) and a P-256 or brainpool key has one algorithm in every shipped profile. (2) An ambiguous key is passed over; if nothing else verifies the error is KeyMismatch, not VerificationFailed. (3) SoftwareAgreementKey::public_jwk names its alg; a recipient JWK without alg (PuK_IDP_ENC) is still encrypted to, the sender stating the algorithm. (4) SymmetricKey keeps the RFC 7520 §5.6 case as a dir key bound to the enc its JWK names. Tests: rfc_8725_3_1_a_jwe_key_is_made_for_one_algorithm_and_refuses_another, rfc_8725_3_1_a_resolved_key_without_alg_is_used_only_where_one_algorithm_fits. No source of another crate changed, only tests (ti-jwz, ti-idpd-client, ti-cli) and jwz's two JWE fuzz targets, which now hold one key per algorithm so every decryption path stays reachable. Breaking for jwz: 0.3.0, not bumped, tagged or published here; rust/ReleaseNotes.md has the Unreleased block.
 
 The JWE test is two, for clippy's limit on a function's length: rfc_8725_3_1_a_shared_jwe_key_is_made_for_one_algorithm_and_refuses_another and rfc_8725_3_1_a_key_agreement_key_is_made_for_one_algorithm_and_refuses_another.
+
+2026-11-19, maintainer: keep it simple, one key one algorithm, everything explicit. verify_with now passes over every resolved JWK that names no alg (KeyMismatch if nothing else verifies), not only one that fits several listed algorithms; the counting (serves_several, SigningKeyRule::listed) is removed. A host that knows the algorithm of such a key sets alg on the JWK its resolver returns, or makes the key itself and calls verify. Test renamed rfc_8725_3_1_a_resolved_key_that_names_no_alg_is_not_used (HS256, Ed25519, ES256 each: bare refused, named and stated verify). rfc_7515_5_2_step_8's Ed25519 decoy now names its alg, so the test still shows a key of another type being passed over. ADR 0001, guide and release notes rewritten.
 <!-- SECTION:NOTES:END -->

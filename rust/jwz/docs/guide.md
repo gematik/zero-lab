@@ -131,7 +131,7 @@ let mut mine = Profile::new("access-tokens", 1)
     .with(&ECDSA_NIST)
     .with(&AES_KW)
     .with(&AES_256_GCM);
-mine.policy.typ = TypRule::required("at+jwt");
+mine.policy.typ = TypRule::Required("at+jwt".into());
 assert_eq!(mine.policy.signature_algorithms, [SignatureAlgorithm::ES256]);
 
 // strict with AES key wrap added: everything strict accepts, and A128KW.
@@ -277,7 +277,7 @@ both.
 | --- | --- | --- | --- |
 | 3.1 | The caller sets the algorithms, and no other is used | The profile's lists are the only algorithms jwz parses, verifies, signs or encrypts with; a name matches only exactly | Build the profile from the bundles you need (`Profile::new`, `with`) |
 | 3.1 | `alg` and `enc` are the algorithms used | The algorithm is the one the policy accepted from the header, and a key is made a verifier for it alone | – |
-| 3.1 | Each key is used with exactly one algorithm, checked when used | A JWS key, a `SymmetricKey` and a `KeyAgreement` key are each made for one algorithm and refuse another, checked at every use; a JWK that names an `alg` is made a key for that algorithm only; `verify_with` passes over a resolved JWK without `alg` that fits more than one algorithm the profile lists | Publish keys with `alg`. Where a peer's key has none, list one algorithm for its key type in the profile (HS256 alone; `Ed25519` without `EdDSA`), or make the key yourself for the algorithm you expect and call `verify` |
+| 3.1 | Each key is used with exactly one algorithm, checked when used | A JWS key, a `SymmetricKey` and a `KeyAgreement` key are each made for one algorithm and refuse another, checked at every use; a JWK that names an `alg` is made a key for that algorithm only; `verify_with` does not use a resolved JWK that names no `alg` | Publish keys with `alg`. Where a peer's key has none, state the algorithm yourself: set `alg` on the JWK your resolver returns, or make the key with `SoftwareKey::from_jwk(jwk, alg, …)` and call `verify` |
 | 3.2 | Only current algorithms; agility | `strict` lists ES256, Ed25519, ECDH-ES on P-256 and AES-GCM; RSA PKCS #1 v1.5 encryption is not implemented; a new algorithm comes through the registry and a profile | Choose your profile and revise it; `rfc7518-interop` never in production |
 | 3.2 | No `none` unless the caller asks | `none` can be neither parsed, registered nor signed, whatever the caller asks | – |
 | 3.2 | Deterministic ECDSA | ES256 signs with RFC 6979 nonces | A signer of yours (HSM, KMS) uses nonces of its own |
@@ -289,7 +289,7 @@ both.
 | 3.8 | The keys belong to `iss`; `sub` is valid | `verify_with` takes the keys your resolver offers, never keys the token points at; `ClaimsPolicy::issuer` holds `iss` to one issuer | Resolve the keys of the issuer you expect (its `jwks_uri`) and set `issuer` to it; check `sub` (`Claims::sub`) against your subjects |
 | 3.9 | `aud` present and checked | `ClaimsPolicy::audience` refuses a token without `aud` or whose `aud` does not contain it | Set `audience` whenever an issuer serves more than one recipient |
 | 3.10 | `kid`, `jku` and `x5u` are untrusted input | Key references in a token are refused unless the profile opts in; jwz fetches nothing; a `JwkSet` only compares `kid` | A resolver that looks `kid` up in a database or directory escapes it; one that fetches holds the URL to an allowlist and sends no cookies |
-| 3.11 | Explicit typing | `Policy::typ` (`TypRule::Required`) requires one of the accepted `typ` values, compared as a media type (`application/` optional, case ignored) on parsing and on signing and encrypting; `HeaderParams::typ` sets it | Name a new kind `example+jwt`; set `HeaderParams::typ` when you sign: signing does not add it, but refuses a header without the type the policy requires; in a Nested JWT the inner JWS carries it |
+| 3.11 | Explicit typing | `Policy::typ` (`TypRule::Required`) requires the `typ`, compared as a media type (`application/` optional, case ignored) on parsing and on signing and encrypting; `HeaderParams::typ` sets it | Name a new kind `example+jwt`; set `HeaderParams::typ` when you sign: signing does not add it, but refuses a header without the type the policy requires; in a Nested JWT the inner JWS carries it |
 | 3.12 | Mutually exclusive rules for different kinds of JWT | A profile per kind, told apart by `typ`, `issuer`, `audience`, `required` claims or keys | Write the profiles so that each refuses the others' tokens |
 
 ### The revision: draft-ietf-oauth-rfc8725bis-10
@@ -306,7 +306,7 @@ reads RFC numbers only, so this table traces them.
 | 3.3 | Unsecured, signed, encrypted and nested JWTs told apart | `Jws` and `Jwe` are separate types and parsers, neither parses the other, and an unsecured JWT is never parsed | Tell a nested JWT by its `cty` |
 | 3.9 | `aud` also when an issuer may serve more recipients later | As RFC 8725 §3.9 | Set `audience` |
 | 3.10 | `kid` validated before a lookup (now a MUST); no request to a loopback or local address without an allowlist | jwz fetches nothing | A fetching resolver refuses names that resolve to loopback or local addresses |
-| 3.11 | A `typ` without `/` is `application/` + `typ`; `JWT` is no explicit type | Compared so; a profile with another `typ` refuses `JWT` | `TypRule::Required` requires a `typ`; `TypRule::IfPresent` is for a kind of token that never carried one: a token without `typ` passes, and a `typ` that is present must be an accepted one |
+| 3.11 | A `typ` without `/` is `application/` + `typ`; `JWT` is no explicit type | Compared so; a profile with another `typ` refuses `JWT` | `TypRule::Required` requires a `typ`; `TypRule::IfPresent` is for a kind of token that never carried one: a token without `typ` passes, and a `typ` that is present must be the expected one |
 | 3.13, 2.10 | An upper limit on PBES2 iterations | No PBES2, so no `p2c` is ever run | – |
 | 3.14, 2.13 | A compact token is base64url and dots only | Every part is decoded as strict base64url; claims come only from a verified payload | – |
 | 3.15, 2.12 | An upper limit on decompression | Nothing is decompressed: `zip` is refused | – |

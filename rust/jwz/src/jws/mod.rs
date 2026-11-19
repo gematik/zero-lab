@@ -183,16 +183,16 @@ impl Jws<Unverified> {
     /// does not fit the algorithm, or is on a curve the policy does not list, is passed
     /// over.
     ///
-    /// So is a key that names no `alg` and could serve more than one algorithm the policy
-    /// lists (RFC 8725 §3.1, RFC 9864 §7: one key, one algorithm): an `oct` key long
-    /// enough for `HS256` and `HS512`, an Ed25519 key under a policy with `Ed25519` and
-    /// `EdDSA`. Nothing but the token's header would say which algorithm such a key is
-    /// for. A key that names its `alg`, or that fits one listed algorithm only, is bound.
+    /// So is a key that names no `alg` (RFC 8725 §3.1, RFC 9864 §7: one key, one
+    /// algorithm): nothing but the token's header would say which algorithm it is for. A
+    /// host that knows the algorithm of such a key says so, either in the JWK its resolver
+    /// returns or by making the key itself ([`SoftwareKey::from_jwk`]) and calling
+    /// [`verify`](Self::verify).
     ///
     /// # Errors
     ///
     /// The resolver's error; [`ErrorCode::KeyMismatch`] if no resolved key verifies the
-    /// signature and one was passed over for naming no `alg` where several fit;
+    /// signature and one was passed over for naming no `alg`;
     /// [`ErrorCode::VerificationFailed`] if no resolved key verifies it otherwise, none
     /// resolved included.
     pub fn verify_with<B: Backend>(
@@ -229,7 +229,7 @@ impl Jws<Unverified> {
         let input = self.signing_input();
         let mut unbound = false;
         let mut verifies = |jwk: &Jwk| {
-            if jwk.alg.is_none() && self.serves_several(jwk, registry, backend) {
+            if jwk.alg.is_none() {
                 unbound = true;
                 return false;
             }
@@ -241,37 +241,13 @@ impl Jws<Unverified> {
         if keys.iter().any(&mut verifies) {
             Ok(self.into_verified())
         } else if unbound {
-            Err(Error::new(
-                ErrorCode::KeyMismatch,
-                "key without alg fits several algorithms",
-            ))
+            Err(Error::new(ErrorCode::KeyMismatch, "key names no alg"))
         } else {
             Err(Error::new(
                 ErrorCode::VerificationFailed,
                 "no resolved key verifies the signature",
             ))
         }
-    }
-
-    /// Whether `jwk` could be a key for more than one algorithm the policy lists: it can
-    /// be made a key for it, on a curve the policy accepts for it.
-    fn serves_several<B: Backend>(&self, jwk: &Jwk, registry: &Registry, backend: &Arc<B>) -> bool {
-        let serves = |alg: &&SignatureAlgorithm| {
-            registry.signature(alg.as_str()).is_some_and(|entry| {
-                SoftwareKey::from_jwk(jwk, **alg, registry, Arc::clone(backend)).is_ok_and(|key| {
-                    self.key_rule
-                        .for_algorithm(entry)
-                        .check(key.curve())
-                        .is_ok()
-                })
-            })
-        };
-        self.key_rule
-            .listed()
-            .iter()
-            .filter(serves)
-            .nth(1)
-            .is_some()
     }
 
     /// The key must be for the header's algorithm (a key is bound to one; the header

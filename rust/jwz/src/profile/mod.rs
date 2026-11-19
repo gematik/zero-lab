@@ -117,12 +117,12 @@ pub struct Policy {
     pub key_references: KeyReferences,
     /// Whether a token must name its key with a non-empty `kid`.
     pub require_kid: bool,
-    /// The `typ` values a token may have, and whether it must have one: the explicit type
-    /// that tells one kind of JWT from another (RFC 8725 §3.11).
+    /// The `typ` a token may have, and whether it must have one: the explicit type that
+    /// tells one kind of JWT from another (RFC 8725 §3.11).
     pub typ: TypRule,
 }
 
-/// Which `typ` a token may have. Values are compared as RFC 7515 §4.1.9 says.
+/// Which `typ` a token may have, compared as RFC 7515 §4.1.9 says.
 ///
 /// RFC 8725 §3.11 asks new kinds of JWT for an explicit type that the verifier requires.
 /// draft-ietf-oauth-rfc8725bis-10 §3.11 adds the rule for a kind that already exists:
@@ -133,34 +133,19 @@ pub enum TypRule {
     /// Any `typ`, and none.
     #[default]
     Any,
-    /// `typ` is required and must be one of these. An empty list accepts no token.
-    Required(Vec<String>),
-    /// A token without `typ` is accepted; a `typ` that is present must be one of these.
-    IfPresent(Vec<String>),
+    /// `typ` is required and must be this one.
+    Required(String),
+    /// A token without `typ` is accepted; a `typ` that is present must be this one.
+    IfPresent(String),
 }
 
 impl TypRule {
-    /// `typ` is required and must be `typ`.
-    pub fn required(typ: impl Into<String>) -> Self {
-        TypRule::Required(alloc::vec![typ.into()])
-    }
-
-    /// A `typ` that is present must be `typ`.
-    pub fn if_present(typ: impl Into<String>) -> Self {
-        TypRule::IfPresent(alloc::vec![typ.into()])
-    }
-
     fn accepts(&self, typ: Option<&str>) -> bool {
-        let listed = |accepted: &[String], typ: &str| {
-            accepted
-                .iter()
-                .any(|expected| same_media_type(typ, expected))
-        };
         match (self, typ) {
             (TypRule::Any, _) | (TypRule::IfPresent(_), None) => true,
             (TypRule::Required(_), None) => false,
-            (TypRule::Required(accepted) | TypRule::IfPresent(accepted), Some(typ)) => {
-                listed(accepted, typ)
+            (TypRule::Required(expected) | TypRule::IfPresent(expected), Some(typ)) => {
+                same_media_type(typ, expected)
             }
         }
     }
@@ -181,27 +166,9 @@ pub(crate) struct SigningKeyRule {
     registered: Option<Curve>,
     /// The policy's signing curves.
     allowed: Vec<Curve>,
-    /// The policy's signature algorithms: what a key that names no algorithm could be
-    /// used for under it.
-    listed: Vec<SignatureAlgorithm>,
 }
 
 impl SigningKeyRule {
-    /// The policy's signature algorithms.
-    pub(crate) fn listed(&self) -> &[SignatureAlgorithm] {
-        &self.listed
-    }
-
-    /// The rule of the same policy for the algorithm of `entry`.
-    pub(crate) fn for_algorithm(&self, entry: &SignatureEntry) -> SigningKeyRule {
-        SigningKeyRule {
-            curved: has_curves(entry),
-            registered: entry.curve,
-            allowed: self.allowed.clone(),
-            listed: self.listed.clone(),
-        }
-    }
-
     /// Accepts a key that states `curve` (or none).
     pub(crate) fn check(&self, curve: Option<Curve>) -> Result<(), Error> {
         if !self.curved {
@@ -300,10 +267,9 @@ impl Policy {
 
     fn signing_key_rule(&self, entry: &SignatureEntry) -> SigningKeyRule {
         SigningKeyRule {
-            curved: has_curves(entry),
+            curved: entry.key_type == KeyType::EC || entry.key_type == KeyType::OKP,
             registered: entry.curve,
             allowed: self.signing_curves.clone(),
-            listed: self.signature_algorithms.clone(),
         }
     }
 
@@ -471,10 +437,6 @@ impl Policy {
         }
         Ok(())
     }
-}
-
-fn has_curves(entry: &SignatureEntry) -> bool {
-    entry.key_type == KeyType::EC || entry.key_type == KeyType::OKP
 }
 
 /// The registered curve `epk` names, if any; whether `epk` is otherwise well-formed is
@@ -912,7 +874,7 @@ mod tests {
     fn rfc_7515_4_1_9_typ_comparison() {
         let registry = Registry::standard();
         let mut policy = Profile::strict().policy;
-        policy.typ = TypRule::required("dpop+jwt");
+        policy.typ = TypRule::Required("dpop+jwt".into());
         for (typ, ok) in [
             ("dpop+jwt", true),
             ("DPoP+JWT", true),
@@ -924,7 +886,7 @@ mod tests {
         }
         // The prefix may be left out only where no other `/` follows: `application/a/b`
         // and `a/b` are different types.
-        policy.typ = TypRule::required("a/b");
+        policy.typ = TypRule::Required("a/b".into());
         for (typ, ok) in [("a/b", true), ("A/B", true), ("application/a/b", false)] {
             let h = header(json!({"alg": "ES256", "typ": typ}));
             assert_eq!(policy.check_jws(&h, &registry).is_ok(), ok, "{typ}");

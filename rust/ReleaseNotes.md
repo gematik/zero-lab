@@ -26,19 +26,17 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   decryption refuse a key made for another algorithm with `KeyMismatch`; before, a shared
   key without `alg` served `dir` and AES key wrap alike, and a key agreement key every
   ECDH-ES variant.
-- `Jws::verify_with` and `verify_with_async` pass over a resolved JWK that names no `alg`
-  and fits more than one signature algorithm the profile lists: an `oct` key of 48 bytes
-  or more under HS256 and HS384, an Ed25519 key under `Ed25519` and `EdDSA`. If no other
-  key verifies, the error is `KeyMismatch`. A JWK with `alg`, and one that fits a single
-  listed algorithm (a P-256 key, a 32-byte `oct` key), verify as before.
+- `Jws::verify_with` and `verify_with_async` do not use a resolved JWK that names no
+  `alg`; if no other key verifies, the error is `KeyMismatch`. A host that knows the
+  algorithm of such a key sets `alg` on the JWK its resolver returns, or makes the key with
+  `SoftwareKey::from_jwk(jwk, alg, …)` and calls `verify`.
 - `Policy::typ` is a `TypRule`, not an `Option<String>` (TASK-277): `TypRule::Any` for
-  `None`, `TypRule::required(typ)` for `Some(typ)`.
+  `None`, `TypRule::Required(typ)` for `Some(typ)`.
 
 #### added
-- `TypRule::Required` takes several accepted `typ` values, and `TypRule::IfPresent`
-  accepts a token without `typ` while holding a `typ` that is present to the accepted
-  ones: the rule of draft-ietf-oauth-rfc8725bis-10 §3.11 for a kind of JWT that already
-  exists.
+- `TypRule::IfPresent(typ)` accepts a token without `typ` and holds a `typ` that is
+  present to the expected one: the rule of draft-ietf-oauth-rfc8725bis-10 §3.11 for a kind
+  of JWT that already exists.
 
 ### ti-cache
 
