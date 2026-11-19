@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-19 12:42'
+updated_date: '2026-11-19 12:43'
 labels:
   - rust
   - pki
@@ -47,3 +48,9 @@ Not checked: ti-client's inspect path (rust/ti-client/src/pki/inspect.rs:244, si
 - [ ] #2 A test named after TLSV-041 shows an ECDSA P-384 web end entity as admissible and an RSA 2048 one as phased out, in the key line and in the verdict alike
 - [ ] #3 Whether P-521 is admissible for the web profile is answered from A_28976 / gemSpec_Krypt and recorded in spec/pki-validation
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-19: the same connection fails in the zeta CLI. ZETA SDK 2.0.1 checks the revocation of the chain as sent, and stops at the self-signed Root G5 the server sends. That is in zeta-backlog TASK-19.
+<!-- SECTION:NOTES:END -->

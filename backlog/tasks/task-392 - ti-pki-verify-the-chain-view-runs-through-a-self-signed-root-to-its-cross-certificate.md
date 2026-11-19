@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-19 12:42'
+updated_date: '2026-11-19 12:43'
 labels:
   - rust
   - pki
@@ -39,3 +40,9 @@ Not checked: whether the verdict's path (rustls-webpki) ended at Root G5 or at G
 <!-- AC:BEGIN -->
 - [ ] #1 The chain view shows the verified path, ending at its trust anchor, and lists the certificates the server sent outside that path separately
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-19: the same connection fails in the zeta CLI. ZETA SDK 2.0.1 checks the revocation of the chain as sent, and stops at the self-signed Root G5 the server sends. That is in zeta-backlog TASK-19.
+<!-- SECTION:NOTES:END -->
