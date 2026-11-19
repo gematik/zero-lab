@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-19 05:49'
 labels: []
 dependencies: []
 priority: medium
@@ -23,3 +24,9 @@ ordinal: 367000
 - [ ] #1 every AS response is refused unless its status and `Content-Type` are the expected ones; token responses go through the `openid` parser; the decoupled `Location` must be an https URI without user information; the nonce has a grammar and length.
 - [ ] #2 AS error text in errors and logs is bounded and free of control characters; tests pin a `javascript:` Location and a non-JSON token response as refused.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-19: still valid with go/pdp frozen (decision-19). The PDP backend is pep/proxy's own code and speaks to any authorization server with these endpoints; zero-pdp was only one of them. If the backend is removed together with go/pdp, which decision-19 leaves to a later decision, this task goes with it.
+<!-- SECTION:NOTES:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-386
-title: 'Go: DATABASE_URL carries its component''s prefix'
+title: 'pep/proxy: DATABASE_URL carries the component''s prefix'
 status: To Do
 assignee: []
 created_date: '2026-11-18 21:34'
+updated_date: '2026-11-19 05:49'
 labels:
   - pep-proxy
   - go
@@ -25,3 +26,9 @@ zero-pep-proxy (go/pep/proxy/cmd/zero-pep-proxy/main.go:134, 160) and zero-pdp (
 <!-- AC:BEGIN -->
 - [ ] #1 zero-pep-proxy reads its store peer from a variable with its prefix, and its documentation says so
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-19: retitled from 'Go: …'. zero-pdp reads DATABASE_URL too, but go/pdp is frozen (decision-19) and keeps it.
+<!-- SECTION:NOTES:END -->
