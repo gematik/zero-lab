@@ -44,7 +44,13 @@
 //!
 //! let registry = Registry::standard();
 //! let backend = Arc::new(RustCrypto::new());
-//! let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone())?;
+//! // A key is made for one key management algorithm and refuses a token with another.
+//! let recipient = SoftwareAgreementKey::generate(
+//!     Curve::P256,
+//!     KeyEncryptionAlgorithm::ECDH_ES,
+//!     &registry,
+//!     backend.clone(),
+//! )?;
 //!
 //! let profile = Profile::strict();
 //! let public = recipient.public_jwk();
@@ -261,7 +267,7 @@ impl Jwe<Encrypted> {
         let cek = match key {
             DecryptionKey::Symmetric(key) => self.symmetric_cek(key, backend)?,
             DecryptionKey::Agreement(key) => {
-                let epk = self.check_agreement_key(key.curve(), key.key_id())?;
+                let epk = self.check_agreement_key(key.algorithm(), key.curve(), key.key_id())?;
                 let z = key.agree(epk)?;
                 self.agreement_cek(&z, backend)?
             }
@@ -279,7 +285,7 @@ impl Jwe<Encrypted> {
         key: &dyn AsyncKeyAgreement,
         backend: &dyn Backend,
     ) -> Result<Jwe<Decrypted>, Error> {
-        let epk = self.check_agreement_key(key.curve(), key.key_id())?;
+        let epk = self.check_agreement_key(key.algorithm(), key.curve(), key.key_id())?;
         let z = key.agree_async(epk).await?;
         let cek = self.agreement_cek(&z, backend)?;
         self.open(&cek, backend)
@@ -295,11 +301,23 @@ impl Jwe<Encrypted> {
     }
 
     /// The `epk` point, after checking the key is for this JWE.
-    fn check_agreement_key(&self, curve: Curve, kid: Option<&str>) -> Result<&[u8], Error> {
+    fn check_agreement_key(
+        &self,
+        alg: KeyEncryptionAlgorithm,
+        curve: Curve,
+        kid: Option<&str>,
+    ) -> Result<&[u8], Error> {
         let agreement = self
             .agreement
             .as_ref()
             .ok_or(Error::new(ErrorCode::KeyMismatch, "key agreement key"))?;
+        // RFC 8725 §3.1: the key agrees for one algorithm; the header never picks another.
+        if alg != self.kek.alg {
+            return Err(Error::new(
+                ErrorCode::KeyMismatch,
+                "key for another algorithm",
+            ));
+        }
         // RFC 7518 §4.6: the ephemeral key is on the recipient key's curve; RFC 8725 §3.4:
         // the backend then refuses a point that is not on it.
         if agreement.curve != curve {
@@ -447,21 +465,20 @@ fn check_len(key: &[u8], len: usize) -> Result<(), Error> {
     }
 }
 
-/// A symmetric key published with an `alg` is only for that `alg` (RFC 8725 §3.1); for
-/// `dir`, keys are commonly published with the `enc` as their `alg` (RFC 7520 §5.6).
+/// A symmetric key is only for the `alg` it was made for (RFC 8725 §3.1), and a `dir` key
+/// published with an `enc` as its `alg` (RFC 7520 §5.6) only for that `enc`.
 fn check_symmetric_alg(
     key: &SymmetricKey,
     alg: KeyEncryptionAlgorithm,
     enc: ContentEncryptionAlgorithm,
 ) -> Result<(), Error> {
-    match key.algorithm() {
-        None => Ok(()),
-        Some(own) if own == alg.as_str() => Ok(()),
-        Some(own) if alg == KeyEncryptionAlgorithm::DIR && own == enc.as_str() => Ok(()),
-        Some(_) => Err(Error::new(
+    if key.algorithm() == alg && key.content_encryption().is_none_or(|own| own == enc) {
+        Ok(())
+    } else {
+        Err(Error::new(
             ErrorCode::KeyMismatch,
             "key for another algorithm",
-        )),
+        ))
     }
 }
 

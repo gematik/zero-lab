@@ -131,7 +131,9 @@ fn ti_refuses_a_valid_bp256r1_token_and_ti_legacy_accepts_it() {
 fn brainpool_jwe_is_encryption_only() {
     let registry = registry();
     let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
-    let idp_enc = SoftwareAgreementKey::generate(BP_256, Arc::clone(&backend)).unwrap();
+    let idp_enc =
+        SoftwareAgreementKey::generate(BP_256, Alg::ECDH_ES, &registry, Arc::clone(&backend))
+            .unwrap();
     let encrypt = |policy: &jwz::profile::Policy| {
         jwe::encrypt(
             b"challenge",
@@ -237,9 +239,16 @@ fn ti_allows_only_what_gematik_specifies() {
             backend.as_ref(),
         )
     };
-    let token_key = SymmetricKey::new(vec![7; 32]);
-    let p256 = SoftwareAgreementKey::generate(Curve::P256, Arc::clone(&backend)).unwrap();
-    let public = p256.public_jwk();
+    // Each key is made for the one algorithm its row uses.
+    let token_key = SymmetricKey::new(vec![7; 32], Alg::DIR);
+    let wrapping_key = SymmetricKey::new(vec![7; 32], Alg::A256KW);
+    let p256 = |alg| {
+        SoftwareAgreementKey::generate(Curve::P256, alg, &registry, Arc::clone(&backend))
+            .unwrap()
+            .public_jwk()
+    };
+    let public = p256(Alg::ECDH_ES);
+    let public_wrapping = p256(Alg::ECDH_ES_A256KW);
     for (alg, enc, key, allowed, what) in [
         (
             Alg::DIR,
@@ -265,14 +274,14 @@ fn ti_allows_only_what_gematik_specifies() {
         (
             Alg::ECDH_ES_A256KW,
             Enc::A256GCM,
-            EncryptionKey::Public(&public),
+            EncryptionKey::Public(&public_wrapping),
             false,
             "ECDH-ES+A256KW",
         ),
         (
             Alg::A256KW,
             Enc::A256GCM,
-            EncryptionKey::Symmetric(&token_key),
+            EncryptionKey::Symmetric(&wrapping_key),
             false,
             "A256KW",
         ),

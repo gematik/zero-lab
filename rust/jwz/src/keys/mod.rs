@@ -32,6 +32,11 @@
 //! curve ([`JwsKey::curve`]) is bound to the profile: signing and verification refuse a
 //! key on a curve the profile does not list.
 //!
+//! JWE keys are bound the same way (RFC 8725 §3.1): a [`SymmetricKey`] and a
+//! [`KeyAgreement`] key are made for one key management algorithm, so the bytes that
+//! unwrap an `A128KW` key are never taken as the content key of a `dir` token, and a key
+//! for `ECDH-ES+A256KW` never serves `ECDH-ES`.
+//!
 //! The synchronous traits come from RustCrypto's `signature` crate: anything that
 //! implements `signature::Signer<Signature>` and [`JwsKey`] is a jwz [`Signer`], and
 //! likewise for verifiers. Every [`Signer`] is also an [`AsyncSigner`]. A key that can
@@ -90,7 +95,7 @@ pub use test_util::{FixedRng, MockHsm, MockHsmSigner, TestKms, TestKmsSigner};
 use crate::crypto::Zeroizing;
 use crate::crypto::asynchronous::BoxFuture;
 use crate::error::Error;
-use crate::jwa::{Curve, SignatureAlgorithm};
+use crate::jwa::{Curve, KeyEncryptionAlgorithm, SignatureAlgorithm};
 
 /// A JWS signature value: the bytes the algorithm defines (`r || s` for ECDSA,
 /// RFC 7518 §3.4; RFC 8032 bytes for EdDSA; the MAC for HMAC).
@@ -215,6 +220,9 @@ impl<T: Verifier + ?Sized> AsyncVerifier for T {
 /// The recipient's side of ECDH-ES: a private key that agrees on a shared secret with
 /// a peer's public key, without handing out the private key.
 pub trait KeyAgreement {
+    /// The one key management algorithm this key agrees for (`ECDH-ES` or one of
+    /// `ECDH-ES+A*KW`): decryption refuses a token with another (RFC 8725 §3.1).
+    fn algorithm(&self) -> KeyEncryptionAlgorithm;
     /// The curve.
     fn curve(&self) -> Curve;
     /// The key ID, if it has one.
@@ -231,6 +239,8 @@ pub trait KeyAgreement {
 
 /// [`KeyAgreement`] for keys that answer asynchronously; every [`KeyAgreement`] is one.
 pub trait AsyncKeyAgreement {
+    /// The one key management algorithm this key agrees for.
+    fn algorithm(&self) -> KeyEncryptionAlgorithm;
     /// The curve.
     fn curve(&self) -> Curve;
     /// The key ID, if it has one.
@@ -245,6 +255,9 @@ pub trait AsyncKeyAgreement {
 }
 
 impl<T: KeyAgreement + ?Sized> AsyncKeyAgreement for T {
+    fn algorithm(&self) -> KeyEncryptionAlgorithm {
+        KeyAgreement::algorithm(self)
+    }
     fn curve(&self) -> Curve {
         KeyAgreement::curve(self)
     }

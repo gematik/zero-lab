@@ -31,7 +31,10 @@ use alloc::vec::Vec;
 use super::{JwsKey, KeyAgreement, Signature, to_signature_error};
 use crate::crypto::{Backend, CryptoError, Zeroizing};
 use crate::error::{Error, ErrorCode};
-use crate::jwa::{Curve, HashAlgorithm, KeyType, Registry, SignatureAlgorithm, Support};
+use crate::jwa::{
+    ContentEncryptionAlgorithm, Curve, HashAlgorithm, KeyEncryptionAlgorithm, KeyManagementMode,
+    KeyType, Registry, SignatureAlgorithm, Support,
+};
 use crate::jwk::{EcKey, Jwk, KeyMaterial, KeyPurpose, OctKey, OkpKey, Secret};
 
 /// A JWS key in memory, bound to one algorithm.
@@ -278,34 +281,53 @@ impl<B: Backend> signature::Verifier<Signature> for SoftwareKey<B> {
     }
 }
 
-/// A symmetric JWE key in memory: the CEK for `dir`, the key encryption key for
-/// `A128KW`/`A192KW`/`A256KW` (RFC 7518 §4.4, §4.5).
+/// A symmetric JWE key in memory, bound to one key management algorithm: the CEK for
+/// `dir`, or the key encryption key for one of `A128KW`/`A192KW`/`A256KW` (RFC 7518 §4.4,
+/// §4.5).
 #[cfg(feature = "jwe")]
 #[derive(Clone)]
 pub struct SymmetricKey {
     key: Secret,
     kid: Option<String>,
-    alg: Option<String>,
+    alg: KeyEncryptionAlgorithm,
+    enc: Option<ContentEncryptionAlgorithm>,
 }
 
 #[cfg(feature = "jwe")]
 impl SymmetricKey {
-    /// The key `bytes`.
-    pub fn new(bytes: Vec<u8>) -> Self {
+    /// The key `bytes`, for `alg`.
+    pub fn new(bytes: Vec<u8>, alg: KeyEncryptionAlgorithm) -> Self {
         SymmetricKey {
             key: Secret::new(bytes),
             kid: None,
-            alg: None,
+            alg,
+            enc: None,
         }
     }
 
-    /// The `oct` key in `jwk`, with its `kid` and `alg`.
+    /// The `oct` key in `jwk`, with its `kid`, for `alg`.
     ///
     /// # Errors
     ///
-    /// [`ErrorCode::KeyMismatch`] for a key that is not `oct` or whose `use` or `key_ops`
-    /// is not for encryption, the errors of [`Jwk::check`].
-    pub fn from_jwk(jwk: &Jwk, registry: &Registry) -> Result<Self, Error> {
+    /// [`ErrorCode::UnsupportedAlgorithm`] if `alg` is not registered as available;
+    /// [`ErrorCode::KeyMismatch`] for a key that is not `oct`, whose `use` or `key_ops`
+    /// is not for encryption, whose own `alg` names another algorithm, or for an `alg`
+    /// that takes no symmetric key; the errors of [`Jwk::check`].
+    pub fn from_jwk(
+        jwk: &Jwk,
+        alg: KeyEncryptionAlgorithm,
+        registry: &Registry,
+    ) -> Result<Self, Error> {
+        let entry = registry
+            .key_encryption(alg.as_str())
+            .filter(|e| e.support == Support::Available)
+            .ok_or(UNSUPPORTED)?;
+        if !matches!(
+            entry.mode,
+            KeyManagementMode::DirectEncryption | KeyManagementMode::KeyWrapping { .. }
+        ) {
+            return Err(MISMATCH);
+        }
         jwk.check(registry)?;
         if !jwk.allows(KeyPurpose::Encryption) && !jwk.allows(KeyPurpose::Decryption) {
             return Err(Error::new(ErrorCode::KeyMismatch, "use or key_ops"));
@@ -313,10 +335,25 @@ impl SymmetricKey {
         let KeyMaterial::Oct(k) = &jwk.material else {
             return Err(MISMATCH);
         };
+        // RFC 7517 §4.4, RFC 8725 §3.1: a key that names its algorithm is only for that
+        // one. RFC 7520 §5.6 publishes a `dir` key with its `enc` as `alg`: such a key is
+        // for `dir` with that content encryption and no other.
+        let enc = match jwk.alg.as_deref() {
+            None => None,
+            Some(own) if own == alg.as_str() => None,
+            Some(own) if alg == KeyEncryptionAlgorithm::DIR => Some(
+                registry
+                    .content_encryption(own)
+                    .map(|e| e.enc)
+                    .ok_or(MISMATCH)?,
+            ),
+            Some(_) => return Err(MISMATCH),
+        };
         Ok(SymmetricKey {
             key: k.k.clone(),
             kid: jwk.kid.clone(),
-            alg: jwk.alg.clone(),
+            alg,
+            enc,
         })
     }
 
@@ -332,9 +369,14 @@ impl SymmetricKey {
         self.kid.as_deref()
     }
 
-    /// The `alg` the key was published for, if any.
-    pub fn algorithm(&self) -> Option<&str> {
-        self.alg.as_deref()
+    /// The one key management algorithm this key is for.
+    pub fn algorithm(&self) -> KeyEncryptionAlgorithm {
+        self.alg
+    }
+
+    /// The content encryption a `dir` key was published for, if its JWK named one.
+    pub fn content_encryption(&self) -> Option<ContentEncryptionAlgorithm> {
+        self.enc
     }
 
     pub(crate) fn expose(&self) -> &[u8] {
@@ -352,9 +394,11 @@ impl core::fmt::Debug for SymmetricKey {
     }
 }
 
-/// The private side of ECDH-ES in memory (RFC 7518 §4.6).
+/// The private side of ECDH-ES in memory (RFC 7518 §4.6), bound to one key management
+/// algorithm.
 pub struct SoftwareAgreementKey<B: Backend> {
     backend: Arc<B>,
+    alg: KeyEncryptionAlgorithm,
     curve: Curve,
     kid: Option<String>,
     public: Vec<u8>,
@@ -362,17 +406,28 @@ pub struct SoftwareAgreementKey<B: Backend> {
 }
 
 impl<B: Backend> SoftwareAgreementKey<B> {
-    /// The private EC key in `jwk`.
+    /// The private EC key in `jwk`, for `alg`.
     ///
     /// # Errors
     ///
     /// [`ErrorCode::MissingPrivateKey`] without `d`, [`ErrorCode::KeyMismatch`] for a key
-    /// that is not EC or whose `use` or `key_ops` is not for decryption,
-    /// [`ErrorCode::UnsupportedAlgorithm`] if the backend has no ECDH on
-    /// its curve; the errors of [`Jwk::check`].
-    pub fn from_jwk(jwk: &Jwk, registry: &Registry, backend: Arc<B>) -> Result<Self, Error> {
+    /// that is not EC, whose `use` or `key_ops` is not for decryption, whose own `alg`
+    /// names another algorithm, or for an `alg` that is no key agreement;
+    /// [`ErrorCode::UnsupportedAlgorithm`] if `alg` is not registered as available or the
+    /// backend has no ECDH on the key's curve; the errors of [`Jwk::check`].
+    pub fn from_jwk(
+        jwk: &Jwk,
+        alg: KeyEncryptionAlgorithm,
+        registry: &Registry,
+        backend: Arc<B>,
+    ) -> Result<Self, Error> {
+        check_agreement(alg, registry)?;
         jwk.check(registry)?;
         jwk.require(KeyPurpose::Decryption)?;
+        // RFC 7517 §4.4, RFC 8725 §3.1: a key that names its algorithm is only for that one.
+        if jwk.alg.as_deref().is_some_and(|own| own != alg.as_str()) {
+            return Err(MISMATCH);
+        }
         let KeyMaterial::Ec(k) = &jwk.material else {
             return Err(MISMATCH);
         };
@@ -389,6 +444,7 @@ impl<B: Backend> SoftwareAgreementKey<B> {
         }
         Ok(SoftwareAgreementKey {
             backend,
+            alg,
             curve,
             kid: jwk.kid.clone(),
             public,
@@ -396,18 +452,27 @@ impl<B: Backend> SoftwareAgreementKey<B> {
         })
     }
 
-    /// A new key on `curve`.
+    /// A new key on `curve`, for `alg`.
     ///
     /// # Errors
     ///
-    /// [`ErrorCode::UnsupportedAlgorithm`] without ECDH on `curve`, or the backend's error.
-    pub fn generate(curve: Curve, backend: Arc<B>) -> Result<Self, Error> {
+    /// [`ErrorCode::UnsupportedAlgorithm`] if `alg` is not registered as available or the
+    /// backend has no ECDH on `curve`; [`ErrorCode::KeyMismatch`] for an `alg` that is no
+    /// key agreement; the backend's error.
+    pub fn generate(
+        curve: Curve,
+        alg: KeyEncryptionAlgorithm,
+        registry: &Registry,
+        backend: Arc<B>,
+    ) -> Result<Self, Error> {
+        check_agreement(alg, registry)?;
         let pair = backend
             .ecdh(curve)
             .ok_or(UNSUPPORTED)?
             .generate(backend.rng())?;
         Ok(SoftwareAgreementKey {
             backend,
+            alg,
             curve,
             kid: None,
             public: pair.public,
@@ -415,18 +480,24 @@ impl<B: Backend> SoftwareAgreementKey<B> {
         })
     }
 
-    /// The public key as a JWK.
+    /// The public key as a JWK, with `alg` and `kid` set, so a sender is bound to the
+    /// key's algorithm too (RFC 7517 §4.4).
     pub fn public_jwk(&self) -> Jwk {
         let mut jwk = Jwk::new(KeyMaterial::Ec(EcKey::from_point(
             self.curve.as_str(),
             &self.public,
         )));
         jwk.kid.clone_from(&self.kid);
+        jwk.alg = Some(self.alg.as_str().into());
         jwk
     }
 }
 
 impl<B: Backend> KeyAgreement for SoftwareAgreementKey<B> {
+    fn algorithm(&self) -> KeyEncryptionAlgorithm {
+        self.alg
+    }
+
     fn curve(&self) -> Curve {
         self.curve
     }
@@ -438,6 +509,23 @@ impl<B: Backend> KeyAgreement for SoftwareAgreementKey<B> {
     fn agree(&self, peer: &[u8]) -> Result<Zeroizing<Vec<u8>>, Error> {
         let ecdh = self.backend.ecdh(self.curve).ok_or(UNSUPPORTED)?;
         Ok(ecdh.agree(self.secret.expose(), peer)?)
+    }
+}
+
+/// `alg` must be available and a key agreement (`ECDH-ES`, `ECDH-ES+A*KW`).
+fn check_agreement(alg: KeyEncryptionAlgorithm, registry: &Registry) -> Result<(), Error> {
+    let entry = registry
+        .key_encryption(alg.as_str())
+        .filter(|e| e.support == Support::Available)
+        .ok_or(UNSUPPORTED)?;
+    if matches!(
+        entry.mode,
+        KeyManagementMode::DirectKeyAgreement
+            | KeyManagementMode::KeyAgreementWithKeyWrapping { .. }
+    ) {
+        Ok(())
+    } else {
+        Err(MISMATCH)
     }
 }
 

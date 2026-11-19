@@ -686,7 +686,7 @@ fn rfc_7515_5_2_step_8_resolved_keys_are_candidates_the_signature_decides() {
         )
     };
     let okp = Jwk::parse(
-        r#"{"kty":"OKP","crv":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
+        r#"{"kty":"OKP","crv":"Ed25519","alg":"Ed25519","x":"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"}"#,
     )
     .unwrap();
     // The signer's key among others, after one of another type, verifies.

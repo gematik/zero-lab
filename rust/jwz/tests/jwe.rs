@@ -76,8 +76,8 @@ const A128KW_KEY: &str = r#"{"kty":"oct","kid":"81b20965-8332-43d9-a468-82160ad9
 const DIR_KEY: &str = r#"{"kty":"oct","kid":"77c7e2b8-6e13-45cf-8672-617b5b45243a",
   "use":"enc","alg":"A128GCM","k":"XctOhJAkA-pD9Lh7ZgW_2A"}"#;
 
-fn symmetric(jwk: &str) -> SymmetricKey {
-    SymmetricKey::from_jwk(&Jwk::parse(jwk).unwrap(), &Registry::standard()).unwrap()
+fn symmetric(jwk: &str, alg: Alg) -> SymmetricKey {
+    SymmetricKey::from_jwk(&Jwk::parse(jwk).unwrap(), alg, &Registry::standard()).unwrap()
 }
 
 fn rfc7520(name: &str) -> String {
@@ -103,7 +103,7 @@ fn decrypt_json(text: &str, key: DecryptionKey<'_>) -> Result<Vec<u8>, ErrorCode
 /// RFC's token with no encrypted key.
 #[test]
 fn rfc_7520_5_6_dir_a128gcm() {
-    let key = symmetric(DIR_KEY);
+    let key = symmetric(DIR_KEY, Alg::DIR);
     let key = DecryptionKey::Symmetric(&key);
     for (name, plaintext) in [
         (
@@ -122,7 +122,7 @@ fn rfc_7520_5_6_dir_a128gcm() {
 /// RFC 7518 §4.4: the RFC's A128KW key unwraps the RFC's encrypted key into the CEK.
 #[test]
 fn rfc_7520_5_8_a128kw_a128gcm() {
-    let key = symmetric(A128KW_KEY);
+    let key = symmetric(A128KW_KEY, Alg::A128KW);
     let key = DecryptionKey::Symmetric(&key);
     let compact = rfc7520("5.8 JWE Compact Serialization");
     let jwe = Jwe::parse(&compact, &interop(), &Registry::standard()).unwrap();
@@ -158,7 +158,7 @@ fn rfc_7520_5_8_a128kw_a128gcm() {
 /// refused, compact and JSON (RFC 8725 §3.6).
 #[test]
 fn rfc_7520_5_9_zip_and_5_12_unprotected_enc_are_refused() {
-    let key = symmetric(A128KW_KEY);
+    let key = symmetric(A128KW_KEY, Alg::A128KW);
     let key = DecryptionKey::Symmetric(&key);
     assert_eq!(
         decrypt_compact(&rfc7520("5.9 JWE Compact Serialization"), key),
@@ -182,7 +182,7 @@ fn rfc_7520_5_9_zip_and_5_12_unprotected_enc_are_refused() {
 
 #[test]
 fn rfc_7520_5_10_aad_is_authenticated() {
-    let key = symmetric(A128KW_KEY);
+    let key = symmetric(A128KW_KEY, Alg::A128KW);
     let mut object: Value =
         serde_json::from_str(&rfc7520("5.10 Flattened JWE JSON Serialization")).unwrap();
     object["aad"] = Value::String(b64(b"[\"vcard\",[]]"));
@@ -238,8 +238,13 @@ fn handmade(header: &Value, encrypted_key: &[u8], cek: Option<&[u8]>) -> String 
 }
 
 fn bob() -> SoftwareAgreementKey<RustCrypto> {
-    SoftwareAgreementKey::from_jwk(&Jwk::parse(BOB).unwrap(), &Registry::standard(), backend())
-        .unwrap()
+    SoftwareAgreementKey::from_jwk(
+        &Jwk::parse(BOB).unwrap(),
+        Alg::ECDH_ES,
+        &Registry::standard(),
+        backend(),
+    )
+    .unwrap()
 }
 
 #[test]
@@ -368,8 +373,8 @@ fn rfc_7518_4_6_1_2_apu_and_apv_are_base64url_strings() {
 /// any key is used.
 #[test]
 fn rfc_7516_5_2_structure_negatives() {
-    let a128kw = symmetric(A128KW_KEY);
-    let dir = symmetric(DIR_KEY);
+    let a128kw = symmetric(A128KW_KEY, Alg::A128KW);
+    let dir = symmetric(DIR_KEY, Alg::DIR);
     let header = |alg: &str| json!({"alg": alg, "enc": "A128GCM"});
     let token = rfc7520("5.8 JWE Compact Serialization");
     let parts: Vec<&str> = token.split('.').collect();
@@ -424,7 +429,7 @@ fn rfc_7516_5_2_structure_negatives() {
 
 #[test]
 fn rfc_7518_5_3_the_iv_is_96_bits_and_the_tag_128_bits() {
-    let key = symmetric(A128KW_KEY);
+    let key = symmetric(A128KW_KEY, Alg::A128KW);
     let key = DecryptionKey::Symmetric(&key);
     let token = rfc7520("5.8 JWE Compact Serialization");
     let parts: Vec<&str> = token.split('.').collect();
@@ -512,7 +517,7 @@ fn rfc_7516_4_1_crit_may_not_name_a_registered_parameter() {
 fn rfc_7516_5_1_step_14_the_aad_is_the_encoded_protected_header() {
     let registry = Registry::standard();
     let backend = backend();
-    let cek = SymmetricKey::new(vec![7; 16]);
+    let cek = SymmetricKey::new(vec![7; 16], Alg::DIR);
     let cipher = backend.aead(Enc::A128GCM).unwrap();
     let open = |iv: &str, aad: &str, ciphertext: &str, tag: &str| {
         let decode = |part: &str| jwz::b64::decode(part, "part").unwrap();
@@ -585,13 +590,13 @@ fn rfc_7516_5_1_step_14_the_aad_is_the_encoded_protected_header() {
 
 #[test]
 fn keys_must_fit_the_token() {
-    let a128kw = symmetric(A128KW_KEY);
-    let dir = symmetric(DIR_KEY);
+    let a128kw = symmetric(A128KW_KEY, Alg::A128KW);
+    let dir = symmetric(DIR_KEY, Alg::DIR);
     let bob = bob();
     let kw_token = rfc7520("5.8 JWE Compact Serialization");
     let dir_token = rfc7520("5.6 JWE Compact Serialization");
     let ecdh_token = handmade(&appendix_c_header(), b"", None);
-    let unbound = |bytes: Vec<u8>| SymmetricKey::new(bytes);
+    let wrapping = |bytes: Vec<u8>| SymmetricKey::new(bytes, Alg::A128KW);
     for (token, key, what) in [
         (
             &kw_token,
@@ -616,13 +621,13 @@ fn keys_must_fit_the_token() {
         (
             &kw_token,
             DecryptionKey::Symmetric(
-                &unbound(vec![0; 32]).with_kid("81b20965-8332-43d9-a468-82160ad91ac8"),
+                &wrapping(vec![0; 32]).with_kid("81b20965-8332-43d9-a468-82160ad91ac8"),
             ),
             "32-byte key for A128KW",
         ),
         (
             &kw_token,
-            DecryptionKey::Symmetric(&unbound(vec![0; 16]).with_kid("other")),
+            DecryptionKey::Symmetric(&wrapping(vec![0; 16]).with_kid("other")),
             "other kid",
         ),
     ] {
@@ -633,7 +638,7 @@ fn keys_must_fit_the_token() {
         );
     }
     assert_eq!(
-        decrypt_compact(&kw_token, DecryptionKey::Symmetric(&unbound(vec![0; 16]))),
+        decrypt_compact(&kw_token, DecryptionKey::Symmetric(&wrapping(vec![0; 16]))),
         Err(ErrorCode::VerificationFailed),
         "wrong A128KW key"
     );
@@ -655,8 +660,6 @@ const ALL_ENCS: [Enc; 3] = [Enc::A128GCM, Enc::A192GCM, Enc::A256GCM];
 fn round_trip_every_alg_and_enc() {
     let registry = Registry::standard();
     let backend = backend();
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
-    let public = recipient.public_jwk();
     for alg in ALL_ALGS {
         for enc in ALL_ENCS {
             let len = match alg {
@@ -666,17 +669,22 @@ fn round_trip_every_alg_and_enc() {
                 a if a == Alg::A256KW => 32,
                 _ => 0,
             };
-            let shared = SymmetricKey::new((0..=u8::MAX).cycle().take(len).collect());
-            let (encryption, decryption) = if len == 0 {
-                (
-                    EncryptionKey::Public(&public),
-                    DecryptionKey::Agreement(&recipient),
-                )
-            } else {
-                (
+            // Each key is made for the one algorithm it is used with.
+            let shared = SymmetricKey::new((0..=u8::MAX).cycle().take(len).collect(), alg);
+            let recipient = (len == 0).then(|| {
+                SoftwareAgreementKey::generate(Curve::P256, alg, &registry, backend.clone())
+                    .unwrap()
+            });
+            let public = recipient.as_ref().map(SoftwareAgreementKey::public_jwk);
+            let (encryption, decryption) = match (&public, &recipient) {
+                (Some(public), Some(recipient)) => (
+                    EncryptionKey::Public(public),
+                    DecryptionKey::Agreement(recipient),
+                ),
+                _ => (
                     EncryptionKey::Symmetric(&shared),
                     DecryptionKey::Symmetric(&shared),
-                )
+                ),
             };
             // Plaintexts of every length up to two AES blocks and one longer one.
             for size in (0..=33).chain([1000]) {
@@ -711,12 +719,14 @@ fn round_trip_every_alg_and_enc() {
 fn encryption_key_must_fit_the_algorithm() {
     let registry = Registry::standard();
     let backend = backend();
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let recipient =
+        SoftwareAgreementKey::generate(Curve::P256, Alg::ECDH_ES, &registry, backend.clone())
+            .unwrap();
     let mut signing_only = recipient.public_jwk();
     signing_only.key_use = Some("sig".into());
     let mut other_alg = recipient.public_jwk();
     other_alg.alg = Some("ECDH-ES+A128KW".into());
-    let a128kw = symmetric(A128KW_KEY);
+    let a128kw = symmetric(A128KW_KEY, Alg::A128KW);
     let encrypt = |alg: Alg, key: EncryptionKey<'_>| {
         code(jwe::encrypt(
             b"x",
@@ -786,11 +796,13 @@ fn encryption_key_must_fit_the_algorithm() {
 fn rfc_7516_7_2_1_general_json_with_several_recipients() {
     let registry = Registry::standard();
     let backend = backend();
-    let first = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
-    let second = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let agreement =
+        |alg| SoftwareAgreementKey::generate(Curve::P256, alg, &registry, backend.clone()).unwrap();
+    let first = agreement(Alg::ECDH_ES_A128KW);
+    let second = agreement(Alg::ECDH_ES_A256KW);
     let mut first_public = first.public_jwk();
     first_public.kid = Some("first".into());
-    let shared = symmetric(A128KW_KEY);
+    let shared = symmetric(A128KW_KEY, Alg::A128KW);
     let recipients = [
         Recipient {
             alg: Alg::ECDH_ES_A128KW,
@@ -848,10 +860,11 @@ fn rfc_7516_7_2_1_general_json_with_several_recipients() {
     }
 
     // RFC 7518 §4.5, §4.6: a direct mode determines the CEK, so it cannot share one.
+    let third = agreement(Alg::ECDH_ES).public_jwk();
     let direct = [
         Recipient {
             alg: Alg::ECDH_ES,
-            key: EncryptionKey::Public(&first_public),
+            key: EncryptionKey::Public(&third),
             header: HeaderParams::new(),
         },
         recipients[2].clone(),
@@ -876,7 +889,7 @@ fn rfc_7516_7_2_1_general_json_with_several_recipients() {
 
 #[test]
 fn rfc_7516_7_2_1_headers_disjoint_and_enc_protected() {
-    let key = symmetric(A128KW_KEY);
+    let key = symmetric(A128KW_KEY, Alg::A128KW);
     let key = DecryptionKey::Symmetric(&key);
     let base: Value =
         serde_json::from_str(&rfc7520("5.11 Flattened JWE JSON Serialization")).unwrap();
@@ -904,7 +917,13 @@ fn rfc_7516_7_2_1_headers_disjoint_and_enc_protected() {
 fn decrypt_async_with_a_key_agreement() {
     let registry = Registry::standard();
     let backend = backend();
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let recipient = SoftwareAgreementKey::generate(
+        Curve::P256,
+        Alg::ECDH_ES_A128KW,
+        &registry,
+        backend.clone(),
+    )
+    .unwrap();
     let token = jwe::encrypt(
         b"async",
         Enc::A128GCM,
@@ -928,13 +947,16 @@ fn decrypt_async_with_a_key_agreement() {
 fn bob_with_kid() -> SoftwareAgreementKey<RustCrypto> {
     let mut jwk = Jwk::parse(BOB).unwrap();
     jwk.kid = Some("bob".into());
-    SoftwareAgreementKey::from_jwk(&jwk, &Registry::standard(), backend()).unwrap()
+    SoftwareAgreementKey::from_jwk(&jwk, Alg::ECDH_ES, &Registry::standard(), backend()).unwrap()
 }
 
 /// An agreement key that states no `kid` (the trait's default), as an HSM handle might.
 struct Unnamed<'k>(&'k SoftwareAgreementKey<RustCrypto>);
 
 impl KeyAgreement for Unnamed<'_> {
+    fn algorithm(&self) -> Alg {
+        KeyAgreement::algorithm(self.0)
+    }
     fn curve(&self) -> Curve {
         KeyAgreement::curve(self.0)
     }
@@ -947,6 +969,9 @@ impl KeyAgreement for Unnamed<'_> {
 struct UnnamedAsync<'k>(&'k SoftwareAgreementKey<RustCrypto>);
 
 impl AsyncKeyAgreement for UnnamedAsync<'_> {
+    fn algorithm(&self) -> Alg {
+        KeyAgreement::algorithm(self.0)
+    }
     fn curve(&self) -> Curve {
         KeyAgreement::curve(self.0)
     }
@@ -1107,7 +1132,7 @@ fn rfc_7516_4_1_2_only_an_available_aead_encrypts() {
         policy.content_encryption_algorithms.push(Enc::new(name));
     }
     let backend = AnyNameGcm(RustCrypto::new());
-    let key = SymmetricKey::new(vec![9; 16]);
+    let key = SymmetricKey::new(vec![9; 16], Alg::DIR);
     let encrypt = |enc: &'static str| {
         code(jwe::encrypt(
             b"x",
@@ -1172,7 +1197,9 @@ fn a_curve_added_through_the_extended_backend_works_end_to_end() {
             base: Arc::new(RustCrypto::new()),
         })),
     );
-    let recipient = SoftwareAgreementKey::generate(TEST_CURVE, backend.clone()).unwrap();
+    let recipient =
+        SoftwareAgreementKey::generate(TEST_CURVE, Alg::ECDH_ES, &registry, backend.clone())
+            .unwrap();
     assert_eq!(recipient.public_jwk().crv(), Some("X-TEST-256"));
     // The interop profile of this registry lists the new curve; the standard one does not.
     let policy = Profile::rfc7518_interop(&registry).policy;
@@ -1206,7 +1233,9 @@ fn a_curve_added_through_the_extended_backend_works_end_to_end() {
     assert_eq!(decrypted.plaintext(), b"extended");
 
     // The same P-256 recipient point under its real name is another curve: refused.
-    let p256 = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let p256 =
+        SoftwareAgreementKey::generate(Curve::P256, Alg::ECDH_ES, &registry, backend.clone())
+            .unwrap();
     let jwe = Jwe::parse(&token, &policy, &registry).unwrap();
     assert_eq!(
         code(jwe.decrypt(DecryptionKey::Agreement(&p256), backend.as_ref())).map(|_| ()),
@@ -1222,9 +1251,14 @@ fn a_curve_added_through_the_extended_backend_works_end_to_end() {
 fn rfc_8725_3_1_encryption_refuses_what_the_profile_does_not_list() {
     let registry = Registry::standard();
     let backend = backend();
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
-    let public = recipient.public_jwk();
-    let shared = SymmetricKey::new(vec![7; 32]);
+    let agreement = |alg| {
+        SoftwareAgreementKey::generate(Curve::P256, alg, &registry, backend.clone())
+            .unwrap()
+            .public_jwk()
+    };
+    let public = agreement(Alg::ECDH_ES);
+    let wrapped = agreement(Alg::ECDH_ES_A128KW);
+    let shared = SymmetricKey::new(vec![7; 32], Alg::DIR);
     let strict = Profile::strict().policy;
     let mut no_p256 = strict.clone();
     no_p256.key_agreement_curves.clear();
@@ -1285,12 +1319,12 @@ fn rfc_8725_3_1_encryption_refuses_what_the_profile_does_not_list() {
     let recipients = [
         Recipient {
             alg: Alg::ECDH_ES_A128KW,
-            key: ecdh,
+            key: EncryptionKey::Public(&wrapped),
             header: HeaderParams::new(),
         },
         Recipient {
             alg: Alg::A128KW,
-            key: EncryptionKey::Symmetric(&symmetric(A128KW_KEY)),
+            key: EncryptionKey::Symmetric(&symmetric(A128KW_KEY, Alg::A128KW)),
             header: HeaderParams::new(),
         },
     ];
@@ -1323,9 +1357,10 @@ fn rfc_8725_3_1_encryption_refuses_what_the_profile_does_not_list() {
 fn rfc_7518_4_6_the_recipient_curve_binds_key_agreement_only() {
     let registry = Registry::standard();
     let backend = backend();
-    let public = SoftwareAgreementKey::generate(Curve::P256, backend.clone())
-        .unwrap()
-        .public_jwk();
+    let public =
+        SoftwareAgreementKey::generate(Curve::P256, Alg::ECDH_ES, &registry, backend.clone())
+            .unwrap()
+            .public_jwk();
     let encrypt = |alg, key, policy: &Policy| {
         code(jwe::encrypt(
             b"x",

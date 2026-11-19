@@ -183,10 +183,18 @@ impl Jws<Unverified> {
     /// does not fit the algorithm, or is on a curve the policy does not list, is passed
     /// over.
     ///
+    /// So is a key that names no `alg` (RFC 8725 §3.1, RFC 9864 §7: one key, one
+    /// algorithm): nothing but the token's header would say which algorithm it is for. A
+    /// host that knows the algorithm of such a key says so, either in the JWK its resolver
+    /// returns or by making the key itself ([`SoftwareKey::from_jwk`]) and calling
+    /// [`verify`](Self::verify).
+    ///
     /// # Errors
     ///
-    /// The resolver's error; [`ErrorCode::VerificationFailed`] if no resolved key
-    /// verifies the signature, none resolved included.
+    /// The resolver's error; [`ErrorCode::KeyMismatch`] if no resolved key verifies the
+    /// signature and one was passed over for naming no `alg`;
+    /// [`ErrorCode::VerificationFailed`] if no resolved key verifies it otherwise, none
+    /// resolved included.
     pub fn verify_with<B: Backend>(
         self,
         resolver: &dyn KeyResolver,
@@ -219,14 +227,21 @@ impl Jws<Unverified> {
         backend: &Arc<B>,
     ) -> Result<Jws<Verified>, Error> {
         let input = self.signing_input();
-        let verifies = |jwk: &Jwk| {
+        let mut unbound = false;
+        let mut verifies = |jwk: &Jwk| {
+            if jwk.alg.is_none() {
+                unbound = true;
+                return false;
+            }
             SoftwareKey::from_jwk(jwk, self.alg, registry, Arc::clone(backend)).is_ok_and(|key| {
                 self.check_key(&key).is_ok()
                     && Verifier::verify(&key, input.as_bytes(), &self.signature).is_ok()
             })
         };
-        if keys.iter().any(verifies) {
+        if keys.iter().any(&mut verifies) {
             Ok(self.into_verified())
+        } else if unbound {
+            Err(Error::new(ErrorCode::KeyMismatch, "key names no alg"))
         } else {
             Err(Error::new(
                 ErrorCode::VerificationFailed,

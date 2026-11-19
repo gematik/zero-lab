@@ -117,9 +117,38 @@ pub struct Policy {
     pub key_references: KeyReferences,
     /// Whether a token must name its key with a non-empty `kid`.
     pub require_kid: bool,
-    /// The `typ` a token must have, if any (compared as RFC 7515 §4.1.9 says): the
-    /// explicit type that tells one kind of JWT from another (RFC 8725 §3.11).
-    pub typ: Option<String>,
+    /// The `typ` a token may have, and whether it must have one: the explicit type that
+    /// tells one kind of JWT from another (RFC 8725 §3.11).
+    pub typ: TypRule,
+}
+
+/// Which `typ` a token may have, compared as RFC 7515 §4.1.9 says.
+///
+/// RFC 8725 §3.11 asks new kinds of JWT for an explicit type that the verifier requires.
+/// draft-ietf-oauth-rfc8725bis-10 §3.11 adds the rule for a kind that already exists:
+/// requiring `typ` would refuse the tokens of producers that do not set it yet, while
+/// "if `typ` is present, it must be the expected type" breaks none of them.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum TypRule {
+    /// Any `typ`, and none.
+    #[default]
+    Any,
+    /// `typ` is required and must be this one.
+    Required(String),
+    /// A token without `typ` is accepted; a `typ` that is present must be this one.
+    IfPresent(String),
+}
+
+impl TypRule {
+    fn accepts(&self, typ: Option<&str>) -> bool {
+        match (self, typ) {
+            (TypRule::Any, _) | (TypRule::IfPresent(_), None) => true,
+            (TypRule::Required(_), None) => false,
+            (TypRule::Required(expected) | TypRule::IfPresent(expected), Some(typ)) => {
+                same_media_type(typ, expected)
+            }
+        }
+    }
 }
 
 /// Default maximum token size: large enough for a JWT with an `x5c` chain, small enough
@@ -356,11 +385,7 @@ impl Policy {
         if header.get("b64").is_some() {
             return Err(Error::new(ErrorCode::PolicyViolation, "b64 unsupported"));
         }
-        if let Some(expected) = &self.typ
-            && !header
-                .typ()
-                .is_some_and(|typ| same_media_type(typ, expected))
-        {
+        if !self.typ.accepts(header.typ()) {
             return Err(Error::new(ErrorCode::PolicyViolation, "typ"));
         }
         Ok(())
@@ -628,7 +653,7 @@ impl Profile {
                 understood_critical: Vec::new(),
                 key_references: KeyReferences::default(),
                 require_kid: false,
-                typ: None,
+                typ: TypRule::Any,
             },
             claims: ClaimsPolicy {
                 issuer: None,
@@ -849,7 +874,7 @@ mod tests {
     fn rfc_7515_4_1_9_typ_comparison() {
         let registry = Registry::standard();
         let mut policy = Profile::strict().policy;
-        policy.typ = Some("dpop+jwt".into());
+        policy.typ = TypRule::Required("dpop+jwt".into());
         for (typ, ok) in [
             ("dpop+jwt", true),
             ("DPoP+JWT", true),
@@ -861,7 +886,7 @@ mod tests {
         }
         // The prefix may be left out only where no other `/` follows: `application/a/b`
         // and `a/b` are different types.
-        policy.typ = Some("a/b".into());
+        policy.typ = TypRule::Required("a/b".into());
         for (typ, ok) in [("a/b", true), ("A/B", true), ("application/a/b", false)] {
             let h = header(json!({"alg": "ES256", "typ": typ}));
             assert_eq!(policy.check_jws(&h, &registry).is_ok(), ok, "{typ}");
