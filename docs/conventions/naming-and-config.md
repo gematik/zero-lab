@@ -42,6 +42,7 @@
   | `…_TLS_KEY_PATH` | Private key, PEM |
   | `…_TLS_CA_PATH` | CA bundle to verify the other side |
   | `…_TLS_PEER_NAME` | Expected name of a peer, or allowlist for a listener |
+  | `…_MESH` | The mesh that protects a plaintext (`http://`) listener or peer inside the cluster (rule 29); without it plaintext there is refused |
 
 ## Helpers
 
