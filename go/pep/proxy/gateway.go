@@ -235,7 +235,9 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 func (g *Gateway) handleUnauthenticated(w http.ResponseWriter, r *http.Request) {
 	if wantsHTML(r) {
 		loginURL := "/oauth2/sign_in"
-		if rd := sanitizeReturnTo(r.URL.RequestURI()); rd != "" {
+		// A request URI that is no return-to the login takes (a backslash in it, one of /oauth2) is left
+		// out, and the login returns to "/".
+		if rd := r.URL.RequestURI(); checkReturnTo(rd) == nil {
 			loginURL += "?rd=" + url.QueryEscape(rd)
 		}
 		http.Redirect(w, r, loginURL, http.StatusFound)

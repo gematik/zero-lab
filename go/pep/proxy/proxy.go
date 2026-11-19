@@ -333,7 +333,12 @@ func withoutQuery(raw string) string {
 
 // handleSignIn renders the provider chooser.
 func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
-	rd := sanitizeReturnTo(r.URL.Query().Get("rd"))
+	q, err := parameters(r, "rd")
+	if err != nil || checkReturnTo(q.Get("rd")) != nil {
+		s.renderInvalidRequest(w)
+		return
+	}
+	rd := q.Get("rd")
 	providers, err := s.backend.Providers(r.Context())
 	if err != nil {
 		s.renderFailure(w, "providers_error", "The identity providers are not available.", err, "", rd)
@@ -347,10 +352,26 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 // IdP (Mode "redirect") or renders the decoupled QR (Mode "decoupled", OIDF). With no idp_iss it
 // auto-starts a single configured provider or shows the chooser.
 func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	rd := sanitizeReturnTo(q.Get("rd"))
+	q, err := parameters(r, "rd", "idp_iss", "scope")
+	if err != nil || checkReturnTo(q.Get("rd")) != nil || !s.scopeAllowed(q.Get("scope")) {
+		s.renderInvalidRequest(w)
+		return
+	}
+	rd := q.Get("rd")
 
 	idpIss := q.Get("idp_iss")
+	if idpIss != "" {
+		// An issuer the chooser does not list is none a login starts at; the backend is not asked about it.
+		providers, err := s.backend.Providers(r.Context())
+		if err != nil {
+			s.renderFailure(w, "providers_error", "The identity providers are not available.", err, "", rd)
+			return
+		}
+		if !slices.ContainsFunc(providers, func(p Provider) bool { return p.Issuer == idpIss }) {
+			s.renderInvalidRequest(w)
+			return
+		}
+	}
 	if idpIss == "" {
 		if def := s.backend.DefaultIssuer(); def != "" {
 			idpIss = def
@@ -467,7 +488,13 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	// in the Referer of what the page loads or links to (RFC 9700 Section 4.2.4).
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	q := r.URL.Query()
+	// The authorization response is the identity provider's: a parameter this server does not know is
+	// ignored, one that occurs twice is refused (RFC 6749 Section 3.1).
+	q, err := parameters(r)
+	if err != nil {
+		s.renderInvalidRequest(w)
+		return
+	}
 	// Resolve the session by state first so error pages know which provider to retry.
 	sess, serr := s.sessions.byState(r.Context(), q.Get("state"))
 	var idpIss, rd string
@@ -628,21 +655,85 @@ func (s *Server) renderFailure(w http.ResponseWriter, code, description string, 
 	s.renderError(w, code, description, idpIss, returnTo)
 }
 
-// sanitizeReturnTo guards the rd= return-to against open redirects and login loops: a local absolute path
-// that is not one of pep's own /oauth2/* endpoints. Returning into /oauth2/* bounces the browser back into
-// the auth flow instead of the app, and it is how a forward_auth that fails to exclude /oauth2/* accretes an
-// ever-growing rd=/oauth2/start?rd=/oauth2/start?… It must be valid UTF-8 as well, since the session record that
-// keeps it is JSON and would not encode. Anything rejected collapses to "" (callers default to "/").
-func sanitizeReturnTo(rd string) string {
-	if !utf8.ValidString(rd) || !strings.HasPrefix(rd, "/") || strings.HasPrefix(rd, "//") || strings.HasPrefix(rd, "/\\") {
-		return ""
+// renderInvalidRequest answers a request whose parameters are not what the endpoint takes. It names no
+// parameter and no value: both are the peer's (server rule 14).
+func (s *Server) renderInvalidRequest(w http.ResponseWriter) {
+	s.renderError(w, "invalid_request", "The request is not one this page takes.", "", "")
+}
+
+var errParameters = errors.New("the parameters are not what the endpoint takes")
+
+// parameters reads the query of r as the endpoint declares it (server rule 28, parameters): the query has to
+// decode, each parameter occurs at most once (RFC 6749 Section 3.1), and, when known is given, none has
+// another name. An endpoint of ours declares its parameters; one that takes another party's response (the
+// callback) passes none and reads what it knows.
+func parameters(r *http.Request, known ...string) (url.Values, error) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil || httpguard.Single(values) != nil {
+		return nil, errParameters
+	}
+	if known != nil {
+		for name := range values {
+			if !slices.Contains(known, name) {
+				return nil, errParameters
+			}
+		}
+	}
+	return values, nil
+}
+
+// scopeAllowed reports whether scope, the scope parameter of a login start, asks only for scopes the backend
+// was configured with. An empty one asks for none and leaves the choice to the backend. Scope tokens are
+// separated by single spaces and are of RFC 6749 Section 3.3's characters; a backend that takes no scope from
+// the request allows none.
+func (s *Server) scopeAllowed(scope string) bool {
+	if scope == "" {
+		return true
+	}
+	lister, ok := s.backend.(scopeLister)
+	if !ok {
+		return false
+	}
+	allowed := lister.loginScopes()
+	for token := range strings.SplitSeq(scope, " ") {
+		if !slices.Contains(allowed, token) {
+			return false
+		}
+	}
+	return true
+}
+
+// maxReturnToBytes bounds rd. It travels in a query and is kept in the session record.
+const maxReturnToBytes = 2048
+
+var errReturnTo = errors.New("rd is no path of the application")
+
+// checkReturnTo holds the rd= return-to to its grammar, against open redirects and login loops: a local
+// absolute path that is not one of pep's own /oauth2/* endpoints. An empty one is none and passes; callers
+// then return to "/". Returning into /oauth2/* bounces the browser back into the auth flow instead of the
+// app, and it is how a forward_auth that fails to exclude /oauth2/* accretes an ever-growing
+// rd=/oauth2/start?rd=/oauth2/start?… A backslash and a control character are refused anywhere: a browser
+// reads the first as a slash and drops a tab or a line break, so a backslash or a tab after the first slash
+// would make the rest a host. It is valid UTF-8, since the session record that keeps it is JSON. What does not
+// pass is refused, not repaired (server rule 28).
+func checkReturnTo(rd string) error {
+	if rd == "" {
+		return nil
+	}
+	if len(rd) > maxReturnToBytes || !utf8.ValidString(rd) || !strings.HasPrefix(rd, "/") || strings.HasPrefix(rd, "//") {
+		return errReturnTo
+	}
+	for i := 0; i < len(rd); i++ {
+		if c := rd[i]; c < 0x20 || c == 0x7f || c == '\\' {
+			return errReturnTo
+		}
 	}
 	u, err := url.Parse(rd)
 	if err != nil {
-		return ""
+		return errReturnTo
 	}
 	if p := path.Clean(u.Path); p == "/oauth2" || strings.HasPrefix(p, "/oauth2/") {
-		return ""
+		return errReturnTo
 	}
-	return rd
+	return nil
 }

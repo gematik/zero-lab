@@ -291,34 +291,27 @@ func TestServerRule2_SignOutByPOSTRequiresCSRFProtection(t *testing.T) {
 }
 
 // RFC 9700 Section 4.11.1: the client exposes no open redirector.
-func TestRFC9700_4_11_1_SanitizeReturnTo(t *testing.T) {
-	cases := map[string]string{
-		"/dashboard": "/dashboard", "/a?b=c": "/a?b=c",
-		"//evil.example": "", "https://evil.example": "", "/\\evil": "", "": "",
-		// returns into pep's own auth endpoints are rejected — they are how the rd loop grows
-		"/oauth2/start?rd=/oauth2/start?rd=/": "", "/oauth2/start": "", "/oauth2": "",
-		"/oauth2callback": "/oauth2callback", "/foo/../oauth2/start": "",
-		// a return-to that is not UTF-8 cannot be kept in the JSON session record
-		"/\xff": "", "/a\xe4b": "", "/%FF": "/%FF",
-	}
-	for in, want := range cases {
-		if got := sanitizeReturnTo(in); got != want {
-			t.Errorf("sanitizeReturnTo(%q) = %q, want %q", in, got, want)
+func TestRFC9700_4_11_1_TheReturnToIsALocalPathOfTheApplication(t *testing.T) {
+	for _, rd := range []string{"", "/", "/dashboard", "/a?b=c", "/a?next=https://other.example", "/oauth2callback", "/%FF", "/%5Cevil", "/a b", "/ä"} {
+		if err := checkReturnTo(rd); err != nil {
+			t.Errorf("checkReturnTo(%q) = %v", rd, err)
 		}
 	}
-
-	s := newTestServer(t)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/start?rd=%2F%FF", nil))
-	if rec.Code != http.StatusFound {
-		t.Fatalf("/oauth2/start?rd=%%2F%%FF = %d, want 302", rec.Code)
-	}
-	sess, err := s.sessions.byState(t.Context(), "test-state")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sess.ReturnTo != "" {
-		t.Errorf("rd=%%2F%%FF kept as %q", sess.ReturnTo)
+	for _, rd := range []string{
+		"//evil.example", "https://evil.example", "evil.example", "dashboard", "/\\evil", "/a\\b",
+		// a browser drops a tab or a line break, and what is left names a host
+		"/\t/evil.example", "/\n/evil.example", "/\r/evil.example", "/a\x00", "/a\x7f",
+		// returns into pep's own auth endpoints are how the rd loop grows
+		"/oauth2/start?rd=/oauth2/start?rd=/", "/oauth2/start", "/oauth2", "/foo/../oauth2/start",
+		// a return-to that is not UTF-8 cannot be kept in the JSON session record
+		"/\xff", "/a\xe4b",
+		"/" + strings.Repeat("a", maxReturnToBytes),
+	} {
+		if err := checkReturnTo(rd); err == nil {
+			t.Errorf("checkReturnTo(%q) passed", rd)
+		} else if rd != "" && strings.Contains(err.Error(), rd) {
+			t.Errorf("checkReturnTo(%q) quotes it: %v", rd, err)
+		}
 	}
 }
 

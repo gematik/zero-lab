@@ -24,6 +24,7 @@ package main
 import (
 	"net"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -85,5 +86,22 @@ func TestServerRule28_TheServedHostsComeFromTheConfiguration(t *testing.T) {
 		if (err == nil) != (c.want != nil) || !slices.Equal(got, c.want) {
 			t.Errorf("%s: %q, %v; want %q", name, got, err, c.want)
 		}
+	}
+}
+
+// Server rule 28, redirects: parameters added to a redirect are encoded for the query. The shipped Caddyfile
+// sends a browser without a session to /oauth2/start with the request URI as rd; unencoded, the URI's own query
+// would become parameters of /oauth2/start (idp_iss, scope), which the endpoint now refuses anyway.
+func TestServerRule28_TheCaddyfileEncodesTheReturnToForTheQuery(t *testing.T) {
+	raw, err := os.ReadFile("Caddyfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caddyfile := string(raw)
+	if !strings.Contains(caddyfile, "/oauth2/start?rd={http.request.uri_escaped}") {
+		t.Error("the redirect to /oauth2/start does not pass the escaped request URI as rd")
+	}
+	if strings.Contains(caddyfile, "rd={http.request.uri}") {
+		t.Error("the redirect to /oauth2/start passes the request URI unencoded")
 	}
 }
