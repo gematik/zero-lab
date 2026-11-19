@@ -1,13 +1,14 @@
 ---
 id: TASK-389
 title: >-
-  hsm-proxy: a sidecar with gematik's HSM proxy interface on PKCS#11, its
-  simulator mode a software token
+  ti-hsm: a sidecar with gematik's HSM proxy interface on PKCS#11, its simulator
+  mode a software token
 status: To Do
 assignee: []
 created_date: '2026-11-19 07:17'
-updated_date: '2026-11-19 07:17'
+updated_date: '2026-11-19 07:41'
 labels:
+  - rust
   - security
   - keys
   - architecture
@@ -40,7 +41,15 @@ What differs between HSMs and the interface has to survive: several generate the
 
 Developer experience is a requirement, not an afterthought, since everybody works against the simulator mode most of the time: it starts with one command and no account, natively on Linux and macOS, x86_64 and arm64; a key that is asked for and not there is made (as hsm_sim does by derivation), or the sidecar is told the keys to have, so that a test needs no provisioning step; keys can be deterministic for tests that compare output; errors name the PKCS#11 return code and the key; and the same conformance suite runs against the bundled token in public CI and against a vendor's simulator or device where someone has one.
 
-To decide in the task: the language (Rust with `cryptoki`, or Go with cgo, which the Go profile rules out for workloads); which token simulator mode brings (SoftHSM2 from 2.7.0 or Kryoptic); how the sidecar knows its caller (rule 6: a workload identity, not a credential in a file; a Unix socket shared in a pod is the least); what "only digests cross the channel" means for Encrypt and Decrypt, which carry key material by design; how rule 7 (sidecars rebuilt reproducibly from source) holds when the vendor's module is a binary the operator mounts; and whether ngx_pep's `hsm_sim` is replaced by this or stays beside it.
+Decided by the maintainer on 2026-11-19:
+
+- **Rust**, as new `ti-hsm` crates in the Rust workspace, beside the others.
+- **How a vendor's HSM is connected is what matters**, and it needs tests: the simulator token is still open. The first step is a spike with SoftHSM2, which is also the first measure of how far plain PKCS#11 carries.
+- **The sidecar does not ask who calls.** It is reached over a Unix socket inside the pod, in the same trust domain as the workload: there is no caller to tell apart.
+- **Decrypt returns what it decrypts.** Rule 6 says that only digests cross the channel; for a key-encryption key that cannot hold, and inside one trust domain it need not. The rule's wording is to be corrected with this work.
+- **Rule 7 holds with the vendor's module** when what is loaded is a static library pinned by its SHA-256: the measured image then contains what runs.
+
+Still open: which token the simulator mode brings, and whether ngx_pep's `hsm_sim` is replaced by this or stays beside it.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
@@ -51,7 +60,10 @@ To decide in the task: the language (Rust with `cryptoki`, or Go with cgo, which
 - [ ] #4 Keys are created not extractable and with the one use they have: a signing key signs, a key-encryption key encrypts for the generator and decrypts for the workload
 - [ ] #5 A conformance suite of the interface runs against the bundled token in public CI and can be pointed at a vendor's simulator or device; it covers an IV the HSM generates, associated data, signing a digest and signing a message, and the curves asked for
 - [ ] #6 The image holds no vendor software and only components whose licences allow redistribution with EUPL-1.2; a document says how an operator mounts a vendor's module, and what was verified of each vendor's terms
-- [ ] #7 The decisions named in the description are recorded: language, token, caller's identity, what crosses the channel, reproducible build, and the future of hsm_sim
+- [ ] #7 A spike drives SoftHSM2 through the sidecar's PKCS#11 path and records what worked as specified and what did not: the mechanisms, associated data, who makes the IV, key attributes
+- [ ] #8 Tests that connect a vendor's module exist and say how they are run where the vendor's software may be used, with what was found for each vendor that was tried
+- [ ] #9 docs/design/servers.md rule 6 says what crosses the channel to a key provider in the workload's own trust domain, and the vendor's module is loaded as a library pinned by its SHA-256 (rule 7)
+- [ ] #10 It is recorded which token the simulator mode brings and what becomes of ngx_pep's hsm_sim
 <!-- AC:END -->
 
 ## Implementation Notes
