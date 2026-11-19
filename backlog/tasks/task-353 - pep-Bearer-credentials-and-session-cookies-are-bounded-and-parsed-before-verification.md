@@ -3,10 +3,10 @@ id: TASK-353
 title: >-
   pep: Bearer credentials and session cookies are bounded and parsed before
   verification
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-19 08:28'
+updated_date: '2026-11-19 08:46'
 labels: []
 dependencies: []
 priority: medium

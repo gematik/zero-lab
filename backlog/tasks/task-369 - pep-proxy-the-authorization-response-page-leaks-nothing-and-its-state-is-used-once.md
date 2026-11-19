@@ -3,10 +3,10 @@ id: TASK-369
 title: >-
   pep/proxy: the authorization response page leaks nothing and its state is used
   once
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-17T06:45:00Z'
-updated_date: '2026-11-19 08:30'
+updated_date: '2026-11-19 08:46'
 labels:
   - pep-proxy
   - security

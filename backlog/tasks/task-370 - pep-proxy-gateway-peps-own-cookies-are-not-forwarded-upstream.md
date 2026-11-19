@@ -1,10 +1,10 @@
 ---
 id: TASK-370
 title: 'pep/proxy gateway: pep''s own cookies are not forwarded upstream'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-17T06:45:00Z'
-updated_date: '2026-11-19 08:29'
+updated_date: '2026-11-19 08:46'
 labels:
   - pep-proxy
   - security

@@ -3,10 +3,10 @@ id: TASK-351
 title: >-
   pep/proxy: /oauth2/* endpoints check their parameters, and the return-to is
   encoded
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-19 08:36'
+updated_date: '2026-11-19 08:46'
 labels: []
 dependencies:
   - TASK-360

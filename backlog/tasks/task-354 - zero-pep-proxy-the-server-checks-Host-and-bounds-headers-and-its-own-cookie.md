@@ -1,10 +1,10 @@
 ---
 id: TASK-354
 title: 'zero-pep-proxy: the server checks Host and bounds headers and its own cookie'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-19 08:32'
+updated_date: '2026-11-19 08:46'
 labels: []
 dependencies:
   - TASK-360

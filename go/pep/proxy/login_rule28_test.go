@@ -23,6 +23,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path"
@@ -65,7 +66,7 @@ func (b *scopedBackend) Complete(ctx context.Context, sess *Session, code string
 
 func scopedServer(tb testing.TB) (*Server, *scopedBackend) {
 	tb.Helper()
-	backend := &scopedBackend{fakeBackend: fakeBackend{identity: map[string]any{"sub": "u"}}, scopes: []string{"openid", "protected"}}
+	backend := &scopedBackend{identity: map[string]any{"sub": "u"}, scopes: []string{"openid", "protected"}}
 	s, err := New(testConfig(backend))
 	if err != nil {
 		tb.Fatal(err)
@@ -197,14 +198,14 @@ func FuzzCheckReturnTo(f *testing.F) {
 	for _, seed := range []string{
 		"", "/", "/app?x=1", "//evil.example", "/\\evil.example", "/\t/evil.example", "/\r\n/evil.example",
 		"https://evil.example", "/oauth2/start", "/a/../oauth2/start", "/%2e%2e/oauth2", "/\xff", "/a\x00b",
-		"/‮evil", "/%09/evil.example", "/a%0d%0aSet-Cookie:x=1", "javascript:alert(1)", "/a#//evil.example",
+		"/\u202eevil", "/%09/evil.example", "/a%0d%0aSet-Cookie:x=1", "javascript:alert(1)", "/a#//evil.example",
 	} {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, rd string) {
 		err := checkReturnTo(rd)
 		if err != nil {
-			if err != errReturnTo {
+			if !errors.Is(err, errReturnTo) {
 				t.Fatalf("a refusal other than the fixed one: %v", err)
 			}
 			return

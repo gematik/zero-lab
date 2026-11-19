@@ -216,17 +216,17 @@ func applyBearer(p *PEP, authorization ...string) (status int, reached bool) {
 // token is parsed; 401 is the answer to a token that was read and refused.
 func TestServerRule28_BearerCredentialsAreCheckedBeforeATokenIsParsed(t *testing.T) {
 	p := rule28PEP(t)
-	token68 := "eyJhbGciOiJFUzI1NiJ9.e30.c2ln"
+	wellFormed := "eyJhbGciOiJFUzI1NiJ9.e30.c2ln"
 	for name, authorization := range map[string][]string{
-		"two headers":           {"Bearer " + token68, "Bearer " + token68},
-		"a second scheme":       {"Bearer " + token68, "Basic dXNlcjpwYXNz"},
+		"two headers":           {"Bearer " + wellFormed, "Bearer " + wellFormed},
+		"a second scheme":       {"Bearer " + wellFormed, "Basic dXNlcjpwYXNz"},
 		"another scheme":        {"Basic dXNlcjpwYXNz"},
 		"no credentials":        {"Bearer"},
 		"empty credentials":     {"Bearer "},
-		"two credentials":       {"Bearer " + token68 + " " + token68},
-		"a comma":               {"Bearer " + token68 + "," + token68},
-		"a control character":   {"Bearer " + token68 + "\x00"},
-		"not ASCII":             {"Bearer " + token68 + "é"},
+		"two credentials":       {"Bearer " + wellFormed + " " + wellFormed},
+		"a comma":               {"Bearer " + wellFormed + "," + wellFormed},
+		"a control character":   {"Bearer " + wellFormed + "\x00"},
+		"not ASCII":             {"Bearer " + wellFormed + "é"},
 		"padding in the middle": {"Bearer eyJ=.e30.c2ln"},
 		"longer than a token":   {"Bearer " + strings.Repeat("a", maxAccessTokenBytes+1)},
 	} {
@@ -235,9 +235,9 @@ func TestServerRule28_BearerCredentialsAreCheckedBeforeATokenIsParsed(t *testing
 		}
 	}
 	for name, authorization := range map[string]string{
-		"a token68 value that is no JWS": "Bearer " + token68,
-		"the scheme in another case":     "bEARER " + token68,
-		"several spaces":                 "Bearer    " + token68,
+		"a token68 value that is no JWS": "Bearer " + wellFormed,
+		"the scheme in another case":     "bEARER " + wellFormed,
+		"several spaces":                 "Bearer    " + wellFormed,
 		"as long as a token may be":      "Bearer " + strings.Repeat("a", maxAccessTokenBytes),
 	} {
 		if status, reached := applyBearer(p, authorization); status != http.StatusUnauthorized || reached {
@@ -318,7 +318,7 @@ func TestServerRule28_ASessionCookieIsBoundedAndCheckedBeforeItIsOpened(t *testi
 	}
 
 	r := httptest.NewRequest(http.MethodGet, "https://example.com/guarded", nil)
-	r.AddCookie(&http.Cookie{Name: "sid", Value: sealed + ".a"})
+	r.Header.Set("Cookie", "sid="+sealed+".a")
 	w := httptest.NewRecorder()
 	reached := false
 	NewEnforcerSessionCookie("sid", [][]byte{key}).Apply(rule28PEP(t).NewContext(w, r), func(Context) { reached = true })
@@ -358,7 +358,7 @@ func FuzzBearerCredentials(f *testing.F) {
 	f.Add("Bearer a\r\nX-Injected: 1", "")
 	f.Add("Bearer a\x00", "")
 	f.Add("Bearer \xff\xfe", "")
-	f.Add("Bearer ‮a", "")
+	f.Add("Bearer \u202ea", "")
 	f.Add("Bearer%20a", "")
 	f.Add("DPoP a", "Bearer a")
 	f.Add("Bearer "+strings.Repeat("a", maxAccessTokenBytes+1), "")
@@ -373,7 +373,7 @@ func FuzzBearerCredentials(f *testing.F) {
 			if token != "" {
 				t.Fatalf("a refusal returned credentials")
 			}
-			if err != ErrNoAuthorizationHeader && err != ErrInvalidAuthorizationHeader {
+			if !errors.Is(err, ErrNoAuthorizationHeader) && !errors.Is(err, ErrInvalidAuthorizationHeader) {
 				t.Fatalf("the refusal is none of the two fixed denials: %v", err)
 			}
 			return
