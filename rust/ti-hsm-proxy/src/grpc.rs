@@ -235,6 +235,8 @@ pub async fn serve(
     health_interval: Duration,
     shutdown: impl Future<Output = ()> + Send,
 ) -> io::Result<()> {
+    remove_stale_socket(socket).await?;
+    let listener = open_socket(socket)?;
     let (reporter, health) = tonic_health::server::health_reporter();
     report(&reporter, check(&proxy).await).await;
     let watcher = {
@@ -249,8 +251,6 @@ pub async fn serve(
             }
         })
     };
-    remove_stale_socket(socket).await?;
-    let listener = open_socket(socket)?;
     let service =
         HsmProxyServiceServer::new(Service { proxy }).max_decoding_message_size(MAX_MESSAGE_LEN);
     let served = tonic::transport::Server::builder()
@@ -333,13 +333,22 @@ async fn remove_stale_socket(socket: &Path) -> io::Result<()> {
     use std::os::unix::fs::FileTypeExt as _;
     match std::fs::symlink_metadata(socket) {
         Ok(meta) if meta.file_type().is_socket() => {
-            if tokio::net::UnixStream::connect(socket).await.is_ok() {
-                return Err(io::Error::new(
+            match tokio::net::UnixStream::connect(socket).await {
+                Ok(_) => Err(io::Error::new(
                     io::ErrorKind::AddrInUse,
                     format!("{}: another process answers on it", socket.display()),
-                ));
+                )),
+                // Refused means bound by nobody: the file of a process that ended. Any other
+                // failure, as no permission to connect, says nothing of that.
+                Err(e) if e.kind() == io::ErrorKind::ConnectionRefused => {
+                    std::fs::remove_file(socket)
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+                Err(e) => Err(io::Error::new(
+                    e.kind(),
+                    format!("{}: not known to be stale: {e}", socket.display()),
+                )),
             }
-            std::fs::remove_file(socket)
         }
         Ok(_) => Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
@@ -350,19 +359,34 @@ async fn remove_stale_socket(socket: &Path) -> io::Result<()> {
     }
 }
 
-/// Owner and group read and write, nothing for others. Connecting needs write permission,
-/// so the default umask (022) creates a socket only its owner can reach; the group bit is
-/// what lets the workload's container, under another arbitrary UID with group 0 or the
-/// pod's `fsGroup`, connect (rules 27 and 29). The socket gets the group of a directory
-/// with the setgid bit, as an `emptyDir` with `fsGroup` has, or else the process's primary
-/// group, which is 0 on OpenShift.
+/// Owner and group read and write, nothing for others: what lets the workload's container,
+/// under another arbitrary UID with group 0 or the pod's `fsGroup`, connect (rules 27 and
+/// 29). The socket gets the group of a directory with the setgid bit, as an `emptyDir` with
+/// `fsGroup` has, or else the process's primary group, which is 0 on OpenShift.
 const SOCKET_MODE: u32 = 0o660;
 
+/// Binds the socket where nobody else can reach it, a directory of mode 0700 beside its
+/// path, gives it [`SOCKET_MODE`] and only then links it to its path. However the umask is
+/// set, the socket is never reachable with other permissions; and a link, unlike a rename,
+/// does not replace a socket another process bound at the path meanwhile.
 fn open_socket(socket: &Path) -> io::Result<UnixListener> {
-    use std::os::unix::fs::PermissionsExt as _;
-    let listener = UnixListener::bind(socket)
-        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", socket.display())))?;
-    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(SOCKET_MODE))
-        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", socket.display())))?;
-    Ok(listener)
+    use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
+    let named = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", socket.display()));
+    let parent = socket
+        .parent()
+        .ok_or_else(|| named(io::Error::from(io::ErrorKind::InvalidInput)))?;
+    let staging = parent.join(format!(".hsm-proxy-{}", std::process::id()));
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&staging)
+        .map_err(named)?;
+    let inner = staging.join("s");
+    let bound = UnixListener::bind(&inner).and_then(|listener| {
+        std::fs::set_permissions(&inner, std::fs::Permissions::from_mode(SOCKET_MODE))?;
+        std::fs::hard_link(&inner, socket)?;
+        Ok(listener)
+    });
+    let _ = std::fs::remove_file(&inner);
+    let _ = std::fs::remove_dir(&staging);
+    bound.map_err(named)
 }

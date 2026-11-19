@@ -43,6 +43,7 @@ thiserror.workspace = true
 sha2.workspace = true
 const-oid = { workspace = true, features = ["db"] }
 der.workspace = true
+x509-cert.workspace = true
 spki.workspace = true
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
 base64ct.workspace = true
@@ -69,6 +70,10 @@ sha2.workspace = true
 # The adapter's conformance suite needs the probes of the `conformance` feature.
 [[test]]
 name = "token_softhsm2"
+required-features = ["conformance"]
+
+[[test]]
+name = "recovery_softhsm2"
 required-features = ["conformance"]
 
 [lints]

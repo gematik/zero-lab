@@ -478,3 +478,35 @@ fn task_389_a_caller_waits_for_a_session_only_as_long_as_it_says() {
     .unwrap();
     pool.with(wait, |_| Ok(())).unwrap();
 }
+
+/// TASK-389 #4, rule 4: a key found on the token is served only if it is what the list says
+/// and stays there. An AES-128 key, or an extractable one, under the label of an AES-256
+/// key-encryption key is refused, and so is an extractable private signing key; the key is
+/// not made anew in its place.
+#[test]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
+fn task_389_4_a_found_key_that_is_not_what_was_asked_is_refused() {
+    let token = token();
+    token.make_unfit_secret_key("unfit-kek").unwrap();
+    for refused in [
+        token.find_key_encryption_key("unfit-kek").map(drop),
+        token.key_encryption_key("unfit-kek").map(drop),
+    ] {
+        assert!(
+            matches!(refused, Err(Error::KeyMismatch { .. })),
+            "{refused:?}"
+        );
+    }
+    token
+        .make_unfit_signing_key("unfit-sig", Curve::P256)
+        .unwrap();
+    for refused in [
+        token.find_signing_key("unfit-sig", Curve::P256).map(drop),
+        token.signing_key("unfit-sig", Curve::P256).map(drop),
+    ] {
+        assert!(
+            matches!(refused, Err(Error::KeyMismatch { .. })),
+            "{refused:?}"
+        );
+    }
+}

@@ -77,9 +77,15 @@ initContainers:
     livenessProbe:  { exec: { command: ["/hsm-proxy", "health", "live"] },  periodSeconds: 20 }
 ```
 
+A session the token lost (a restart, a logout) is replaced and its key found again by its
+label; the call that met the loss is tried once more. A key found on the token is served
+only if it is of the kind listed and sensitive and not extractable; a certificate only if
+it certifies the key that signs.
+
 Not here yet: mTLS and access by component (A_28830), a TCP listener, a peer check on the
-socket (rule 8), reopening a broken session, metrics, certificate chains beyond the end
-entity, P-521 and the brainpool curves in the interface.
+socket (rule 8), metrics and a log line on a change of health (rule 31), certificate chains
+beyond the end entity, P-521 and the brainpool curves in the interface, fuzz targets for
+the keys file and the public point (TASK-397).
 
 What SoftHSM2 does on this path, its throughput and the transport comparison are in
 [docs/softhsm2.md](docs/softhsm2.md).

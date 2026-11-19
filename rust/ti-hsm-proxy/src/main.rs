@@ -176,6 +176,10 @@ fn run(config: &Config) -> Result<(), String> {
     let pool = module
         .pool(&config.token, &user_pin, config.sessions)
         .map_err(|e| e.to_string())?;
+    // The module stays loaded to the end of the process: unloading it at exit gains nothing,
+    // and SoftHSM2 crashes in its exit handlers once it was unloaded after a logout. The
+    // sessions close when the pool goes; nothing is finalised before the process ends.
+    std::mem::forget(module);
     let proxy = HsmProxy::start(
         pool,
         &config.keys,

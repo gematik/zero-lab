@@ -29,7 +29,7 @@ use cryptoki::error::{Error as Cryptoki, RvError};
 use cryptoki::mechanism::aead::GcmParams;
 use cryptoki::mechanism::{Mechanism, MechanismType};
 use cryptoki::object::{Attribute, AttributeType, KeyType, ObjectClass, ObjectHandle};
-use cryptoki::session::{Session, UserType};
+use cryptoki::session::{Session, SessionState, UserType};
 use cryptoki::slot::Slot;
 use cryptoki::types::AuthPin;
 
@@ -91,6 +91,27 @@ pub enum Error {
 }
 
 impl Error {
+    /// Whether the session that met the error cannot be used again: the token closed it,
+    /// went away, or logged the application out (a restart of a network HSM, a lost link).
+    /// The pool replaces such a session ([`crate::Pool`]).
+    #[must_use]
+    pub fn session_lost(&self) -> bool {
+        matches!(
+            self.return_code(),
+            Some(
+                RvError::SessionHandleInvalid
+                    | RvError::SessionClosed
+                    | RvError::DeviceRemoved
+                    | RvError::DeviceError
+                    | RvError::TokenNotPresent
+                    | RvError::TokenNotRecognized
+                    | RvError::UserNotLoggedIn
+                    | RvError::ObjectHandleInvalid
+                    | RvError::KeyHandleInvalid
+            )
+        )
+    }
+
     /// The PKCS#11 return code, if the module returned one.
     #[must_use]
     pub fn return_code(&self) -> Option<RvError> {
@@ -397,21 +418,7 @@ impl Module {
     /// login fails.
     pub fn open(&self, label: &str, user_pin: &AuthPin) -> Result<Token, Error> {
         let slot = self.slot(label)?;
-        let session = self
-            .pkcs11
-            .open_rw_session(slot)
-            .map_err(module_error("open a session"))?;
-        // The login state is the application's, not the session's: another session may
-        // have logged in already.
-        match session.login(UserType::User, Some(user_pin)) {
-            Ok(()) | Err(Cryptoki::Pkcs11(RvError::UserAlreadyLoggedIn, _)) => {}
-            Err(e) => return Err(module_error("log in")(e)),
-        }
-        Ok(Token {
-            pkcs11: self.pkcs11.clone(),
-            slot,
-            session,
-        })
+        open_on(&self.pkcs11, slot, user_pin)
     }
 
     fn slot(&self, label: &str) -> Result<Slot, Error> {
@@ -432,12 +439,50 @@ impl Module {
     }
 }
 
+/// A new session on `slot`, logged in as the user.
+fn open_on(pkcs11: &Pkcs11, slot: Slot, user_pin: &AuthPin) -> Result<Token, Error> {
+    let session = pkcs11
+        .open_rw_session(slot)
+        .map_err(module_error("open a session"))?;
+    // The login state is the application's, not the session's: another session may have
+    // logged in already.
+    match session.login(UserType::User, Some(user_pin)) {
+        Ok(()) | Err(Cryptoki::Pkcs11(RvError::UserAlreadyLoggedIn, _)) => {}
+        Err(e) => return Err(module_error("log in")(e)),
+    }
+    Ok(Token {
+        pkcs11: pkcs11.clone(),
+        slot,
+        session,
+    })
+}
+
 /// A logged-in session on one token. A session is used by one thread at a time; a server
 /// opens one per worker.
 pub struct Token {
     pkcs11: Pkcs11,
     slot: Slot,
     session: Session,
+}
+
+fn mismatch(label: &str, reason: &'static str) -> Error {
+    Error::KeyMismatch {
+        key: label.to_owned(),
+        reason,
+    }
+}
+
+/// A key found on the token is served only if the token says it cannot leave: sensitive and
+/// not extractable. One a vendor's tool made otherwise is refused, not used.
+fn stays_on_the_token(held: &[Attribute], label: &str) -> Result<(), Error> {
+    if held.contains(&Attribute::Sensitive(true)) && held.contains(&Attribute::Extractable(false)) {
+        Ok(())
+    } else {
+        Err(mismatch(
+            label,
+            "the token does not keep it sensitive and not extractable",
+        ))
+    }
 }
 
 /// The longest label a key may have. The HSM proxy interface's `key_id` becomes `CKA_LABEL`.
@@ -462,6 +507,90 @@ const GCM_TAG_LEN: usize = 16;
 const GCM_TAG_BITS: u64 = 128;
 
 impl Token {
+    /// A new session on the same token, logged in as the user: what replaces a session that
+    /// was lost ([`Error::session_lost`]).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Module`] if the session or the login fails, as while the token is away.
+    pub fn reopen(&self, user_pin: &AuthPin) -> Result<Token, Error> {
+        open_on(&self.pkcs11, self.slot, user_pin)
+    }
+
+    /// Makes, under `label`, what a careless provisioning tool would: an AES key of 128 bits,
+    /// extractable and not sensitive. The sidecar must refuse to serve it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Key`] if the token refuses.
+    #[cfg(feature = "conformance")]
+    pub fn make_unfit_secret_key(&self, label: &str) -> Result<(), Error> {
+        let id = label.as_bytes().to_vec();
+        self.session
+            .generate_key(
+                &Mechanism::AesKeyGen,
+                &[
+                    Attribute::Class(ObjectClass::SECRET_KEY),
+                    Attribute::KeyType(KeyType::AES),
+                    Attribute::ValueLen(16.into()),
+                    Attribute::Token(true),
+                    Attribute::Private(true),
+                    Attribute::Sensitive(false),
+                    Attribute::Extractable(true),
+                    Attribute::Encrypt(true),
+                    Attribute::Decrypt(true),
+                    Attribute::Label(id.clone()),
+                    Attribute::Id(id),
+                ],
+            )
+            .map(drop)
+            .map_err(key_error("make an unfit key", label))
+    }
+
+    /// Makes, under `label`, an EC key pair whose private key is extractable. The sidecar must
+    /// refuse to serve it.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Key`] if the token refuses.
+    #[cfg(feature = "conformance")]
+    pub fn make_unfit_signing_key(&self, label: &str, curve: Curve) -> Result<(), Error> {
+        let id = label.as_bytes().to_vec();
+        self.session
+            .generate_key_pair(
+                &Mechanism::EccKeyPairGen,
+                &[
+                    Attribute::Token(true),
+                    Attribute::Verify(true),
+                    Attribute::EcParams(curve.params().to_vec()),
+                    Attribute::Label(id.clone()),
+                    Attribute::Id(id.clone()),
+                ],
+                &[
+                    Attribute::Token(true),
+                    Attribute::Private(true),
+                    Attribute::Sensitive(false),
+                    Attribute::Extractable(true),
+                    Attribute::Sign(true),
+                    Attribute::Label(id.clone()),
+                    Attribute::Id(id),
+                ],
+            )
+            .map(drop)
+            .map_err(key_error("make an unfit key", label))
+    }
+
+    /// Logs the application out of the token, which ends the login of every session: what
+    /// a token that restarts does to a client.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Module`] if the token refuses.
+    #[cfg(feature = "conformance")]
+    pub fn log_out(&self) -> Result<(), Error> {
+        self.session.logout().map_err(module_error("log out"))
+    }
+
     /// The mechanisms the token's slot lists, by their PKCS#11 names.
     ///
     /// # Errors
@@ -577,10 +706,45 @@ impl Token {
                 })?;
         let params = self.attribute_bytes(public, AttributeType::EcParams, label)?;
         if Curve::from_params(&params) != Some(curve) {
-            return Err(Error::KeyMismatch {
-                key: label.to_owned(),
-                reason: "it is on another curve",
-            });
+            return Err(mismatch(label, "it is on another curve"));
+        }
+        let held = self.held(
+            private,
+            label,
+            &[
+                AttributeType::KeyType,
+                AttributeType::Sign,
+                AttributeType::Sensitive,
+                AttributeType::Extractable,
+                AttributeType::Id,
+                AttributeType::EcParams,
+            ],
+        )?;
+        if !held.contains(&Attribute::KeyType(KeyType::EC)) {
+            return Err(mismatch(label, "its private key is not an EC key"));
+        }
+        if !held.contains(&Attribute::Sign(true)) {
+            return Err(mismatch(label, "its private key does not sign"));
+        }
+        stays_on_the_token(&held, label)?;
+        // The private key belongs to the public one GetPublicKey answers with: the same curve,
+        // and the same CKA_ID where the token keeps one.
+        let public_id = self.held(public, label, &[AttributeType::Id])?;
+        for attribute in &held {
+            let agrees = match attribute {
+                Attribute::EcParams(own) => own == &params,
+                Attribute::Id(own) => public_id.iter().all(|a| match a {
+                    Attribute::Id(other) => own == other,
+                    _ => true,
+                }),
+                _ => true,
+            };
+            if !agrees {
+                return Err(mismatch(
+                    label,
+                    "its private key is not the one of its public key",
+                ));
+            }
         }
         Ok(Some(SigningKey {
             label: label.to_owned(),
@@ -637,12 +801,46 @@ impl Token {
     /// As [`Token::key_encryption_key`].
     pub fn find_key_encryption_key(&self, label: &str) -> Result<Option<KeyEncryptionKey>, Error> {
         check_label(label)?;
-        Ok(self
-            .find(ObjectClass::SECRET_KEY, label)?
-            .map(|handle| KeyEncryptionKey {
-                label: label.to_owned(),
-                handle,
-            }))
+        let Some(handle) = self.find(ObjectClass::SECRET_KEY, label)? else {
+            return Ok(None);
+        };
+        let held = self.held(
+            handle,
+            label,
+            &[
+                AttributeType::KeyType,
+                AttributeType::ValueLen,
+                AttributeType::Encrypt,
+                AttributeType::Decrypt,
+                AttributeType::Sensitive,
+                AttributeType::Extractable,
+            ],
+        )?;
+        if !held.contains(&Attribute::KeyType(KeyType::AES))
+            || !held.contains(&Attribute::ValueLen(32.into()))
+        {
+            return Err(mismatch(label, "it is not an AES-256 key"));
+        }
+        if !held.contains(&Attribute::Encrypt(true)) || !held.contains(&Attribute::Decrypt(true)) {
+            return Err(mismatch(label, "it does not encrypt and decrypt"));
+        }
+        stays_on_the_token(&held, label)?;
+        Ok(Some(KeyEncryptionKey {
+            label: label.to_owned(),
+            handle,
+        }))
+    }
+
+    /// The attributes of `handle` among `types` that the token reports.
+    fn held(
+        &self,
+        handle: ObjectHandle,
+        label: &str,
+        types: &[AttributeType],
+    ) -> Result<Vec<Attribute>, Error> {
+        self.session
+            .get_attributes(handle, types)
+            .map_err(key_error("read the key's attributes", label))
     }
 
     /// The DER of the certificate object labelled `label`, if the token holds one. A token
@@ -662,16 +860,26 @@ impl Token {
         }
     }
 
-    /// Whether the session still answers: the cheapest call that reaches the token.
+    /// Whether the session still answers and is logged in as the user: the cheapest call
+    /// that reaches the token.
     ///
     /// # Errors
     ///
-    /// [`Error::Module`] if the module or the token does not answer.
+    /// [`Error::Module`] if the module or the token does not answer, with
+    /// `CKR_USER_NOT_LOGGED_IN` if the token logged the application out.
     pub fn check(&self) -> Result<(), Error> {
-        self.session
+        let info = self
+            .session
             .get_session_info()
-            .map(drop)
-            .map_err(module_error("read the session's state"))
+            .map_err(module_error("read the session's state"))?;
+        match info.session_state() {
+            SessionState::RwUser => Ok(()),
+            _ => Err(Error::Module {
+                op: "read the session's state",
+                rv: Some(RvError::UserNotLoggedIn),
+                detail: String::new(),
+            }),
+        }
     }
 
     /// The public key of `key` as an uncompressed SEC1 point, whether the token returns

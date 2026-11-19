@@ -27,6 +27,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::{PoisonError, RwLock};
 use std::time::Duration;
 
 use base64ct::{Base64UrlUnpadded, Encoding as _};
@@ -34,12 +35,12 @@ use const_oid::ObjectIdentifier;
 use const_oid::db::rfc5912::{ID_EC_PUBLIC_KEY, SECP_256_R_1, SECP_384_R_1};
 use cryptoki::error::RvError;
 use der::asn1::BitString;
-use der::{Any, Encode as _};
+use der::{Any, Decode as _, Encode as _};
 use pem_rfc7468::LineEnding;
 use spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 
 use crate::pkcs11::{
-    Curve, Error, Iv, KeyEncryptionKey, MessageDigest, Sealed, SignInput, SigningKey,
+    Curve, Error, Iv, KeyEncryptionKey, MessageDigest, Sealed, SignInput, SigningKey, Token,
 };
 use crate::pool::Pool;
 
@@ -164,7 +165,12 @@ impl Failure {
             Error::Busy(_) | Error::Module { .. } | Error::NoToken(_) => FailureKind::Unavailable,
             Error::KeyMismatch { .. } => FailureKind::FailedPrecondition,
             Error::Key {
-                rv: Some(RvError::EncryptedDataInvalid | RvError::EncryptedDataLenRange),
+                rv:
+                    Some(
+                        RvError::EncryptedDataInvalid
+                        | RvError::EncryptedDataLenRange
+                        | RvError::UnknownErrorCode(CKR_AEAD_DECRYPT_FAILED),
+                    ),
                 ..
             } if decrypting => FailureKind::InvalidArgument,
             _ => FailureKind::Internal,
@@ -172,6 +178,11 @@ impl Failure {
         Failure::new(kind, e.to_string())
     }
 }
+
+/// PKCS#11 3.0's code for an AEAD tag that does not verify, which cryptoki 0.12 does not
+/// name: a token of 3.0 answers a tampered ciphertext with it instead of
+/// CKR_ENCRYPTED_DATA_INVALID.
+const CKR_AEAD_DECRYPT_FAILED: core::ffi::c_ulong = 0x35;
 
 /// Why the sidecar did not start.
 #[derive(Debug, thiserror::Error)]
@@ -188,15 +199,22 @@ pub enum StartError {
     Token(#[from] Error),
 }
 
+#[derive(Clone)]
 enum Key {
     Signing(SigningKey),
     Encryption(KeyEncryptionKey),
 }
 
 /// The HSM proxy's operations on a pool of sessions and the keys it was told to serve.
+///
+/// A token that restarts, or logs the application out, invalidates the sessions and the
+/// handles of its keys. A call that meets that ([`Error::session_lost`]) has its session
+/// replaced by the pool, finds its key again by its label, never making one, and is tried
+/// once more: every operation of the interface may be repeated.
 pub struct HsmProxy {
     pool: Pool,
-    keys: HashMap<String, Key>,
+    kinds: HashMap<String, KeyKind>,
+    keys: RwLock<HashMap<String, Key>>,
     wait: Duration,
     iv: Iv,
     hsm_info: String,
@@ -206,7 +224,7 @@ impl fmt::Debug for HsmProxy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("HsmProxy")
             .field("sessions", &self.pool.size())
-            .field("keys", &self.keys.len())
+            .field("keys", &self.kinds.len())
             .field("hsm_info", &self.hsm_info)
             .finish_non_exhaustive()
     }
@@ -233,6 +251,7 @@ impl HsmProxy {
         hsm_info: String,
     ) -> Result<HsmProxy, StartError> {
         let mut found = HashMap::with_capacity(keys.len());
+        let mut kinds = HashMap::with_capacity(keys.len());
         for spec in keys {
             let id = spec.key_id.as_str();
             let key = pool.with(wait, |token| match (signing_curve(spec.kind), missing) {
@@ -253,18 +272,28 @@ impl HsmProxy {
             if found.insert(spec.key_id.clone(), key).is_some() {
                 return Err(StartError::Duplicate(spec.key_id.clone()));
             }
+            kinds.insert(spec.key_id.clone(), spec.kind);
         }
         Ok(HsmProxy {
             pool,
-            keys: found,
+            kinds,
+            keys: RwLock::new(found),
             wait,
             iv,
             hsm_info,
         })
     }
 
-    fn signing_key(&self, key_id: &str) -> Result<&SigningKey, Failure> {
-        match self.keys.get(key_id) {
+    fn key(&self, key_id: &str) -> Option<Key> {
+        self.keys
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(key_id)
+            .cloned()
+    }
+
+    fn signing_key(&self, key_id: &str) -> Result<SigningKey, Failure> {
+        match self.key(key_id) {
             Some(Key::Signing(key)) => Ok(key),
             Some(Key::Encryption(_)) => Err(Failure::new(
                 FailureKind::FailedPrecondition,
@@ -274,14 +303,81 @@ impl HsmProxy {
         }
     }
 
-    fn encryption_key(&self, key_id: &str) -> Result<&KeyEncryptionKey, Failure> {
-        match self.keys.get(key_id) {
+    fn encryption_key(&self, key_id: &str) -> Result<KeyEncryptionKey, Failure> {
+        match self.key(key_id) {
             Some(Key::Encryption(key)) => Ok(key),
             Some(Key::Signing(_)) => Err(Failure::new(
                 FailureKind::FailedPrecondition,
                 format!("key {key_id} is a signing key, not a key-encryption key"),
             )),
             None => Err(not_found(key_id)),
+        }
+    }
+
+    /// Finds `key_id` on the token again, after its handle was lost with its session.
+    fn find_again(&self, key_id: &str) -> Result<(), Failure> {
+        let kind = *self.kinds.get(key_id).ok_or_else(|| not_found(key_id))?;
+        let key = self
+            .pool
+            .with(self.wait, |token| match signing_curve(kind) {
+                Some(curve) => token
+                    .find_signing_key(key_id, curve)
+                    .map(|k| k.map(Key::Signing)),
+                None => token
+                    .find_key_encryption_key(key_id)
+                    .map(|k| k.map(Key::Encryption)),
+            })
+            .map_err(|e| Failure::from_token(&e, false))?
+            .ok_or_else(|| {
+                Failure::new(
+                    FailureKind::Unavailable,
+                    format!("key {key_id} is no longer on the token"),
+                )
+            })?;
+        self.keys
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(key_id.to_owned(), key);
+        Ok(())
+    }
+
+    /// Runs `operation` with the signing key `key_id`, once more after a lost session.
+    fn with_signing_key<T>(
+        &self,
+        key_id: &str,
+        operation: impl Fn(&Token, &SigningKey) -> Result<T, Error>,
+    ) -> Result<T, Failure> {
+        let key = self.signing_key(key_id)?;
+        match self.pool.with(self.wait, |token| operation(token, &key)) {
+            Err(e) if e.session_lost() => {
+                self.find_again(key_id)?;
+                let key = self.signing_key(key_id)?;
+                self.pool
+                    .with(self.wait, |token| operation(token, &key))
+                    .map_err(|e| Failure::from_token(&e, false))
+            }
+            result => result.map_err(|e| Failure::from_token(&e, false)),
+        }
+    }
+
+    /// Runs `operation` with the key-encryption key `key_id`, once more after a lost
+    /// session.
+    fn with_encryption_key<T>(
+        &self,
+        key_id: &str,
+        decrypting: bool,
+        operation: impl Fn(&Token, &KeyEncryptionKey) -> Result<T, Error>,
+    ) -> Result<T, Failure> {
+        let key = self.encryption_key(key_id)?;
+        match self.pool.with(self.wait, |token| operation(token, &key)) {
+            Err(e) if e.session_lost() => {
+                self.find_again(key_id)?;
+                let key = self.encryption_key(key_id)?;
+                self.pool
+                    .with(self.wait, |token| operation(token, &key))
+                    .map_err(|e| Failure::from_token(&e, decrypting))
+            }
+            result => result.map_err(|e| Failure::from_token(&e, decrypting)),
         }
     }
 
@@ -293,7 +389,6 @@ impl HsmProxy {
     /// [`Failure`] for an unknown key, a key-encryption key, input the token does not
     /// take, or a token that does not answer.
     pub fn sign(&self, key_id: &str, data: &[u8], digest: Digest) -> Result<Vec<u8>, Failure> {
-        let key = self.signing_key(key_id)?;
         check_len(data)?;
         let input = match digest {
             Digest::None => SignInput::Digest(data),
@@ -301,9 +396,7 @@ impl HsmProxy {
             Digest::Sha384 => SignInput::Message(data, MessageDigest::Sha384),
             Digest::Sha512 => SignInput::Message(data, MessageDigest::Sha512),
         };
-        self.pool
-            .with(self.wait, |token| token.sign(key, input))
-            .map_err(|e| Failure::from_token(&e, false))
+        self.with_signing_key(key_id, |token, key| token.sign(key, input))
     }
 
     /// `GetPublicKey`: the public key of the signing key `key_id`.
@@ -313,12 +406,10 @@ impl HsmProxy {
     /// [`Failure`] for an unknown key, a key-encryption key, or a token that does not
     /// answer.
     pub fn public_key(&self, key_id: &str) -> Result<PublicKey, Failure> {
-        let key = self.signing_key(key_id)?;
-        let point = self
-            .pool
-            .with(self.wait, |token| token.public_point(key))
-            .map_err(|e| Failure::from_token(&e, false))?;
-        encode_public_key(key, &point)
+        let (key, point) = self.with_signing_key(key_id, |token, key| {
+            Ok((key.clone(), token.public_point(key)?))
+        })?;
+        encode_public_key(&key, &point)
     }
 
     /// `Encrypt`: AES-256-GCM of `plaintext` under `key_id`, with `associated_data`
@@ -334,14 +425,11 @@ impl HsmProxy {
         plaintext: &[u8],
         associated_data: &[u8],
     ) -> Result<Sealed, Failure> {
-        let key = self.encryption_key(key_id)?;
         check_len(plaintext)?;
         check_len(associated_data)?;
-        self.pool
-            .with(self.wait, |token| {
-                token.encrypt(key, plaintext, associated_data, self.iv)
-            })
-            .map_err(|e| Failure::from_token(&e, false))
+        self.with_encryption_key(key_id, false, |token, key| {
+            token.encrypt(key, plaintext, associated_data, self.iv)
+        })
     }
 
     /// `Decrypt`: the plaintext of `sealed` under `key_id`, if it and `associated_data`
@@ -357,14 +445,11 @@ impl HsmProxy {
         sealed: &Sealed,
         associated_data: &[u8],
     ) -> Result<Vec<u8>, Failure> {
-        let key = self.encryption_key(key_id)?;
         check_len(&sealed.ciphertext)?;
         check_len(associated_data)?;
-        self.pool
-            .with(self.wait, |token| {
-                token.decrypt(key, sealed, associated_data)
-            })
-            .map_err(|e| Failure::from_token(&e, true))
+        self.with_encryption_key(key_id, true, |token, key| {
+            token.decrypt(key, sealed, associated_data)
+        })
     }
 
     /// `GetCertificate`: the certificate the token keeps under `key_id`.
@@ -374,17 +459,30 @@ impl HsmProxy {
     /// [`Failure`] with [`FailureKind::NotFound`] for an unknown key or one without a
     /// certificate on the token.
     pub fn certificate(&self, key_id: &str) -> Result<Certificate, Failure> {
-        self.signing_key(key_id)?;
-        let der = self
-            .pool
-            .with(self.wait, |token| token.certificate(key_id))
-            .map_err(|e| Failure::from_token(&e, false))?
-            .ok_or_else(|| {
-                Failure::new(
-                    FailureKind::NotFound,
-                    format!("the token holds no certificate for key {key_id}"),
-                )
-            })?;
+        let (point, der) = self.with_signing_key(key_id, |token, key| {
+            Ok((token.public_point(key)?, token.certificate(key_id)?))
+        })?;
+        let der = der.ok_or_else(|| {
+            Failure::new(
+                FailureKind::NotFound,
+                format!("the token holds no certificate for key {key_id}"),
+            )
+        })?;
+        // A certificate left under the label from an earlier key would be answered for this
+        // one: it is given out only if it certifies the key that signs.
+        let certified = x509_cert::Certificate::from_der(&der)
+            .map_err(|_| internal("a certificate on the token that does not parse"))?
+            .tbs_certificate()
+            .subject_public_key_info()
+            .subject_public_key
+            .raw_bytes()
+            == point.as_slice();
+        if !certified {
+            return Err(Failure::new(
+                FailureKind::FailedPrecondition,
+                format!("the certificate under {key_id} is for another key"),
+            ));
+        }
         let pem = pem(&der, "CERTIFICATE")?;
         Ok(Certificate {
             chain_pem: vec![pem.clone()],

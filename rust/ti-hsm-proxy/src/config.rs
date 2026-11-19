@@ -125,7 +125,8 @@ pub fn parse_keys(json: &str) -> Result<Vec<KeySpec>, ConfigError> {
 fn parse_sha256(hex: &str) -> Result<[u8; 32], ConfigError> {
     let invalid = || error("HSM_PROXY_PKCS11_MODULE_SHA256: 64 hex digits");
     let hex = hex.trim();
-    if hex.len() != 64 || !hex.is_ascii() {
+    // from_str_radix takes a sign, so "+f" would pass for a pair: only hex digits are let in.
+    if hex.len() != 64 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(invalid());
     }
     let mut out = [0u8; 32];
@@ -353,6 +354,7 @@ mod tests {
             &SHA[..63],
             &format!("{}g", &SHA[..63]),
             &format!("ä{}", &SHA[2..]),
+            &"+f".repeat(32),
         ] {
             assert!(parse_sha256(bad).is_err(), "{bad}");
         }

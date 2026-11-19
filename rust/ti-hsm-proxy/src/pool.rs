@@ -39,10 +39,17 @@ use crate::pkcs11::{Error, Module, Token};
 ///
 /// A key found through one session is used through any other: PKCS#11 gives a token object
 /// the same handle in every session of the application.
+///
+/// A session the token lost ([`Error::session_lost`]: a restart of a network HSM, a dropped
+/// link, a logout) is replaced by a new one, logged in again, when it comes back to the pool.
+/// The call that met the loss fails; the next one, or the next health check, gets the new
+/// session. While the token is away the replacement fails and the old session stays, so the
+/// pool keeps its size and tries again with every call.
 pub struct Pool {
     idle: Mutex<Vec<Token>>,
     returned: Condvar,
     size: usize,
+    user_pin: AuthPin,
 }
 
 impl Module {
@@ -60,6 +67,7 @@ impl Module {
             idle: Mutex::new(idle),
             returned: Condvar::new(),
             size: size.get(),
+            user_pin: user_pin.clone(),
         })
     }
 }
@@ -85,6 +93,10 @@ impl Pool {
     ) -> Result<T, Error> {
         let token = self.take(wait)?;
         let result = operation(&token);
+        let token = match &result {
+            Err(e) if e.session_lost() => token.reopen(&self.user_pin).unwrap_or(token),
+            _ => token,
+        };
         self.lock().push(token);
         self.returned.notify_one();
         result

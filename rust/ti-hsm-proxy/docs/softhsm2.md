@@ -179,7 +179,12 @@ harness of TASK-389, which is not committed, because it would bring tonic into t
 - Deterministic keys for tests that compare output (TASK-389 #3): SoftHSM2 makes keys from its
   own random source; output is comparable only through a given IV, not a given key.
 - Kryoptic, NSS softokn and every vendor's module.
-- A broken session, or a token that logs the application out: the pool does not reopen
-  sessions or log in again. A session is lost if an operation panics.
+- A session lost by a token that restarts, as a network HSM does, is replaced as one lost by
+  a logout is (`tests/recovery_softhsm2.rs`), but SoftHSM2 cannot restart under a running
+  process, so that path is not exercised. A session is lost if an operation panics.
+- SoftHSM2 answers a key handle used after a logout with `CKR_OBJECT_HANDLE_INVALID`, and gives
+  the key another handle after the next login: the sidecar finds the key again by its label.
+  Unloaded after a logout, SoftHSM2 crashes in its exit handlers, so the sidecar keeps the
+  module loaded to the end of the process.
 - `CKA_VALUE`, the misuse refusals and `Iv::Given` are asked through probes of the
   `conformance` feature, which no production build has (servers.md rule 17).
