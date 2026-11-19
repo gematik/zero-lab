@@ -87,7 +87,7 @@ func FuzzAccessToken(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, value string) {
 		token, err := AccessToken(http.Header{"Authorization": {value}})
-		if err == nil && !isToken68(token) {
+		if err == nil && !IsToken68(token) {
 			t.Fatalf("%q yields %q", value, token)
 		}
 	})

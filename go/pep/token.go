@@ -112,6 +112,49 @@ func ParseJWKSet(data []byte) (*jose.JSONWebKeySet, error) {
 	return set, nil
 }
 
+// maxAccessTokenBytes bounds an access token before anything parses it (server rule 28, limits before work). A
+// JWT access token with the claims of RFC 9068 and a cnf member is well below 2 KiB; 16 KiB leaves room for
+// the claims a deployment adds and stays far below what a server reads as one header.
+const maxAccessTokenBytes = 16 << 10
+
+// maxSessionCookieBytes bounds a session snapshot before anything parses it. A browser keeps at least 4096
+// bytes per cookie and need not keep more (RFC 6265 Section 6.1), so a longer value is not one this
+// package's snapshot was set as.
+const maxSessionCookieBytes = 4096
+
+// checkCompact refuses raw unless it is at most limit bytes and has the compact form of a JWS (RFC 7515
+// Section 7.1) or JWE (RFC 7516 Section 7.1): parts segments of base64url characters without padding, each
+// with content, except the one at index empty, which has none (the encrypted key of direct encryption, RFC
+// 7518 Section 4.5; -1 for none). It runs before the JOSE parser, so that parser only sees input of the
+// expected size and shape (server rule 28, bodies).
+func checkCompact(raw string, limit, parts, empty int) error {
+	if len(raw) > limit {
+		return errors.New("token is longer than this package reads")
+	}
+	part, length := 0, 0
+	for i := 0; i <= len(raw); i++ {
+		if i < len(raw) && raw[i] != '.' {
+			if !isBase64URL(raw[i]) {
+				return errors.New("token is not in compact form")
+			}
+			length++
+			continue
+		}
+		if (length == 0) != (part == empty) {
+			return errors.New("token is not in compact form")
+		}
+		part, length = part+1, 0
+	}
+	if part != parts {
+		return errors.New("token is not in compact form")
+	}
+	return nil
+}
+
+func isBase64URL(c byte) bool {
+	return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
+}
+
 // verifyJWS verifies the compact JWS raw with keys and returns its payload.
 //
 // The token has to name an algorithm of the allowlist and, by kid, the key to verify it with; a token without a
@@ -120,6 +163,9 @@ func ParseJWKSet(data []byte) (*jose.JSONWebKeySet, error) {
 func verifyJWS(raw string, keys *jose.JSONWebKeySet) ([]byte, error) {
 	if keys == nil {
 		return nil, errors.New("no key set to verify with")
+	}
+	if err := checkCompact(raw, maxAccessTokenBytes, 3, -1); err != nil {
+		return nil, err
 	}
 	parsed, err := jose.ParseSignedCompact(raw, verificationAlgorithms)
 	if err != nil {

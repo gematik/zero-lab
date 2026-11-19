@@ -105,12 +105,12 @@ func TestRFC3986_6_2_HtuNormalizationIsIdempotent(t *testing.T) {
 // of DPoP credentials (Section 7.1, Figure 12).
 func TestRFC9110_11_2_Token68(t *testing.T) {
 	for _, s := range []string{"a", "aZ09-._~+/", "abc=", "abc==", "Kz~8mXK1EalYznwH-LC-1fBAo.4Ljp~zsPE_NeO.gxU"} {
-		if !isToken68(s) {
+		if !IsToken68(s) {
 			t.Errorf("%q refused", s)
 		}
 	}
 	for _, s := range []string{"", "=", "a b", "a,b", "a=b", "a\"", "ä"} {
-		if isToken68(s) {
+		if IsToken68(s) {
 			t.Errorf("%q accepted", s)
 		}
 	}

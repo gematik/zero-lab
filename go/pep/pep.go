@@ -357,7 +357,7 @@ const (
 )
 
 func (c *pepContext) verifyAuthorizationBearer() error {
-	bearerToken, err := c.parseAuthorizationScheme("bearer")
+	bearerToken, err := c.bearerCredentials()
 	if err != nil {
 		return err
 	}
@@ -461,24 +461,28 @@ func (p *PEP) dpopDenial(e *dpop.Error) Error {
 	}
 }
 
-func (c *pepContext) parseAuthorizationScheme(scheme string) (string, error) {
-	authzHeaders := c.request.Header.Values("Authorization")
-	if len(authzHeaders) == 0 {
+// bearerCredentials returns the credentials of the request's Authorization header under the Bearer scheme
+// (RFC 6750 Section 2.1): exactly one header, the scheme compared case-insensitively (RFC 9110 Section
+// 11.1), one or more spaces, and credentials in token68 syntax within maxAccessTokenBytes. Anything else is
+// refused before a token is parsed (server rule 28).
+func (c *pepContext) bearerCredentials() (string, error) {
+	values := c.request.Header.Values("Authorization")
+	switch len(values) {
+	case 0:
 		return "", ErrNoAuthorizationHeader
+	case 1:
+	default:
+		return "", ErrInvalidAuthorizationHeader
 	}
-	for _, authzHeader := range authzHeaders {
-		parts := strings.Split(authzHeader, " ")
-		if len(parts) != 2 {
-			continue
-		}
-
-		authScheme := strings.ToLower(parts[0])
-		if authScheme == scheme {
-			return parts[1], nil
-		}
+	scheme, rest, found := strings.Cut(values[0], " ")
+	if !found || !strings.EqualFold(scheme, "Bearer") {
+		return "", ErrInvalidAuthorizationHeader
 	}
-
-	return "", ErrInvalidAuthorizationHeader
+	token := strings.TrimLeft(rest, " ")
+	if len(token) > maxAccessTokenBytes || !dpop.IsToken68(token) {
+		return "", ErrInvalidAuthorizationHeader
+	}
+	return token, nil
 }
 
 // verifyAccessToken leaves the denial to the scheme's caller. VerifyAccessToken has logged why the token was refused.
