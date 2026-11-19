@@ -1,5 +1,36 @@
 # Release Notes
 
+# Release go/kv v0.5.0
+
+The keychain gets the format it is meant to keep, before anything but a test installation uses it (TASK-388),
+and `Reseal` reaches the records of before the marks (TASK-387).
+
+### breaking
+- The keychain file has one format and the one of v0.4.0, taken from the notification service of ZETA Guard, is
+  no longer read. A file states its `purpose`, its `entries` (`id`, `version`, `activeFrom`, `kekId`, the names
+  of its `keys`, `wrapped`) and what is `revoked`. Everything an entry says is bound into its wrapping as
+  associated data; before, only the id was, so an entry could be given another time.
+- What is wrapped is a JSON object of named keys. Every entry has `seal`; `name` is optional, and the name key in
+  force is that of the newest entry at or below the sealing one that has one.
+- `ParseKeychain` and `LoadKeychain` take the purpose and refuse a file for another.
+- `LocalKEK.Extend` makes a file or its next entry and replaces `NewEntry`.
+
+### added
+- `WithKeychainCheck`: a consumer looks at a changed file before its keys are taken, and refuses one that lacks
+  an entry still needed. `Entries` and `Revoked` say what a file holds.
+- `Marker.Marks`, `Resealer.SealedByKeys` and `Resealer.Mark`, for that check.
+
+### fixed
+- `Resealer.Reseal` also writes a record again when the current key sealed it but the store below marks it
+  otherwise or not at all. Such a record was counted among the others in every walk and never marked, so a
+  store that came from a version without marks never ran out of others (TASK-387).
+
+### verified
+- `just check` across all Go modules passed on 9e4530a8 (main), 2026-11-19; `api-lint` was skipped without
+  `GEMATIK_API_TOOLS_DIR`.
+- kv on Postgres (Postgres 18, `TEST_DATABASE_URL`) passed on the branches of pull requests 93 and 95, whose kv
+  code is what main holds (3bd24153); it was not run again for the tag.
+
 # Release go/kv v0.4.0
 
 What a server needs to change the keys that seal its records without losing the records that outlive a key
