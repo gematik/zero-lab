@@ -33,6 +33,7 @@ Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pep
 | Var | For | Default |
 | --- | --- | --- |
 | PEP_PUBLIC_URL | public origin the browser uses (the front) | http://127.0.0.1:4180 |
+| PEP_HOSTS | more names requests may be sent to, comma-separated, for a proxy in front that sends another Host; a request for any other name is answered 421 | the host of PEP_PUBLIC_URL |
 | PEP_ADDR | listen address | :4180 |
 | PEP_INSECURE_COOKIE | `"true"` drops `__Host-`/Secure for dev, refused at start unless PEP_PUBLIC_URL is `http` on `localhost` or `127.0.0.1`; secure by default | false |
 | PEP_OIDC_ISSUER (+ _CLIENT_ID/_CLIENT_SECRET) | one OIDC provider | — |

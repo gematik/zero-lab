@@ -169,7 +169,29 @@ func (m *sessionManager) rotate(ctx context.Context, s *Session) error {
 // byToken resolves the session for a cookie token by hashing it to the store's key. The token is never stored,
 // so a rogue storage admin reading the store learns only hashes and cannot reconstruct a valid cookie.
 func (m *sessionManager) byToken(ctx context.Context, token string) (*Session, error) {
+	// Server rule 28, cookies: a value that is not a token of this server names no session, and the store is
+	// not asked about it.
+	if !isSessionToken(token) {
+		return nil, ErrSessionNotFound
+	}
 	return m.byID(ctx, hashToken(token))
+}
+
+// sessionTokenLen is the length of what randomToken returns: 32 bytes in base64url without padding.
+const sessionTokenLen = 43
+
+// isSessionToken reports whether token has the form of a cookie secret this server sets.
+func isSessionToken(token string) bool {
+	if len(token) != sessionTokenLen {
+		return false
+	}
+	for i := 0; i < len(token); i++ {
+		c := token[i]
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' && c != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // logRef is what a log says for a session: enough to correlate its lines, and nothing of its ID, which names the

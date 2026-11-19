@@ -54,6 +54,7 @@ needs no file). The file and the shortcuts are mutually exclusive (the file wins
 | --- | --- | --- |
 | `PEP_ADDR` | listen address | `:4180` |
 | `PEP_PUBLIC_URL` | public origin the browser reaches pep at (the Caddy/ingress front, not pep directly) | `http://127.0.0.1:4180` |
+| `PEP_HOSTS` | more names requests may be sent to, comma-separated, for a proxy in front that sends another Host; a request for any other name is answered 421 | the host of PEP_PUBLIC_URL |
 | `PEP_COOKIE_NAME` | session cookie name | `ZERO-PEP-SID` |
 | `PEP_INSECURE_COOKIE` | `"true"` drops the `__Host-` prefix + `Secure` for dev; the proxy refuses to start with it unless `PEP_PUBLIC_URL` is `http` on `localhost` or `127.0.0.1`. The cookie is **secure by default** | `false` |
 | `PEP_TEMPLATE_DIR` | replace the embedded UI templates from this directory | embedded |

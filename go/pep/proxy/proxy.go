@@ -36,10 +36,13 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/gematik/zero-lab/go/httpguard"
 )
 
 // Config configures the proxy server.
@@ -61,6 +64,11 @@ type Config struct {
 	// see. A sign-out or a rotation at one replica revokes the session ID at every other through Revocations.
 	Sessions    SessionStore
 	Revocations Revocations
+
+	// Hosts are the names this server answers for: the Host of a request, or :authority under HTTP/2, has to
+	// be one of them, byte for byte and with its port, or the request is answered 421 before anything else
+	// looks at it (server rule 28, headers). Empty checks nothing; a host that listens on a network sets it.
+	Hosts []string
 
 	// Routes, when non-empty, turn on standalone gateway mode: pep gates + reverse-proxies these upstreams
 	// itself (no Caddy). Empty = forward_auth-only, unchanged. gate: snapshot routes require the snapshot fast
@@ -102,6 +110,7 @@ type Server struct {
 	snapTTL     time.Duration
 	revocations Revocations
 	gateway     *Gateway // nil in forward_auth-only mode (no Routes)
+	hosts       []string
 	now         func() time.Time
 	log         *slog.Logger
 }
@@ -156,6 +165,7 @@ func New(cfg Config) (*Server, error) {
 		snap:        snap,
 		snapTTL:     snapTTL,
 		revocations: cfg.Revocations,
+		hosts:       slices.Clone(cfg.Hosts),
 		now:         now,
 		log:         log,
 	}
@@ -209,7 +219,19 @@ func (s *Server) Handler() http.Handler {
 	if s.gateway != nil {
 		mux.Handle("/", s.gateway)
 	}
-	return mux
+	if len(s.hosts) == 0 {
+		return mux
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Server rule 28, headers: a request for a name this server was not configured with is not for it.
+		// What it builds comes from its configured URLs either way; the check keeps a foreign name out of
+		// the logic and out of what the gateway hands on as X-Forwarded-Host.
+		if err := httpguard.Host(r, s.hosts); err != nil {
+			respondGatewayJSON(w, http.StatusMisdirectedRequest, "invalid_request", "the host is not one this server answers for")
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 type signInData struct {
