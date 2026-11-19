@@ -73,7 +73,7 @@ everything outside the workload untrusted.
    build digest, and verifies the attestation of peers where hardware binding matters.
 8. **Kubernetes, Docker and sidecars as untrusted neighbours.** Run as non-root with a
    read-only root filesystem, no capabilities, seccomp `RuntimeDefault`, resource limits;
-   liveness and readiness reflect real state (trust material loaded, storage reachable);
+   every container, sidecars included, is probed as rule 31 has it;
    SIGTERM drains and shuts down gracefully; configuration reloads from mounted files. Trust
    material comes one of two ways, outside the request path, and consumers keep nothing of it
    on disk: from mounted files written by a producer (a CronJob from the same image that
@@ -98,7 +98,7 @@ everything outside the workload untrusted.
      policy and data writes); that the socket is reachable is not the restriction. They
      are part of the measured workload: their digests are in the same signed manifest and
      in the pod policy that attestation measures; native sidecar containers order their
-     start, and readiness follows their handshake. Policy engines
+     start, and their probes follow rule 31. Policy engines
      run only this way, never as a service in another pod, and their policies are
      configuration under rule 7, mounted at start and never loaded at run time.
    - Platform services (workload identity, mesh TLS, attestation) are consumed through
@@ -261,7 +261,8 @@ everything outside the workload untrusted.
     other; schema changes go expand, migrate, contract; keys rotate with an overlap in
     which old and new both verify.
 23. **A separate admin plane.** Admin, metrics, health and debug endpoints listen on their
-    own port with their own authentication (mTLS), restricted by NetworkPolicy; nothing
+    own port with their own authentication (mTLS), restricted by NetworkPolicy, except the
+    bare probe path of rule 31, which the kubelet reaches without a certificate; nothing
     administrative is reachable on the public listener, and debug and profiling are not
     compiled into production builds.
 24. **Resilient under load.** Timeouts on every outbound call and every phase of an
@@ -470,3 +471,47 @@ everything outside the workload untrusted.
     - **Plain http only for self-verifying data.** OCSP responses and CRLs are signed and
       verified by the workload, so they may travel over http and through the proxy.
       Nothing else does.
+31. **Every container's health is probed, and the three probes ask different questions.**
+    - **Every container.** Each container of a workload, a sidecar as much as the main
+      one, has a startup, a readiness and a liveness probe. A container without probes is
+      ready the moment its process starts, and a pod with such a sidecar takes traffic
+      before the sidecar can serve it.
+    - **Startup: is it initialised?** It passes once the container can serve: trust
+      material loaded and verified, keys found, the listener or socket bound. A native
+      sidecar's startup probe gates the start of the main containers, so they never meet a
+      missing socket (rule 8).
+    - **Readiness: can it serve now?** It follows what the container needs to answer
+      correctly: its trust material is current, its keys and its required dependencies
+      (store, key service, HSM) answer. A container that is not ready makes its pod leave
+      the Service, which is intended: a workload whose sidecar cannot sign must not take
+      requests. Saturation is not unreadiness: when every worker or session is busy, the
+      dependency is answering, and load must not take replicas out of service (rule 24
+      sheds the load instead).
+    - **Liveness: is the process stuck?** It passes when the process answers at all,
+      whatever the state of its dependencies. A restart does not bring back a store or an
+      HSM, and liveness tied to one turns an outage into a restart storm.
+    - **Read from state, never from the probe.** A background check asks the dependencies
+      at a configured interval and keeps the result; a probe reads it. A probe makes no
+      call to a dependency, takes no pooled connection or session, and answers within its
+      timeout.
+    - **How the kubelet reaches it.** The kubelet presents no client certificate and
+      reaches ports only.
+      - A container with a network listener serves `grpc.health.v1` to a `grpc` probe, or
+        a health path to an `httpGet` probe, on the admin listener (rule 23). That one
+        path answers without client authentication and says only serving or not serving:
+        no version, no detail, no dependency names. Detail stays behind the admin
+        listener's mTLS.
+      - A container that listens only on a Unix socket (the sidecars of rule 8) is probed
+        by `exec` of its own binary: `<binary> health ready` and `<binary> health live`
+        connect to the socket, read its health and exit 0 or 1, with no shell in the image.
+        A TCP port opened only for probes is a network listener the sidecar must not have.
+    - **One health, in the transport's standard form.** The health that probes read is
+      the one clients read: `grpc.health.v1` for gRPC, the health method of a helper's
+      protocol, a health path for HTTP. A client of a sidecar can ask the same question
+      before it relies on it.
+    - **Observable.** Each change of the health state is a log line with its reason and a
+      metric (rule 14), so that an outage of a dependency shows as such and not only as
+      failed probes in the platform's events.
+    - **Tested** (rule 26): with a dependency stopped, the container turns not ready and
+      stays alive; with every worker busy, it stays ready; a probe answers within its
+      timeout while the dependency hangs.
