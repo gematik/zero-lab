@@ -169,7 +169,9 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	if len(cfg.Routes) > 0 {
-		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now, transport: cfg.UpstreamTransport, revocations: s.revocations, log: log}
+		// Both names, whether or not the snapshot is in use: a browser can still hold one from before.
+		ownCookies := []string{s.cookie.Name, newCookieTemplate(cfg.CookieName+"-SNAP", cfg.InsecureCookie).Name}
+		deps := gatewayDeps{currentSession: s.currentSession, backend: s.backend, now: now, transport: cfg.UpstreamTransport, revocations: s.revocations, log: log, ownCookies: ownCookies}
 		if snap != nil {
 			deps.cookieName = s.snapCookie.Name // the snapshot gate validates the -SNAP cookie
 			deps.snapshotKeys = snap.decKeys

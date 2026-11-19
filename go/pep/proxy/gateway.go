@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,6 +44,8 @@ type gatewayDeps struct {
 	backend        Backend
 	cookieName     string
 	snapshotKeys   [][]byte
+	// ownCookies are the names of the cookies this server sets; none of them is forwarded to an upstream.
+	ownCookies []string
 	// revocations end a snapshot before its expiry; a snapshot route needs them.
 	revocations Revocations
 	// now is the time requests are judged at; nil means the system clock.
@@ -204,6 +207,10 @@ func (g *Gateway) newProxy(rt *Route) *httputil.ReverseProxy {
 			pr.Out.Header.Del(headerEmail)
 			pr.Out.Header.Del(headerGroups)
 			pr.Out.Header.Del(headerIdentity)
+			// The session cookie and the snapshot are the credential of a session that holds DPoP-bound tokens
+			// and their key. An upstream gets the identity or a token for itself, never what would let it act
+			// as the browser towards this server (RFC 9700 Section 4.9, Section 4.13).
+			withoutCookies(pr.Out.Header, g.deps.ownCookies)
 
 			inj := injectionFrom(pr.In.Context())
 			if inj == nil {
@@ -287,4 +294,32 @@ func requireDPoPCapability(backend Backend, routes []Route) error {
 		}
 	}
 	return nil
+}
+
+// withoutCookies removes the cookies with one of names from the Cookie fields of h and leaves every other
+// cookie-pair as it was received, in order (RFC 6265 Section 4.2.1). A field left without a pair is removed.
+func withoutCookies(h http.Header, names []string) {
+	fields := h.Values("Cookie")
+	if len(fields) == 0 || len(names) == 0 {
+		return
+	}
+	kept := fields[:0:0]
+	for _, field := range fields {
+		var pairs []string
+		for pair := range strings.SplitSeq(field, ";") {
+			pair = strings.TrimSpace(pair)
+			name, _, _ := strings.Cut(pair, "=")
+			if pair == "" || slices.Contains(names, strings.TrimSpace(name)) {
+				continue
+			}
+			pairs = append(pairs, pair)
+		}
+		if len(pairs) > 0 {
+			kept = append(kept, strings.Join(pairs, "; "))
+		}
+	}
+	h.Del("Cookie")
+	for _, field := range kept {
+		h.Add("Cookie", field)
+	}
 }
