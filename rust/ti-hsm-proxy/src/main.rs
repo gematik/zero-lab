@@ -139,12 +139,8 @@ fn run(config: &Config) -> Result<(), String> {
     use sha2::Digest as _;
     use ti_hsm_proxy::{HsmProxy, MissingKeys, Module};
 
-    // TEST-ONLY: the simulator mode provisions a software token, whose keys protect nothing.
-    const SIMULATOR_SO_PIN: &str = "so-pin-TEST-ONLY";
-    const SIMULATOR_USER_PIN: &str = "user-pin-TEST-ONLY";
-
-    // Rule 7: what is loaded is what was measured. The file is hashed, then loaded by path;
-    // the image keeps the module read-only, so the two cannot differ.
+    // Rule 7: what is loaded is what was measured. The file is hashed, then loaded by path
+    // from a read-only mount, so the two cannot differ.
     if let Some(expected) = config.module_sha256 {
         let module = std::fs::read(&config.module)
             .map_err(|e| format!("{}: {e}", config.module.display()))?;
@@ -161,21 +157,21 @@ fn run(config: &Config) -> Result<(), String> {
                 .map_err(|e| format!("HSM_PROXY_USER_PIN_PATH {}: {e}", path.display()))?;
             AuthPin::from(pin.trim_end_matches(['\n', '\r']))
         }
-        None => AuthPin::from(SIMULATOR_USER_PIN),
+        #[cfg(feature = "simulator")]
+        None => AuthPin::from(simulator::USER_PIN),
+        #[cfg(not(feature = "simulator"))]
+        None => return Err("HSM_PROXY_USER_PIN_PATH is not set".to_owned()),
     };
     let module = Module::load(&config.module).map_err(|e| e.to_string())?;
+    #[cfg(feature = "simulator")]
     let missing = if config.simulator {
-        eprintln!(
-            "hsm-proxy: simulator mode: token {} is provisioned with TEST-ONLY PINs and missing keys are made",
-            config.token
-        );
-        module
-            .provision(&config.token, &AuthPin::from(SIMULATOR_SO_PIN), &user_pin)
-            .map_err(|e| e.to_string())?;
+        simulator::provision(&module, &config.token, &user_pin)?;
         MissingKeys::Make
     } else {
         MissingKeys::Refuse
     };
+    #[cfg(not(feature = "simulator"))]
+    let missing = MissingKeys::Refuse;
     let hsm_info = module.describe().map_err(|e| e.to_string())?;
     let pool = module
         .pool(&config.token, &user_pin, config.sessions)
@@ -209,6 +205,27 @@ fn run(config: &Config) -> Result<(), String> {
             shutdown(),
         ))
         .map_err(|e| e.to_string())
+}
+
+/// The simulator mode, in a build with the feature `simulator` only (servers.md rule 17).
+#[cfg(all(feature = "grpc", feature = "simulator"))]
+mod simulator {
+    use cryptoki::types::AuthPin;
+    use ti_hsm_proxy::Module;
+
+    // TEST-ONLY: the simulator mode provisions a software token, whose keys protect nothing.
+    const SO_PIN: &str = "so-pin-TEST-ONLY";
+    pub const USER_PIN: &str = "user-pin-TEST-ONLY";
+
+    /// Provisions the token `label` if it is not, with the TEST-ONLY PINs, and says so.
+    pub fn provision(module: &Module, label: &str, user_pin: &AuthPin) -> Result<(), String> {
+        eprintln!(
+            "hsm-proxy: simulator mode: token {label} is provisioned with TEST-ONLY PINs and missing keys are made"
+        );
+        module
+            .provision(label, &AuthPin::from(SO_PIN), user_pin)
+            .map_err(|e| e.to_string())
+    }
 }
 
 #[cfg(feature = "grpc")]

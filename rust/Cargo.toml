@@ -133,7 +133,7 @@ tonic = { version = "0.14.9", default-features = false, features = ["server", "r
 tonic-prost = { version = "0.14.9", default-features = false }
 prost = { version = "0.14.6", default-features = false, features = ["std", "derive"] }
 tonic-health = { version = "0.14.9", default-features = false }
-tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "time"] }
+tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "time", "macros"] }
 tokio-stream = { version = "0.1.19", default-features = false, features = ["net"] }
 # ti-hsm-proxy's probe (`hsm-proxy health`) and tests reach the gRPC server over its Unix socket.
 hyper-util = { version = "0.1.21", default-features = false, features = ["tokio"] }

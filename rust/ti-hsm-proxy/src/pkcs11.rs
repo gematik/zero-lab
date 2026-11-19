@@ -210,8 +210,9 @@ pub enum Iv {
     /// does. A token that does not would encrypt under the all-zero IV, so the result is
     /// refused when the IV comes back unchanged.
     FromToken,
-    /// Given by the caller. Only for tests that compare output: an IV used twice with one
-    /// key breaks GCM.
+    /// Given by the caller, for the conformance suite that compares output: an IV used twice
+    /// with one key breaks GCM.
+    #[cfg(feature = "conformance")]
     Given([u8; 12]),
 }
 
@@ -265,6 +266,7 @@ impl KeyEncryptionKey {
     }
 }
 
+#[cfg(feature = "conformance")]
 /// What a token says of a key: the attributes that make it a key that stays on the token
 /// and has one use. `None` where the token does not report the attribute.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -706,6 +708,7 @@ impl Token {
         Ok(point)
     }
 
+    #[cfg(feature = "conformance")]
     /// Whether the token returns `CKA_EC_POINT` DER-wrapped, as PKCS#11 specifies, rather
     /// than as the bare point.
     ///
@@ -769,6 +772,7 @@ impl Token {
                 .generate_random_vec(GCM_IV_LEN_U32)
                 .map_err(key_error("make an IV", &key.label))?,
             Iv::FromToken => vec![0; GCM_IV_LEN],
+            #[cfg(feature = "conformance")]
             Iv::Given(given) => given.to_vec(),
         };
         let sealed = {
@@ -824,6 +828,7 @@ impl Token {
             .map_err(key_error("decrypt", &key.label))
     }
 
+    #[cfg(feature = "conformance")]
     /// What the token says of the private key of `key`.
     ///
     /// # Errors
@@ -833,6 +838,7 @@ impl Token {
         self.facts(key.private, &key.label)
     }
 
+    #[cfg(feature = "conformance")]
     /// What the token says of `key`.
     ///
     /// # Errors
@@ -842,6 +848,7 @@ impl Token {
         self.facts(key.handle, &key.label)
     }
 
+    #[cfg(feature = "conformance")]
     /// Whether the token gives out the secret value of `key` (`CKA_VALUE`); `Err` with the
     /// return code when it refuses, as it must for a sensitive key.
     ///
@@ -852,6 +859,7 @@ impl Token {
         self.attribute_bytes(key.handle, AttributeType::Value, &key.label)
     }
 
+    #[cfg(feature = "conformance")]
     /// Asks the token to decrypt with the private signing key, which it must refuse.
     ///
     /// # Errors
@@ -866,6 +874,7 @@ impl Token {
             .map_err(key_error("encrypt with a signing key", &key.label))
     }
 
+    #[cfg(feature = "conformance")]
     /// Asks the token to sign with the key-encryption key, which it must refuse.
     ///
     /// # Errors
@@ -877,6 +886,7 @@ impl Token {
             .map_err(key_error("sign with a key-encryption key", &key.label))
     }
 
+    #[cfg(feature = "conformance")]
     fn facts(&self, handle: ObjectHandle, label: &str) -> Result<KeyFacts, Error> {
         let attributes = self
             .session

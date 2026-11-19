@@ -16,14 +16,27 @@ Three layers in one crate, each usable without the next:
 | gRPC transport | `grpc`, behind the `grpc` feature (on by default): `HsmProxyService` and `grpc.health.v1` on a Unix socket, the probe of `hsm-proxy health` | tonic, prost, tokio |
 
 The gRPC code is generated from `proto/` by `just hsm-proxy-codegen` and committed, so a
-build needs neither protoc nor prost-build; `just check` fails if it is stale.
+build needs neither protoc nor prost-build; `just check` fails if it is stale. The sidecar
+compiles the server only; the client is generated apart, into `tests/generated`, for the
+tests.
 
 ## Running
 
 ```console
-just hsm-spike    # the spike and the gRPC suite against SoftHSM2 2.7, or TI_HSM_PKCS11_MODULE_PATH
-just hsm-bench    # throughput through the pool, direct and over JSON-RPC on a Unix socket
+just hsm-proxy-softhsm2    # the token and the gRPC suites against SoftHSM2 2.7, or TI_HSM_PKCS11_MODULE_PATH
+just hsm-proxy-codegen     # regenerate src/generated and tests/generated from proto/
 ```
+
+Features:
+
+| Feature | Default | What it adds | Where |
+|---|---|---|---|
+| `grpc` | on | the gRPC transport and `hsm-proxy health` | every build that serves |
+| `simulator` | off | `HSM_PROXY_SIMULATOR`: a software token provisioned with TEST-ONLY PINs, missing keys made | the development image only |
+| `conformance` | off | the probes the token suite asks a token with: a misuse it must refuse, a secret value it must not give out, a given GCM IV | the test suite only |
+
+A production build has neither `simulator` nor `conformance` (servers.md rule 17); without
+`simulator`, `HSM_PROXY_SIMULATOR=true` stops the start.
 
 The binary `hsm-proxy` is configured by its environment:
 
@@ -39,7 +52,7 @@ The binary `hsm-proxy` is configured by its environment:
 | `HSM_PROXY_SESSIONS` | sessions on the token, default 4 |
 | `HSM_PROXY_SESSION_WAIT_MS` | how long a call waits for a free session before UNAVAILABLE, default 2000 |
 | `HSM_PROXY_HEALTH_INTERVAL_MS` | how often `grpc.health.v1` asks the token, default 5000 |
-| `HSM_PROXY_SIMULATOR` | `true`: the token is provisioned if it is not, with TEST-ONLY PINs, and missing keys are made |
+| `HSM_PROXY_SIMULATOR` | `true`, in a build with the feature `simulator`: the token is provisioned if it is not, with TEST-ONLY PINs, and missing keys are made |
 
 Outside the simulator mode a key of the list that is not on the token stops the start; a
 vendor's HSM is provisioned by its own tools.
@@ -68,6 +81,7 @@ Not here yet: mTLS and access by component (A_28830), a TCP listener, a peer che
 socket (rule 8), reopening a broken session, metrics, certificate chains beyond the end
 entity, P-521 and the brainpool curves in the interface.
 
-What the spike found of SoftHSM2 is in [docs/spike-softhsm2.md](docs/spike-softhsm2.md).
+What SoftHSM2 does on this path, its throughput and the transport comparison are in
+[docs/softhsm2.md](docs/softhsm2.md).
 
 `publish = false`; the crate is not released.

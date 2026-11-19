@@ -41,7 +41,7 @@ use tonic::{Request, Response, Status};
 use crate::pkcs11::Sealed;
 use crate::service::{Digest, Failure, FailureKind, HsmProxy, MAX_DATA_LEN};
 
-/// The messages, server and client generated from `proto/` by `just hsm-proxy-codegen`.
+/// The messages and the server generated from `proto/` by `just hsm-proxy-codegen`.
 #[allow(
     missing_docs,
     clippy::all,
@@ -218,7 +218,7 @@ impl HsmProxyService for Service {
 pub const SERVICE_NAME: &str = "gematik.zetaguard.hsmproxy.v1.HsmProxyService";
 
 /// Serves `proxy` on the Unix socket at `socket` until `shutdown` completes. The socket is
-/// group-accessible ([`SOCKET_MODE`]); a socket file left at the path is replaced only when
+/// for owner and group (mode 0660); a socket file left at the path is replaced only when
 /// nothing answers on it, and any other file there is not.
 ///
 /// `grpc.health.v1` follows the token: every `health_interval` a session is asked whether

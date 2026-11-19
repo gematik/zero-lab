@@ -21,8 +21,10 @@
  * find details in the "Readme" file.
  */
 
-//! Writes the gRPC code of `hsm-proxy.proto` into the directory given as the one argument.
-//! The server and a client without transport are generated; the client serves the tests.
+//! Writes the gRPC code of `hsm-proxy.proto`: the messages and the server into the first
+//! directory given, the messages and a client without transport into the second. The sidecar
+//! compiles only the first; the client serves the tests, so no client is in a production
+//! build (servers.md rule 17).
 //! The google protos it imports are compiled to resolve the file, but not written: no
 //! message of the HSM proxy uses their types, only its HTTP annotations.
 
@@ -30,8 +32,9 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let Some(out) = std::env::args_os().nth(1).map(PathBuf::from) else {
-        eprintln!("usage: ti-hsm-proxy-codegen <output directory>");
+    let mut args = std::env::args_os().skip(1).map(PathBuf::from);
+    let (Some(server), Some(client), None) = (args.next(), args.next(), args.next()) else {
+        eprintln!("usage: ti-hsm-proxy-codegen <server directory> <client directory>");
         return ExitCode::FAILURE;
     };
     let proto = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../proto");
@@ -47,18 +50,18 @@ fn main() -> ExitCode {
     };
     fds.file
         .retain(|f| f.package() == "gematik.zetaguard.hsmproxy.v1");
-    let generated = tonic_prost_build::configure()
-        .build_server(true)
-        .build_client(true)
-        .build_transport(false)
-        .emit_rerun_if_changed(false)
-        .out_dir(&out)
-        .compile_fds(fds);
-    match generated {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("{e}");
-            ExitCode::FAILURE
+    for (out, server_side) in [(server, true), (client, false)] {
+        let generated = tonic_prost_build::configure()
+            .build_server(server_side)
+            .build_client(!server_side)
+            .build_transport(false)
+            .emit_rerun_if_changed(false)
+            .out_dir(&out)
+            .compile_fds(fds.clone());
+        if let Err(e) = generated {
+            eprintln!("{}: {e}", out.display());
+            return ExitCode::FAILURE;
         }
     }
+    ExitCode::SUCCESS
 }

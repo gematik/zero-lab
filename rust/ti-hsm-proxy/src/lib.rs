@@ -52,9 +52,10 @@ mod pkcs11;
 mod pool;
 mod service;
 
+#[cfg(feature = "conformance")]
+pub use pkcs11::KeyFacts;
 pub use pkcs11::{
-    Curve, Error, Iv, KeyEncryptionKey, KeyFacts, MessageDigest, Module, Sealed, SignInput,
-    SigningKey, Token,
+    Curve, Error, Iv, KeyEncryptionKey, MessageDigest, Module, Sealed, SignInput, SigningKey, Token,
 };
 pub use pool::Pool;
 pub use service::{

@@ -21,13 +21,14 @@
  * find details in the "Readme" file.
  */
 
-//! The SoftHSM2 spike of TASK-389: the sidecar's PKCS#11 path driven through a software
-//! token, and what the token did, as assertions. `docs/spike-softhsm2.md` reads them out.
+//! The conformance suite of the PKCS#11 adapter (TASK-389): what the sidecar needs of a token,
+//! and what the token did, as assertions. `docs/softhsm2.md` reads them out for SoftHSM2.
 //!
-//! Gated: `TI_HSM_PKCS11_MODULE_PATH` names the module (SoftHSM2's `libsofthsm2.so`), and
-//! `SOFTHSM2_CONF` a configuration whose token directory may be written. `just hsm-spike`
-//! sets both, with a fresh token directory, and runs the suite. The token is provisioned
-//! by the suite with TEST-ONLY PINs; no key leaves it.
+//! Gated: `TI_HSM_PKCS11_MODULE_PATH` names the module, and for SoftHSM2 `SOFTHSM2_CONF` a
+//! configuration whose token directory may be written. `just hsm-proxy-softhsm2` sets both,
+//! with a fresh token directory, and runs the suite; it needs the `conformance` feature for
+//! the probes that ask the token to do what it must refuse. The token is provisioned by the
+//! suite with TEST-ONLY PINs; no key leaves it.
 
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
@@ -43,7 +44,7 @@ use ti_hsm_proxy::{
     Curve, Error, Iv, KeyFacts, MessageDigest, Module, SignInput, SigningKey, Token,
 };
 
-const TOKEN: &str = "ti-hsm-spike";
+const TOKEN: &str = "ti-hsm-proxy-token";
 
 fn user_pin() -> AuthPin {
     AuthPin::from("user-pin-TEST-ONLY")
@@ -54,7 +55,9 @@ fn module() -> &'static Module {
     MODULE.get_or_init(|| {
         let path = std::env::var_os("TI_HSM_PKCS11_MODULE_PATH")
             .map(PathBuf::from)
-            .expect("TI_HSM_PKCS11_MODULE_PATH: the PKCS#11 module to drive (just hsm-spike)");
+            .expect(
+                "TI_HSM_PKCS11_MODULE_PATH: the PKCS#11 module to drive (just hsm-proxy-softhsm2)",
+            );
         let module = Module::load(&path).expect("the module loads");
         module
             .provision(TOKEN, &AuthPin::from("so-pin-TEST-ONLY"), &user_pin())
@@ -94,7 +97,7 @@ fn verifies(token: &Token, key: &SigningKey, digest: &[u8], signature: &[u8]) ->
             let sig = ecdsa::Signature::<bp256::BrainpoolP256r1>::from_slice(signature).unwrap();
             key.verify_prehash(digest, &sig).is_ok()
         }
-        _ => unreachable!("a curve the spike does not make"),
+        _ => unreachable!("a curve the suite does not make"),
     }
 }
 
@@ -110,7 +113,7 @@ fn digest(algorithm: MessageDigest, message: &[u8]) -> Vec<u8> {
 /// key generation, ECDSA over a digest and over a message with SHA-256, SHA-384 and SHA-512,
 /// and AES-GCM.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_7_the_token_lists_the_mechanisms_the_interface_needs() {
     let token = token();
     for mechanism in [
@@ -131,7 +134,7 @@ fn task_389_7_the_token_lists_the_mechanisms_the_interface_needs() {
 /// been so from the start; it signs and does nothing else, and the token refuses another
 /// use with CKR_KEY_FUNCTION_NOT_PERMITTED.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_4_a_signing_key_stays_on_the_token_and_only_signs() {
     let token = token();
     for curve in [Curve::P256, Curve::P384] {
@@ -167,7 +170,7 @@ fn task_389_4_a_signing_key_stays_on_the_token_and_only_signs() {
 /// decrypts and does nothing else. Its value is not given out, and signing with it is
 /// refused with CKR_KEY_FUNCTION_NOT_PERMITTED.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_4_a_key_encryption_key_stays_on_the_token_and_only_encrypts_and_decrypts() {
     let token = token();
     let key = token.key_encryption_key("only-encrypts").unwrap();
@@ -202,7 +205,7 @@ fn task_389_4_a_key_encryption_key_stays_on_the_token_and_only_encrypts_and_decr
 /// curve's length and verifies with another implementation. A digest of another length
 /// than the curve's is refused before the token sees it.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_5_a_signature_over_a_digest_verifies_with_another_implementation() {
     let token = token();
     for (curve, algorithm) in [
@@ -231,7 +234,7 @@ fn task_389_5_a_signature_over_a_digest_verifies_with_another_implementation() {
 /// signed (CKM_ECDSA_SHA*), on either curve; the signature verifies over the digest an
 /// independent implementation computes.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_5_a_signature_over_a_message_verifies_with_another_implementation() {
     let token = token();
     let message = b"a JWT's signing input";
@@ -264,7 +267,7 @@ fn task_389_5_a_signature_over_a_message_verifies_with_another_implementation() 
 /// curve this token makes keys on and signs with; the signature verifies with another
 /// implementation.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_5_brainpool_p256r1_is_a_curve_this_token_signs_on() {
     let token = token();
     let key = token
@@ -286,7 +289,7 @@ fn task_389_5_brainpool_p256r1_is_a_curve_this_token_signs_on() {
 /// an empty plaintext; the tag is 16 bytes and the IV 12. Another associated data, a
 /// changed tag or a changed ciphertext is refused with CKR_ENCRYPTED_DATA_INVALID.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_5_aes_gcm_authenticates_the_associated_data() {
     let token = token();
     let key = token.key_encryption_key("gcm").unwrap();
@@ -326,7 +329,7 @@ fn task_389_5_aes_gcm_authenticates_the_associated_data() {
 /// all-zero buffer it encrypts under it and leaves it as it was, and the adapter refuses the
 /// result rather than hand out a ciphertext under a fixed IV.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_5_softhsm2_makes_no_gcm_iv_and_the_adapter_says_so() {
     let token = token();
     let key = token.key_encryption_key("iv").unwrap();
@@ -352,7 +355,7 @@ fn task_389_5_softhsm2_makes_no_gcm_iv_and_the_adapter_says_so() {
 /// same key; the same label on another curve is refused, not a second key. A label outside
 /// its grammar is refused before the token sees it.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_3_a_key_asked_for_is_made_once_and_found_again() {
     let token = token();
     let made = token.signing_key("made-once", Curve::P256).unwrap();
@@ -388,7 +391,7 @@ fn task_389_3_a_key_asked_for_is_made_once_and_found_again() {
 /// TASK-389 #7: SoftHSM2 returns CKA_EC_POINT DER-wrapped in an OCTET STRING, as PKCS#11
 /// specifies; the adapter gives out the uncompressed SEC1 point either way.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_7_the_public_point_is_der_wrapped_and_unwrapped_for_the_caller() {
     let token = token();
     for curve in [Curve::P256, Curve::P384] {
@@ -405,7 +408,7 @@ fn task_389_7_the_public_point_is_der_wrapped_and_unwrapped_for_the_caller() {
 /// TASK-389: an error names the operation, the key and the PKCS#11 return code, and holds
 /// no data.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_an_error_names_the_operation_the_key_and_the_return_code() {
     let token = token();
     let key = token.key_encryption_key("named-in-errors").unwrap();
@@ -431,7 +434,7 @@ fn task_389_an_error_names_the_operation_the_key_and_the_return_code() {
 /// token object has one handle in all sessions of the application; callers on several
 /// threads share the pool's sessions, and each signature verifies.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_a_pool_lends_its_sessions_to_callers_on_several_threads() {
     let pool = module()
         .pool(TOKEN, &user_pin(), NonZeroUsize::new(3).unwrap())
@@ -461,7 +464,7 @@ fn task_389_a_pool_lends_its_sessions_to_callers_on_several_threads() {
 /// TASK-389: a caller that finds no free session within its wait is refused with Busy,
 /// rather than queued without bound; the session given back serves the next caller.
 #[test]
-#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn task_389_a_caller_waits_for_a_session_only_as_long_as_it_says() {
     let pool = module()
         .pool(TOKEN, &user_pin(), NonZeroUsize::new(1).unwrap())

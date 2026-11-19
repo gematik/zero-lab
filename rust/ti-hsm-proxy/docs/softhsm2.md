@@ -1,8 +1,9 @@
-# Spike: the PKCS#11 path through SoftHSM2
+# SoftHSM2 as the sidecar's token
 
-TASK-389, step 1, 2026-11-19. The sidecar's way to a key is PKCS#11 alone; this spike drives it
-through SoftHSM2 and records what the token did. Every statement below is an assertion of
-[`tests/spike_softhsm2.rs`](../tests/spike_softhsm2.rs), run with `just hsm-spike`.
+What SoftHSM2, the token of the simulator mode, does on the sidecar's PKCS#11 path, and how the
+sidecar measured on it (TASK-389, 2026-11-19). Every statement of the first sections is an
+assertion of [`tests/token_softhsm2.rs`](../tests/token_softhsm2.rs), run with
+`just hsm-proxy-softhsm2`; the same suite can be pointed at another module.
 
 ## Setup
 
@@ -53,8 +54,8 @@ through SoftHSM2 and records what the token did. Every statement below is an ass
 
 ## Throughput
 
-[`benches/softhsm2.rs`](../benches/softhsm2.rs), run with `just hsm-bench`, 2026-11-19, on an
-Apple M3 Pro (12 CPUs), SoftHSM2 2.7.0, 2 s per row. One caller per session unless stated.
+Measured 2026-11-19 with a benchmark of the session pool that is not kept (`benches/softhsm2.rs`
+at commit `2ef3a115`), on an Apple M3 Pro (12 CPUs), SoftHSM2 2.7.0, 2 s per row. One caller per session unless stated.
 The JSON-RPC rows send JSON-RPC 2.0 over a Unix socket. Every call goes over one connection,
 with as many calls in flight as there are sessions. The server hands each call to a worker per
 session and answers in the order the calls finish. Client and server share the machine's
@@ -101,13 +102,14 @@ the required transport costs. The question to gematik is in zeta-backlog TASK-18
 
 ### Software bill of materials
 
-Two throwaway crates were resolved against this workspace's lock file: `ti-hsm` with JSON-RPC
-(`serde`, `serde_json`, `base64ct`), and `ti-hsm` with a gRPC server on a Unix socket (`tonic`
-0.14 with `server`, `router` and `codegen`, `tonic-prost`, `prost`, `tonic-health`, `tokio`,
-`tokio-stream`, build dependency `tonic-prost-build`). Neither has TLS: mTLS (A_28830) would
-add rustls and its crypto provider to both. The SBOMs are CycloneDX 1.6 for
-`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`. They were made from
-`cargo metadata`, not checked against the CycloneDX schema, and not committed.
+Two throwaway crates were resolved against this workspace's lock file: the PKCS#11 adapter
+(then the crate `ti-hsm`) with JSON-RPC (`serde`, `serde_json`, `base64ct`), and the adapter
+with a gRPC server on a Unix socket (`tonic` 0.14 with `server`, `router` and `codegen`,
+`tonic-prost`, `prost`, `tonic-health`, `tokio`, `tokio-stream`, build dependency
+`tonic-prost-build`). Neither has TLS: mTLS (A_28830) would add rustls and its crypto provider
+to both. The SBOMs are CycloneDX 1.6 for `x86_64-unknown-linux-gnu` and
+`aarch64-unknown-linux-gnu`. They were made from `cargo metadata`, not checked against the
+CycloneDX schema, and not committed.
 
 | | JSON-RPC | gRPC |
 |---|---|---|
@@ -118,7 +120,7 @@ add rustls and its crypto provider to both. The SBOMs are CycloneDX 1.6 for
 | Tool | none | `protoc`, or generated code committed |
 | Licences | MIT, Apache-2.0, ISC, Unlicense, Unicode-3.0, all compatible with EUPL-1.2 | the same, and BSD-3-Clause, Zlib |
 
-- **Both have these 13 crates at run time:** `ti-hsm`, `cryptoki`, `cryptoki-sys`,
+- **Both have these 13 crates at run time:** the adapter, `cryptoki`, `cryptoki-sys`,
   `libloading`, `secrecy`, `thiserror`, `zeroize`, `bitflags`, `cfg-if`, `itoa`, `log`,
   `memchr` and `serde_core`.
 - **JSON-RPC adds four:** `serde`, `serde_json`, `zmij` and `base64ct`.
@@ -169,9 +171,8 @@ harness of TASK-389, which is not committed, because it would bring tonic into t
 - **Not measured:** Linux, mTLS, tuning of tonic and h2, and the clients there are (Go's
   gRPC in zeta-pdp-go, ngx_pep).
 
-## Not covered by the spike
+## Not covered
 
-- The gRPC interface and the sidecar (decided after this spike, maintainer 2026-11-19).
 - Multi-part signing and encryption (`C_SignUpdate`): single-part only, which every operation
   of the interface needs; some HSMs do raw `CKM_ECDSA` single-part only.
 - Linux and x86_64: run only on macOS arm64 so far.
@@ -180,3 +181,5 @@ harness of TASK-389, which is not committed, because it would bring tonic into t
 - Kryoptic, NSS softokn and every vendor's module.
 - A broken session, or a token that logs the application out: the pool does not reopen
   sessions or log in again. A session is lost if an operation panics.
+- `CKA_VALUE`, the misuse refusals and `Iv::Given` are asked through probes of the
+  `conformance` feature, which no production build has (servers.md rule 17).

@@ -64,7 +64,8 @@ pub struct Config {
     /// mode, whose default is `random`, which SoftHSM2 needs.
     pub iv: Iv,
     /// The simulator mode (`HSM_PROXY_SIMULATOR=true`): the token is provisioned if it is
-    /// not, with TEST-ONLY PINs, and missing keys are made.
+    /// not, with TEST-ONLY PINs, and missing keys are made. Only a build with the feature
+    /// `simulator` has it.
     pub simulator: bool,
 }
 
@@ -156,7 +157,12 @@ impl Config {
         let required = |name: &str| var(name).ok_or_else(|| error(format!("{name} is not set")));
         let simulator = match var("HSM_PROXY_SIMULATOR").as_deref() {
             None | Some("false") => false,
-            Some("true") => true,
+            Some("true") if cfg!(feature = "simulator") => true,
+            Some("true") => {
+                return Err(error(
+                    "HSM_PROXY_SIMULATOR: this build has no simulator mode (feature simulator)",
+                ));
+            }
             Some(_) => return Err(error("HSM_PROXY_SIMULATOR: true or false")),
         };
         let socket = socket(&var)?;
@@ -279,6 +285,7 @@ mod tests {
     }
 
     /// TASK-389 #3: the simulator mode starts with no PIN file, no hash and no IV source.
+    #[cfg(feature = "simulator")]
     #[test]
     fn task_389_3_the_simulator_mode_needs_no_pin_hash_or_iv() {
         let config = config(&[
@@ -295,6 +302,17 @@ mod tests {
         assert!(config.simulator);
         assert_eq!(config.iv, Iv::Random);
         assert_eq!(config.user_pin, None);
+    }
+
+    /// servers.md rule 17: a build without the feature `simulator` refuses the simulator
+    /// mode, so a production image cannot be started as one.
+    #[cfg(not(feature = "simulator"))]
+    #[test]
+    fn servers_rule_17_a_production_build_has_no_simulator_mode() {
+        let mut vars = VENDOR.to_vec();
+        vars.push(("HSM_PROXY_SIMULATOR", "true"));
+        let refused = config(&vars).unwrap_err();
+        assert!(refused.0.contains("feature simulator"), "{refused}");
     }
 
     /// servers.md rule 29: the listener is a URL whose scheme is the mode; only a Unix
