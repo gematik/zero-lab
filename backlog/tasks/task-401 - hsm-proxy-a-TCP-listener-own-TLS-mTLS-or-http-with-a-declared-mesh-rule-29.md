@@ -3,9 +3,10 @@ id: TASK-401
 title: >-
   hsm-proxy: a TCP listener, own TLS/mTLS or http:// with a declared mesh (rule
   29)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-19 15:20'
+updated_date: '2026-11-19 15:42'
 labels:
   - rust
   - hsm
@@ -28,7 +29,13 @@ The sidecar listens on a Unix socket only (HSM_PROXY_LISTEN_URL unix://). Inside
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 HSM_PROXY_LISTEN_URL takes https:// with own TLS or mTLS, and http:// only with HSM_PROXY_LISTEN_MESH; each mode is logged and reported at start
-- [ ] #2 Tests over TCP: a client without a certificate, with one outside the allowlist, and with an expired one is refused under mTLS; plaintext without a declared mesh does not start
-- [ ] #3 It is recorded whether A_28830 is met per mode, or the gap is a task of its own
+- [x] #1 HSM_PROXY_LISTEN_URL takes https:// with own TLS or mTLS, and http:// only with HSM_PROXY_LISTEN_MESH; each mode is logged and reported at start
+- [x] #2 Tests over TCP: a client without a certificate, with one outside the allowlist, and with an expired one is refused under mTLS; plaintext without a declared mesh does not start
+- [x] #3 It is recorded whether A_28830 is met per mode, or the gap is a task of its own
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-19, built on feat/hsm-proxy-tcp, not committed (the maintainer wants to see its size first). Structure at the maintainer's question: src/transport/mod.rs (Listener: Unix, Tls, Mesh; binding, the Unix socket helpers, the health socket), src/transport/tls.rs (profile = ti-tls's TLSV-010 to 012, checks at start per rule 17, acceptor on tokio-rustls with a handshake timeout, client identity from the certificate's SAN DNS names and URIs), src/transport/grpc.rs (tonic, an interceptor holding every interface call to the allowlist over mTLS, grpc.health.v1 without a client certificate, tonic's Connected for the TLS connection). Features: transport (tokio, rustls, tokio-rustls), grpc = transport + tonic; a later jsonrpc takes transport alone. Config: HSM_PROXY_LISTEN_URL unix:// | https:// | http://, HSM_PROXY_LISTEN_TLS_CERT_PATH, _KEY_PATH, _CA_PATH, _PEER_NAME, HSM_PROXY_LISTEN_MESH; inconsistent combinations refused. On TCP the sidecar serves grpc.health.v1 alone on $TMPDIR/hsm-proxy-health.sock for hsm-proxy health. Tests: tests/tls_listener.rs (rule 17 refusals, the profile equal to ti-tls's), tests/tcp_softhsm2.rs (mTLS admits the allowlist, refuses another identity, no certificate and an expired one, health without a certificate; mesh plaintext; the health socket), config tests; certificates and keys made in the test (tests/support/pki.rs, x509-cert's builder; no new crate). 25 tests against SoftHSM2 pass; just check-changed green; tokio-rustls exempted in vet with a note. A_28830: Unix socket, no caller check, the configured keys; mTLS, the listener's allowlist for every key; mesh, the mesh's policy. Per key_id is TASK-402.
+<!-- SECTION:NOTES:END -->

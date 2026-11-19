@@ -838,7 +838,7 @@ konnektor-e2e:
 # SoftHSM2 token in a temporary directory (TASK-389).
 # TI_HSM_PKCS11_MODULE_PATH names the module; without it, SoftHSM2's beside softhsm2-util.
 hsm-proxy-softhsm2:
-    @just _softhsm2 cargo test -p ti-hsm-proxy --features conformance --test token_softhsm2 --test grpc_softhsm2 --test recovery_softhsm2 -- --ignored
+    @just _softhsm2 cargo test -p ti-hsm-proxy --features conformance --test token_softhsm2 --test grpc_softhsm2 --test recovery_softhsm2 --test tcp_softhsm2 -- --ignored
 
 # ti-hsm-proxy's gRPC code from its proto/ (tonic-prost-build on protox, no protoc); the
 # generated file is committed, so building the sidecar needs neither (TASK-389)

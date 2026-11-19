@@ -26,6 +26,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   module loads only with its SHA-256 (servers.md rule 7). `hsm-proxy health ready` and
   `hsm-proxy health live` are its exec probes (rule 31); the socket is for owner and group
   (rules 27, 29). Tested against SoftHSM2 2.7 (`just hsm-proxy-softhsm2`).
+- ti-hsm-proxy listens inside the cluster too (servers.md rule 29, TASK-401): `https://` with
+  its own TLS on the profile of spec/pki-validation, mTLS admitting the identities of
+  `HSM_PROXY_LISTEN_TLS_PEER_NAME`, or `http://` for the mesh named in `HSM_PROXY_LISTEN_MESH`.
+  Certificate and key are read at start and refused if they do not match or are not valid; on
+  TCP a Unix health socket serves `hsm-proxy health`.
 
 ### jwz
 

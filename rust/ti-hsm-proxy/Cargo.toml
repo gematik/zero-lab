@@ -17,25 +17,32 @@ path = "src/main.rs"
 
 [features]
 default = ["grpc"]
+# What every transport shares: the listener (Unix socket, TLS, mesh) and the sidecar's own TLS.
+transport = [
+    "dep:tokio",
+    "dep:tokio-stream",
+    "dep:tokio-rustls",
+    "dep:rustls",
+    "dep:rustls-pki-types",
+]
 # The gRPC transport of gematik.zetaguard.hsmproxy.v1.HsmProxyService and grpc.health.v1
-# (gemSpec_ZETA A_28829). Without it the crate is the PKCS#11 adapter and the operations,
-# and the binary serves nothing.
+# (gemSpec_ZETA A_28829). Without a transport the crate is the PKCS#11 adapter and the
+# operations, and the binary serves nothing.
+grpc = [
+    "transport",
+    "dep:tonic",
+    "dep:tonic-prost",
+    "dep:prost",
+    "dep:tonic-health",
+    "dep:hyper-util",
+    "dep:tower",
+]
 # The simulator mode (HSM_PROXY_SIMULATOR): provisions a software token with TEST-ONLY PINs and
 # makes missing keys. For the development image only, never in a production build (rule 17).
 simulator = []
 # Probes that ask a token to do what it must refuse, for the conformance suite against a token
 # (tests/token_softhsm2.rs); never in a production build (servers.md rule 17).
 conformance = []
-grpc = [
-    "dep:tonic",
-    "dep:tonic-prost",
-    "dep:prost",
-    "dep:tonic-health",
-    "dep:tokio",
-    "dep:tokio-stream",
-    "dep:hyper-util",
-    "dep:tower",
-]
 
 [dependencies]
 cryptoki.workspace = true
@@ -58,11 +65,21 @@ tokio = { workspace = true, optional = true }
 tokio-stream = { workspace = true, optional = true }
 hyper-util = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+rustls-pki-types = { workspace = true, optional = true, features = ["alloc"] }
 
 # Signatures are checked by the verifiers ti-pki uses, not by the token itself.
 [dev-dependencies]
-ecdsa.workspace = true
-p256.workspace = true
+# The TLS profile is ti-tls's (TLSV-010 to 012); a test holds the sidecar's to it.
+ti-tls.workspace = true
+# The TLS suite makes its CA and certificates in the test, keys included (no key in a fixture).
+x509-cert = { workspace = true, features = ["builder"] }
+getrandom = { workspace = true, features = ["std"] }
+# A TLS client for the TCP listener's tests.
+tonic = { workspace = true, features = ["channel", "tls-ring"] }
+ecdsa = { workspace = true, features = ["pkcs8", "alloc"] }
+p256 = { workspace = true, features = ["pkcs8", "alloc"] }
 p384.workspace = true
 bp256.workspace = true
 sha2.workspace = true

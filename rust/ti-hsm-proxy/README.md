@@ -13,7 +13,7 @@ Three layers in one crate, each usable without the next:
 |---|---|---|
 | PKCS#11 adapter | `Module`, `Token`, `Pool`: load a module, log in, find or make keys by label, sign, encrypt, decrypt, a fixed pool of sessions | `cryptoki` |
 | Operations | `HsmProxy`: the six operations of the interface without a transport, the keys it was told to serve, refusals as `Failure` | the adapter, the PEM/DER/JWK encoders |
-| gRPC transport | `grpc`, behind the `grpc` feature (on by default): `HsmProxyService` and `grpc.health.v1` on a Unix socket, the probe of `hsm-proxy health` | tonic, prost, tokio |
+| Transports | `transport`: the listener (Unix socket, TCP with own TLS or mTLS, TCP for a mesh) and its TLS; `transport::grpc`, behind the `grpc` feature (on by default): `HsmProxyService` and `grpc.health.v1`, the probe of `hsm-proxy health` | tokio, rustls; tonic, prost |
 
 The gRPC code is generated from `proto/` by `just hsm-proxy-codegen` and committed, so a
 build needs neither protoc nor prost-build; `just check` fails if it is stale. The sidecar
@@ -31,6 +31,7 @@ Features:
 
 | Feature | Default | What it adds | Where |
 |---|---|---|---|
+| `transport` | with `grpc` | what every transport shares: the listener (Unix, TLS, mesh) and the TLS on rustls | every build that serves |
 | `grpc` | on | the gRPC transport and `hsm-proxy health` | every build that serves |
 | `simulator` | off | `HSM_PROXY_SIMULATOR`: a software token provisioned with TEST-ONLY PINs, missing keys made | the development image only |
 | `conformance` | off | the probes the token suite asks a token with: a misuse it must refuse, a secret value it must not give out, a given GCM IV | the test suite only |
@@ -42,7 +43,10 @@ The binary `hsm-proxy` is configured by its environment:
 
 | Variable | Meaning |
 |---|---|
-| `HSM_PROXY_LISTEN_URL` | `unix:///absolute/path` of the socket |
+| `HSM_PROXY_LISTEN_URL` | where it listens, the scheme is the mode (servers.md rule 29): `unix:///absolute/path` inside the pod; `https://host:port` with its own TLS; `http://host:port` in plaintext for a declared mesh |
+| `HSM_PROXY_LISTEN_TLS_CERT_PATH`, `_KEY_PATH` | for `https://`: the certificate chain and key, PEM, read at start; a key that does not match, or a certificate not valid now, stops the start |
+| `HSM_PROXY_LISTEN_TLS_CA_PATH`, `_PEER_NAME` | for mTLS: the client CA bundle, and the identities admitted, DNS names or URIs (SPIFFE IDs), comma-separated; one without the other stops the start |
+| `HSM_PROXY_LISTEN_MESH` | for `http://`: the mesh that protects it; plaintext without it stops the start |
 | `HSM_PROXY_PKCS11_MODULE_PATH` | the PKCS#11 module |
 | `HSM_PROXY_PKCS11_MODULE_SHA256` | its SHA-256 in hex, checked before it is loaded (rule 7); required outside the simulator mode |
 | `HSM_PROXY_TOKEN_LABEL` | the token |
@@ -78,8 +82,12 @@ the module.
 
 ## Health in a pod
 
-A kubelet's gRPC and HTTP probes reach a port, not a Unix socket, so the probes are `exec`
-probes of the binary itself, which needs no shell:
+A kubelet's gRPC and HTTP probes reach a port, not a Unix socket, and its gRPC probe speaks
+no TLS, so the probes are `exec` probes of the binary itself, which needs no shell. On a TCP
+listener the sidecar serves `grpc.health.v1` alone on a Unix socket in the temporary
+directory (`$TMPDIR/hsm-proxy-health.sock`) for them; over mTLS, `grpc.health.v1` on the
+listener answers without a client certificate, and every call of the interface needs one
+of the allowlist:
 
 - `hsm-proxy health ready` exits 0 if `grpc.health.v1` reports SERVING. The sidecar asks
   the token every `HSM_PROXY_HEALTH_INTERVAL_MS` and reports SERVING or NOT_SERVING; every
@@ -101,8 +109,8 @@ label; the call that met the loss is tried once more. A key found on the token i
 only if it is of the kind listed and sensitive and not extractable; a certificate only if
 it certifies the key that signs.
 
-Not here yet: mTLS and access by component (A_28830), a TCP listener, a peer check on the
-socket (rule 8), metrics and a log line on a change of health (rule 31), certificate chains
+Not here yet: access by component and `key_id` (A_28830) beyond the listener's allowlist,
+a peer check on the socket (rule 8), metrics and a log line on a change of health (rule 31), certificate chains
 beyond the end entity, P-521 and the brainpool curves in the interface, fuzz targets for
 the keys file and the public point (TASK-397).
 

@@ -24,6 +24,7 @@
 //! The sidecar's configuration, from its environment and the files it names: read here,
 //! at the edge, and handed to the library typed.
 
+use std::net::{SocketAddr, ToSocketAddrs as _};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -38,8 +39,8 @@ const DEFAULT_HEALTH_INTERVAL: Duration = Duration::from_secs(5);
 /// What the sidecar runs with.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Config {
-    /// The Unix socket it listens on (`HSM_PROXY_LISTEN_URL`, `unix:///path`).
-    pub socket: PathBuf,
+    /// Where it listens (`HSM_PROXY_LISTEN_URL`, [`Listen`]).
+    pub listen: Listen,
     /// The PKCS#11 module (`HSM_PROXY_PKCS11_MODULE_PATH`).
     pub module: PathBuf,
     /// The module's SHA-256 (`HSM_PROXY_PKCS11_MODULE_SHA256`, hex), checked before it is
@@ -138,14 +139,144 @@ fn parse_sha256(hex: &str) -> Result<[u8; 32], ConfigError> {
     Ok(out)
 }
 
-/// The socket of `HSM_PROXY_LISTEN_URL`, all that `hsm-proxy health` reads.
-pub fn socket(var: impl Fn(&str) -> Option<String>) -> Result<PathBuf, ConfigError> {
-    var("HSM_PROXY_LISTEN_URL")
-        .ok_or_else(|| error("HSM_PROXY_LISTEN_URL is not set"))?
-        .strip_prefix("unix://")
-        .filter(|path| path.starts_with('/'))
-        .map(PathBuf::from)
-        .ok_or_else(|| error("HSM_PROXY_LISTEN_URL: unix:///absolute/path"))
+/// Where the sidecar listens (`HSM_PROXY_LISTEN_URL`, servers.md rule 29): the URL's scheme
+/// is the mode.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Listen {
+    /// `unix:///path`: inside the pod.
+    Unix(PathBuf),
+    /// `https://host:port`: inside the cluster, the sidecar's own TLS from
+    /// `HSM_PROXY_LISTEN_TLS_CERT_PATH` and `_KEY_PATH`; with `_CA_PATH` mTLS, admitting the
+    /// identities of `_PEER_NAME`, a comma-separated list of DNS names or URIs.
+    Tls {
+        /// The address.
+        address: SocketAddr,
+        /// The certificate chain, PEM.
+        cert: PathBuf,
+        /// The private key, PEM.
+        key: PathBuf,
+        /// For mTLS: the client CA bundle and the identities admitted.
+        clients: Option<(PathBuf, Vec<String>)>,
+    },
+    /// `http://host:port`: inside the cluster in plaintext, which only a mesh declared in
+    /// `HSM_PROXY_LISTEN_MESH` may carry.
+    Mesh {
+        /// The address.
+        address: SocketAddr,
+        /// The mesh's name.
+        mesh: String,
+    },
+}
+
+/// The name of the Unix socket in the temporary directory that serves `grpc.health.v1` for
+/// `hsm-proxy health` when the sidecar listens on TCP.
+#[cfg_attr(
+    not(feature = "grpc"),
+    allow(dead_code, reason = "a transport's probe asks it; the tests do too")
+)]
+const PROBE_SOCKET: &str = "hsm-proxy-health.sock";
+
+impl Listen {
+    /// The Unix socket `hsm-proxy health` asks: the listener itself, or beside a TCP
+    /// listener the health socket in the temporary directory (`TMPDIR`, rule 27).
+    #[cfg_attr(
+        not(feature = "grpc"),
+        allow(dead_code, reason = "a transport's probe asks it; the tests do too")
+    )]
+    pub fn probe_socket(&self) -> PathBuf {
+        match self {
+            Listen::Unix(socket) => socket.clone(),
+            Listen::Tls { .. } | Listen::Mesh { .. } => std::env::temp_dir().join(PROBE_SOCKET),
+        }
+    }
+}
+
+fn address(authority: &str) -> Result<SocketAddr, ConfigError> {
+    let invalid = || error("HSM_PROXY_LISTEN_URL: a scheme, host and port, and no path");
+    if authority.is_empty() || authority.contains('/') {
+        return Err(invalid());
+    }
+    authority
+        .to_socket_addrs()
+        .map_err(|_| invalid())?
+        .next()
+        .ok_or_else(invalid)
+}
+
+/// Reads `HSM_PROXY_LISTEN_URL` and what its mode needs, and refuses what rule 17 refuses:
+/// TLS settings beside plaintext, plaintext without a declared mesh, a mesh beside TLS, a
+/// client CA without identities, identities without a client CA.
+pub fn listen(var: impl Fn(&str) -> Option<String>) -> Result<Listen, ConfigError> {
+    let url =
+        var("HSM_PROXY_LISTEN_URL").ok_or_else(|| error("HSM_PROXY_LISTEN_URL is not set"))?;
+    let tls_set = ["CERT_PATH", "KEY_PATH", "CA_PATH", "PEER_NAME"]
+        .iter()
+        .any(|suffix| var(&format!("HSM_PROXY_LISTEN_TLS_{suffix}")).is_some());
+    let mesh = var("HSM_PROXY_LISTEN_MESH").filter(|mesh| !mesh.trim().is_empty());
+    if let Some(path) = url.strip_prefix("unix://") {
+        if !path.starts_with('/') {
+            return Err(error("HSM_PROXY_LISTEN_URL: unix:///absolute/path"));
+        }
+        if tls_set || mesh.is_some() {
+            return Err(error(
+                "HSM_PROXY_LISTEN_TLS_* and HSM_PROXY_LISTEN_MESH are for a TCP listener, not a Unix socket",
+            ));
+        }
+        return Ok(Listen::Unix(PathBuf::from(path)));
+    }
+    if let Some(authority) = url.strip_prefix("https://") {
+        if mesh.is_some() {
+            return Err(error(
+                "HSM_PROXY_LISTEN_MESH is for http://; https:// is the sidecar's own TLS",
+            ));
+        }
+        let path = |suffix: &str| {
+            let name = format!("HSM_PROXY_LISTEN_TLS_{suffix}");
+            var(&name)
+                .map(PathBuf::from)
+                .ok_or_else(|| error(format!("{name} is not set")))
+        };
+        let peers: Vec<String> = var("HSM_PROXY_LISTEN_TLS_PEER_NAME")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let clients = match (var("HSM_PROXY_LISTEN_TLS_CA_PATH"), peers.is_empty()) {
+            (Some(ca), false) => Some((PathBuf::from(ca), peers)),
+            (None, true) => None,
+            (Some(_), true) => {
+                return Err(error(
+                    "HSM_PROXY_LISTEN_TLS_CA_PATH without HSM_PROXY_LISTEN_TLS_PEER_NAME: mTLS admits named identities only",
+                ));
+            }
+            (None, false) => {
+                return Err(error(
+                    "HSM_PROXY_LISTEN_TLS_PEER_NAME without HSM_PROXY_LISTEN_TLS_CA_PATH",
+                ));
+            }
+        };
+        return Ok(Listen::Tls {
+            address: address(authority)?,
+            cert: path("CERT_PATH")?,
+            key: path("KEY_PATH")?,
+            clients,
+        });
+    }
+    if let Some(authority) = url.strip_prefix("http://") {
+        if tls_set {
+            return Err(error("HSM_PROXY_LISTEN_TLS_* is for https://"));
+        }
+        let mesh = mesh.ok_or_else(|| {
+            error("http:// inside the cluster needs the mesh that protects it in HSM_PROXY_LISTEN_MESH (servers.md rule 29)")
+        })?;
+        return Ok(Listen::Mesh {
+            address: address(authority)?,
+            mesh: mesh.trim().to_owned(),
+        });
+    }
+    Err(error("HSM_PROXY_LISTEN_URL: unix://, https:// or http://"))
 }
 
 impl Config {
@@ -166,7 +297,7 @@ impl Config {
             }
             Some(_) => return Err(error("HSM_PROXY_SIMULATOR: true or false")),
         };
-        let socket = socket(&var)?;
+        let listen = listen(&var)?;
         let module_sha256 = var("HSM_PROXY_PKCS11_MODULE_SHA256")
             .map(|hex| parse_sha256(&hex))
             .transpose()?;
@@ -217,7 +348,7 @@ impl Config {
             },
         };
         Ok(Config {
-            socket,
+            listen,
             health_interval,
             module: PathBuf::from(required("HSM_PROXY_PKCS11_MODULE_PATH")?),
             module_sha256,
@@ -264,7 +395,10 @@ mod tests {
     #[test]
     fn servers_rule_7_a_vendor_module_needs_its_hash_a_pin_file_and_an_iv_source() {
         let config = config(VENDOR).unwrap();
-        assert_eq!(config.socket, PathBuf::from("/run/hsm/proxy.sock"));
+        assert_eq!(
+            config.listen,
+            Listen::Unix(PathBuf::from("/run/hsm/proxy.sock"))
+        );
         assert_eq!(config.module_sha256.unwrap()[1], 0x11);
         assert_eq!(config.iv, Iv::FromToken);
         assert!(!config.simulator);
@@ -316,18 +450,109 @@ mod tests {
         assert!(refused.0.contains("feature simulator"), "{refused}");
     }
 
-    /// servers.md rule 29: the listener is a URL whose scheme is the mode; only a Unix
-    /// socket at an absolute path is served.
+    type Case<'a> = (&'a str, Vec<(&'a str, &'a str)>, &'a str);
+
+    fn listen_of(vars: &[(&str, &str)]) -> Result<Listen, ConfigError> {
+        let vars: HashMap<String, String> = vars
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+        listen(|name| vars.get(name).cloned())
+    }
+
+    /// servers.md rule 29: the listener is a URL whose scheme is the mode: a Unix socket at
+    /// an absolute path, https:// with the sidecar's own TLS, or http:// with a declared
+    /// mesh. Anything else is refused.
     #[test]
-    fn servers_rule_29_the_listener_is_a_unix_url() {
+    fn servers_rule_29_the_listener_is_a_url_whose_scheme_is_the_mode() {
         for url in [
             "tcp://0.0.0.0:50051",
             "unix://relative.sock",
             "/run/hsm.sock",
+            "https://0.0.0.0:50051/path",
+            "https://0.0.0.0",
         ] {
             let mut vars = VENDOR.to_vec();
             vars[0] = ("HSM_PROXY_LISTEN_URL", url);
             assert!(config(&vars).is_err(), "{url}");
+        }
+        let mtls = listen_of(&[
+            ("HSM_PROXY_LISTEN_URL", "https://127.0.0.1:50051"),
+            ("HSM_PROXY_LISTEN_TLS_CERT_PATH", "/tls/cert.pem"),
+            ("HSM_PROXY_LISTEN_TLS_KEY_PATH", "/tls/key.pem"),
+            ("HSM_PROXY_LISTEN_TLS_CA_PATH", "/tls/ca.pem"),
+            (
+                "HSM_PROXY_LISTEN_TLS_PEER_NAME",
+                "spiffe://zeta/pep, pdp.zeta.svc",
+            ),
+        ])
+        .unwrap();
+        let Listen::Tls {
+            clients: Some((_, allow)),
+            ..
+        } = &mtls
+        else {
+            panic!("{mtls:?}");
+        };
+        assert_eq!(allow, &["spiffe://zeta/pep", "pdp.zeta.svc"]);
+        let mesh = listen_of(&[
+            ("HSM_PROXY_LISTEN_URL", "http://127.0.0.1:50051"),
+            ("HSM_PROXY_LISTEN_MESH", "istio"),
+        ])
+        .unwrap();
+        assert!(
+            matches!(mesh, Listen::Mesh { ref mesh, .. } if mesh == "istio"),
+            "{mesh:?}"
+        );
+        assert_ne!(mesh.probe_socket(), PathBuf::from("/run/hsm/proxy.sock"));
+    }
+
+    /// servers.md rules 17 and 29: inconsistent combinations do not start: plaintext in the
+    /// cluster without a declared mesh, TLS settings beside plaintext or a Unix socket, a
+    /// mesh beside the sidecar's own TLS, a client CA without identities and identities
+    /// without a client CA.
+    #[test]
+    fn servers_rule_17_an_inconsistent_listener_does_not_start() {
+        let tls = [
+            ("HSM_PROXY_LISTEN_TLS_CERT_PATH", "/tls/cert.pem"),
+            ("HSM_PROXY_LISTEN_TLS_KEY_PATH", "/tls/key.pem"),
+        ];
+        let cases: [Case<'_>; 6] = [
+            ("http://127.0.0.1:1", vec![], "HSM_PROXY_LISTEN_MESH"),
+            (
+                "http://127.0.0.1:1",
+                vec![("HSM_PROXY_LISTEN_MESH", "istio"), tls[0]],
+                "for https",
+            ),
+            (
+                "unix:///run/hsm.sock",
+                vec![("HSM_PROXY_LISTEN_MESH", "istio")],
+                "not a Unix socket",
+            ),
+            (
+                "https://127.0.0.1:1",
+                vec![tls[0], tls[1], ("HSM_PROXY_LISTEN_MESH", "istio")],
+                "own TLS",
+            ),
+            (
+                "https://127.0.0.1:1",
+                vec![
+                    tls[0],
+                    tls[1],
+                    ("HSM_PROXY_LISTEN_TLS_CA_PATH", "/tls/ca.pem"),
+                ],
+                "named identities",
+            ),
+            (
+                "https://127.0.0.1:1",
+                vec![tls[0], tls[1], ("HSM_PROXY_LISTEN_TLS_PEER_NAME", "a")],
+                "without HSM_PROXY_LISTEN_TLS_CA_PATH",
+            ),
+        ];
+        for (url, mut vars, says) in cases {
+            vars.push(("HSM_PROXY_LISTEN_URL", url));
+            let refused = listen_of(&vars).unwrap_err();
+            assert!(refused.0.contains(says), "{url}: {refused}");
         }
     }
 
