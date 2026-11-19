@@ -103,7 +103,8 @@ fn rfc_7520_5_8_a128kw_a128gcm() {
     let all: serde_json::Map<String, Value> =
         serde_json::from_str(include_str!("data/rfc7520/jwe.json")).unwrap();
     let token = all["5.8 JWE Compact Serialization"].as_str().unwrap();
-    let key = SymmetricKey::from_jwk(&Jwk::parse(A128KW_KEY).unwrap(), &registry).unwrap();
+    let key =
+        SymmetricKey::from_jwk(&Jwk::parse(A128KW_KEY).unwrap(), Alg::A128KW, &registry).unwrap();
     let policy = Profile::rfc7518_interop(&registry).policy;
     let decrypted = Jwe::parse(token, &policy, &registry)
         .unwrap()
@@ -144,19 +145,22 @@ fn ecdh_es_and_key_wrap_round_trip() {
     let registry = Registry::standard();
     let backend = backend();
     let policy = Profile::rfc7518_interop(&registry).policy;
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
-    let public = recipient.public_jwk();
-    let shared = SymmetricKey::new((0..32).collect());
+    // Each key is made for the one algorithm it is used with.
+    let agreement =
+        |alg| SoftwareAgreementKey::generate(Curve::P256, alg, &registry, backend.clone()).unwrap();
+    let (direct, wrapping) = (agreement(Alg::ECDH_ES), agreement(Alg::ECDH_ES_A256KW));
+    let (direct_public, wrapping_public) = (direct.public_jwk(), wrapping.public_jwk());
+    let shared = SymmetricKey::new((0..32).collect(), Alg::A256KW);
     for (alg, encryption, decryption) in [
         (
             Alg::ECDH_ES,
-            EncryptionKey::Public(&public),
-            DecryptionKey::Agreement(&recipient),
+            EncryptionKey::Public(&direct_public),
+            DecryptionKey::Agreement(&direct),
         ),
         (
             Alg::ECDH_ES_A256KW,
-            EncryptionKey::Public(&public),
-            DecryptionKey::Agreement(&recipient),
+            EncryptionKey::Public(&wrapping_public),
+            DecryptionKey::Agreement(&wrapping),
         ),
         (
             Alg::A256KW,

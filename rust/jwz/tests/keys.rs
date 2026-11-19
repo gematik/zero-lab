@@ -292,8 +292,16 @@ fn generated_keys_round_trip_through_their_jwk() {
 
 #[test]
 fn ecdh_both_sides_agree() {
-    let alice = SoftwareAgreementKey::generate(jwz::jwa::Curve::P256, backend()).unwrap();
-    let bob = SoftwareAgreementKey::generate(jwz::jwa::Curve::P256, backend()).unwrap();
+    let generate = || {
+        SoftwareAgreementKey::generate(
+            jwz::jwa::Curve::P256,
+            jwz::jwa::KeyEncryptionAlgorithm::ECDH_ES,
+            &Registry::standard(),
+            backend(),
+        )
+        .unwrap()
+    };
+    let (alice, bob) = (generate(), generate());
     let point = |jwk: Jwk| match jwk.material {
         KeyMaterial::Ec(k) => [vec![4], k.x, k.y].concat(),
         _ => unreachable!(),
@@ -713,9 +721,14 @@ fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
         use jwz::keys::SymmetricKey;
 
         let agrees = |jwk: &Jwk| {
-            SoftwareAgreementKey::from_jwk(jwk, &registry, backend())
-                .map(|_| ())
-                .map_err(|e| e.code())
+            SoftwareAgreementKey::from_jwk(
+                jwk,
+                jwz::jwa::KeyEncryptionAlgorithm::ECDH_ES,
+                &registry,
+                backend(),
+            )
+            .map(|_| ())
+            .map_err(|e| e.code())
         };
         let encrypts_to = |jwk: &Jwk| encrypt_ecdh_es(jwk, &registry);
         for allowed in ["", r#""use":"enc""#, r#""key_ops":["deriveKey"]"#] {
@@ -750,7 +763,7 @@ fn rfc_7517_4_2_a_key_is_used_only_for_what_use_and_key_ops_allow() {
                 r#"{{"kty":"oct","k":"GZy6sIZ6wl9NJOKB-jnmVQ"{members}}}"#
             ))
             .unwrap();
-            SymmetricKey::from_jwk(&jwk, &registry)
+            SymmetricKey::from_jwk(&jwk, jwz::jwa::KeyEncryptionAlgorithm::A128KW, &registry)
                 .map(|_| ())
                 .map_err(|e| e.code())
         };

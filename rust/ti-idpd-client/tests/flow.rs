@@ -150,10 +150,17 @@ impl FakeIdp {
     fn new(behaviour: Behaviour) -> FakeIdp {
         let (disc_sig, disc_cert) = idp_sig_key("puk_disc_sig");
         let (idp_sig, idp_sig_cert) = idp_sig_key("puk_idp_sig");
-        let mut idp_enc = SoftwareAgreementKey::generate(ti_jwz::brainpool::BP_256, backend())
-            .unwrap()
-            .public_jwk();
+        let mut idp_enc = SoftwareAgreementKey::generate(
+            ti_jwz::brainpool::BP_256,
+            jwz::jwa::KeyEncryptionAlgorithm::ECDH_ES,
+            &ti_jwz::brainpool::registry(),
+            backend(),
+        )
+        .unwrap()
+        .public_jwk();
         idp_enc.kid = Some("puk_idp_enc".into());
+        // PuK_IDP_ENC is published without `alg`.
+        idp_enc.alg = None;
         FakeIdp {
             disc_sig,
             disc_cert,

@@ -5,7 +5,7 @@ tool = "Google Chrome for Testing 155.0.8059.39, wasm-bindgen-test-runner 0.2.12
 outcome = "passed"
 
 [inputs]
-"tests/browser.rs" = "fedf162b780cfaa7c6833c2acf65c19ace9be1c151ab686bb28eff77638190fe"
+"tests/browser.rs" = "67600563beef1760af836e43029774bfc08e2d2d5db970058b21f074bc3435c2"
 "src/crypto/rustcrypto.rs" = "c82585f87ab4a011520f2f8cc570189c710ca4d9a9ccb233b7f1fc70a667a8fe"
 "src/jwt.rs" = "f7e89fb8ca7217510aa547aa578fcf6e8e00efde27f9ac0492ae3c70e438c393"
 "Cargo.toml" = "7964a2c224209dc4cb1b9136d38666fc35a3548edf170313efd2d9c99bdf42df"

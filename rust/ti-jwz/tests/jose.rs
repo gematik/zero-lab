@@ -150,9 +150,12 @@ fn epa_es256_on_a_brainpool_key() {
 fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
     let registry = ti_jwz::brainpool::registry();
     let backend = Arc::new(ti_jwz::brainpool::backend(RustCrypto::new()));
-    let idp_enc = SoftwareAgreementKey::generate(BP_256, Arc::clone(&backend))
-        .unwrap()
-        .public_jwk();
+    // The IDP publishes its encryption key without `alg`; the client states the algorithm.
+    let mut idp_enc =
+        SoftwareAgreementKey::generate(BP_256, Alg::ECDH_ES, &registry, Arc::clone(&backend))
+            .unwrap()
+            .public_jwk();
+    idp_enc.alg = None;
     let mut epks = Vec::new();
     for alg in [Alg::ECDH_ES, Alg::ECDH_ES_A256KW] {
         let token = jwe::encrypt(
@@ -184,7 +187,9 @@ fn ecdh_es_encryption_to_a_bp256_key_like_the_idp_client() {
     assert_ne!(epks[0], epks[1]);
 
     // A recipient key on P-256 gets a P-256 epk, not a brainpool one.
-    let p256 = SoftwareAgreementKey::generate(Curve::P256, Arc::clone(&backend)).unwrap();
+    let p256 =
+        SoftwareAgreementKey::generate(Curve::P256, Alg::ECDH_ES, &registry, Arc::clone(&backend))
+            .unwrap();
     let token = jwe::encrypt(
         b"x",
         Enc::A256GCM,

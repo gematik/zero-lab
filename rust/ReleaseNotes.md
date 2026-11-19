@@ -13,6 +13,33 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
+### jwz
+
+#### breaking
+- A JWE key is made for one key management algorithm (RFC 8725 §3.1, TASK-275).
+  `SymmetricKey::new(bytes, alg)` and `SymmetricKey::from_jwk(jwk, alg, registry)` take it,
+  `SymmetricKey::algorithm` returns it (it returned the JWK's `alg`, if any), and
+  `SymmetricKey::content_encryption` is new for a `dir` key published with its `enc`.
+  `SoftwareAgreementKey::from_jwk(jwk, alg, registry, backend)` and
+  `generate(curve, alg, registry, backend)` take it, and its `public_jwk` names it.
+  `KeyAgreement` and `AsyncKeyAgreement` have a required `algorithm`. Encryption and
+  decryption refuse a key made for another algorithm with `KeyMismatch`; before, a shared
+  key without `alg` served `dir` and AES key wrap alike, and a key agreement key every
+  ECDH-ES variant.
+- `Jws::verify_with` and `verify_with_async` pass over a resolved JWK that names no `alg`
+  and fits more than one signature algorithm the profile lists: an `oct` key of 48 bytes
+  or more under HS256 and HS384, an Ed25519 key under `Ed25519` and `EdDSA`. If no other
+  key verifies, the error is `KeyMismatch`. A JWK with `alg`, and one that fits a single
+  listed algorithm (a P-256 key, a 32-byte `oct` key), verify as before.
+- `Policy::typ` is a `TypRule`, not an `Option<String>` (TASK-277): `TypRule::Any` for
+  `None`, `TypRule::required(typ)` for `Some(typ)`.
+
+#### added
+- `TypRule::Required` takes several accepted `typ` values, and `TypRule::IfPresent`
+  accepts a token without `typ` while holding a `typ` that is present to the accepted
+  ones: the rule of draft-ietf-oauth-rfc8725bis-10 §3.11 for a kind of JWT that already
+  exists.
+
 ### ti-cache
 
 #### added

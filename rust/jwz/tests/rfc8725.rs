@@ -49,7 +49,7 @@ use jwz::jwk::{Jwk, JwkSet, KeyResolver};
 use jwz::jws::{self, Jws};
 use jwz::jwt::{Claims, FixedClock};
 use jwz::keys::{JwsKey, Signature, SoftwareAgreementKey, SoftwareKey, SymmetricKey};
-use jwz::profile::{AES_128_GCM, AES_KW, DIRECT, Policy, Profile};
+use jwz::profile::{AES_128_GCM, AES_KW, DIRECT, EDDSA, HMAC, Policy, Profile, TypRule};
 use serde_json::{Value, json};
 
 fn backend() -> Arc<RustCrypto> {
@@ -141,7 +141,10 @@ fn rfc_8725_3_1_a_key_is_used_only_with_its_one_algorithm() {
     let bytes = vec![7; 16];
     let to = Recipient {
         alg: KeyEncryptionAlgorithm::DIR,
-        key: EncryptionKey::Symmetric(&SymmetricKey::new(bytes.clone())),
+        key: EncryptionKey::Symmetric(&SymmetricKey::new(
+            bytes.clone(),
+            KeyEncryptionAlgorithm::DIR,
+        )),
         header: HeaderParams::new(),
     };
     let token = jwe::encrypt(
@@ -159,6 +162,7 @@ fn rfc_8725_3_1_a_key_is_used_only_with_its_one_algorithm() {
             jwz::b64::encode(&bytes)
         ))
         .unwrap(),
+        KeyEncryptionAlgorithm::A128KW,
         &registry,
     )
     .unwrap();
@@ -171,7 +175,239 @@ fn rfc_8725_3_1_a_key_is_used_only_with_its_one_algorithm() {
         )
     };
     assert_eq!(decrypt(&wrapping), Err(ErrorCode::KeyMismatch));
-    assert_eq!(decrypt(&SymmetricKey::new(bytes)), Ok(()));
+    assert_eq!(
+        decrypt(&SymmetricKey::new(bytes, KeyEncryptionAlgorithm::DIR)),
+        Ok(())
+    );
+}
+
+fn shared_and_agreed() -> Policy {
+    Profile::strict().with(&DIRECT).with(&AES_KW).policy
+}
+
+/// `x` encrypted with `alg` and A128GCM to `key`.
+fn seal(alg: KeyEncryptionAlgorithm, key: EncryptionKey<'_>) -> Result<String, ErrorCode> {
+    code(jwe::encrypt(
+        b"x",
+        ContentEncryptionAlgorithm::A128GCM,
+        &Recipient {
+            alg,
+            key,
+            header: HeaderParams::new(),
+        },
+        &shared_and_agreed(),
+        &Registry::standard(),
+        backend().as_ref(),
+    ))
+}
+
+fn open(token: &str, key: DecryptionKey<'_>) -> Result<(), ErrorCode> {
+    code(
+        Jwe::parse(token, &shared_and_agreed(), &Registry::standard())
+            .unwrap()
+            .decrypt(key, backend().as_ref())
+            .map(|_| ()),
+    )
+}
+
+/// RFC 8725 §3.1 for shared JWE keys: a key is made for one key management algorithm and
+/// refuses another, whatever its bytes could do. A `dir` key neither wraps nor unwraps for
+/// `A128KW`. A JWK that names another algorithm is not made a key, nor is a shared key
+/// made for a key agreement.
+#[test]
+fn rfc_8725_3_1_a_shared_jwe_key_is_made_for_one_algorithm_and_refuses_another() {
+    use KeyEncryptionAlgorithm as Alg;
+    let registry = Registry::standard();
+    let bytes = vec![7; 16];
+    let direct = SymmetricKey::new(bytes.clone(), Alg::DIR);
+    let wrapping = SymmetricKey::new(bytes.clone(), Alg::A128KW);
+    assert_eq!(direct.algorithm(), Alg::DIR);
+    assert_eq!(
+        seal(Alg::A128KW, EncryptionKey::Symmetric(&direct)).err(),
+        Some(ErrorCode::KeyMismatch)
+    );
+    let wrapped = seal(Alg::A128KW, EncryptionKey::Symmetric(&wrapping)).unwrap();
+    assert_eq!(
+        open(&wrapped, DecryptionKey::Symmetric(&direct)),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(open(&wrapped, DecryptionKey::Symmetric(&wrapping)), Ok(()));
+
+    let oct = |alg: &str| {
+        Jwk::parse(&format!(
+            r#"{{"kty":"oct"{alg},"k":"{}"}}"#,
+            jwz::b64::encode(&bytes)
+        ))
+        .unwrap()
+    };
+    let symmetric = |jwk: &Jwk, alg| code(SymmetricKey::from_jwk(jwk, alg, &registry).map(|_| ()));
+    assert_eq!(symmetric(&oct(""), Alg::A128KW), Ok(()));
+    assert_eq!(symmetric(&oct(r#","alg":"A128KW""#), Alg::A128KW), Ok(()));
+    assert_eq!(
+        symmetric(&oct(r#","alg":"A128KW""#), Alg::DIR),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(
+        symmetric(&oct(r#","alg":"A128KW""#), Alg::A256KW),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(
+        symmetric(&oct(""), Alg::ECDH_ES),
+        Err(ErrorCode::KeyMismatch)
+    );
+    // RFC 7520 §5.6: a `dir` key published with its `enc` is for that `enc` only.
+    let for_gcm = SymmetricKey::from_jwk(&oct(r#","alg":"A128GCM""#), Alg::DIR, &registry).unwrap();
+    assert_eq!(
+        for_gcm.content_encryption(),
+        Some(ContentEncryptionAlgorithm::A128GCM)
+    );
+    assert_eq!(
+        symmetric(&oct(r#","alg":"A128GCM""#), Alg::A128KW),
+        Err(ErrorCode::KeyMismatch)
+    );
+}
+
+/// RFC 8725 §3.1 for key agreement keys: a key for `ECDH-ES+A128KW` does not decrypt an
+/// `ECDH-ES` token, and its public JWK names the algorithm, so a sender is bound too. A
+/// JWK that names another algorithm is not made a key, nor is an agreement key made for
+/// `dir` or AES key wrap.
+#[test]
+fn rfc_8725_3_1_a_key_agreement_key_is_made_for_one_algorithm_and_refuses_another() {
+    use KeyEncryptionAlgorithm as Alg;
+    let registry = Registry::standard();
+    let backend = backend();
+    let agreement =
+        |alg| SoftwareAgreementKey::generate(Curve::P256, alg, &registry, backend.clone());
+    let with_wrap = agreement(Alg::ECDH_ES_A128KW).unwrap();
+    let plain = agreement(Alg::ECDH_ES).unwrap();
+    assert_eq!(
+        jwz::keys::KeyAgreement::algorithm(&with_wrap),
+        Alg::ECDH_ES_A128KW
+    );
+    assert_eq!(
+        with_wrap.public_jwk().alg.as_deref(),
+        Some("ECDH-ES+A128KW")
+    );
+    assert_eq!(
+        seal(Alg::ECDH_ES, EncryptionKey::Public(&with_wrap.public_jwk())).err(),
+        Some(ErrorCode::KeyMismatch)
+    );
+    // A sender who was given the bare point can still address the wrong algorithm to it;
+    // the recipient's key refuses the token, sync and async alike.
+    let mut bare = with_wrap.public_jwk();
+    bare.alg = None;
+    let token = seal(Alg::ECDH_ES, EncryptionKey::Public(&bare)).unwrap();
+    assert_eq!(
+        open(&token, DecryptionKey::Agreement(&with_wrap)),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(
+        code(futures_lite::future::block_on(
+            Jwe::parse(&token, &shared_and_agreed(), &registry)
+                .unwrap()
+                .decrypt_async(&with_wrap, backend.as_ref())
+        ))
+        .map(|_| ()),
+        Err(ErrorCode::KeyMismatch)
+    );
+    let own = seal(Alg::ECDH_ES, EncryptionKey::Public(&plain.public_jwk())).unwrap();
+    assert_eq!(open(&own, DecryptionKey::Agreement(&plain)), Ok(()));
+
+    let mut published = plain.public_jwk();
+    published.alg = Some("ECDH-ES+A256KW".into());
+    let private = |jwk: &Jwk, alg| {
+        code(SoftwareAgreementKey::from_jwk(jwk, alg, &registry, backend.clone()).map(|_| ()))
+    };
+    assert_eq!(
+        private(&published, Alg::ECDH_ES),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(
+        code(agreement(Alg::A128KW).map(|_| ())),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(
+        code(agreement(Alg::DIR).map(|_| ())),
+        Err(ErrorCode::KeyMismatch)
+    );
+}
+
+/// RFC 8725 §3.1, RFC 9864 §7 for resolved keys: a JWK that names no `alg` is used only
+/// where it fits a single algorithm the profile lists. One that could serve several (an
+/// `oct` key long enough for HS256 and HS512; an Ed25519 key under a profile with both
+/// `Ed25519` and `EdDSA`) is passed over, because nothing but the token's header would
+/// choose its algorithm. The same key with its `alg`, a key that fits one listed algorithm
+/// only, and another key of the set are used as before.
+#[test]
+fn rfc_8725_3_1_a_resolved_key_without_alg_is_used_only_where_one_algorithm_fits() {
+    let registry = Registry::standard();
+    let set = |keys: &[&Jwk]| {
+        let keys: Vec<String> = keys.iter().map(|k| k.to_json()).collect();
+        JwkSet::parse(&format!(r#"{{"keys":[{}]}}"#, keys.join(","))).unwrap()
+    };
+    let verify = |token: &str, policy: &Policy, keys: &[&Jwk]| {
+        code(
+            Jws::parse(token, policy, &registry)
+                .unwrap()
+                .verify_with(&set(keys), &registry, &backend())
+                .map(|_| ()),
+        )
+    };
+    let without_alg = |mut jwk: Jwk| {
+        jwk.alg = None;
+        jwk
+    };
+
+    let hmac = Profile::new("hmac", 1).with(&HMAC).policy;
+    let oct = |len: usize| {
+        let jwk = Jwk::parse(&format!(
+            r#"{{"kty":"oct","alg":"HS256","k":"{}"}}"#,
+            jwz::b64::encode(&vec![7; len])
+        ))
+        .unwrap();
+        let key =
+            SoftwareKey::from_jwk(&jwk, SignatureAlgorithm::HS256, &registry, backend()).unwrap();
+        let token = jws::sign(b"x", HeaderParams::new(), &key, &hmac, &registry).unwrap();
+        (jwk, token)
+    };
+    let (long, token) = oct(64);
+    assert_eq!(
+        verify(&token, &hmac, &[&without_alg(long.clone())]),
+        Err(ErrorCode::KeyMismatch)
+    );
+    assert_eq!(verify(&token, &hmac, &[&long]), Ok(()));
+    assert_eq!(
+        verify(&token, &hmac, &[&without_alg(long.clone()), &long]),
+        Ok(())
+    );
+    // 48 bytes are enough for HS256 and HS384; 32 only for HS256 (RFC 7518 §3.2).
+    let (medium, token) = oct(48);
+    assert_eq!(
+        verify(&token, &hmac, &[&without_alg(medium)]),
+        Err(ErrorCode::KeyMismatch)
+    );
+    let (short, token) = oct(32);
+    assert_eq!(verify(&token, &hmac, &[&without_alg(short)]), Ok(()));
+    // Under a profile that lists HS256 alone, the long key has one algorithm.
+    let mut hs256_only = hmac.clone();
+    hs256_only.signature_algorithms = vec![SignatureAlgorithm::HS256];
+    let (long, token) = oct(64);
+    assert_eq!(verify(&token, &hs256_only, &[&without_alg(long)]), Ok(()));
+
+    let ed = SoftwareKey::generate(SignatureAlgorithm::ED25519, &registry, backend()).unwrap();
+    let token = jws::sign(b"x", HeaderParams::new(), &ed, &strict(), &registry).unwrap();
+    let bare = without_alg(ed.public_jwk());
+    assert_eq!(verify(&token, &strict(), &[&bare]), Ok(()));
+    let both = Profile::strict().with(&EDDSA).policy;
+    assert_eq!(verify(&token, &both, &[&bare]), Err(ErrorCode::KeyMismatch));
+    assert_eq!(verify(&token, &both, &[&ed.public_jwk()]), Ok(()));
+
+    // A P-256 key has ES256 and nothing else, in strict and among everything interop lists.
+    let ec = es256();
+    let token = jws::sign(b"x", HeaderParams::new(), &ec, &strict(), &registry).unwrap();
+    let bare = without_alg(ec.public_jwk());
+    assert_eq!(verify(&token, &strict(), &[&bare]), Ok(()));
+    assert_eq!(verify(&token, &interop(), &[&bare]), Ok(()));
 }
 
 /// draft-ietf-oauth-rfc8725bis-10 §3.1 and §2.11: the accepted algorithms are an
@@ -268,7 +504,13 @@ fn rfc_8725_3_3_every_layer_of_a_nested_jwt_is_validated() {
     let registry = Registry::standard();
     let backend = backend();
     let (issuer, impostor) = (es256(), es256());
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let recipient = SoftwareAgreementKey::generate(
+        Curve::P256,
+        KeyEncryptionAlgorithm::ECDH_ES,
+        &registry,
+        backend.clone(),
+    )
+    .unwrap();
     let public = recipient.public_jwk();
     let nest = |signer: &SoftwareKey<RustCrypto>| {
         let inner = jws::sign(
@@ -325,7 +567,13 @@ fn draft_ietf_oauth_rfc8725bis_10_3_3_unsecured_signed_and_encrypted_are_told_ap
     let registry = Registry::standard();
     let backend = backend();
     let signed = jws::sign(b"{}", HeaderParams::new(), &es256(), &strict(), &registry).unwrap();
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let recipient = SoftwareAgreementKey::generate(
+        Curve::P256,
+        KeyEncryptionAlgorithm::ECDH_ES,
+        &registry,
+        backend.clone(),
+    )
+    .unwrap();
     let public = recipient.public_jwk();
     let to = Recipient {
         alg: KeyEncryptionAlgorithm::ECDH_ES,
@@ -365,7 +613,13 @@ fn draft_ietf_oauth_rfc8725bis_10_3_3_unsecured_signed_and_encrypted_are_told_ap
 fn rfc_8725_3_4_an_epk_off_the_curve_is_refused() {
     let registry = Registry::standard();
     let backend = backend();
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let recipient = SoftwareAgreementKey::generate(
+        Curve::P256,
+        KeyEncryptionAlgorithm::ECDH_ES,
+        &registry,
+        backend.clone(),
+    )
+    .unwrap();
     let public = recipient.public_jwk();
     let to = Recipient {
         alg: KeyEncryptionAlgorithm::ECDH_ES,
@@ -441,7 +695,7 @@ fn rfc_8725_3_6_compression_is_neither_produced_nor_accepted() {
 fn draft_ietf_oauth_rfc8725bis_10_3_15_nothing_is_decompressed() {
     let registry = Registry::standard();
     let policy = interop();
-    let key = SymmetricKey::new(vec![7; 16]);
+    let key = SymmetricKey::new(vec![7; 16], KeyEncryptionAlgorithm::DIR);
     let to = Recipient {
         alg: KeyEncryptionAlgorithm::DIR,
         key: EncryptionKey::Symmetric(&key),
@@ -624,7 +878,7 @@ fn rfc_8725_3_10_key_references_are_refused_and_kid_is_only_compared() {
 fn rfc_8725_3_11_a_profile_requires_the_explicit_type() {
     let registry = Registry::standard();
     let mut policy = strict();
-    policy.typ = Some("secevent+jwt".into());
+    policy.typ = TypRule::required("secevent+jwt");
     let check = |members: Value| code(policy.check_jws(&header(&members), &registry));
     for typ in ["secevent+jwt", "application/secevent+jwt", "SecEvent+JWT"] {
         assert_eq!(
@@ -661,6 +915,78 @@ fn rfc_8725_3_11_a_profile_requires_the_explicit_type() {
     );
 }
 
+/// draft-ietf-oauth-rfc8725bis-10 §3.11: a kind of JWT that already exists cannot start to
+/// require `typ` without refusing the producers that do not set it yet. Its profile accepts
+/// a token without `typ` and holds one that has it to the accepted types. A profile may
+/// accept several types, and one that requires `typ` with several still refuses a token
+/// without it. A producer under such a profile may leave `typ` out and may not set another.
+#[test]
+fn draft_ietf_oauth_rfc8725bis_10_3_11_a_typ_that_is_present_must_be_an_accepted_one() {
+    let registry = Registry::standard();
+    let check =
+        |policy: &Policy, members: Value| code(policy.check_jws(&header(&members), &registry));
+    let accepted = Ok(SignatureAlgorithm::ES256);
+    let refused = Err(ErrorCode::PolicyViolation);
+
+    let mut retrofit = strict();
+    retrofit.typ = TypRule::if_present("logout+jwt");
+    assert_eq!(check(&retrofit, json!({"alg": "ES256"})), accepted);
+    for typ in ["logout+jwt", "application/logout+jwt", "Logout+JWT"] {
+        assert_eq!(
+            check(&retrofit, json!({"alg": "ES256", "typ": typ})),
+            accepted,
+            "{typ}"
+        );
+    }
+    for typ in ["JWT", "at+jwt", ""] {
+        assert_eq!(
+            check(&retrofit, json!({"alg": "ES256", "typ": typ})),
+            refused,
+            "{typ}"
+        );
+    }
+
+    let mut several = strict();
+    several.typ = TypRule::Required(vec!["at+jwt".into(), "application/secevent+jwt".into()]);
+    for typ in ["at+jwt", "secevent+jwt"] {
+        assert_eq!(
+            check(&several, json!({"alg": "ES256", "typ": typ})),
+            accepted,
+            "{typ}"
+        );
+    }
+    assert_eq!(
+        check(&several, json!({"alg": "ES256", "typ": "JWT"})),
+        refused
+    );
+    assert_eq!(check(&several, json!({"alg": "ES256"})), refused);
+
+    // A list that names no type accepts none: required, nothing passes; if present, only
+    // a token without `typ`.
+    let mut none = strict();
+    none.typ = TypRule::Required(Vec::new());
+    assert_eq!(
+        check(&none, json!({"alg": "ES256", "typ": "at+jwt"})),
+        refused
+    );
+    assert_eq!(check(&none, json!({"alg": "ES256"})), refused);
+    none.typ = TypRule::IfPresent(Vec::new());
+    assert_eq!(
+        check(&none, json!({"alg": "ES256", "typ": "at+jwt"})),
+        refused
+    );
+    assert_eq!(check(&none, json!({"alg": "ES256"})), accepted);
+
+    let key = es256();
+    let sign = |params: HeaderParams| code(jws::sign(b"{}", params, &key, &retrofit, &registry));
+    assert!(sign(HeaderParams::new()).is_ok());
+    assert!(sign(HeaderParams::new().typ("logout+jwt")).is_ok());
+    assert_eq!(
+        sign(HeaderParams::new().typ("at+jwt")),
+        Err(ErrorCode::PolicyViolation)
+    );
+}
+
 /// RFC 8725 §3.12: the rules for two kinds of token from one issuer are mutually exclusive
 /// when their profiles differ in `typ` and audience: each kind's profile refuses the
 /// other's tokens, the header before any signature is checked, the claims after.
@@ -670,7 +996,7 @@ fn rfc_8725_3_12_each_kind_of_token_is_refused_by_the_others_profile() {
     let key = es256();
     let kind = |typ: &str, audience: &str| {
         let mut profile = Profile::strict();
-        profile.policy.typ = Some(typ.into());
+        profile.policy.typ = TypRule::required(typ);
         profile.claims.audience = Some(audience.into());
         profile
     };
@@ -680,7 +1006,10 @@ fn rfc_8725_3_12_each_kind_of_token_is_refused_by_the_others_profile() {
     );
     let token = |profile: &Profile| {
         let claims = json!({"aud": profile.claims.audience, "exp": 60}).to_string();
-        let typ = profile.policy.typ.as_deref().unwrap();
+        let TypRule::Required(accepted) = &profile.policy.typ else {
+            unreachable!("kind() requires a typ")
+        };
+        let typ = accepted[0].as_str();
         jws::sign(
             claims.as_bytes(),
             HeaderParams::new().typ(typ),
@@ -741,7 +1070,13 @@ fn draft_ietf_oauth_rfc8725bis_10_3_14_a_compact_token_is_base64url_and_dots_onl
     let backend = backend();
     let key = es256();
     let signed = jws::sign(b"{}", HeaderParams::new(), &key, &strict(), &registry).unwrap();
-    let recipient = SoftwareAgreementKey::generate(Curve::P256, backend.clone()).unwrap();
+    let recipient = SoftwareAgreementKey::generate(
+        Curve::P256,
+        KeyEncryptionAlgorithm::ECDH_ES_A128KW,
+        &registry,
+        backend.clone(),
+    )
+    .unwrap();
     let public = recipient.public_jwk();
     let to = Recipient {
         alg: KeyEncryptionAlgorithm::ECDH_ES_A128KW,
@@ -792,7 +1127,7 @@ fn draft_ietf_oauth_rfc8725bis_10_3_14_a_compact_token_is_base64url_and_dots_onl
 fn rfc_8725_3_11_a_producer_writes_no_header_its_profile_refuses() {
     let registry = Registry::standard();
     let mut policy = strict();
-    policy.typ = Some("secevent+jwt".into());
+    policy.typ = TypRule::required("secevent+jwt");
     policy.require_kid = true;
     let key = es256();
     let named = SoftwareKey::generate(SignatureAlgorithm::ES256, &registry, backend())
@@ -825,7 +1160,13 @@ fn rfc_8725_3_11_a_producer_writes_no_header_its_profile_refuses() {
         Some(ErrorCode::PolicyViolation)
     );
     // And encryption: compact and JSON, with the recipient's header.
-    let recipient_key = SoftwareAgreementKey::generate(Curve::P256, backend()).unwrap();
+    let recipient_key = SoftwareAgreementKey::generate(
+        Curve::P256,
+        KeyEncryptionAlgorithm::ECDH_ES,
+        &registry,
+        backend(),
+    )
+    .unwrap();
     let public = recipient_key.public_jwk();
     let recipient = |header: HeaderParams| Recipient {
         alg: KeyEncryptionAlgorithm::ECDH_ES,
