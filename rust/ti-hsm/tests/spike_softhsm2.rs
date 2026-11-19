@@ -29,8 +29,10 @@
 //! sets both, with a fresh token directory, and runs the suite. The token is provisioned
 //! by the suite with TEST-ONLY PINs; no key leaves it.
 
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use cryptoki::error::RvError;
 use cryptoki::mechanism::MechanismType;
@@ -421,4 +423,53 @@ fn task_389_an_error_names_the_operation_the_key_and_the_return_code() {
     assert!(error.contains("named-in-errors"), "{error}");
     assert!(error.contains("EncryptedDataInvalid"), "{error}");
     assert!(!error.contains("in-no-error"), "{error}");
+}
+
+/// TASK-389: a key found through one session of a pool signs through every other, since a
+/// token object has one handle in all sessions of the application; callers on several
+/// threads share the pool's sessions, and each signature verifies.
+#[test]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+fn task_389_a_pool_lends_its_sessions_to_callers_on_several_threads() {
+    let pool = module()
+        .pool(TOKEN, &user_pin(), NonZeroUsize::new(3).unwrap())
+        .unwrap();
+    assert_eq!(pool.size(), 3);
+    let wait = Duration::from_secs(10);
+    let key = pool
+        .with(wait, |token| token.signing_key("pooled", Curve::P256))
+        .unwrap();
+    let digest = digest(MessageDigest::Sha256, b"signed through a pool");
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            scope.spawn(|| {
+                for _ in 0..20 {
+                    pool.with(wait, |token| {
+                        let signature = token.sign(&key, SignInput::Digest(&digest))?;
+                        assert!(verifies(token, &key, &digest, &signature));
+                        Ok(())
+                    })
+                    .unwrap();
+                }
+            });
+        }
+    });
+}
+
+/// TASK-389: a caller that finds no free session within its wait is refused with Busy,
+/// rather than queued without bound; the session given back serves the next caller.
+#[test]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+fn task_389_a_caller_waits_for_a_session_only_as_long_as_it_says() {
+    let pool = module()
+        .pool(TOKEN, &user_pin(), NonZeroUsize::new(1).unwrap())
+        .unwrap();
+    let wait = Duration::from_millis(50);
+    pool.with(wait, |_held| {
+        let refused = pool.with(wait, |_| Ok(())).unwrap_err();
+        assert!(matches!(refused, Error::Busy(w) if w == wait), "{refused}");
+        Ok(())
+    })
+    .unwrap();
+    pool.with(wait, |_| Ok(())).unwrap();
 }

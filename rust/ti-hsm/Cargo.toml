@@ -22,6 +22,14 @@ p256.workspace = true
 p384.workspace = true
 bp256.workspace = true
 sha2.workspace = true
+# The benchmark's JSON-RPC rows.
+serde_json.workspace = true
+base64ct.workspace = true
+
+# Gated like the spike suite and run by `just hsm-bench`; a plain program, no harness.
+[[bench]]
+name = "softhsm2"
+harness = false
 
 [lints]
 workspace = true

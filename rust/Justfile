@@ -829,6 +829,15 @@ konnektor-e2e:
 # The SoftHSM2 spike of ti-hsm (TASK-389) against a fresh token in a temporary directory.
 # TI_HSM_PKCS11_MODULE_PATH names the module; without it, SoftHSM2's beside softhsm2-util.
 hsm-spike:
+    @just _softhsm2 cargo test -p ti-hsm --test spike_softhsm2 -- --ignored
+
+# Throughput of ti-hsm's session pool against SoftHSM2, direct and over JSON-RPC on a Unix
+# socket (TASK-389). TI_HSM_BENCH_SECONDS sets each row's time (default 2). Not part of `check`.
+hsm-bench:
+    @just _softhsm2 cargo bench -p ti-hsm --bench softhsm2
+
+[private]
+_softhsm2 +command:
     #!/usr/bin/env bash
     set -euo pipefail
     module="${TI_HSM_PKCS11_MODULE_PATH:-}"
@@ -852,8 +861,7 @@ hsm-spike:
     mkdir "$dir/tokens"
     printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\nslots.removable = false\n' "$dir/tokens" > "$dir/softhsm2.conf"
     echo "==> $module"
-    SOFTHSM2_CONF="$dir/softhsm2.conf" TI_HSM_PKCS11_MODULE_PATH="$module" \
-        cargo test -p ti-hsm --test spike_softhsm2 -- --ignored
+    SOFTHSM2_CONF="$dir/softhsm2.conf" TI_HSM_PKCS11_MODULE_PATH="$module" {{command}}
 
 # Optional TI_TEST_PDFA_PATH adds PAdES. A person enters the PIN; not part of `check`.
 # PIN entry, ExternalAuthenticate, sign and encrypt at the Konnektor of TI_TEST_KON_PATH

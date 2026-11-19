@@ -34,10 +34,16 @@
 //! over a digest or a message, AES-256-GCM encryption and decryption with associated data.
 //! Every key is made on the token, not extractable, and for its one use. An error names the
 //! operation, the key's label and the PKCS#11 return code, never data.
+//!
+//! A session runs one operation at a time; [`Module::pool`] opens a fixed number of them
+//! and a [`Pool`] lends one to each caller, so that a server's callers run in parallel up
+//! to what the token allows.
 
 mod pkcs11;
+mod pool;
 
 pub use pkcs11::{
     Curve, Error, Iv, KeyEncryptionKey, KeyFacts, MessageDigest, Module, Sealed, SignInput,
     SigningKey, Token,
 };
+pub use pool::Pool;

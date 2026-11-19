@@ -1754,11 +1754,13 @@ dependencies = [
 name = "ti-hsm"
 version = "0.0.0"
 dependencies = [
+ "base64ct",
  "bp256",
  "cryptoki",
  "ecdsa",
  "p256",
  "p384",
+ "serde_json",
  "sha2",
  "thiserror",
 ]

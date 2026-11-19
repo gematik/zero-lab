@@ -85,6 +85,9 @@ pub enum Error {
     /// The input is not one the operation takes; checked before the token sees it.
     #[error("{0}")]
     Input(&'static str),
+    /// No session of the pool became free within the wait.
+    #[error("no free session on the token within {0:?}")]
+    Busy(std::time::Duration),
 }
 
 impl Error {
