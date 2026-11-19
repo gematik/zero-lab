@@ -516,6 +516,11 @@ version = "2.7.2"
 criteria = "safe-to-deploy"
 notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
+[[exemptions.tokio-rustls]]
+version = "0.26.6"
+criteria = "safe-to-deploy"
+notes = "Host only: the TLS listener of ti-hsm-proxy (its transport feature), rustls on ring under tonic, approved 2026-11-19 (TASK-401). No unsafe code of its own. No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.tokio-stream]]
 version = "0.1.19"
 criteria = "safe-to-deploy"

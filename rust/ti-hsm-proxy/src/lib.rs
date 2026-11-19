@@ -33,8 +33,9 @@
 //!
 //! - the PKCS#11 adapter ([`Module`], [`Token`], [`Pool`]);
 //! - the interface's operations without a transport ([`HsmProxy`]);
-//! - with the `grpc` feature (on by default), the gRPC transport ([`grpc`]), the one
-//!   module that depends on tonic and tokio.
+//! - the transports ([`transport`]): what they share, the listener and its TLS, behind the
+//!   feature `transport`, and the gRPC one ([`transport::grpc`]) behind `grpc`, on by
+//!   default, the one module that depends on tonic.
 //!
 //! [`Module::load`] loads and initialises a module, [`Module::open`] logs in to a token by
 //! its label, and a [`Token`] finds or makes keys by label and uses them: ECDSA signatures
@@ -46,11 +47,11 @@
 //! and a [`Pool`] lends one to each caller, so that a server's callers run in parallel up
 //! to what the token allows.
 
-#[cfg(feature = "grpc")]
-pub mod grpc;
 mod pkcs11;
 mod pool;
 mod service;
+#[cfg(feature = "transport")]
+pub mod transport;
 
 #[cfg(feature = "conformance")]
 pub use pkcs11::KeyFacts;

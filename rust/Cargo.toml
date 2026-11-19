@@ -135,6 +135,9 @@ prost = { version = "0.14.6", default-features = false, features = ["std", "deri
 tonic-health = { version = "0.14.9", default-features = false }
 tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "time", "macros"] }
 tokio-stream = { version = "0.1.19", default-features = false, features = ["net"] }
+# ti-hsm-proxy's TLS listener (servers.md rule 29): rustls on ring, which the workspace has, under
+# tonic. No unsafe code of its own. Approved 2026-11-19 (TASK-401).
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
 # ti-hsm-proxy's probe (`hsm-proxy health`) and tests reach the gRPC server over its Unix socket.
 hyper-util = { version = "0.1.21", default-features = false, features = ["tokio"] }
 tower = { version = "0.5.3", default-features = false, features = ["util"] }

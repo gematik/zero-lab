@@ -106,9 +106,9 @@ fn started() -> &'static (tokio::runtime::Runtime, Channel, PathBuf, Module) {
         let serving = socket.clone();
         let probed = socket.clone();
         runtime.spawn(async move {
-            ti_hsm_proxy::grpc::serve(
+            ti_hsm_proxy::transport::grpc::serve(
                 Arc::new(proxy),
-                &serving,
+                ti_hsm_proxy::transport::Listener::Unix(serving),
                 Duration::from_millis(200),
                 std::future::pending(),
             )
@@ -122,7 +122,7 @@ fn started() -> &'static (tokio::runtime::Runtime, Channel, PathBuf, Module) {
                 }
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
-            ti_hsm_proxy::grpc::connect(&socket)
+            ti_hsm_proxy::transport::grpc::connect(&socket)
                 .await
                 .expect("a channel to the socket")
         });
@@ -399,9 +399,13 @@ fn task_389_the_sidecars_health_is_probed_over_its_socket() {
     use tonic_health::pb::health_client::HealthClient;
 
     let (runtime, channel, socket, _) = started();
-    assert!(runtime.block_on(ti_hsm_proxy::grpc::probe(socket)).unwrap());
+    assert!(
+        runtime
+            .block_on(ti_hsm_proxy::transport::grpc::probe(socket))
+            .unwrap()
+    );
     let mut health = HealthClient::new(channel.clone());
-    for service in ["", ti_hsm_proxy::grpc::SERVICE_NAME] {
+    for service in ["", ti_hsm_proxy::transport::grpc::SERVICE_NAME] {
         let status = runtime
             .block_on(health.check(tonic_health::pb::HealthCheckRequest {
                 service: service.to_owned(),
@@ -414,7 +418,7 @@ fn task_389_the_sidecars_health_is_probed_over_its_socket() {
     let absent = std::env::temp_dir().join("ti-hsm-proxy-no-such.sock");
     assert!(
         runtime
-            .block_on(ti_hsm_proxy::grpc::probe(&absent))
+            .block_on(ti_hsm_proxy::transport::grpc::probe(&absent))
             .is_err()
     );
 }
@@ -447,13 +451,17 @@ fn servers_rules_27_29_the_socket_is_for_owner_and_group_and_a_live_one_is_kept(
     )
     .unwrap();
     let refused = runtime
-        .block_on(ti_hsm_proxy::grpc::serve(
+        .block_on(ti_hsm_proxy::transport::grpc::serve(
             Arc::new(second),
-            socket,
+            ti_hsm_proxy::transport::Listener::Unix(socket.clone()),
             Duration::from_secs(5),
             std::future::pending(),
         ))
         .unwrap_err();
     assert_eq!(refused.kind(), std::io::ErrorKind::AddrInUse, "{refused}");
-    assert!(runtime.block_on(ti_hsm_proxy::grpc::probe(socket)).unwrap());
+    assert!(
+        runtime
+            .block_on(ti_hsm_proxy::transport::grpc::probe(socket))
+            .unwrap()
+    );
 }

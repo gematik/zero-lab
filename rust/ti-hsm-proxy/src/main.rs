@@ -83,8 +83,8 @@ enum Probe {
 #[cfg(feature = "grpc")]
 fn health(probe: Probe) -> ExitCode {
     const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
-    let socket = match config::socket(|name| std::env::var(name).ok()) {
-        Ok(socket) => socket,
+    let socket = match config::listen(|name| std::env::var(name).ok()) {
+        Ok(listen) => listen.probe_socket(),
         Err(e) => {
             eprintln!("hsm-proxy health: {e}");
             return ExitCode::FAILURE;
@@ -101,7 +101,7 @@ fn health(probe: Probe) -> ExitCode {
         }
     };
     let answer = runtime.block_on(async {
-        tokio::time::timeout(TIMEOUT, ti_hsm_proxy::grpc::probe(&socket)).await
+        tokio::time::timeout(TIMEOUT, ti_hsm_proxy::transport::grpc::probe(&socket)).await
     });
     match (answer, probe) {
         (Ok(Ok(true)), _) | (Ok(Ok(false)), Probe::Live) => ExitCode::SUCCESS,
@@ -193,22 +193,91 @@ fn run(config: &Config) -> Result<(), String> {
         .enable_all()
         .build()
         .map_err(|e| e.to_string())?;
+    let (listener, mode) = listener(&config.listen)?;
     eprintln!(
-        "hsm-proxy {}: {hsm_info}, token {}, {} sessions, {} keys, on unix://{}",
+        "hsm-proxy {}: {hsm_info}, token {}, {} sessions, {} keys, {mode}",
         env!("CARGO_PKG_VERSION"),
         config.token,
         config.sessions,
         config.keys.len(),
-        config.socket.display()
     );
     runtime
-        .block_on(ti_hsm_proxy::grpc::serve(
+        .block_on(ti_hsm_proxy::transport::grpc::serve(
             Arc::new(proxy),
-            &config.socket,
+            listener,
             config.health_interval,
             shutdown(),
         ))
         .map_err(|e| e.to_string())
+}
+
+/// The listener of `listen`, with its TLS material read and checked (rules 17 and 29), and
+/// the line that reports its mode.
+#[cfg(feature = "grpc")]
+fn listener(
+    listen: &config::Listen,
+) -> Result<(ti_hsm_proxy::transport::Listener, String), String> {
+    use ti_hsm_proxy::transport::Listener;
+    use ti_hsm_proxy::transport::tls::{Clients, TlsListener};
+
+    let read = |path: &std::path::Path| {
+        std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))
+    };
+    Ok(match listen {
+        config::Listen::Unix(socket) => (
+            Listener::Unix(socket.clone()),
+            format!("on unix://{}", socket.display()),
+        ),
+        config::Listen::Tls {
+            address,
+            cert,
+            key,
+            clients,
+        } => {
+            let ca = clients.as_ref().map(|(ca, _)| read(ca)).transpose()?;
+            let tls = TlsListener::new(
+                &read(cert)?,
+                &read(key)?,
+                clients
+                    .as_ref()
+                    .zip(ca.as_deref())
+                    .map(|((_, allow), ca)| Clients {
+                        ca,
+                        allow: allow.clone(),
+                    }),
+                std::time::SystemTime::now(),
+            )
+            .map_err(|e| format!("HSM_PROXY_LISTEN_TLS_*: {e}"))?;
+            let mode = match clients {
+                Some((_, allow)) => {
+                    format!("on https://{address}, mTLS admitting {}", allow.join(", "))
+                }
+                None => format!("on https://{address}, TLS without client certificates"),
+            };
+            let probe = listen.probe_socket();
+            (
+                Listener::Tls {
+                    address: *address,
+                    tls,
+                    probe: probe.clone(),
+                },
+                format!("{mode}, health on unix://{}", probe.display()),
+            )
+        }
+        config::Listen::Mesh { address, mesh } => {
+            let probe = listen.probe_socket();
+            (
+                Listener::Mesh {
+                    address: *address,
+                    probe: probe.clone(),
+                },
+                format!(
+                    "on http://{address} in plaintext, protected by the mesh {mesh} (servers.md rule 29), health on unix://{}",
+                    probe.display()
+                ),
+            )
+        }
+    })
 }
 
 /// The simulator mode, in a build with the feature `simulator` only (servers.md rule 17).
