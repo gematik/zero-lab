@@ -411,7 +411,7 @@ check-changed base="main":
     if [ -n "$SCRIPTS" ]; then just scripts-test; fi
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
+check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet hsm-proxy-codegen-check
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
 
@@ -521,7 +521,7 @@ core-deps:
     echo "ti-directory-client is free of HTTP clients, TLS and executors"
 
 # Without dangerous-nonprod, the compiled ti-pki must contain none of the non-prod trust
-# files. Compares their bytes, not a marker string (the marker legitimately occurs in
+# files, and hsm-proxy without simulator none of the simulator's TEST-ONLY PINs. Compares their bytes, not a marker string (the marker legitimately occurs in
 # code and docs), and repeats with the feature on so the check cannot pass vacuously.
 nonprod-absent:
     #!/usr/bin/env bash
@@ -543,6 +543,14 @@ nonprod-absent:
         contains "$lib" "$f" || { echo "check is blind: $f not found with dangerous-nonprod" >&2; exit 1; }
     done
     echo "no non-prod trust material without dangerous-nonprod"
+    # hsm-proxy: the simulator's TEST-ONLY PINs only with the feature simulator (rule 17).
+    bin() {
+        cargo build -p ti-hsm-proxy --bin hsm-proxy --message-format=json "$@" 2>/dev/null \
+            | jq -r 'select(.reason == "compiler-artifact" and .target.name == "hsm-proxy") | .executable | select(. != null)'
+    }
+    if grep -q 'TEST-ONLY' "$(bin)"; then echo "hsm-proxy holds TEST-ONLY material without the feature simulator" >&2; exit 1; fi
+    grep -q 'TEST-ONLY' "$(bin --features simulator)" || { echo "check is blind: no TEST-ONLY in hsm-proxy with simulator" >&2; exit 1; }
+    echo "no TEST-ONLY material in hsm-proxy without simulator"
 
 # Only the jwz crates: the loop while working on jwz; `check` stays the gate before a commit.
 # fmt, clippy, docs, tests, feature matrix, wasm32 and the guards for jwz and ti-jwz
@@ -825,6 +833,57 @@ real-world:
 # Read-only tests against the Konnektor of TI_TEST_KON_PATH (a .kon file)
 konnektor-e2e:
     cargo test -p ti-client --test konnektor_e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
+
+# ti-hsm-proxy's conformance suites, the PKCS#11 adapter and the gRPC interface, against a fresh
+# SoftHSM2 token in a temporary directory (TASK-389).
+# TI_HSM_PKCS11_MODULE_PATH names the module; without it, SoftHSM2's beside softhsm2-util.
+hsm-proxy-softhsm2:
+    @just _softhsm2 cargo test -p ti-hsm-proxy --features conformance --test token_softhsm2 --test grpc_softhsm2 --test recovery_softhsm2 -- --ignored
+
+# ti-hsm-proxy's gRPC code from its proto/ (tonic-prost-build on protox, no protoc); the
+# generated file is committed, so building the sidecar needs neither (TASK-389)
+hsm-proxy-codegen:
+    cargo run -q --locked --manifest-path ti-hsm-proxy/codegen/Cargo.toml -- ti-hsm-proxy/src/generated ti-hsm-proxy/tests/generated
+
+# Fails if ti-hsm-proxy's generated server and client are not what proto/ generates
+hsm-proxy-codegen-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=$(mktemp -d)
+    trap 'rm -rf "$dir"' EXIT
+    mkdir "$dir/server" "$dir/client"
+    cargo run -q --locked --manifest-path ti-hsm-proxy/codegen/Cargo.toml -- "$dir/server" "$dir/client"
+    if ! diff -r ti-hsm-proxy/src/generated "$dir/server" >/dev/null || ! diff -r ti-hsm-proxy/tests/generated "$dir/client" >/dev/null; then
+        echo "ti-hsm-proxy's generated code is stale: just hsm-proxy-codegen" >&2
+        exit 1
+    fi
+
+[private]
+_softhsm2 +command:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    module="${TI_HSM_PKCS11_MODULE_PATH:-}"
+    if [ -z "$module" ]; then
+        util=$(command -v softhsm2-util || true)
+        if [ -z "$util" ]; then
+            echo "needs TI_HSM_PKCS11_MODULE_PATH, or SoftHSM2 2.7 or later (brew install softhsm; apt install softhsm2)" >&2
+            exit 1
+        fi
+        prefix=$(dirname "$(dirname "$util")")
+        for candidate in "$prefix"/lib/softhsm/libsofthsm2.so "$prefix"/lib/*/softhsm/libsofthsm2.so; do
+            if [ -f "$candidate" ]; then module=$candidate; break; fi
+        done
+        if [ -z "$module" ]; then
+            echo "SoftHSM2 is installed, but not its module under $prefix/lib: set TI_HSM_PKCS11_MODULE_PATH" >&2
+            exit 1
+        fi
+    fi
+    dir=$(mktemp -d)
+    trap 'rm -rf "$dir"' EXIT
+    mkdir "$dir/tokens"
+    printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\nslots.removable = false\n' "$dir/tokens" > "$dir/softhsm2.conf"
+    echo "==> $module"
+    SOFTHSM2_CONF="$dir/softhsm2.conf" TI_HSM_PKCS11_MODULE_PATH="$module" {{command}}
 
 # Optional TI_TEST_PDFA_PATH adds PAdES. A person enters the PIN; not part of `check`.
 # PIN entry, ExternalAuthenticate, sign and encrypt at the Konnektor of TI_TEST_KON_PATH

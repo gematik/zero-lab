@@ -358,130 +358,43 @@ func TestKeyring_ReturnedKeyIsACopy(t *testing.T) {
 	}
 }
 
-type fakeClock struct {
-	mu  sync.Mutex
-	now time.Time
-}
-
-func (c *fakeClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.now
-}
-
-func (c *fakeClock) Advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.now = c.now.Add(d)
-}
-
-func writeRing(t *testing.T, path, content string, modTime time.Time) {
+func writeRing(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chtimes(path, modTime, modTime); err != nil {
-		t.Fatal(err)
-	}
 }
 
-func loadedRing(t *testing.T, content string) (ring *kv.Keyring, path string, clock *fakeClock) {
-	t.Helper()
-	path = filepath.Join(t.TempDir(), "store.key")
-	writeRing(t, path, content, time.Unix(1000, 0))
+// Server rule 8: a ring is read once, at start. A changed or removed file changes nothing in the process that
+// read it; the new ring takes effect in a process started with it, a rollout.
+func TestKeyring_TheFileIsReadOnceAtStart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "store.key")
+	writeRing(t, path, testRingLine("k1", 1))
 	ring, err := kv.LoadKeyring(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	clock = &fakeClock{now: time.Unix(5000, 0)}
-	kv.SetKeyringClock(ring, clock.Now)
-	return ring, path, clock
-}
-
-func captureSlog(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
-	return &buf
-}
-
-func TestKeyring_AReloadOfTheFileTakesEffect(t *testing.T) {
-	ring, path, clock := loadedRing(t, testRingLine("k1", 1))
-	writeRing(t, path, testRingLine("k2", 2)+testRingLine("k1", 1), time.Unix(2000, 0))
-
-	clock.Advance(31 * time.Second)
-	if id, _ := ring.Current(); id != "k2" {
-		t.Fatalf("current %q, want k2", id)
-	}
-	if _, ok := ring.Lookup("k1"); !ok {
-		t.Fatal("k1 lost")
-	}
-}
-
-func TestKeyring_FileIsCheckedAtMostEvery30Seconds(t *testing.T) {
-	ring, path, clock := loadedRing(t, testRingLine("k1", 1))
+	writeRing(t, path, testRingLine("k2", 2)+testRingLine("k1", 1))
 	if id, _ := ring.Current(); id != "k1" {
-		t.Fatalf("current %q", id)
+		t.Fatalf("the changed file was taken: current %q", id)
 	}
-	writeRing(t, path, testRingLine("k2", 2), time.Unix(2000, 0))
-	clock.Advance(29 * time.Second)
-	if id, _ := ring.Current(); id != "k1" {
-		t.Fatalf("checked within the 30 s: current %q", id)
-	}
-	clock.Advance(2 * time.Second)
-	if id, _ := ring.Current(); id != "k2" {
-		t.Fatalf("not checked after 30 s: current %q", id)
-	}
-}
-
-func TestKeyring_AnUnchangedFileIsNotParsedAgain(t *testing.T) {
-	ring, path, clock := loadedRing(t, testRingLine("k1", 1))
-	// Same mtime and size with other content: only a re-read could see it.
-	writeRing(t, path, testRingLine("k2", 2), time.Unix(1000, 0))
-	clock.Advance(time.Minute)
-	if id, _ := ring.Current(); id != "k1" {
-		t.Fatalf("re-read an unchanged file: current %q", id)
-	}
-}
-
-func TestKeyring_ABrokenReloadKeepsTheOldKeysAndLogsAnError(t *testing.T) {
-	ring, path, clock := loadedRing(t, testRingLine("k1", 1))
-	logs := captureSlog(t)
-	writeRing(t, path, "k1 not-a-key\n", time.Unix(2000, 0))
-
-	clock.Advance(31 * time.Second)
-	id, key := ring.Current()
-	if id != "k1" || !bytes.Equal(key, bytes.Repeat([]byte{1}, 32)) {
-		t.Fatalf("current %q %x", id, key)
-	}
-	if !strings.Contains(logs.String(), "level=ERROR") {
-		t.Fatalf("no error logged: %q", logs)
-	}
-	if strings.Contains(logs.String(), "not-a-key") {
-		t.Fatalf("the log carries the file's content: %q", logs)
-	}
-
-	writeRing(t, path, testRingLine("k2", 2), time.Unix(2000, 0))
-	clock.Advance(31 * time.Second)
-	if id, _ := ring.Current(); id != "k2" {
-		t.Fatalf("a repaired file with the broken one's mtime stays ignored: current %q", id)
-	}
-}
-
-func TestKeyring_AMissingFileKeepsTheOldKeysAndLogsAnError(t *testing.T) {
-	ring, path, clock := loadedRing(t, testRingLine("k1", 1))
-	logs := captureSlog(t)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	clock.Advance(31 * time.Second)
-	if id, _ := ring.Current(); id != "k1" {
-		t.Fatalf("current %q", id)
+	if id, key := ring.Current(); id != "k1" || !bytes.Equal(key, bytes.Repeat([]byte{1}, 32)) {
+		t.Fatalf("without the file: current %q %x", id, key)
 	}
-	if !strings.Contains(logs.String(), "level=ERROR") {
-		t.Fatalf("no error logged: %q", logs)
+	if _, ok := ring.Lookup("k2"); ok {
+		t.Fatal("a key of the changed file was found")
+	}
+
+	writeRing(t, path, testRingLine("k2", 2)+testRingLine("k1", 1))
+	next, err := kv.LoadKeyring(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := next.Current(); id != "k2" {
+		t.Fatalf("a ring loaded after the change: current %q", id)
 	}
 }
 
@@ -490,31 +403,18 @@ func TestLoadKeyring_RefusesABrokenFileAtStart(t *testing.T) {
 	if _, err := kv.LoadKeyring(path); err == nil {
 		t.Fatal("accepted a missing file")
 	}
-	writeRing(t, path, "", time.Unix(1000, 0))
+	writeRing(t, path, "")
 	if _, err := kv.LoadKeyring(path); err == nil {
 		t.Fatal("accepted an empty file")
 	}
-}
-
-func TestKeyring_ConcurrentUseDuringReload(t *testing.T) {
-	ring, path, clock := loadedRing(t, testRingLine("k1", 1))
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() {
-			for range 200 {
-				id, key := ring.Current()
-				if len(key) != 32 || id == "" {
-					t.Error("torn read of the ring")
-					return
-				}
-			}
-		})
+	writeRing(t, path, "k1 not-a-key\n")
+	_, err := kv.LoadKeyring(path)
+	if err == nil {
+		t.Fatal("accepted a broken key")
 	}
-	for i := range 20 {
-		writeRing(t, path, testRingLine("k2", 2), time.Unix(int64(2000+i), 0))
-		clock.Advance(31 * time.Second)
+	if strings.Contains(err.Error(), "not-a-key") {
+		t.Fatalf("the error carries the file's content: %v", err)
 	}
-	wg.Wait()
 }
 
 func TestMemory_SetIfAbsent_ConcurrencyHasExactlyOneWinner(t *testing.T) {

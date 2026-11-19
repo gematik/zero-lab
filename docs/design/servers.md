@@ -49,9 +49,10 @@ everything outside the workload untrusted.
 6. **Key provisioning bound to attestation.** Keys and secrets are released to a workload
    only after its attestation is verified (a KMS or key broker with a release policy on
    the measurement), delivered as files (`*_PATH`), never baked into images, environment
-   variables or the kv store. Workload keys follow the [private-key rules](keys.md); rotation
-   works without a restart of the workload or its sidecars; credentials are short-lived
-   where the peer allows. A workload's TLS key is generated inside the workload, and its
+   variables or the kv store. Workload keys follow the [private-key rules](keys.md) and rotate
+   with an overlap (rule 22): the new key is added before it is used and the old one
+   removed once nothing needs it, each step a rollout (rule 8); credentials are
+   short-lived where the peer allows. A workload's TLS key is generated inside the workload, and its
    certificate is issued only after the attestation is verified (a CSR bound to the
    evidence, or SPIRE with a TEE node attestor and its agent inside the confidential VM);
    a key from a cert-manager Secret or a node-local SPIRE agent was made outside the
@@ -73,14 +74,31 @@ everything outside the workload untrusted.
    build digest, and verifies the attestation of peers where hardware binding matters.
 8. **Kubernetes, Docker and sidecars as untrusted neighbours.** Run as non-root with a
    read-only root filesystem, no capabilities, seccomp `RuntimeDefault`, resource limits;
-   liveness and readiness reflect real state (trust material loaded, storage reachable);
-   SIGTERM drains and shuts down gracefully; configuration reloads from mounted files. Trust
+   every container, sidecars included, is probed as rule 31 has it;
+   SIGTERM drains and shuts down gracefully; what a process runs with is read at start and
+   changed by a rollout, with the TI's trust material as the one exception (below). Trust
    material comes one of two ways, outside the request path, and consumers keep nothing of it
    on disk: from mounted files written by a producer (a CronJob from the same image that
    fetches, verifies and exports the set; an operator's import on an air-gapped site), or, for
    a standalone image, from the workload's own background download from the fixed hosts of
    the specification, under a hash that TLS vouches for
    ([decision-12](../../backlog/decisions/)).
+   - **Read at start, changed by a rollout.** Configuration, TLS material (certificates,
+     keys, CA bundles, allowlists) and keys are read and checked once, at start, and fixed
+     for the life of the process: what rule 7 reports and attestation measures is what
+     runs. A change is a new rollout: the deployment rolls the pods when a mounted Secret
+     or ConfigMap changes (a checksum annotation, a reloader, cert-manager's renewal), and
+     the PodDisruptionBudget and rule 22 keep that free of dropped requests. No server
+     watches or polls such a file, and none re-reads it on the request path.
+   - **Refreshed at run time: the TI's trust material, and nothing else.** The TSL and the
+     TI roots, OCSP responses, federation entity statements and their JWKS, and the
+     discovery documents of IdPs are valid for less than a deployment cycle, and a
+     restart does not make them newer. They are verification data, not configuration: the
+     core verifies each before use (rule 4), a verified set replaces the old one as a
+     whole, a failed refresh keeps the old set and raises a metric, and the age of the set
+     in force is a metric (rule 14). They are refreshed outside the request path, by the
+     background check that loads them. Other material joins this list only by a change of
+     this rule, with the reason its validity is shorter than a rollout.
    - **One image, several deployments.** A helper ships in the product's image
      (`libexec/telematik`, [git and releases](../conventions/git-and-releases.md)) and
      runs either as a child process over stdio inside the container or as a sidecar
@@ -98,7 +116,7 @@ everything outside the workload untrusted.
      policy and data writes); that the socket is reachable is not the restriction. They
      are part of the measured workload: their digests are in the same signed manifest and
      in the pod policy that attestation measures; native sidecar containers order their
-     start, and readiness follows their handshake. Policy engines
+     start, and their probes follow rule 31. Policy engines
      run only this way, never as a service in another pod, and their policies are
      configuration under rule 7, mounted at start and never loaded at run time.
    - Platform services (workload identity, mesh TLS, attestation) are consumed through
@@ -261,7 +279,8 @@ everything outside the workload untrusted.
     other; schema changes go expand, migrate, contract; keys rotate with an overlap in
     which old and new both verify.
 23. **A separate admin plane.** Admin, metrics, health and debug endpoints listen on their
-    own port with their own authentication (mTLS), restricted by NetworkPolicy; nothing
+    own port with their own authentication (mTLS), restricted by NetworkPolicy, except the
+    bare probe path of rule 31, which the kubelet reaches without a certificate; nothing
     administrative is reachable on the public listener, and debug and profiling are not
     compiled into production builds.
 24. **Resilient under load.** Timeouts on every outbound call and every phase of an
@@ -281,7 +300,7 @@ everything outside the workload untrusted.
     write to its configuration through its API is refused, and a stopped or slow sidecar,
     or one without a decision, leads to deny. Transport (rules 29 and 30) is tested on the
     image: the same image started in each mode (https, mTLS, unix, the http opt-out);
-    certificate rotation under load without a dropped request; a wrong SAN, an expired
+    a certificate rotation by rollout under load without a dropped request; a wrong SAN, an expired
     certificate and an unknown client refused; the egress client through a CONNECT proxy.
 27. **Runs under any UID, as on OpenShift.** The platform picks the identity, not the
     image: OpenShift's `restricted-v2` SCC starts a container with an arbitrary UID from
@@ -422,10 +441,10 @@ everything outside the workload untrusted.
       - Identity is pinned, not only chained: each peer has an expected name (DNS SAN or
         SPIFFE ID), an mTLS listener an allowlist of client identities. A valid chain
         under a shared CA does not say which workload is calling.
-      - Reload without restart: certificate, key and CA bundle are re-read on change. A
-        new pair is swapped in only if key and certificate match and the certificate is
-        valid; a failed reload keeps the old pair and raises a metric. Certificate expiry
-        is a metric, and an expired certificate fails readiness.
+      - Read at start, rotated by a rollout (rule 8): a server whose key and certificate
+        do not match, or whose certificate is not valid, does not start (rule 17).
+        Certificate expiry is a metric with an alert well before the renewal is due, and
+        an expired certificate fails readiness.
       - The profile is fixed: protocol version, curves and suites follow gemSpec_Krypt and
         are constants in code, not configuration.
     - **Unix sockets are first-class listeners.** Path sockets only, no abstract
@@ -470,3 +489,47 @@ everything outside the workload untrusted.
     - **Plain http only for self-verifying data.** OCSP responses and CRLs are signed and
       verified by the workload, so they may travel over http and through the proxy.
       Nothing else does.
+31. **Every container's health is probed, and the three probes ask different questions.**
+    - **Every container.** Each container of a workload, a sidecar as much as the main
+      one, has a startup, a readiness and a liveness probe. A container without probes is
+      ready the moment its process starts, and a pod with such a sidecar takes traffic
+      before the sidecar can serve it.
+    - **Startup: is it initialised?** It passes once the container can serve: trust
+      material loaded and verified, keys found, the listener or socket bound. A native
+      sidecar's startup probe gates the start of the main containers, so they never meet a
+      missing socket (rule 8).
+    - **Readiness: can it serve now?** It follows what the container needs to answer
+      correctly: its trust material is current, its keys and its required dependencies
+      (store, key service, HSM) answer. A container that is not ready makes its pod leave
+      the Service, which is intended: a workload whose sidecar cannot sign must not take
+      requests. Saturation is not unreadiness: when every worker or session is busy, the
+      dependency is answering, and load must not take replicas out of service (rule 24
+      sheds the load instead).
+    - **Liveness: is the process stuck?** It passes when the process answers at all,
+      whatever the state of its dependencies. A restart does not bring back a store or an
+      HSM, and liveness tied to one turns an outage into a restart storm.
+    - **Read from state, never from the probe.** A background check asks the dependencies
+      at a configured interval and keeps the result; a probe reads it. A probe makes no
+      call to a dependency, takes no pooled connection or session, and answers within its
+      timeout.
+    - **How the kubelet reaches it.** The kubelet presents no client certificate and
+      reaches ports only.
+      - A container with a network listener serves `grpc.health.v1` to a `grpc` probe, or
+        a health path to an `httpGet` probe, on the admin listener (rule 23). That one
+        path answers without client authentication and says only serving or not serving:
+        no version, no detail, no dependency names. Detail stays behind the admin
+        listener's mTLS.
+      - A container that listens only on a Unix socket (the sidecars of rule 8) is probed
+        by `exec` of its own binary: `<binary> health ready` and `<binary> health live`
+        connect to the socket, read its health and exit 0 or 1, with no shell in the image.
+        A TCP port opened only for probes is a network listener the sidecar must not have.
+    - **One health, in the transport's standard form.** The health that probes read is
+      the one clients read: `grpc.health.v1` for gRPC, the health method of a helper's
+      protocol, a health path for HTTP. A client of a sidecar can ask the same question
+      before it relies on it.
+    - **Observable.** Each change of the health state is a log line with its reason and a
+      metric (rule 14), so that an outage of a dependency shows as such and not only as
+      failed probes in the platform's events.
+    - **Tested** (rule 26): with a dependency stopped, the container turns not ready and
+      stays alive; with every worker busy, it stays ready; a probe answers within its
+      timeout while the dependency hangs.

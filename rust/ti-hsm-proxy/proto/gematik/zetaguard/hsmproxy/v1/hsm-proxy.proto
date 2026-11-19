@@ -1,0 +1,231 @@
+syntax = "proto3";
+
+package gematik.zetaguard.hsmproxy.v1;
+
+// Import für die REST/JSON Transcoding Annotationen.
+// Diese Datei muss im Include-Pfad des Protoc-Compilers liegen.
+// Normalerweise zu finden unter: github.com/googleapis/googleapis
+import "google/api/annotations.proto";
+import "google/rpc/status.proto";
+import "google/rpc/error_details.proto";
+
+option java_multiple_files = true;
+option java_package = "de.gematik.zetaguard.hsmproxy.v1";
+option java_outer_classname = "HsmProxyProto";
+// Option für Go, Repositorey existiert noch nicht
+option go_package = "github.com/zeta-hsm-proxy/api/v1;hsmproxyv1";
+
+// Der ZETA Guard HSM Proxy Service.
+// Stellt kryptographische Operationen für ECC-Schlüssel (NIST-Kurven) bereit.
+service HsmProxyService {
+
+  // Führt eine digitale Signatur mit einem ECC-Schlüssel aus.
+  // Wird genutzt für:
+  // - TLS 1.3 Handshake (Certificate Verify)
+  // - JWT Signatur (ES256, ES384, ES512)
+  // - CBOR Object Signing and Encryption (COSE)
+  rpc Sign (SignRequest) returns (SignResponse) {
+    option (google.api.http) = {
+      post: "/v1/sign"
+      body: "*"
+    };
+  }
+
+  // Ruft den öffentlichen Schlüssel ab.
+  // Unterstützt JWK (JSON Web Key) für Keycloak und PEM/DER für Nginx.
+  rpc GetPublicKey (GetPublicKeyRequest) returns (GetPublicKeyResponse) {
+    option (google.api.http) = {
+      get: "/v1/keys/{key_id}"
+    };
+  }
+
+  // Verschlüsselt kleine Datenmengen (z.B. einen Data Encryption Key - DEK).
+  rpc Encrypt (EncryptRequest) returns (EncryptResponse) {
+    option (google.api.http) = {
+      post: "/v1/encrypt"
+      body: "*"
+    };
+  }
+
+  // Entschlüsselt kleine Datenmengen (z.B. einen DEK).
+  rpc Decrypt (DecryptRequest) returns (DecryptResponse) {
+    option (google.api.http) = {
+      post: "/v1/decrypt"
+      body: "*"
+    };
+  }
+
+  // Ruft das zugehörige X.509 Zertifikat zum Schlüssel ab.
+  // Wird vom TLS-Terminierungspunkt und vom ZETA/ASL-Endpunkt beim Start aufgerufen, 
+  // um das öffentliche Zertifikat in den Speicher zu laden.
+  rpc GetCertificate (GetCertificateRequest) returns (GetCertificateResponse) {
+    option (google.api.http) = {
+      get: "/v1/certs/{key_id}"
+    };
+  }
+
+  // Prüft die Erreichbarkeit des HSM-Backends.
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse) {
+    option (google.api.http) = {
+      get: "/v1/health"
+    };
+  }
+}
+
+// --- Enums für ECC NIST Kurven und Algorithmen ---
+
+enum DigestAlgorithm {
+  NONE = 0;
+  SHA256 = 1;
+  SHA384 = 2;
+  SHA512 = 3;
+}
+
+enum EccCurve {
+  ECC_CURVE_UNSPECIFIED = 0;
+  ECC_CURVE_NIST_P256 = 1; // secp256r1
+  ECC_CURVE_NIST_P384 = 2; // secp384r1
+  ECC_CURVE_NIST_P521 = 3; // secp521r1
+}
+
+// Algorithmen für das Sealing (Envelope Encryption)
+enum SymmetricEncryptionAlgorithm {
+  SYMMETRIC_ENCRYPTION_UNSPECIFIED = 0;
+  // AES mit 256 Bit im Galois/Counter Mode (AEAD)
+  AES_256_GCM = 1;
+}
+
+// --- Request / Response Nachrichten ---
+
+message SignRequest {
+  // Die eindeutige ID oder der Alias des Schlüssels im HSM.
+  string key_id = 1;
+
+  // Die Eingabedaten für die Signatur.
+  // - Wenn algorithm != NONE: Beliebige Rohdaten (werden vom Proxy gehasht).
+  // - Wenn algorithm == NONE: Muss bereits der Hash (Digest) sein.
+  //   ACHTUNG: Die Länge muss zur Kurve passen (32 Bytes für P-256, 48 Bytes für P-384).
+  bytes data = 2;
+
+  // Der Hash-Algorithmus, der auf 'data' angewendet werden soll.
+  // Wählen Sie NONE, wenn 'data' bereits ein Hash ist (Empfohlen für Nginx/TLS).
+  DigestAlgorithm algorithm = 3;
+}
+
+message SignResponse {
+  // Die Signatur im IEEE P1363 Format (Raw R|S).
+  // - P-256: 64 Bytes (32 Byte R + 32 Byte S)
+  // - P-384: 96 Bytes
+  //
+  // HINWEIS FÜR NGINX/TLS:
+  // TLS benötigt meist ASN.1 DER Encoding. Der Client (Nginx Engine) muss
+  // dieses Raw-Format selbst in DER umwandeln (OpenSSL: ECDSA_SIG_set0).
+  bytes signature = 1;
+
+  // Die ID des verwendeten Schlüssels (zur Bestätigung).
+  string key_id = 2;
+}
+
+message GetPublicKeyRequest {
+  // Die ID oder der Alias des Schlüssels.
+  string key_id = 1;
+}
+
+message GetPublicKeyResponse {
+  // Option 1: Public Key im PEM Format (PKIX / X.509 SubjectPublicKeyInfo).
+  // Ideal für Nginx / OpenSSL Tools.
+  string public_key_pem = 1;
+
+  // Option 2: Public Key als rohe Bytes (DER).
+  bytes public_key_der = 2;
+
+  // Option 3: Public Key als JSON Web Key (JWK) Struktur.
+  // Enthält nativ alle Parameter inkl. "crv" (Kurve).
+  // Ideal für Keycloak Integration.
+  string jwk_json = 3;
+}
+
+message EncryptRequest {
+  // Die ID des Key Encryption Keys (KEK) im HSM (z.B. "zeta-keycloak-kek-v1")
+  string key_id = 1;
+
+  // Der Klartext, der verschlüsselt werden soll (i.d.R. der 32-Byte DEK von Keycloak)
+  bytes plaintext = 2;
+
+  // Der Algorithmus
+  SymmetricEncryptionAlgorithm algorithm = 3;
+
+  // Optional: Authenticated Additional Data (AAD)
+  // WICHTIG für Datenbanken: Hier sollte z.B. die User-ID oder Row-ID übergeben werden.
+  // Das verhindert, dass ein Angreifer in der DB den verschlüsselten DEK 
+  // von Zeile A in Zeile B kopiert (Ciphertext Swapping).
+  bytes associated_data = 4;
+}
+
+message EncryptResponse {
+  // Der verschlüsselte Ciphertext.
+  bytes ciphertext = 1;
+
+  // Der Initialisierungsvektor (IV) / Nonce.
+  // Muss bei GCM in der DB neben dem Ciphertext gespeichert werden!
+  bytes iv = 2;
+
+  // Der Authentication Tag (für AES-GCM).
+  // Manche Krypto-Libs hängen den Tag automatisch ans Ende des Ciphertexts an.
+  // Wird explizit angegeben, falls getrennt geliefert.
+  bytes tag = 3;
+}
+
+message DecryptRequest {
+  string key_id = 1;
+  bytes ciphertext = 2;
+  SymmetricEncryptionAlgorithm algorithm = 3;
+  
+  bytes iv = 4;
+  bytes tag = 5;
+  
+  // Muss exakt dem AAD entsprechen, das beim Encrypt übergeben wurde!
+  bytes associated_data = 6;
+}
+
+message DecryptResponse {
+  // Der entschlüsselte Klartext (der DEK)
+  bytes plaintext = 1;
+}
+
+message GetCertificateRequest {
+  // Die ID oder der Alias des Schlüssels, zu dem das Zertifikat gehört.
+  // (Entspricht der key_id aus dem SignRequest).
+  string key_id = 1;
+}
+
+message GetCertificateResponse {
+  // Das End-Entity (Leaf) Zertifikat im PEM-Format.
+  // Enthält den öffentlichen Schlüssel und die Identität.
+  string certificate_pem = 1;
+
+  // Die Zertifikatskette (Leaf + Intermediates) im PEM-Format.
+  // Das Array sollte bei Index 0 das Leaf-Zertifikat enthalten, 
+  // gefolgt von den Intermediates bis hin zur (optionalen) Root-CA.
+  repeated string certificate_chain_pem = 2;
+}
+
+message HealthCheckRequest {
+  // Leer
+}
+
+message HealthCheckResponse {
+  enum ServingStatus {
+    UNKNOWN = 0;
+    SERVING = 1;     // HSM verbunden und betriebsbereit
+    NOT_SERVING = 2; // Verbindung zum HSM unterbrochen
+  }
+
+  ServingStatus status = 1;
+
+  // Version der Proxy-Software
+  string version = 2;
+
+  // Informationen zum HSM Backend (z.B. "Utimaco CryptoServer Se-Series")
+  string hsm_info = 3;
+}

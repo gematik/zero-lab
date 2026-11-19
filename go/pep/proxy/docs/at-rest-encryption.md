@@ -65,12 +65,13 @@ The format is one key per line, `<id> <base64 of 32 bytes>`, with `#` comments a
 seals, all of them open. A file holding one bare base64 key, the format this variable used before, still loads, as
 the key `default`.
 
-**Rotation** needs no restart: each replica looks at the file at most every 30 s (mtime and size) and re-reads it when
-it changed. A broken file keeps the keys in force and logs at error level. The order, so that no replica meets a
-record it cannot open:
+**Rotation** is a sequence of rollouts: each replica reads the file once, at start, and a changed file takes effect
+in the pods that start with it ([servers](../../../../docs/design/servers.md), rule 8). A broken file stops the start,
+so a rollout with one goes no further than its first pod. The order, so that no replica meets a record it cannot
+open:
 
-1. Add the new key **second** on all pods, and wait until all of them have it.
-2. Make it **first**: new records use it, old ones still open.
+1. Add the new key **second**, and roll out until all pods run with it.
+2. Make it **first** and roll out again: new records use it, old ones still open.
 3. Drop the old key after the longest TTL of a record it sealed (the session lifetime, `PEP_SESSION_TTL` with the
    snapshot fast path).
 

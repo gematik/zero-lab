@@ -31,10 +31,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -106,25 +104,20 @@ type KeychainEntry struct {
 // that has one.
 //
 // Changing the keys (server rule 22): add an entry with the next version and a time by which every replica
-// has the file; take along what has to outlive the entry of before; then drop that entry. revoked names
-// entries that were dropped although something they sealed is still there, which a consumer that watches
-// over that otherwise refuses ([WithKeychainCheck]). A keychain from [LoadKeychain] follows its file, so
-// nothing needs a restart.
+// has the file; take along what has to outlive the entry of before; then drop that entry. Each step is a
+// rollout (server rule 8): a keychain is read once, and a changed file takes effect in the processes that
+// start with it. revoked names entries that were dropped although something they sealed is still there; a
+// consumer holds the file it starts with against what is sealed ([Keychain.Entries], [Keychain.Revoked])
+// and refuses to start on one that lacks such an entry.
 type Keychain struct {
 	mu      sync.RWMutex
 	entries []keychainEntry // by version, rising
 	revoked []string
 
-	purpose    string
-	unwrap     Unwrapper
-	agreed     func(id string) bool
-	check      func(entries []KeychainEntry, revoked []string) error
-	path       string
-	now        func() time.Time
-	checkedAt  atomic.Int64
-	fileMod    time.Time
-	fileSize   int64
-	reloadLock sync.Mutex
+	purpose string
+	unwrap  Unwrapper
+	agreed  func(id string) bool
+	now     func() time.Time
 }
 
 type keychainEntry struct {
@@ -170,8 +163,7 @@ func (e keychainFileEntry) associatedData(purpose string) []byte {
 // KeychainOption adjusts a [Keychain].
 type KeychainOption func(*Keychain)
 
-// WithKeychainClock sets the clock that says which entry is in force and paces the looks at the file; the
-// default is time.Now.
+// WithKeychainClock sets the clock that says which entry is in force; the default is time.Now.
 func WithKeychainClock(now func() time.Time) KeychainOption {
 	return func(k *Keychain) { k.now = now }
 }
@@ -185,18 +177,9 @@ func WithKeychainAgreement(agreed func(id string) bool) KeychainOption {
 	return func(k *Keychain) { k.agreed = agreed }
 }
 
-// WithKeychainCheck has check look at a changed file before its keys take the place of those in force: an
-// error keeps the keys in force, as a file that cannot be read does. A consumer refuses with it a file that
-// lacks an entry something is still sealed under. The file a keychain is first made from is not checked;
-// [Keychain.Entries] and [Keychain.Revoked] say what it holds.
-func WithKeychainCheck(check func(entries []KeychainEntry, revoked []string) error) KeychainOption {
-	return func(k *Keychain) { k.check = check }
-}
-
-// ParseKeychain unwraps the entries of a keychain file for the given purpose. The keychain does not follow
-// a file.
+// ParseKeychain unwraps the entries of a keychain file for the given purpose.
 func ParseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwrapper, opts ...KeychainOption) (*Keychain, error) {
-	entries, revoked, err := parseKeychain(ctx, data, purpose, unwrap, nil)
+	entries, revoked, err := parseKeychain(ctx, data, purpose, unwrap)
 	if err != nil {
 		return nil, err
 	}
@@ -207,11 +190,10 @@ func ParseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwr
 	return k, nil
 }
 
-// LoadKeychain reads a keychain for the given purpose from the file at path, unwraps its entries, and keeps
-// following the file as [LoadKeyring] does: a changed file is read again within 30 s, only its new entries
-// are unwrapped, and a reload that fails keeps the keys in force and logs at error level until it succeeds.
+// LoadKeychain reads a keychain for the given purpose from the file at path, once, and unwraps its entries.
+// The file is not looked at again: a changed file takes effect with a new process, a rollout (server rule 8).
 func LoadKeychain(ctx context.Context, path, purpose string, unwrap Unwrapper, opts ...KeychainOption) (*Keychain, error) {
-	info, data, err := readKeyringFile(path)
+	data, err := readKeyringFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -219,13 +201,11 @@ func LoadKeychain(ctx context.Context, path, purpose string, unwrap Unwrapper, o
 	if err != nil {
 		return nil, fmt.Errorf("kv: keychain %q: %w", path, err)
 	}
-	k.path, k.fileMod, k.fileSize = path, info.ModTime(), info.Size()
-	k.checkedAt.Store(k.now().UnixNano())
 	return k, nil
 }
 
-// parseKeychain reads and unwraps the entries, taking from known those the file has unchanged.
-func parseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwrapper, known []keychainEntry) ([]keychainEntry, []string, error) {
+// parseKeychain reads and unwraps the entries.
+func parseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwrapper) ([]keychainEntry, []string, error) {
 	if len(data) > maxKeyringFile {
 		return nil, nil, errors.New("kv: keychain is too large")
 	}
@@ -242,14 +222,9 @@ func parseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwr
 		return nil, nil, errors.New("kv: keychain has no entry")
 	}
 	entries := make([]keychainEntry, 0, len(file.Entries))
-	isKnown := func(e keychainEntry) bool {
-		return slices.ContainsFunc(known, func(k keychainEntry) bool { return k.ID == e.ID && k.wrapped == e.wrapped })
-	}
 	fail := func(err error) ([]keychainEntry, []string, error) {
 		for _, e := range entries {
-			if !isKnown(e) {
-				e.clear()
-			}
+			e.clear()
 		}
 		return nil, nil, err
 	}
@@ -261,33 +236,28 @@ func parseKeychain(ctx context.Context, data []byte, purpose string, unwrap Unwr
 			return fail(fmt.Errorf("kv: keychain entry %q: keys must be sorted, each once, and have %q", f.ID, KeychainSeal))
 		}
 		entry := keychainEntry{ID: f.ID, Version: f.Version, ActiveFrom: f.ActiveFrom, KEKID: f.KEKID, Keys: f.Keys, wrapped: f.Wrapped}
-		if i := slices.IndexFunc(known, func(k keychainEntry) bool { return k.ID == f.ID && k.wrapped == f.Wrapped }); i >= 0 &&
-			slices.Equal(known[i].Keys, f.Keys) && known[i].Version == f.Version && known[i].ActiveFrom.Equal(f.ActiveFrom) && known[i].KEKID == f.KEKID {
-			entry.seal, entry.name = known[i].seal, known[i].name
-		} else {
-			wrapped, err := base64.StdEncoding.DecodeString(f.Wrapped)
-			if err != nil || len(wrapped) <= keychainIVSize+keychainTagSize {
-				return fail(fmt.Errorf("kv: keychain entry %q: wrapped must be the base64 of IV, wrapped keys and tag", f.ID))
-			}
-			bounded, cancel := context.WithTimeout(ctx, keychainUnwrapTimeout)
-			plain, err := unwrap.Unwrap(bounded, f.KEKID, wrapped[:keychainIVSize], wrapped[keychainIVSize:len(wrapped)-keychainTagSize], wrapped[len(wrapped)-keychainTagSize:], f.associatedData(purpose))
-			cancel()
-			if err != nil {
-				return fail(fmt.Errorf("kv: keychain entry %q is not unwrapped: %w", f.ID, err))
-			}
-			var keys map[string][]byte
-			err = json.Unmarshal(plain, &keys)
-			clear(plain)
-			if err != nil || len(keys) != len(f.Keys) {
-				return fail(fmt.Errorf("kv: keychain entry %q does not hold the keys it names", f.ID))
-			}
-			for _, name := range f.Keys {
-				if len(keys[name]) != keySize {
-					return fail(fmt.Errorf("kv: keychain entry %q: the key %q is not one of %d bytes", f.ID, name, keySize))
-				}
-			}
-			entry.seal, entry.name = keys[KeychainSeal], keys[KeychainName]
+		wrapped, err := base64.StdEncoding.DecodeString(f.Wrapped)
+		if err != nil || len(wrapped) <= keychainIVSize+keychainTagSize {
+			return fail(fmt.Errorf("kv: keychain entry %q: wrapped must be the base64 of IV, wrapped keys and tag", f.ID))
 		}
+		bounded, cancel := context.WithTimeout(ctx, keychainUnwrapTimeout)
+		plain, err := unwrap.Unwrap(bounded, f.KEKID, wrapped[:keychainIVSize], wrapped[keychainIVSize:len(wrapped)-keychainTagSize], wrapped[len(wrapped)-keychainTagSize:], f.associatedData(purpose))
+		cancel()
+		if err != nil {
+			return fail(fmt.Errorf("kv: keychain entry %q is not unwrapped: %w", f.ID, err))
+		}
+		var keys map[string][]byte
+		err = json.Unmarshal(plain, &keys)
+		clear(plain)
+		if err != nil || len(keys) != len(f.Keys) {
+			return fail(fmt.Errorf("kv: keychain entry %q does not hold the keys it names", f.ID))
+		}
+		for _, name := range f.Keys {
+			if len(keys[name]) != keySize {
+				return fail(fmt.Errorf("kv: keychain entry %q: the key %q is not one of %d bytes", f.ID, name, keySize))
+			}
+		}
+		entry.seal, entry.name = keys[KeychainSeal], keys[KeychainName]
 		entries = append(entries, entry)
 	}
 	slices.SortFunc(entries, func(a, b keychainEntry) int { return a.Version - b.Version })
@@ -324,7 +294,6 @@ func (k *Keychain) current() (keychainEntry, bool) {
 
 // Entries returns what the file says of each entry, by rising version.
 func (k *Keychain) Entries() []KeychainEntry {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	entries := make([]KeychainEntry, len(k.entries))
@@ -336,7 +305,6 @@ func (k *Keychain) Entries() []KeychainEntry {
 
 // Revoked returns the IDs of the entries the file says were dropped with what they sealed.
 func (k *Keychain) Revoked() []string {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	return slices.Clone(k.revoked)
@@ -345,7 +313,6 @@ func (k *Keychain) Revoked() []string {
 // Ready returns the IDs of the entries whose time has come by this replica's clock, whatever the others say:
 // what it tells them it is ready for.
 func (k *Keychain) Ready() []string {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	now := k.now()
@@ -360,7 +327,6 @@ func (k *Keychain) Ready() []string {
 
 // Current implements [Keys]. Before the first entry is in force there is no current key and the ID is empty.
 func (k *Keychain) Current() (string, []byte) {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	entry, _ := k.current()
@@ -369,7 +335,6 @@ func (k *Keychain) Current() (string, []byte) {
 
 // Lookup implements [Keys].
 func (k *Keychain) Lookup(id string) ([]byte, bool) {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	for _, entry := range k.entries {
@@ -385,7 +350,6 @@ func (k *Keychain) Lookup(id string) ([]byte, bool) {
 // in which to look for something that was named under any of them. While no entry is in force, none comes
 // first. The slices are fresh copies the caller owns and clears.
 func (k *Keychain) NameKeys() []NameKey {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	var keys []NameKey
@@ -417,68 +381,6 @@ func (k *Keychain) String() string {
 
 // GoString keeps %#v as silent as %v.
 func (k *Keychain) GoString() string { return k.String() }
-
-func (k *Keychain) followFile() {
-	if k.path == "" {
-		return
-	}
-	now := k.now().UnixNano()
-	checked := k.checkedAt.Load()
-	if now-checked < int64(keyringCheckEvery) || !k.checkedAt.CompareAndSwap(checked, now) {
-		return
-	}
-	k.reloadLock.Lock()
-	defer k.reloadLock.Unlock()
-	if err := k.reload(); err != nil {
-		slog.Error("kv: the changed keychain is not taken, the keys in force stay", "path", k.path, "error", err)
-	}
-}
-
-func (k *Keychain) reload() error {
-	info, data, err := readKeyringFile(k.path)
-	if err != nil {
-		return err
-	}
-	if info.ModTime().Equal(k.fileMod) && info.Size() == k.fileSize {
-		return nil
-	}
-	k.mu.RLock()
-	known := slices.Clone(k.entries)
-	k.mu.RUnlock()
-	entries, revoked, err := parseKeychain(context.Background(), data, k.purpose, k.unwrap, known)
-	if err != nil {
-		return err
-	}
-	isIn := func(in []keychainEntry, e keychainEntry) bool {
-		return slices.ContainsFunc(in, func(o keychainEntry) bool { return o.ID == e.ID && o.wrapped == e.wrapped })
-	}
-	if k.check != nil {
-		said := make([]KeychainEntry, len(entries))
-		for i, entry := range entries {
-			said[i] = entry.KeychainEntry
-		}
-		if err := k.check(said, revoked); err != nil {
-			for _, entry := range entries {
-				if !isIn(known, entry) {
-					entry.clear()
-				}
-			}
-			return err
-		}
-	}
-	k.mu.Lock()
-	k.entries, k.revoked = entries, revoked
-	k.mu.Unlock()
-	for _, old := range known {
-		if !isIn(entries, old) {
-			old.clear()
-		}
-	}
-	k.fileMod, k.fileSize = info.ModTime(), info.Size()
-	current, _ := k.current()
-	slog.Info("kv: keychain reloaded", "path", k.path, "current", current.ID, "entries", len(entries))
-	return nil
-}
 
 // LocalKEK is a key-encryption key held in memory, for development and for tests: an [Unwrapper] for
 // installations without a key service, and the means to make a keychain for them. Whatever key ID an

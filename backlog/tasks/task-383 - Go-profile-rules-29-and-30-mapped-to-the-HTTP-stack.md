@@ -4,6 +4,7 @@ title: 'Go profile: rules 29 and 30 mapped to the HTTP stack'
 status: To Do
 assignee: []
 created_date: '2026-11-18 21:34'
+updated_date: '2026-11-19 13:53'
 labels:
   - go
   - docs
@@ -27,3 +28,9 @@ servers.md rules 29 (transport grammar) and 30 (egress client) are new (TASK-382
 <!-- AC:BEGIN -->
 - [ ] #1 go/docs/design.md names, for each bullet of rules 29 and 30, the Go construct or package that meets it, without restating the rule
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-19: rule 29 no longer asks for TLS reload without restart (TASK-395): TLS material is read at start and rotated by a rollout. Nothing to map for reload.
+<!-- SECTION:NOTES:END -->

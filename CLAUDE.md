@@ -24,7 +24,7 @@ why, or does not land.
 8. Few, stable, maintained, evaluated dependencies
    ([dependencies](docs/conventions/dependencies.md)).
 9. Fuzzed ([testing](docs/design/testing.md#fuzzing)).
-10. Servers are confidential workloads, 30 rules ([servers](docs/design/servers.md)).
+10. Servers are confidential workloads, 31 rules ([servers](docs/design/servers.md)).
 11. Languages meet through processes (stateless helpers in the same image) or shared
     specifications ([interop](docs/interop.md)).
 

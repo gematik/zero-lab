@@ -27,12 +27,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"slices"
 	"sync"
-	"sync/atomic"
-	"time"
 )
 
 const (
@@ -41,8 +38,6 @@ const (
 	maxKeyIDLen = 64
 	// maxKeyringFile is far beyond any real ring and bounds the work of a parse.
 	maxKeyringFile = 64 << 10
-	// keyringCheckEvery paces the look at the key file: rotation is slow, requests are not.
-	keyringCheckEvery = 30 * time.Second
 
 	// BareKeyID is the ID of the key in a file holding one bare base64 key. A rotation away from such a file
 	// names it: `k2 <new key>` above `default <the old key>`.
@@ -66,17 +61,11 @@ type Keys interface {
 //
 // Rotating, so that no replica meets a record it cannot open (server rule 22): add the new key second on all
 // pods; once all of them hold it, make it first; drop the old key after the longest TTL of a record it sealed.
-// Nothing needs a restart: a ring from [LoadKeyring] follows its file.
+// Each step is a rollout (server rule 8): a ring is read once, and a changed file takes effect in the
+// processes that start with it.
 type Keyring struct {
 	mu   sync.RWMutex
 	ring keyringData
-
-	path       string
-	now        func() time.Time
-	checkedAt  atomic.Int64
-	fileMod    time.Time
-	fileSize   int64
-	reloadLock sync.Mutex
 }
 
 type keyringData struct {
@@ -97,14 +86,13 @@ func ParseKeyring(data []byte) (*Keyring, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Keyring{ring: ring, now: time.Now}, nil
+	return &Keyring{ring: ring}, nil
 }
 
-// LoadKeyring reads a ring from the file at path, and keeps following it: at most every 30 s, during Current
-// or Lookup, it compares the file's mtime and size and re-reads it when they differ, so rotation needs no
-// restart (server rule 6). A failed reload keeps the keys in force and logs at error level until it succeeds.
+// LoadKeyring reads a ring from the file at path, once. The file is not looked at again: a changed file takes
+// effect with a new process, a rollout (server rule 8).
 func LoadKeyring(path string) (*Keyring, error) {
-	info, data, err := readKeyringFile(path)
+	data, err := readKeyringFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -113,14 +101,11 @@ func LoadKeyring(path string) (*Keyring, error) {
 	if err != nil {
 		return nil, fmt.Errorf("kv: key file %q: %w", path, err)
 	}
-	k := &Keyring{ring: ring, path: path, now: time.Now, fileMod: info.ModTime(), fileSize: info.Size()}
-	k.checkedAt.Store(k.now().UnixNano())
-	return k, nil
+	return &Keyring{ring: ring}, nil
 }
 
 // Current implements [Keys].
 func (k *Keyring) Current() (string, []byte) {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	return k.ring.current, slices.Clone(k.ring.keys[k.ring.current])
@@ -128,7 +113,6 @@ func (k *Keyring) Current() (string, []byte) {
 
 // Lookup implements [Keys].
 func (k *Keyring) Lookup(id string) ([]byte, bool) {
-	k.followFile()
 	k.mu.RLock()
 	defer k.mu.RUnlock()
 	key, ok := k.ring.keys[id]
@@ -148,70 +132,18 @@ func (k *Keyring) String() string {
 // GoString is String for %#v.
 func (k *Keyring) GoString() string { return k.String() }
 
-// followFile re-reads the file when it is time to and it changed. One caller at a time does the file I/O; the
-// others go on with the keys in force.
-func (k *Keyring) followFile() {
-	if k.path == "" {
-		return
-	}
-	now := k.now().UnixNano()
-	checked := k.checkedAt.Load()
-	if time.Duration(now-checked).Abs() < keyringCheckEvery || !k.checkedAt.CompareAndSwap(checked, now) {
-		return
-	}
-	k.reloadLock.Lock()
-	defer k.reloadLock.Unlock()
-	if err := k.reload(); err != nil {
-		slog.Error("kv: reloading the key file failed, keeping the keys in force", "path", k.path, "error", err)
-	}
-}
-
-func (k *Keyring) reload() error {
-	info, err := os.Stat(k.path)
-	if err != nil {
-		return err
-	}
-	if info.Size() == k.fileSize && info.ModTime().Equal(k.fileMod) {
-		return nil
-	}
-	// The file state is remembered only on success, so a broken file stays under watch until repaired, even
-	// if the repair leaves mtime and size as they were.
-	info, data, err := readKeyringFile(k.path)
-	if err != nil {
-		return err
-	}
-	defer clear(data)
-	ring, err := parseKeyring(data)
-	if err != nil {
-		return err
-	}
-	k.mu.Lock()
-	old := k.ring
-	k.ring = ring
-	k.mu.Unlock()
-	old.clear()
-	k.fileMod, k.fileSize = info.ModTime(), info.Size()
-	slog.Info("kv: key file reloaded", "path", k.path, "current", ring.current, "keys", len(ring.keys))
-	return nil
-}
-
-func readKeyringFile(path string) (os.FileInfo, []byte, error) {
+func readKeyringFile(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	// Stat before reading: a write in between shows as a change at the next check.
-	info, err := f.Stat()
-	if err != nil {
-		return nil, nil, err
-	}
 	data, err := io.ReadAll(io.LimitReader(f, maxKeyringFile+1))
 	if err != nil {
 		clear(data)
-		return nil, nil, err
+		return nil, err
 	}
-	return info, data, nil
+	return data, nil
 }
 
 func parseKeyring(data []byte) (keyringData, error) {

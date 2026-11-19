@@ -1,5 +1,5 @@
 [workspace]
-members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-tls", "ti-idpd-client", "ti-directory-client", "ti-client", "unsafe-audit", "traceability"]
+members = ["ti-types", "ti-cache", "ti-pki", "ti-pkcs12", "ti-connector-client", "ti-cli", "ti-wasm", "jwz", "ti-jwz", "ti-tls", "ti-idpd-client", "ti-directory-client", "ti-client", "unsafe-audit", "traceability", "ti-hsm-proxy"]
 # cargo-fuzz targets need nightly and a dependency tree of their own.
 exclude = ["jwz/fuzz"]
 resolver = "3"
@@ -120,6 +120,24 @@ getrandom = { version = "0.4.3", default-features = false }
 syn = { version = "3.0.6", default-features = false, features = ["full", "visit", "parsing", "printing"] }
 proc-macro2 = { version = "1.0.107", default-features = false }
 quote = { version = "1.0.47", default-features = false }
+
+# ti-hsm-proxy: PKCS#11, the one way the key provider sidecar reaches a key. A host, never a core; its
+# FFI (dlopen of the module, the raw calls) is unsafe code inside cryptoki-sys and libloading.
+# Approved 2026-11-19 (TASK-389).
+cryptoki = { version = "=0.12.1", default-features = false }
+# ti-hsm-proxy's gRPC transport, behind its `grpc` feature: gemSpec_ZETA A_28829 requires the
+# interface of hsm-proxy.proto. Host only; tokio, mio, socket2, h2 and hyper carry unsafe code.
+# The code is generated once from the proto and committed (just hsm-proxy-codegen), so no
+# protoc and no prost-build at build time. Approved 2026-11-19 (TASK-389).
+tonic = { version = "0.14.9", default-features = false, features = ["server", "router", "codegen"] }
+tonic-prost = { version = "0.14.9", default-features = false }
+prost = { version = "0.14.6", default-features = false, features = ["std", "derive"] }
+tonic-health = { version = "0.14.9", default-features = false }
+tokio = { version = "1.54.1", default-features = false, features = ["rt-multi-thread", "net", "signal", "time", "macros"] }
+tokio-stream = { version = "0.1.19", default-features = false, features = ["net"] }
+# ti-hsm-proxy's probe (`hsm-proxy health`) and tests reach the gRPC server over its Unix socket.
+hyper-util = { version = "0.1.21", default-features = false, features = ["tokio"] }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
 
 # Test-only.
 futures-lite = "2.6.1"

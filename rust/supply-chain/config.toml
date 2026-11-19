@@ -45,14 +45,39 @@ criteria = "safe-to-deploy"
 version = "3.0.11"
 criteria = "safe-to-deploy"
 
+[[exemptions.anyhow]]
+version = "1.0.104"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.async-trait]]
 version = "0.1.92"
-criteria = "safe-to-run"
-notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
+criteria = "safe-to-deploy"
+notes = "Host only: tonic's server trait in the gRPC transport of ti-hsm-proxy (its grpc feature), approved 2026-11-19 (TASK-389); before that only jwz's browser tests (just jwz-browser), a wasm32 dev-dependency of wasm-bindgen-test. No core build pulls it in."
+
+[[exemptions.atomic-waker]]
+version = "1.1.2"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.autocfg]]
 version = "1.5.1"
 criteria = "safe-to-deploy"
+
+[[exemptions.axum]]
+version = "0.8.9"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.axum-core]]
+version = "0.5.6"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.base64]]
+version = "0.22.1"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.base64]]
 version = "0.23.1"
@@ -99,6 +124,16 @@ criteria = "safe-to-deploy"
 version = "0.10.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.cryptoki]]
+version = "0.12.1"
+criteria = "safe-to-deploy"
+notes = "Host only: the PKCS#11 binding of ti-hsm-proxy, the key provider sidecar's way to an HSM, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers it."
+
+[[exemptions.cryptoki-sys]]
+version = "0.5.0"
+criteria = "safe-to-deploy"
+notes = "Host only: the PKCS#11 FFI under cryptoki (TASK-389), mostly generated bindings. No imported audit covers it."
+
 [[exemptions.defmt]]
 version = "1.1.1"
 criteria = "safe-to-deploy"
@@ -110,6 +145,21 @@ criteria = "safe-to-deploy"
 [[exemptions.defmt-parser]]
 version = "1.0.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.either]]
+version = "1.19.0"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.equivalent]]
+version = "1.0.3"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.errno]]
+version = "0.3.15"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.fastrand]]
 version = "2.5.0"
@@ -123,6 +173,21 @@ criteria = "safe-to-deploy"
 version = "0.4.7"
 criteria = "safe-to-deploy"
 
+[[exemptions.fnv]]
+version = "1.0.7"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.futures-channel]]
+version = "0.3.34"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.futures-sink]]
+version = "0.3.34"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.futures-task]]
 version = "0.3.34"
 criteria = "safe-to-deploy"
@@ -130,6 +195,16 @@ criteria = "safe-to-deploy"
 [[exemptions.futures-util]]
 version = "0.3.34"
 criteria = "safe-to-deploy"
+
+[[exemptions.h2]]
+version = "0.4.20"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.hashbrown]]
+version = "0.17.1"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.hax-lib]]
 version = "0.4.2"
@@ -151,14 +226,54 @@ version = "1.5.0"
 criteria = "safe-to-deploy"
 notes = "Host only, through ureq-proto. No imported audit covers this version."
 
+[[exemptions.http-body]]
+version = "1.1.0"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.http-body-util]]
+version = "0.1.5"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.httparse]]
 version = "1.10.1"
 criteria = "safe-to-deploy"
 notes = "Host only, through ureq-proto. No imported audit covers this version."
 
+[[exemptions.httpdate]]
+version = "1.0.3"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.hyper]]
+version = "1.12.0"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.hyper-timeout]]
+version = "0.5.2"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.hyper-util]]
+version = "0.1.21"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.indexmap]]
+version = "2.14.2"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.is_terminal_polyfill]]
 version = "1.70.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.itertools]]
+version = "0.15.0"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.itoa]]
 version = "1.0.18"
@@ -205,18 +320,43 @@ criteria = "safe-to-deploy"
 version = "0.3.105"
 criteria = "safe-to-deploy"
 
+[[exemptions.libc]]
+version = "0.2.191"
+criteria = "safe-to-deploy"
+notes = "In the cores' trees (getrandom, cpufeatures) and the sidecar's (tokio, mio). Imported audits cover 0.2.190; the unsafe diff from 0.2.189, the version listed before, was reviewed for the cores' call paths on 2026-11-19 (docs/unsafe-exceptions.md, TASK-389): getrandom, getentropy, getauxval and sysctlbyname unchanged."
+
+[[exemptions.libloading]]
+version = "0.8.9"
+criteria = "safe-to-deploy"
+notes = "Host only: loads the PKCS#11 module for cryptoki (TASK-389). Imported audits cover 0.9.0; cryptoki-sys 0.5.0 requires 0.8."
+
 [[exemptions.log]]
 version = "0.4.34"
 criteria = "safe-to-deploy"
+
+[[exemptions.matchit]]
+version = "0.8.4"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.memchr]]
 version = "2.8.3"
 criteria = "safe-to-deploy"
 
+[[exemptions.mime]]
+version = "0.3.18"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.minicov]]
 version = "0.3.8"
 criteria = "safe-to-run"
 notes = "jwz's browser tests (just jwz-browser): a wasm32 dev-dependency of wasm-bindgen-test"
+
+[[exemptions.mio]]
+version = "1.2.5"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.num-bigint]]
 version = "0.4.8"
@@ -236,6 +376,16 @@ criteria = "safe-to-deploy"
 version = "1.70.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.pin-project]]
+version = "1.1.13"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.pin-project-internal]]
+version = "1.1.13"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.pin-project-lite]]
 version = "0.2.17"
 criteria = "safe-to-deploy"
@@ -251,6 +401,16 @@ criteria = "safe-to-deploy"
 [[exemptions.proc-macro2]]
 version = "1.0.107"
 criteria = "safe-to-deploy"
+
+[[exemptions.prost]]
+version = "0.14.6"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.prost-derive]]
+version = "0.14.6"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.quick-xml]]
 version = "0.42.0"
@@ -278,6 +438,11 @@ version = "0.1.29"
 criteria = "safe-to-deploy"
 notes = "Host only, Windows: the system root store for rustls-native-certs (FFI). No imported audit covers this version."
 
+[[exemptions.secrecy]]
+version = "0.10.3"
+criteria = "safe-to-deploy"
+notes = "Host only: cryptoki's PIN type (TASK-389), zeroized on drop. No imported audit covers it."
+
 [[exemptions.security-framework]]
 version = "3.7.0"
 criteria = "safe-to-deploy"
@@ -288,6 +453,11 @@ version = "2.17.0"
 criteria = "safe-to-deploy"
 notes = "Host only: the FFI bindings under security-framework. No imported audit covers this version."
 
+[[exemptions.signal-hook-registry]]
+version = "1.4.8"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.simd_cesu8]]
 version = "1.2.0"
 criteria = "safe-to-deploy"
@@ -296,6 +466,16 @@ criteria = "safe-to-deploy"
 version = "0.4.12"
 criteria = "safe-to-deploy"
 
+[[exemptions.smallvec]]
+version = "1.16.6"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.socket2]]
+version = "0.6.5"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
 [[exemptions.syn]]
 version = "2.0.119"
 criteria = "safe-to-deploy"
@@ -303,6 +483,11 @@ criteria = "safe-to-deploy"
 [[exemptions.syn]]
 version = "3.0.6"
 criteria = "safe-to-deploy"
+
+[[exemptions.sync_wrapper]]
+version = "1.0.2"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.thiserror]]
 version = "2.0.20"
@@ -320,6 +505,76 @@ notes = "Through x509-cert (the TLS encoding of embedded SCTs). No imported audi
 [[exemptions.tls_codec_derive]]
 version = "0.4.2"
 criteria = "safe-to-deploy"
+
+[[exemptions.tokio]]
+version = "1.54.1"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tokio-macros]]
+version = "2.7.2"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tokio-stream]]
+version = "0.1.19"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tokio-util]]
+version = "0.7.20"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tonic]]
+version = "0.14.9"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tonic-health]]
+version = "0.14.9"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tonic-prost]]
+version = "0.14.9"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tower]]
+version = "0.5.3"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tower-layer]]
+version = "0.3.3"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tower-service]]
+version = "0.3.3"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tracing]]
+version = "0.1.44"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tracing-attributes]]
+version = "0.1.31"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.tracing-core]]
+version = "0.1.36"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
+
+[[exemptions.try-lock]]
+version = "0.2.5"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.typenum]]
 version = "1.20.1"
@@ -351,6 +606,11 @@ notes = "jwz's hax annotations, a cfg(hax) dependency: compiled only when hax ex
 [[exemptions.walkdir]]
 version = "2.5.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.want]]
+version = "0.3.2"
+criteria = "safe-to-deploy"
+notes = "Host only: the gRPC transport of ti-hsm-proxy (its grpc feature), the stack gemSpec_ZETA A_28829 requires, approved 2026-11-19 (TASK-389). No core build pulls it in. No imported audit covers this version."
 
 [[exemptions.wasi]]
 version = "0.11.0+wasi-snapshot-preview1"

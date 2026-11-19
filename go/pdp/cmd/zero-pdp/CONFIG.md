@@ -37,10 +37,10 @@ printf 'k1 %s\n' "$(openssl rand -base64 32)" > store.key
 ```
 
 One key per line, `<id> <base64 of 32 bytes>`, `#` comments and blank lines ignored; the first key seals, all of them
-open. A file holding one bare base64 key is the single key `default`. A replica looks at the file at most every 30 s and
-re-reads it when it changed, so rotating needs no restart, in this order: add the new key second on all pods, then make
-it first, then drop the old key after the longest TTL of a record it sealed. A broken file keeps the keys in force and
-logs at error level.
+open. A file holding one bare base64 key is the single key `default`. A replica reads the file once, at start; rotating
+is a sequence of rollouts ([servers](../../../../docs/design/servers.md), rule 8), in this order: add the new key second
+and roll out until all pods run with it, then make it first and roll out again, then drop the old key after the longest
+TTL of a record it sealed. A broken file stops the start.
 
 ## Upgrading to sealed records
 

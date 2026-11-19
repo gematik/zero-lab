@@ -1,0 +1,15 @@
+# Generates ti-hsm-proxy's src/generated from proto/, run by `just hsm-proxy-codegen`; a
+# development tool outside the workspace (like jwz/fuzz), never a dependency of the sidecar.
+# protox compiles the protos in Rust, so no protoc is needed.
+[package]
+name = "ti-hsm-proxy-codegen"
+version = "0.0.0"
+edition = "2024"
+license = "EUPL-1.2"
+publish = false
+
+[dependencies]
+protox = "=0.10.0"
+tonic-prost-build = "=0.14.9"
+
+[workspace]
