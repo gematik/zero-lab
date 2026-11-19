@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-18 21:34'
+updated_date: '2026-11-19 05:49'
 labels:
   - go
   - servers
@@ -30,3 +31,9 @@ No Go server meets servers.md rules 29 and 30 (TASK-382): zero-pep-proxy listens
 - [ ] #2 Outbound fetches to external hosts go through one egress client that meets rule 30
 - [ ] #3 The transport tests of rule 26 run against each image
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-19: zero-pdp is out of scope. go/pdp is frozen (decision-19), so 'each Go server' means zero-pep-proxy, zero-caddy, zero-epa and metsubushi.
+<!-- SECTION:NOTES:END -->
