@@ -57,6 +57,25 @@ The binary `hsm-proxy` is configured by its environment:
 Outside the simulator mode a key of the list that is not on the token stops the start; a
 vendor's HSM is provisioned by its own tools.
 
+## Images
+
+[`Dockerfile`](Dockerfile), built from `rust/`, has two targets on base images pinned by digest:
+
+| Target | What it holds | For |
+|---|---|---|
+| `hsm-proxy` | the binary on `gcr.io/distroless/cc` (glibc), no module | production: the vendor's module is mounted read-only and named with its SHA-256 |
+| `hsm-proxy-simulator` | the binary with `simulator`, SoftHSM2 2.7.0 built from source, `HSM_PROXY_SIMULATOR=true` | development and tests only |
+
+```console
+docker build -f ti-hsm-proxy/Dockerfile --target hsm-proxy -t hsm-proxy .
+docker build -f ti-hsm-proxy/Dockerfile --target hsm-proxy-simulator -t hsm-proxy-simulator .
+```
+
+The image runs under any UID with group 0 and a read-only root filesystem (servers.md rule
+27); it writes only the socket's directory and, in the simulator, `/var/lib/softhsm/tokens`,
+each an `emptyDir` or tmpfs. Dynamic linking is the one exception to rule 4, for `dlopen` of
+the module.
+
 ## Health in a pod
 
 A kubelet's gRPC and HTTP probes reach a port, not a Unix socket, so the probes are `exec`

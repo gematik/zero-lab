@@ -1,0 +1,8 @@
+# The images build from this directory: keep build output, local secrets and leftovers out of
+# the build context.
+target
+**/target
+**/.env
+**/*.env
+**/secrets
+**/.claude

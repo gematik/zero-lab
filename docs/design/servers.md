@@ -40,6 +40,13 @@ everything outside the workload untrusted.
    shell or package manager, the fewest dependencies
    ([dependencies](../conventions/dependencies.md)). The host, the hypervisor operator, the Kubernetes
    control plane, the ingress and sidecars outside the enclave are not trusted.
+   - **One exception: the HSM proxy.** A PKCS#11 module is a shared library loaded with
+     `dlopen`, which a static binary cannot do, so the key provider sidecar of rule 6
+     (`hsm-proxy`) is linked dynamically and runs on a distroless image with the C runtime
+     (`gcr.io/distroless/cc`). Its image holds no module: the vendor's is mounted read-only
+     and loaded only by its SHA-256 (rule 7), and the software token of the simulator is in
+     an image of its own, never in production. No other workload or sidecar loads native
+     code.
 5. **All data is encrypted outside the workload.** TLS ends inside the workload, not at
    an ingress or sidecar outside the TCB. Data at rest in `kv`, Redis, Postgres, files or
    backups is encrypted and authenticated by the workload (AEAD, with the record's key,
