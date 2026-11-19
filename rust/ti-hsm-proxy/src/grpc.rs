@@ -217,8 +217,9 @@ impl HsmProxyService for Service {
 /// The name `grpc.health.v1` reports `HsmProxyService` under.
 pub const SERVICE_NAME: &str = "gematik.zetaguard.hsmproxy.v1.HsmProxyService";
 
-/// Serves `proxy` on the Unix socket at `socket` until `shutdown` completes. A socket file
-/// left at the path by an earlier run is replaced; any other file there is not.
+/// Serves `proxy` on the Unix socket at `socket` until `shutdown` completes. The socket is
+/// group-accessible ([`SOCKET_MODE`]); a socket file left at the path is replaced only when
+/// nothing answers on it, and any other file there is not.
 ///
 /// `grpc.health.v1` follows the token: every `health_interval` a session is asked whether
 /// the token answers ([`HsmProxy::health`]), and the overall status (`""`) and that of
@@ -248,9 +249,8 @@ pub async fn serve(
             }
         })
     };
-    remove_stale_socket(socket)?;
-    let listener = UnixListener::bind(socket)
-        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", socket.display())))?;
+    remove_stale_socket(socket).await?;
+    let listener = open_socket(socket)?;
     let service =
         HsmProxyServiceServer::new(Service { proxy }).max_decoding_message_size(MAX_MESSAGE_LEN);
     let served = tonic::transport::Server::builder()
@@ -326,10 +326,21 @@ pub async fn connect(socket: &Path) -> io::Result<tonic::transport::Channel> {
         })
 }
 
-fn remove_stale_socket(socket: &Path) -> io::Result<()> {
+/// Removes a socket file an earlier run left at `socket`, but only when nothing answers on
+/// it (rule 29): a second sidecar on the same path is refused, not displaced. Any other file
+/// at the path is left alone.
+async fn remove_stale_socket(socket: &Path) -> io::Result<()> {
     use std::os::unix::fs::FileTypeExt as _;
     match std::fs::symlink_metadata(socket) {
-        Ok(meta) if meta.file_type().is_socket() => std::fs::remove_file(socket),
+        Ok(meta) if meta.file_type().is_socket() => {
+            if tokio::net::UnixStream::connect(socket).await.is_ok() {
+                return Err(io::Error::new(
+                    io::ErrorKind::AddrInUse,
+                    format!("{}: another process answers on it", socket.display()),
+                ));
+            }
+            std::fs::remove_file(socket)
+        }
         Ok(_) => Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             format!("{} exists and is not a socket", socket.display()),
@@ -337,4 +348,21 @@ fn remove_stale_socket(socket: &Path) -> io::Result<()> {
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+/// Owner and group read and write, nothing for others. Connecting needs write permission,
+/// so the default umask (022) creates a socket only its owner can reach; the group bit is
+/// what lets the workload's container, under another arbitrary UID with group 0 or the
+/// pod's `fsGroup`, connect (rules 27 and 29). The socket gets the group of a directory
+/// with the setgid bit, as an `emptyDir` with `fsGroup` has, or else the process's primary
+/// group, which is 0 on OpenShift.
+const SOCKET_MODE: u32 = 0o660;
+
+fn open_socket(socket: &Path) -> io::Result<UnixListener> {
+    use std::os::unix::fs::PermissionsExt as _;
+    let listener = UnixListener::bind(socket)
+        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", socket.display())))?;
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(SOCKET_MODE))
+        .map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", socket.display())))?;
+    Ok(listener)
 }

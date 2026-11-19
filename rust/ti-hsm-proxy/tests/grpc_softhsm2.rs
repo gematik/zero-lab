@@ -51,8 +51,8 @@ const TOKEN: &str = "ti-hsm-proxy-grpc";
 
 /// A runtime, the sidecar on its socket in it, a channel to that socket, and the socket's
 /// path; started once.
-fn started() -> &'static (tokio::runtime::Runtime, Channel, PathBuf) {
-    static STARTED: OnceLock<(tokio::runtime::Runtime, Channel, PathBuf)> = OnceLock::new();
+fn started() -> &'static (tokio::runtime::Runtime, Channel, PathBuf, Module) {
+    static STARTED: OnceLock<(tokio::runtime::Runtime, Channel, PathBuf, Module)> = OnceLock::new();
     STARTED.get_or_init(|| {
         let path = std::env::var_os("TI_HSM_PKCS11_MODULE_PATH")
             .map(PathBuf::from)
@@ -111,7 +111,7 @@ fn started() -> &'static (tokio::runtime::Runtime, Channel, PathBuf) {
                 .await
                 .expect("a channel to the socket")
         });
-        (runtime, channel, probed)
+        (runtime, channel, probed, module)
     })
 }
 
@@ -119,7 +119,7 @@ fn client() -> (
     &'static tokio::runtime::Runtime,
     HsmProxyServiceClient<Channel>,
 ) {
-    let (runtime, channel, _) = started();
+    let (runtime, channel, _, _) = started();
     (runtime, HsmProxyServiceClient::new(channel.clone()))
 }
 
@@ -383,7 +383,7 @@ fn task_389_the_sidecars_health_is_probed_over_its_socket() {
     use tonic_health::pb::health_check_response::ServingStatus as Status;
     use tonic_health::pb::health_client::HealthClient;
 
-    let (runtime, channel, socket) = started();
+    let (runtime, channel, socket, _) = started();
     assert!(runtime.block_on(ti_hsm_proxy::grpc::probe(socket)).unwrap());
     let mut health = HealthClient::new(channel.clone());
     for service in ["", ti_hsm_proxy::grpc::SERVICE_NAME] {
@@ -402,4 +402,43 @@ fn task_389_the_sidecars_health_is_probed_over_its_socket() {
             .block_on(ti_hsm_proxy::grpc::probe(&absent))
             .is_err()
     );
+}
+
+/// servers.md rules 27 and 29: the socket is group-accessible and nothing for others, so a
+/// workload under another arbitrary UID with group 0 or the pod's fsGroup connects; a
+/// second sidecar on a socket that answers is refused, not swapped in.
+#[test]
+#[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-spike"]
+fn servers_rules_27_29_the_socket_is_for_owner_and_group_and_a_live_one_is_kept() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let (runtime, _, socket, module) = started();
+    let mode = std::fs::metadata(socket).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o660, "{mode:o}");
+    let pool = module
+        .pool(
+            TOKEN,
+            &AuthPin::from("user-pin-TEST-ONLY"),
+            std::num::NonZeroUsize::new(1).unwrap(),
+        )
+        .unwrap();
+    let second = HsmProxy::start(
+        pool,
+        &[],
+        MissingKeys::Refuse,
+        Duration::from_secs(1),
+        Iv::Random,
+        String::new(),
+    )
+    .unwrap();
+    let refused = runtime
+        .block_on(ti_hsm_proxy::grpc::serve(
+            Arc::new(second),
+            socket,
+            Duration::from_secs(5),
+            std::future::pending(),
+        ))
+        .unwrap_err();
+    assert_eq!(refused.kind(), std::io::ErrorKind::AddrInUse, "{refused}");
+    assert!(runtime.block_on(ti_hsm_proxy::grpc::probe(socket)).unwrap());
 }
