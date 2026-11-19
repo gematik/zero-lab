@@ -13,6 +13,19 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
+### ti-hsm-proxy
+
+#### added
+- New crate, not published: the HSM proxy sidecar (TASK-389). gematik's
+  `gematik.zetaguard.hsmproxy.v1.HsmProxyService` (gemSpec_ZETA A_28829) and `grpc.health.v1`
+  on a Unix socket, every key reached over PKCS#11 alone (`cryptoki`); the gRPC transport is
+  behind the feature `grpc`, on by default, its code generated from the vendored proto and
+  committed. A session pool bounds the token's parallelism; keys are a stated list, found on
+  the token or, in the simulator mode, made there sensitive and not extractable. A vendor's
+  module loads only with its SHA-256 (servers.md rule 7). `hsm-proxy health ready` and
+  `hsm-proxy health live` are its exec probes (rule 31); the socket is for owner and group
+  (rules 27, 29). Tested against SoftHSM2 2.7 (`just hsm-spike`).
+
 ### jwz
 
 #### breaking

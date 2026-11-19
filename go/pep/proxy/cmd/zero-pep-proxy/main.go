@@ -48,7 +48,8 @@
 //	                         an encrypted session token, no kv per request). PEP_SESSION_PREVIOUS_KEY_PATH rotates it.
 //	PEP_SESSION_TTL          session lifetime when local validation is on (Go duration, default 8h)
 //	PEP_SESSION_STORE_KEY_PATH  key file (`<id> <base64 of 32 bytes>` per line) → seals everything in the kv store,
-//	                         reloaded on change. Required with DATABASE_URL. See docs/at-rest-encryption.md.
+//	                         read at start; a changed file takes effect with a rollout. Required with
+//	                         DATABASE_URL. See docs/at-rest-encryption.md.
 //	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
 //	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //

@@ -199,102 +199,84 @@ func TestKeychainRefusals(t *testing.T) {
 	}
 }
 
-// Server rules 6 and 22: a keychain follows its file without a restart, asks the key service only for
-// entries it does not have yet, and keeps its keys when the file is broken, the key service is away, or the
-// consumer's check refuses the file: as when it lacks an entry something is still sealed under.
-func TestKeychainFollowsItsFile(t *testing.T) {
+// Server rules 8 and 22: a keychain is read once, at start. A changed file changes nothing in the process
+// that read it and asks the key service nothing; a keychain loaded from the changed file, as a rollout
+// starts one, has the new entry in force at its time, opens what the old entry sealed, and loses only what a
+// revoked entry sealed.
+func TestKeychainReadsItsFileOnceAtStart(t *testing.T) {
 	kek := &counting{LocalKEK: newKEK(t)}
 	start := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 	path := filepath.Join(t.TempDir(), "keychain.json")
-	write := func(data []byte, mod time.Time) {
+	write := func(data []byte) {
 		t.Helper()
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Chtimes(path, mod, mod); err != nil {
-			t.Fatal(err)
-		}
 	}
 	one := extend(t, kek.LocalKEK, nil, entry{start.Add(-time.Hour), true})
-	write(one, start)
+	write(one)
 	now := start
-	needed := map[string]bool{}
-	check := func(entries []kv.KeychainEntry, revoked []string) error {
-		for id := range needed {
-			has := false
-			for _, e := range entries {
-				has = has || e.ID == id
-			}
-			for _, r := range revoked {
-				has = has || r == id
-			}
-			if !has {
-				return errors.New("records are still sealed under " + id)
-			}
-		}
-		return nil
-	}
-	chain, err := kv.LoadKeychain(context.Background(), path, purpose, kek, kv.WithKeychainClock(func() time.Time { return now }), kv.WithKeychainCheck(check))
+	clock := kv.WithKeychainClock(func() time.Time { return now })
+	ctx := context.Background()
+	chain, err := kv.LoadKeychain(ctx, path, purpose, kek, clock)
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := kv.NewSealed(kv.NewMemory(), chain, "test records")
-	ctx := context.Background()
+	records := kv.NewMemory()
+	store := kv.NewSealed(records, chain, "test records")
 	if err := store.Set(ctx, "a", []byte("sealed under v1"), time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	needed["v1"] = true
 
 	two := extend(t, kek.LocalKEK, one, entry{start.Add(2 * time.Hour), false})
-	now = start.Add(time.Minute)
-	write(two, now)
-	if id, _ := chain.Current(); id != "v1" || kek.calls != 2 {
-		t.Fatalf("after adding an entry for later: current %q, %d calls to the key service, want v1 and 2", id, kek.calls)
-	}
+	write(two)
 	now = start.Add(3 * time.Hour)
-	if id, _ := chain.Current(); id != "v2" {
-		t.Fatalf("after its time: current %q", id)
+	if id, _ := chain.Current(); id != "v1" || kek.calls != 1 || len(chain.Entries()) != 1 {
+		t.Fatalf("the changed file was taken: current %q, %d entries, %d calls to the key service", id, len(chain.Entries()), kek.calls)
 	}
-	if err := store.Set(ctx, "b", []byte("sealed under v2"), time.Hour); err != nil {
+	write([]byte("{"))
+	if id, _ := chain.Current(); id != "v1" {
+		t.Fatalf("with a broken file: current %q", id)
+	}
+
+	write(two)
+	next, err := kv.LoadKeychain(ctx, path, purpose, kek, clock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id, _ := next.Current(); id != "v2" {
+		t.Fatalf("a keychain loaded after the change: current %q", id)
+	}
+	nextStore := kv.NewSealed(records, next, "test records")
+	if got, found, err := nextStore.Get(ctx, "a"); err != nil || !found || string(got) != "sealed under v1" {
+		t.Fatalf("a: %q, found %v, %v", got, found, err)
+	}
+	if err := nextStore.Set(ctx, "b", []byte("sealed under v2"), time.Hour); err != nil {
 		t.Fatal(err)
 	}
 
-	// A broken file, an absent key service and a file without a needed entry change nothing.
-	now = now.Add(time.Minute)
-	write([]byte("{"), now)
-	if id, _ := chain.Current(); id != "v2" {
-		t.Errorf("with a broken file: current %q", id)
+	write([]byte(strings.Replace(string(two), `"purpose"`, `"revoked": ["v1"], "purpose"`, 1)))
+	if _, err := kv.LoadKeychain(ctx, path, purpose, kek, clock); err == nil {
+		t.Fatal("a file that revokes an entry it still holds was taken")
 	}
-	kek.fail = errors.New("the key service is away")
-	now = now.Add(time.Minute)
-	write(extend(t, kek.LocalKEK, two, entry{now, false}), now)
-	if id, _ := chain.Current(); id != "v2" {
-		t.Errorf("without the key service: current %q", id)
-	}
-	kek.fail = nil
 	withoutFirst := []byte(strings.Replace(string(two), string(two)[strings.Index(string(two), `    {
       "id": "v1"`):strings.Index(string(two), `    {
       "id": "v2"`)], "", 1))
 	// v2 alone has no name key, so the file is given one by a third entry.
 	withoutFirst = extend(t, kek.LocalKEK, withoutFirst, entry{now.Add(time.Hour), true})
-	now = now.Add(time.Minute)
-	write(withoutFirst, now)
-	chain.Current()
-	if got, found, err := store.Get(ctx, "a"); err != nil || !found || string(got) != "sealed under v1" {
-		t.Errorf("a file without a needed entry was taken: %q, found %v, %v", got, found, err)
+	write([]byte(strings.Replace(string(withoutFirst), `"purpose"`, `"revoked": ["v1"], "purpose"`, 1)))
+	third, err := kv.LoadKeychain(ctx, path, purpose, kek, clock)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	// Said to be revoked, the entry goes, and with it what it sealed and nothing else.
-	now = now.Add(time.Minute)
-	write([]byte(strings.Replace(string(withoutFirst), `"purpose"`, `"revoked": ["v1"], "purpose"`, 1)), now)
-	chain.Current()
-	if revoked := chain.Revoked(); len(revoked) != 1 || revoked[0] != "v1" {
+	if revoked := third.Revoked(); len(revoked) != 1 || revoked[0] != "v1" {
 		t.Errorf("revoked: %v", revoked)
 	}
-	if _, _, err := store.Get(ctx, "a"); !errors.Is(err, kv.ErrIntegrity) {
+	thirdStore := kv.NewSealed(records, third, "test records")
+	if _, _, err := thirdStore.Get(ctx, "a"); !errors.Is(err, kv.ErrIntegrity) {
 		t.Errorf("a record of a revoked entry: %v", err)
 	}
-	if got, found, err := store.Get(ctx, "b"); err != nil || !found || string(got) != "sealed under v2" {
+	if got, found, err := thirdStore.Get(ctx, "b"); err != nil || !found || string(got) != "sealed under v2" {
 		t.Errorf("b: %q, found %v, %v", got, found, err)
 	}
 }
