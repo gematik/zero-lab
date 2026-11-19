@@ -49,9 +49,10 @@ everything outside the workload untrusted.
 6. **Key provisioning bound to attestation.** Keys and secrets are released to a workload
    only after its attestation is verified (a KMS or key broker with a release policy on
    the measurement), delivered as files (`*_PATH`), never baked into images, environment
-   variables or the kv store. Workload keys follow the [private-key rules](keys.md); rotation
-   works without a restart of the workload or its sidecars; credentials are short-lived
-   where the peer allows. A workload's TLS key is generated inside the workload, and its
+   variables or the kv store. Workload keys follow the [private-key rules](keys.md) and rotate
+   with an overlap (rule 22): the new key is added before it is used and the old one
+   removed once nothing needs it, each step a rollout (rule 8); credentials are
+   short-lived where the peer allows. A workload's TLS key is generated inside the workload, and its
    certificate is issued only after the attestation is verified (a CSR bound to the
    evidence, or SPIRE with a TEE node attestor and its agent inside the confidential VM);
    a key from a cert-manager Secret or a node-local SPIRE agent was made outside the
@@ -74,13 +75,30 @@ everything outside the workload untrusted.
 8. **Kubernetes, Docker and sidecars as untrusted neighbours.** Run as non-root with a
    read-only root filesystem, no capabilities, seccomp `RuntimeDefault`, resource limits;
    every container, sidecars included, is probed as rule 31 has it;
-   SIGTERM drains and shuts down gracefully; configuration reloads from mounted files. Trust
+   SIGTERM drains and shuts down gracefully; what a process runs with is read at start and
+   changed by a rollout, with the TI's trust material as the one exception (below). Trust
    material comes one of two ways, outside the request path, and consumers keep nothing of it
    on disk: from mounted files written by a producer (a CronJob from the same image that
    fetches, verifies and exports the set; an operator's import on an air-gapped site), or, for
    a standalone image, from the workload's own background download from the fixed hosts of
    the specification, under a hash that TLS vouches for
    ([decision-12](../../backlog/decisions/)).
+   - **Read at start, changed by a rollout.** Configuration, TLS material (certificates,
+     keys, CA bundles, allowlists) and keys are read and checked once, at start, and fixed
+     for the life of the process: what rule 7 reports and attestation measures is what
+     runs. A change is a new rollout: the deployment rolls the pods when a mounted Secret
+     or ConfigMap changes (a checksum annotation, a reloader, cert-manager's renewal), and
+     the PodDisruptionBudget and rule 22 keep that free of dropped requests. No server
+     watches or polls such a file, and none re-reads it on the request path.
+   - **Refreshed at run time: the TI's trust material, and nothing else.** The TSL and the
+     TI roots, OCSP responses, federation entity statements and their JWKS, and the
+     discovery documents of IdPs are valid for less than a deployment cycle, and a
+     restart does not make them newer. They are verification data, not configuration: the
+     core verifies each before use (rule 4), a verified set replaces the old one as a
+     whole, a failed refresh keeps the old set and raises a metric, and the age of the set
+     in force is a metric (rule 14). They are refreshed outside the request path, by the
+     background check that loads them. Other material joins this list only by a change of
+     this rule, with the reason its validity is shorter than a rollout.
    - **One image, several deployments.** A helper ships in the product's image
      (`libexec/telematik`, [git and releases](../conventions/git-and-releases.md)) and
      runs either as a child process over stdio inside the container or as a sidecar
@@ -282,7 +300,7 @@ everything outside the workload untrusted.
     write to its configuration through its API is refused, and a stopped or slow sidecar,
     or one without a decision, leads to deny. Transport (rules 29 and 30) is tested on the
     image: the same image started in each mode (https, mTLS, unix, the http opt-out);
-    certificate rotation under load without a dropped request; a wrong SAN, an expired
+    a certificate rotation by rollout under load without a dropped request; a wrong SAN, an expired
     certificate and an unknown client refused; the egress client through a CONNECT proxy.
 27. **Runs under any UID, as on OpenShift.** The platform picks the identity, not the
     image: OpenShift's `restricted-v2` SCC starts a container with an arbitrary UID from
@@ -423,10 +441,10 @@ everything outside the workload untrusted.
       - Identity is pinned, not only chained: each peer has an expected name (DNS SAN or
         SPIFFE ID), an mTLS listener an allowlist of client identities. A valid chain
         under a shared CA does not say which workload is calling.
-      - Reload without restart: certificate, key and CA bundle are re-read on change. A
-        new pair is swapped in only if key and certificate match and the certificate is
-        valid; a failed reload keeps the old pair and raises a metric. Certificate expiry
-        is a metric, and an expired certificate fails readiness.
+      - Read at start, rotated by a rollout (rule 8): a server whose key and certificate
+        do not match, or whose certificate is not valid, does not start (rule 17).
+        Certificate expiry is a metric with an alert well before the renewal is due, and
+        an expired certificate fails readiness.
       - The profile is fixed: protocol version, curves and suites follow gemSpec_Krypt and
         are constants in code, not configuration.
     - **Unix sockets are first-class listeners.** Path sockets only, no abstract
