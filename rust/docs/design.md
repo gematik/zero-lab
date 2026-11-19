@@ -13,7 +13,7 @@ server, a browser, an air-gapped installation and, through bindings, in other ho
 ```text
  hosts      ti-cli, the desktop app      ti-wasm (wasm-bindgen)   servers (their own)
               │                            │                        │
- adapters   ti-client (ureq, files, the commands' operations), ti-tls (rustls), ti-pki's `os`, ti-hsm (PKCS#11): the only code that does I/O, holds a TLS library or loads a module
+ adapters   ti-client (ureq, files, the commands' operations), ti-tls (rustls), ti-pki's `os`, ti-hsm-proxy (PKCS#11): the only code that does I/O, holds a TLS library or loads a module
               │
  engines    ti-idpd-client  ti-directory-client  ti-connector-client   (sans I/O)
               │

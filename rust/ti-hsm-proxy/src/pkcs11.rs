@@ -202,7 +202,7 @@ pub enum SignInput<'a> {
 }
 
 /// Where the 96-bit IV of an AES-GCM encryption comes from.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Iv {
     /// From the token's random source (`C_GenerateRandom`), passed in with the call.
     Random,
@@ -514,27 +514,8 @@ impl Token {
     /// that label on another curve, or without its public key; [`Error::Key`] if the token
     /// refuses.
     pub fn signing_key(&self, label: &str, curve: Curve) -> Result<SigningKey, Error> {
-        check_label(label)?;
-        if let Some(private) = self.find(ObjectClass::PRIVATE_KEY, label)? {
-            let public =
-                self.find(ObjectClass::PUBLIC_KEY, label)?
-                    .ok_or_else(|| Error::KeyMismatch {
-                        key: label.to_owned(),
-                        reason: "it has no public key",
-                    })?;
-            let params = self.attribute_bytes(public, AttributeType::EcParams, label)?;
-            if Curve::from_params(&params) != Some(curve) {
-                return Err(Error::KeyMismatch {
-                    key: label.to_owned(),
-                    reason: "it is on another curve",
-                });
-            }
-            return Ok(SigningKey {
-                label: label.to_owned(),
-                curve,
-                private,
-                public,
-            });
+        if let Some(key) = self.find_signing_key(label, curve)? {
+            return Ok(key);
         }
         let id = label.as_bytes().to_vec();
         let public_template = [
@@ -576,6 +557,37 @@ impl Token {
         })
     }
 
+    /// The signing key `label` on `curve` if the token has it; nothing is made.
+    ///
+    /// # Errors
+    ///
+    /// As [`Token::signing_key`].
+    pub fn find_signing_key(&self, label: &str, curve: Curve) -> Result<Option<SigningKey>, Error> {
+        check_label(label)?;
+        let Some(private) = self.find(ObjectClass::PRIVATE_KEY, label)? else {
+            return Ok(None);
+        };
+        let public =
+            self.find(ObjectClass::PUBLIC_KEY, label)?
+                .ok_or_else(|| Error::KeyMismatch {
+                    key: label.to_owned(),
+                    reason: "it has no public key",
+                })?;
+        let params = self.attribute_bytes(public, AttributeType::EcParams, label)?;
+        if Curve::from_params(&params) != Some(curve) {
+            return Err(Error::KeyMismatch {
+                key: label.to_owned(),
+                reason: "it is on another curve",
+            });
+        }
+        Ok(Some(SigningKey {
+            label: label.to_owned(),
+            curve,
+            private,
+            public,
+        }))
+    }
+
     /// The AES-256 key-encryption key `label`: the one on the token, or a new one made
     /// there. A new key is sensitive, not extractable, encrypts and decrypts, and does
     /// nothing else.
@@ -584,12 +596,8 @@ impl Token {
     ///
     /// [`Error::Input`] for a label outside its grammar; [`Error::Key`] if the token refuses.
     pub fn key_encryption_key(&self, label: &str) -> Result<KeyEncryptionKey, Error> {
-        check_label(label)?;
-        if let Some(handle) = self.find(ObjectClass::SECRET_KEY, label)? {
-            return Ok(KeyEncryptionKey {
-                label: label.to_owned(),
-                handle,
-            });
+        if let Some(key) = self.find_key_encryption_key(label)? {
+            return Ok(key);
         }
         let id = label.as_bytes().to_vec();
         let template = [
@@ -618,6 +626,50 @@ impl Token {
             label: label.to_owned(),
             handle,
         })
+    }
+
+    /// The key-encryption key `label` if the token has it; nothing is made.
+    ///
+    /// # Errors
+    ///
+    /// As [`Token::key_encryption_key`].
+    pub fn find_key_encryption_key(&self, label: &str) -> Result<Option<KeyEncryptionKey>, Error> {
+        check_label(label)?;
+        Ok(self
+            .find(ObjectClass::SECRET_KEY, label)?
+            .map(|handle| KeyEncryptionKey {
+                label: label.to_owned(),
+                handle,
+            }))
+    }
+
+    /// The DER of the certificate object labelled `label`, if the token holds one. A token
+    /// keeps a key's certificate under the key's label.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Input`] for a label outside its grammar; [`Error::KeyMismatch`] for more than
+    /// one certificate of that label; [`Error::Key`] if the token refuses.
+    pub fn certificate(&self, label: &str) -> Result<Option<Vec<u8>>, Error> {
+        check_label(label)?;
+        match self.find(ObjectClass::CERTIFICATE, label)? {
+            Some(handle) => self
+                .attribute_bytes(handle, AttributeType::Value, label)
+                .map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Whether the session still answers: the cheapest call that reaches the token.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Module`] if the module or the token does not answer.
+    pub fn check(&self) -> Result<(), Error> {
+        self.session
+            .get_session_info()
+            .map(drop)
+            .map_err(module_error("read the session's state"))
     }
 
     /// The public key of `key` as an uncompressed SEC1 point, whether the token returns

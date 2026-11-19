@@ -411,7 +411,7 @@ check-changed base="main":
     if [ -n "$SCRIPTS" ]; then just scripts-test; fi
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet
+check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet hsm-proxy-codegen-check
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
 
@@ -826,15 +826,33 @@ real-world:
 konnektor-e2e:
     cargo test -p ti-client --test konnektor_e2e -- --ignored --exact read_only_operations --nocapture --test-threads 1
 
-# The SoftHSM2 spike of ti-hsm (TASK-389) against a fresh token in a temporary directory.
+# The SoftHSM2 spike and the gRPC conformance suite of ti-hsm-proxy (TASK-389) against a fresh
+# token in a temporary directory.
 # TI_HSM_PKCS11_MODULE_PATH names the module; without it, SoftHSM2's beside softhsm2-util.
 hsm-spike:
-    @just _softhsm2 cargo test -p ti-hsm --test spike_softhsm2 -- --ignored
+    @just _softhsm2 cargo test -p ti-hsm-proxy --test spike_softhsm2 --test grpc_softhsm2 -- --ignored
 
-# Throughput of ti-hsm's session pool against SoftHSM2, direct and over JSON-RPC on a Unix
+# ti-hsm-proxy's gRPC code from its proto/ (tonic-prost-build on protox, no protoc); the
+# generated file is committed, so building the sidecar needs neither (TASK-389)
+hsm-proxy-codegen:
+    cargo run -q --locked --manifest-path ti-hsm-proxy/codegen/Cargo.toml -- ti-hsm-proxy/src/generated
+
+# Fails if ti-hsm-proxy/src/generated is not what proto/ generates
+hsm-proxy-codegen-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=$(mktemp -d)
+    trap 'rm -rf "$dir"' EXIT
+    cargo run -q --locked --manifest-path ti-hsm-proxy/codegen/Cargo.toml -- "$dir"
+    if ! diff -r ti-hsm-proxy/src/generated "$dir" >/dev/null; then
+        echo "ti-hsm-proxy/src/generated is stale: just hsm-proxy-codegen" >&2
+        exit 1
+    fi
+
+# Throughput of ti-hsm-proxy's session pool against SoftHSM2, direct and over JSON-RPC on a Unix
 # socket (TASK-389). TI_HSM_BENCH_SECONDS sets each row's time (default 2). Not part of `check`.
 hsm-bench:
-    @just _softhsm2 cargo bench -p ti-hsm --bench softhsm2
+    @just _softhsm2 cargo bench -p ti-hsm-proxy --bench softhsm2
 
 [private]
 _softhsm2 +command:

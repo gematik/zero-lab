@@ -21,13 +21,20 @@
  * find details in the "Readme" file.
  */
 
-//! Keys in a hardware security module, reached over PKCS#11 alone.
+//! The HSM proxy sidecar: gematik's HSM proxy interface on keys reached over PKCS#11 alone.
 //!
 //! A workload that keeps a key in an HSM reaches it through a key provider sidecar over a
 //! Unix socket; the vendor's library is never in the workload's image
-//! ([servers](../../docs/design/servers.md), rule 6). This crate is that sidecar's way to
-//! the key: it loads the PKCS#11 module it is given, and a software token in development
-//! goes through exactly the calls a vendor's module gets in production.
+//! ([servers](../../docs/design/servers.md), rule 6). This crate is that sidecar: it loads
+//! the PKCS#11 module it is given, and a software token in development goes through
+//! exactly the calls a vendor's module gets in production.
+//!
+//! Three layers, each usable without the next:
+//!
+//! - the PKCS#11 adapter ([`Module`], [`Token`], [`Pool`]);
+//! - the interface's operations without a transport ([`HsmProxy`]);
+//! - with the `grpc` feature (on by default), the gRPC transport ([`grpc`]), the one
+//!   module that depends on tonic and tokio.
 //!
 //! [`Module::load`] loads and initialises a module, [`Module::open`] logs in to a token by
 //! its label, and a [`Token`] finds or makes keys by label and uses them: ECDSA signatures
@@ -39,11 +46,18 @@
 //! and a [`Pool`] lends one to each caller, so that a server's callers run in parallel up
 //! to what the token allows.
 
+#[cfg(feature = "grpc")]
+pub mod grpc;
 mod pkcs11;
 mod pool;
+mod service;
 
 pub use pkcs11::{
     Curve, Error, Iv, KeyEncryptionKey, KeyFacts, MessageDigest, Module, Sealed, SignInput,
     SigningKey, Token,
 };
 pub use pool::Pool;
+pub use service::{
+    Certificate, Digest, Failure, FailureKind, Health, HsmProxy, KeyKind, KeySpec, MAX_DATA_LEN,
+    MissingKeys, PublicKey, StartError,
+};

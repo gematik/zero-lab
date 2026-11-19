@@ -39,7 +39,9 @@ use cryptoki::mechanism::MechanismType;
 use cryptoki::types::AuthPin;
 use ecdsa::signature::hazmat::PrehashVerifier as _;
 use sha2::Digest as _;
-use ti_hsm::{Curve, Error, Iv, KeyFacts, MessageDigest, Module, SignInput, SigningKey, Token};
+use ti_hsm_proxy::{
+    Curve, Error, Iv, KeyFacts, MessageDigest, Module, SignInput, SigningKey, Token,
+};
 
 const TOKEN: &str = "ti-hsm-spike";
 

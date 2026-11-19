@@ -57,7 +57,7 @@ task.
 | hybrid-array | 0.4.15 | fixed-size arrays of generic length for every RustCrypto type: casts, uninitialised arrays | 2026-10-29 |
 | inout | 0.2.2 | in-place in/out buffers of the block ciphers: raw pointers | 2026-10-29 |
 | itoa | 1.0.18 | integer formatting into an uninitialised buffer (serde_json) | 2026-10-29 |
-| libc | 0.2.189 | C library declarations for getrandom and cpufeatures | 2026-10-29 |
+| libc | 0.2.191 | C library declarations for getrandom and cpufeatures | 2026-10-29 |
 | memchr | 2.8.3 | SIMD byte search (serde_json, quick-xml) | 2026-10-29 |
 | num-traits | 0.2.19 | float-to-int conversion after its range check (crypto-bigint) | 2026-10-29 |
 | once_cell | 1.21.4 | wasm32 only: wasm-bindgen's lazy statics | 2026-10-29 |

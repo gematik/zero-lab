@@ -1,0 +1,69 @@
+[package]
+name = "ti-hsm-proxy"
+version = "0.0.0"
+description = "The HSM proxy sidecar of a gematik Telematikinfrastruktur (TI) workload: gematik's HSM proxy interface on keys reached over PKCS#11 alone"
+keywords = ["hsm", "pkcs11", "gematik", "telematik", "zeta"]
+categories = ["cryptography"]
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "hsm-proxy"
+path = "src/main.rs"
+
+[features]
+default = ["grpc"]
+# The gRPC transport of gematik.zetaguard.hsmproxy.v1.HsmProxyService and grpc.health.v1
+# (gemSpec_ZETA A_28829). Without it the crate is the PKCS#11 adapter and the operations,
+# and the binary serves nothing.
+grpc = [
+    "dep:tonic",
+    "dep:tonic-prost",
+    "dep:prost",
+    "dep:tonic-health",
+    "dep:tokio",
+    "dep:tokio-stream",
+    "dep:hyper-util",
+    "dep:tower",
+]
+
+[dependencies]
+cryptoki.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+const-oid = { workspace = true, features = ["db"] }
+der.workspace = true
+spki.workspace = true
+pem-rfc7468 = { workspace = true, features = ["alloc"] }
+base64ct.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The client half (`channel`) is for `hsm-proxy health`, the probe of the own socket.
+tonic = { workspace = true, optional = true, features = ["channel"] }
+tonic-prost = { workspace = true, optional = true }
+prost = { workspace = true, optional = true }
+tonic-health = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
+hyper-util = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+
+# Signatures are checked by the verifiers ti-pki uses, not by the token itself.
+[dev-dependencies]
+ecdsa.workspace = true
+p256.workspace = true
+p384.workspace = true
+bp256.workspace = true
+sha2.workspace = true
+
+# Gated like the spike suite and run by `just hsm-bench`; a plain program, no harness.
+[[bench]]
+name = "softhsm2"
+harness = false
+
+[lints]
+workspace = true

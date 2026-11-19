@@ -47,7 +47,7 @@ use std::time::{Duration, Instant};
 use base64ct::{Base64, Encoding as _};
 use cryptoki::types::AuthPin;
 use serde_json::{Value, json};
-use ti_hsm::{Curve, Error, Iv, Module, Pool, SignInput, SigningKey, Token};
+use ti_hsm_proxy::{Curve, Error, Iv, Module, Pool, SignInput, SigningKey, Token};
 
 const TOKEN: &str = "ti-hsm-bench";
 const WAIT: Duration = Duration::from_secs(10);
