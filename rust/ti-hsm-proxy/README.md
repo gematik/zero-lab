@@ -59,16 +59,16 @@ vendor's HSM is provisioned by its own tools.
 
 ## Images
 
-[`Dockerfile`](Dockerfile), built from `rust/`, has two targets on base images pinned by digest:
+Two Dockerfiles, built from `rust/`, on base images pinned by digest:
 
-| Target | What it holds | For |
+| File | What it holds | For |
 |---|---|---|
-| `hsm-proxy` | the binary on `gcr.io/distroless/cc` (glibc), no module | production: the vendor's module is mounted read-only and named with its SHA-256 |
-| `hsm-proxy-simulator` | the binary with `simulator`, SoftHSM2 2.7.0 built from source, `HSM_PROXY_SIMULATOR=true` | development and tests only |
+| [`Dockerfile`](Dockerfile) | the binary on `gcr.io/distroless/cc` (glibc), no module, no simulator | production: the vendor's module is mounted read-only and named with its SHA-256 |
+| [`Dockerfile.simulator`](Dockerfile.simulator) | the binary with `simulator`, SoftHSM2 2.7.0 built from source, `HSM_PROXY_SIMULATOR=true` | development and tests only |
 
 ```console
-docker build -f ti-hsm-proxy/Dockerfile --target hsm-proxy -t hsm-proxy .
-docker build -f ti-hsm-proxy/Dockerfile --target hsm-proxy-simulator -t hsm-proxy-simulator .
+docker build -f ti-hsm-proxy/Dockerfile -t hsm-proxy .
+docker build -f ti-hsm-proxy/Dockerfile.simulator -t hsm-proxy-simulator .
 ```
 
 The image runs under any UID with group 0 and a read-only root filesystem (servers.md rule

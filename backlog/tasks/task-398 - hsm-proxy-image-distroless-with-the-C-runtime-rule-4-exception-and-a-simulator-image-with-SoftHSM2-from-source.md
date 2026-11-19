@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-19 14:37'
-updated_date: '2026-11-19 14:41'
+updated_date: '2026-11-19 14:46'
 labels:
   - rust
   - docker
@@ -37,4 +37,6 @@ The sidecar loads a PKCS#11 module with dlopen, which a static binary on scratch
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-19: rule 4 has the exception (dynamic linking for dlopen, distroless/cc, no module in the image, the vendor's mounted and loaded by its SHA-256, the software token in an image of its own). rust/ti-hsm-proxy/Dockerfile: targets hsm-proxy (50 MB) and hsm-proxy-simulator (52 MB); base images by digest (rust:1.99.0-bookworm, distroless/cc-debian12:nonroot); SoftHSM2 2.7.0 from the GitHub tag archive, checked by the SHA-256 Homebrew pins (Homebrew's two patches are for OpenSSL 4; bookworm has 3.0); distroless/cc already holds bookworm's libcrypto.so.3, so the module needs nothing beside it. Verified with docker (colima, arm64): both build; the simulator runs as 1000680000:0 with --read-only, --cap-drop ALL and no-new-privileges, tmpfs over the token directory and the socket's directory, answers health ready and health live with 0, and exits 0 on SIGTERM; the production image refuses HSM_PROXY_SIMULATOR=true and holds no SoftHSM2. Gap against rule 7: cargo fetches the crates at build time (no vendored sources), as the Go images fetch modules; not checked on x86_64.
+
+2026-11-19: split into two files at the maintainer's request: rust/ti-hsm-proxy/Dockerfile is the production image only (one build, no SoftHSM2, no simulator), Dockerfile.simulator the simulator image. Both rebuilt and checked again: the simulator answers health ready and live under 1000680000:0 with a read-only root and exits 0 on SIGTERM; the production image refuses HSM_PROXY_SIMULATOR=true and holds no SoftHSM2.
 <!-- SECTION:NOTES:END -->
