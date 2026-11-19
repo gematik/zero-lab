@@ -50,6 +50,9 @@ type sessionCookieClaims struct {
 // This is the validation half of pep/proxy's stateless snapshot, kept in pep so the verifier — and zaddy in
 // forward_auth — can gate on the session cookie without the kv.
 func OpenSessionCookie(token string, keys [][]byte, now time.Time) (identity map[string]any, sid string, ok bool) {
+	if checkCompact(token, maxSessionCookieBytes, 5, 1) != nil {
+		return nil, "", false
+	}
 	sealed, err := jose.ParseEncryptedCompact(token, []jose.KeyAlgorithm{jose.DIRECT}, []jose.ContentEncryption{jose.A256GCM})
 	if err != nil {
 		return nil, "", false

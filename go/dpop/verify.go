@@ -197,7 +197,7 @@ func (v *Verifier) Verify(ctx context.Context, header http.Header, req Request) 
 	}
 	// Check 2: a single, well-formed JWT in the token68 syntax (Section 4.1). A compact JWS
 	// has exactly one signature.
-	if !isToken68(raw) {
+	if !IsToken68(raw) {
 		return nil, proofError("DPoP header is not a single token68 value")
 	}
 	// Checks 2 and 7 on the header before parsing, so the refusal names them: go-jose also

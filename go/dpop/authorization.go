@@ -48,7 +48,7 @@ func AccessToken(header http.Header) (string, error) {
 		return "", &Error{Code: CodeInvalidRequest, Description: "Authorization is not of the DPoP scheme"}
 	}
 	token := strings.TrimLeft(rest, " ")
-	if !isToken68(token) {
+	if !IsToken68(token) {
 		return "", &Error{Code: CodeInvalidRequest, Description: "DPoP credentials are not a token68 value"}
 	}
 	return token, nil

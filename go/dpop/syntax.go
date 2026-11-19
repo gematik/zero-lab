@@ -144,10 +144,11 @@ func dropLastSegment(out []string) []string {
 	return out[:len(out)-1]
 }
 
-// isToken68 reports whether s matches token68 (RFC 9110 Section 11.2), the syntax of the
-// DPoP header value (Section 4.1, Figure 3) and of DPoP credentials (Section 7.1, Figure 12):
+// IsToken68 reports whether s matches token68 (RFC 9110 Section 11.2), the syntax of the
+// DPoP header value (Section 4.1, Figure 3), of DPoP credentials (Section 7.1, Figure 12) and of
+// Bearer credentials (RFC 6750 Section 2.1):
 // 1*( ALPHA / DIGIT / "-" / "." / "_" / "~" / "+" / "/" ) *"=".
-func isToken68(s string) bool {
+func IsToken68(s string) bool {
 	body := strings.TrimRight(s, "=")
 	if body == "" {
 		return false

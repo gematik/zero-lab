@@ -291,34 +291,27 @@ func TestServerRule2_SignOutByPOSTRequiresCSRFProtection(t *testing.T) {
 }
 
 // RFC 9700 Section 4.11.1: the client exposes no open redirector.
-func TestRFC9700_4_11_1_SanitizeReturnTo(t *testing.T) {
-	cases := map[string]string{
-		"/dashboard": "/dashboard", "/a?b=c": "/a?b=c",
-		"//evil.example": "", "https://evil.example": "", "/\\evil": "", "": "",
-		// returns into pep's own auth endpoints are rejected — they are how the rd loop grows
-		"/oauth2/start?rd=/oauth2/start?rd=/": "", "/oauth2/start": "", "/oauth2": "",
-		"/oauth2callback": "/oauth2callback", "/foo/../oauth2/start": "",
-		// a return-to that is not UTF-8 cannot be kept in the JSON session record
-		"/\xff": "", "/a\xe4b": "", "/%FF": "/%FF",
-	}
-	for in, want := range cases {
-		if got := sanitizeReturnTo(in); got != want {
-			t.Errorf("sanitizeReturnTo(%q) = %q, want %q", in, got, want)
+func TestRFC9700_4_11_1_TheReturnToIsALocalPathOfTheApplication(t *testing.T) {
+	for _, rd := range []string{"", "/", "/dashboard", "/a?b=c", "/a?next=https://other.example", "/oauth2callback", "/%FF", "/%5Cevil", "/a b", "/ä"} {
+		if err := checkReturnTo(rd); err != nil {
+			t.Errorf("checkReturnTo(%q) = %v", rd, err)
 		}
 	}
-
-	s := newTestServer(t)
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/oauth2/start?rd=%2F%FF", nil))
-	if rec.Code != http.StatusFound {
-		t.Fatalf("/oauth2/start?rd=%%2F%%FF = %d, want 302", rec.Code)
-	}
-	sess, err := s.sessions.byState(t.Context(), "test-state")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sess.ReturnTo != "" {
-		t.Errorf("rd=%%2F%%FF kept as %q", sess.ReturnTo)
+	for _, rd := range []string{
+		"//evil.example", "https://evil.example", "evil.example", "dashboard", "/\\evil", "/a\\b",
+		// a browser drops a tab or a line break, and what is left names a host
+		"/\t/evil.example", "/\n/evil.example", "/\r/evil.example", "/a\x00", "/a\x7f",
+		// returns into pep's own auth endpoints are how the rd loop grows
+		"/oauth2/start?rd=/oauth2/start?rd=/", "/oauth2/start", "/oauth2", "/foo/../oauth2/start",
+		// a return-to that is not UTF-8 cannot be kept in the JSON session record
+		"/\xff", "/a\xe4b",
+		"/" + strings.Repeat("a", maxReturnToBytes),
+	} {
+		if err := checkReturnTo(rd); err == nil {
+			t.Errorf("checkReturnTo(%q) passed", rd)
+		} else if rd != "" && strings.Contains(err.Error(), rd) {
+			t.Errorf("checkReturnTo(%q) quotes it: %v", rd, err)
+		}
 	}
 }
 
@@ -605,5 +598,225 @@ func TestRFC9700_2_1_1_ACrossDeviceLoginCompletesWithoutTheCookie(t *testing.T) 
 				t.Errorf("poll = %d", polled.Code)
 			}
 		})
+	}
+}
+
+// refusingBackend is a modeBackend that counts the codes it is given and redeems none.
+type refusingBackend struct{ modeBackend }
+
+func (b *refusingBackend) Complete(_ context.Context, _ *Session, _ string) error {
+	b.redeemed++
+	return errors.New("the token endpoint refused the code")
+}
+
+// callback sends the callback with query to s, with cookie when it is not nil.
+func callback(s *Server, query string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodGet, "/oauth2/callback?"+query, nil)
+	if cookie != nil {
+		r.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, r)
+	return rec
+}
+
+// RFC 9700 section 4.2.4: the callback is answered at the URL that carries code and state. Whatever the answer
+// is, it is not kept by a cache and its URL is not sent on as a Referer.
+func TestRFC9700_4_2_4_NoCallbackResponseIsCachedOrNamedInAReferer(t *testing.T) {
+	const good = "state=test-state&code=code-value"
+	for name, c := range map[string]struct {
+		backend    Backend
+		query      string
+		withCookie bool
+		status     int
+	}{
+		"completed in the starting browser": {&modeBackend{mode: "redirect"}, good, true, http.StatusFound},
+		"completed on another device":       {&modeBackend{mode: "decoupled"}, good, false, http.StatusOK},
+		"refused in another browser":        {&modeBackend{mode: "redirect"}, good, false, http.StatusBadRequest},
+		"an unknown state":                  {&modeBackend{mode: "redirect"}, "state=unknown&code=code-value", true, http.StatusBadRequest},
+		"no parameters":                     {&modeBackend{mode: "redirect"}, "", true, http.StatusBadRequest},
+		"refused by the identity provider":  {&modeBackend{mode: "redirect"}, "state=test-state&error=access_denied", true, 0},
+		"a code that is not redeemed":       {&refusingBackend{modeBackend{mode: "redirect"}}, good, true, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, err := New(testConfig(c.backend))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cookie := startLogin(t, s)
+			if !c.withCookie {
+				cookie = nil
+			}
+			rec := callback(s, c.query, cookie)
+			if c.status != 0 && rec.Code != c.status {
+				t.Errorf("status = %d, want %d", rec.Code, c.status)
+			}
+			if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+				t.Errorf("Cache-Control = %q", got)
+			}
+			if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+				t.Errorf("Referrer-Policy = %q", got)
+			}
+		})
+	}
+}
+
+// RFC 9700 section 4.2.4: the state is used once. The first callback that names it consumes it, whether the code
+// is redeemed, the exchange fails or the identity provider refused the login; a second callback with the same
+// state finds none, and nothing the starting browser does afterwards brings it back.
+func TestRFC9700_4_2_4_TheStateIsUsedOnceWhateverBecomesOfTheCallback(t *testing.T) {
+	for name, c := range map[string]struct {
+		backend  func() (Backend, *int)
+		first    string
+		redeemed int
+	}{
+		"the exchange fails": {
+			func() (Backend, *int) {
+				b := &refusingBackend{modeBackend{mode: "redirect"}}
+				return b, &b.redeemed
+			}, "state=test-state&code=first", 1,
+		},
+		"the identity provider refused": {
+			func() (Backend, *int) {
+				b := &modeBackend{mode: "redirect"}
+				return b, &b.redeemed
+			}, "state=test-state&error=access_denied", 0,
+		},
+		"the login completes": {
+			func() (Backend, *int) {
+				b := &modeBackend{mode: "redirect"}
+				return b, &b.redeemed
+			}, "state=test-state&code=first", 1,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			backend, redeemed := c.backend()
+			s, err := New(testConfig(backend))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cookie := startLogin(t, s)
+			callback(s, c.first, cookie)
+			if *redeemed != c.redeemed {
+				t.Fatalf("the first callback redeemed %d codes, want %d", *redeemed, c.redeemed)
+			}
+
+			// A request of the starting browser saves its session again; the state must not come back with it.
+			poll := httptest.NewRequest(http.MethodGet, "/oauth2/poll", nil)
+			poll.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+			s.Handler().ServeHTTP(httptest.NewRecorder(), poll)
+
+			second := callback(s, "state=test-state&code=second", cookie)
+			if second.Code != http.StatusBadRequest {
+				t.Errorf("the second callback = %d, want 400", second.Code)
+			}
+			if *redeemed != c.redeemed {
+				t.Errorf("the second callback redeemed a code: %d in all", *redeemed)
+			}
+		})
+	}
+}
+
+// Server rule 28, headers: Host, or :authority, is one of the configured names, compared byte for byte with its
+// port. A request for another name is answered 421 before the server looks at it: no handler of /oauth2 and no
+// route of the gateway is reached.
+func TestServerRule28_ARequestForAnotherHostIsAnswered421(t *testing.T) {
+	upstreamReached := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { upstreamReached++ }))
+	defer upstream.Close()
+	cfg := testConfig(&fakeBackend{identity: map[string]any{"sub": "u"}})
+	cfg.Hosts = []string{"pep.example", "pep.internal:4180"}
+	cfg.Routes = []Route{{PathPrefix: "/", Upstream: upstream.URL, Gate: GateNone}}
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	send := func(host, target string) int {
+		r := httptest.NewRequest(http.MethodGet, target, nil)
+		r.Host = host
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, r)
+		return rec.Code
+	}
+	for _, host := range []string{"pep.example", "pep.internal:4180"} {
+		if status := send(host, "/oauth2/sign_in"); status != http.StatusOK {
+			t.Errorf("%s: /oauth2/sign_in = %d", host, status)
+		}
+		before := upstreamReached
+		if status := send(host, "/app"); status != http.StatusOK || upstreamReached != before+1 {
+			t.Errorf("%s: /app = %d, upstream reached %v", host, status, upstreamReached != before)
+		}
+	}
+	for _, host := range []string{
+		"", "evil.example", "PEP.example", "pep.example.", "pep.example:443", "pep.internal", "pep.internal:4181",
+		"pep.example@evil.example", "evil.example#pep.example", " pep.example",
+	} {
+		before := upstreamReached
+		for _, target := range []string{"/oauth2/sign_in", "/oauth2/start?idp_iss=https://idp.example", "/app"} {
+			if status := send(host, target); status != http.StatusMisdirectedRequest {
+				t.Errorf("%q: %s = %d, want 421", host, target, status)
+			}
+		}
+		if upstreamReached != before {
+			t.Errorf("%q: the upstream was reached", host)
+		}
+	}
+}
+
+// loadCounting counts the sessions a store is asked for.
+type loadCounting struct {
+	SessionStore
+	loads int
+}
+
+func (c *loadCounting) Load(ctx context.Context, id string) (*Session, error) {
+	c.loads++
+	return c.SessionStore.Load(ctx, id)
+}
+
+// Server rule 28, cookies: a cookie's value is parsed before use. A session cookie that is not the 43 base64url
+// characters this server sets names no session, and the store is not asked about it.
+func TestServerRule28_ASessionCookieOfAnotherFormNeverReachesTheStore(t *testing.T) {
+	store := &loadCounting{SessionStore: newMemorySessions()}
+	cfg := testConfig(&fakeBackend{identity: map[string]any{"sub": "u"}})
+	cfg.Sessions = store
+	s, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := startLogin(t, s)
+	if !isSessionToken(started.Value) {
+		t.Fatalf("the server's own cookie is not of its form: %d characters", len(started.Value))
+	}
+	userinfo := func(value string) int {
+		r := httptest.NewRequest(http.MethodGet, "/oauth2/userinfo", nil)
+		r.Header.Set("Cookie", started.Name+"="+value)
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, r)
+		return rec.Code
+	}
+	store.loads = 0
+	for name, value := range map[string]string{
+		"empty":               "",
+		"one character short": started.Value[1:],
+		"one character long":  started.Value + "A",
+		"padding":             started.Value[:42] + "=",
+		"standard base64":     started.Value[:42] + "+",
+		"a dot":               started.Value[:42] + ".",
+		"not ASCII":           started.Value[:41] + "é",
+		"very long":           strings.Repeat("A", 100_000),
+	} {
+		if status := userinfo(value); status != http.StatusUnauthorized {
+			t.Errorf("%s: status %d", name, status)
+		}
+	}
+	if store.loads != 0 {
+		t.Errorf("the store was asked %d times", store.loads)
+	}
+	// A value of the right form is looked up, whether or not it names a session.
+	userinfo(started.Value)
+	userinfo(strings.Repeat("A", sessionTokenLen))
+	if store.loads != 2 {
+		t.Errorf("tokens of the right form: the store was asked %d times, want 2", store.loads)
 	}
 }

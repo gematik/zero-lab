@@ -392,6 +392,8 @@ func (b *pdpBackend) fetchProviders() ([]providerInfo, error) {
 	return ps, nil
 }
 
+func (b *pdpBackend) loginScopes() []string { return b.cfg.Scopes }
+
 func (b *pdpBackend) StartLogin(ctx context.Context, sess *Session, idpIss, scope string) (LoginStart, error) {
 	_, jwkJSON, err := newSessionDPoPKey()
 	if err != nil {

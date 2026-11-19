@@ -118,7 +118,7 @@ func (k *Key) Proof(method, target string, opts ProofOptions) (string, error) {
 // Authorization to the DPoP scheme (Section 7.1). req.URL must be absolute, as for a
 // request an [http.Client] sends.
 func (k *Key) Sign(req *http.Request, opts ProofOptions) error {
-	if opts.AccessToken != "" && !isToken68(opts.AccessToken) {
+	if opts.AccessToken != "" && !IsToken68(opts.AccessToken) {
 		return errors.New("dpop: access token is not a token68 value (Section 7.1)")
 	}
 	method := req.Method

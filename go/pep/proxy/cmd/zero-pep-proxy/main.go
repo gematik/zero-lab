@@ -29,6 +29,7 @@
 //
 //	PEP_ADDR                 listen address (default :4180)
 //	PEP_PUBLIC_URL           public origin the browser reaches the proxy at (default http://127.0.0.1:4180)
+//	PEP_HOSTS                more names requests may be sent to, comma-separated; the host of PEP_PUBLIC_URL always is one
 //	PEP_OPENID_PROVIDERS_PATH  providers YAML (default ./openid-providers.yaml); the multi-provider source
 //	PEP_OIDC_ISSUER          direct OIDC provider issuer (enables single-OIDC login)
 //	PEP_OIDC_CLIENT_ID / _CLIENT_SECRET / _SCOPES / _NAME / _LOGO_URI / _ACCEPTABLE_SKEW  OIDC options
@@ -68,9 +69,11 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -88,6 +91,47 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// maxHeaderBytes bounds the request line and header of a request (server rule 28, limits before work). The
+// largest things a request carries here are an access token (16 KiB at most) or two cookies of this server and
+// those of an application behind the gateway (4 KiB each); 64 KiB holds them, where Go's default is 1 MiB.
+const maxHeaderBytes = 64 << 10
+
+// newHTTPServer returns the server that serves handler at addr. Proxied uploads and downloads may legitimately
+// take long, so there is no whole-request read or write deadline; slow headers, large headers and idle
+// connections are bounded here, and upstream calls by the proxy's transport.
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		MaxHeaderBytes:    maxHeaderBytes,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
+// servedHosts returns the names requests may be sent to: the host of publicURL, port included as the URL has
+// it, and the comma-separated names of more, for a deployment in which a proxy in front sends another Host.
+func servedHosts(publicURL, more string) ([]string, error) {
+	u, err := url.Parse(publicURL)
+	if err != nil || u.Host == "" {
+		return nil, errors.New("PEP_PUBLIC_URL has no host")
+	}
+	hosts := []string{u.Host}
+	for name := range strings.SplitSeq(more, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if strings.ContainsAny(name, "/@? ") {
+			return nil, errors.New("PEP_HOSTS holds something that is no host name")
+		}
+		if !slices.Contains(hosts, name) {
+			hosts = append(hosts, name)
+		}
+	}
+	return hosts, nil
 }
 
 // sessionStoreKeyPathEnv names the key file of the session store. All replicas share it.
@@ -199,6 +243,10 @@ func main() {
 	}
 	addr := env("PEP_ADDR", ":4180")
 	publicURL := strings.TrimRight(env("PEP_PUBLIC_URL", "http://127.0.0.1:4180"), "/")
+	hosts, err := servedHosts(publicURL, os.Getenv("PEP_HOSTS"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	insecureCookie := os.Getenv("PEP_INSECURE_COOKIE") == "true"
 	if insecureCookie {
 		if err := checkInsecureCookie(publicURL); err != nil {
@@ -283,6 +331,7 @@ func main() {
 		SnapshotPreviousKeyPath: os.Getenv("PEP_SESSION_PREVIOUS_KEY_PATH"),
 		SnapshotTTL:             snapshotTTL,
 		Routes:                  routes,
+		Hosts:                   hosts,
 		// An https upstream is on the internet as far as pep can tell, so it gets the web profile too; the
 		// transport alone, as the client's timeout would cut off long uploads and downloads.
 		UpstreamTransport: webClient.Transport,
@@ -292,15 +341,7 @@ func main() {
 		log.Fatalf("create proxy: %v", err)
 	}
 
-	// Proxied uploads and downloads may legitimately take long, so there is no whole-request
-	// read or write deadline; slow headers and idle connections are bounded here, and
-	// upstream calls by the proxy's transport.
-	srv := &http.Server{
-		Addr:              addr,
-		Handler:           server.Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
+	srv := newHTTPServer(addr, server.Handler())
 
 	slog.Info("zero-pep-proxy listening", "version", pep.Version, "addr", addr, "public_url", publicURL)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

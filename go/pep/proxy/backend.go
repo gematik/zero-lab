@@ -67,6 +67,12 @@ type Backend interface {
 	FreshAccessToken(ctx context.Context, sess *Session) (string, error)
 }
 
+// scopeLister is a backend whose logins take their scope from the login start. It lists the scopes it was
+// configured with; the server refuses a start that asks for another.
+type scopeLister interface {
+	loginScopes() []string
+}
+
 // proxyRoute is an extra HTTP route a backend asks the server to mount outside /oauth2/* (e.g. the OIDF
 // relying-party entity statement at /.well-known/openid-federation).
 type proxyRoute struct {

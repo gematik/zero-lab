@@ -33,6 +33,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -221,6 +222,75 @@ func TestGatewayIdentityInjection(t *testing.T) {
 	}
 	if claims["sub"] != "u-1" {
 		t.Errorf("identity claims = %v", claims)
+	}
+}
+
+// RFC 9700 Section 4.9 and Section 4.13: the session cookie and the snapshot are the credential of a session that
+// holds the tokens and their key. The gateway forwards neither to an upstream and leaves the application's own
+// cookies as they came.
+func TestRFC9700_4_9_TheGatewayForwardsNoneOfItsOwnCookies(t *testing.T) {
+	var got []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		got = r.Header.Values("Cookie")
+	}))
+	defer upstream.Close()
+	own := []string{"__Host-ZERO-PEP-SID", "__Host-ZERO-PEP-SID-SNAP"}
+	gw, err := newGateway([]Route{
+		{PathPrefix: "/", Upstream: upstream.URL, Inject: InjectIdentity, Gate: GateSession},
+	}, gatewayDeps{log: slog.New(slog.DiscardHandler), currentSession: staticSession(&Session{Identity: map[string]any{"sub": "u"}}), backend: &fakeBackend{}, ownCookies: own})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, c := range map[string]struct {
+		sent, want []string
+	}{
+		"own cookies among others": {
+			[]string{"theme=dark; __Host-ZERO-PEP-SID=secret; lang=de; __Host-ZERO-PEP-SID-SNAP=a..b.c.d"},
+			[]string{"theme=dark; lang=de"},
+		},
+		"only own cookies":               {[]string{"__Host-ZERO-PEP-SID=secret"}, nil},
+		"two fields":                     {[]string{"__Host-ZERO-PEP-SID=secret", "theme=dark"}, []string{"theme=dark"}},
+		"no space after ;":               {[]string{"theme=dark;__Host-ZERO-PEP-SID=secret;lang=de"}, []string{"theme=dark; lang=de"}},
+		"a name that only starts alike":  {[]string{"__Host-ZERO-PEP-SID-OTHER=x; __Host-ZERO-PEP-SID=secret"}, []string{"__Host-ZERO-PEP-SID-OTHER=x"}},
+		"another case is another cookie": {[]string{"__host-zero-pep-sid=x"}, []string{"__host-zero-pep-sid=x"}},
+		"a value with =":                 {[]string{"token=a=b=; __Host-ZERO-PEP-SID=secret"}, []string{"token=a=b="}},
+		"no cookies":                     {nil, nil},
+	} {
+		got = []string{"not reached"}
+		req := httptest.NewRequest(http.MethodGet, "/page", nil)
+		for _, field := range c.sent {
+			req.Header.Add("Cookie", field)
+		}
+		gw.ServeHTTP(httptest.NewRecorder(), req)
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s: upstream got %q, want %q", name, got, c.want)
+		}
+	}
+}
+
+// The server names its cookies to the gateway, the snapshot's too when no snapshot is in use: a browser can still
+// hold one from an earlier configuration.
+func TestRFC9700_4_9_TheServersGatewayKnowsBothOfItsCookies(t *testing.T) {
+	var got []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		got = r.Header.Values("Cookie")
+	}))
+	defer upstream.Close()
+	s, err := New(Config{
+		Backend:     &fakeBackend{identity: map[string]any{"sub": "u1"}},
+		Sessions:    newMemorySessions(),
+		Revocations: NewMemoryRevocations(nil),
+		CookieName:  "TEST-SID",
+		Routes:      []Route{{PathPrefix: "/", Upstream: upstream.URL, Gate: GateNone}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/page", nil)
+	req.Header.Set("Cookie", "__Host-TEST-SID=secret; app=1; __Host-TEST-SID-SNAP=a..b.c.d")
+	s.Handler().ServeHTTP(httptest.NewRecorder(), req)
+	if !slices.Equal(got, []string{"app=1"}) {
+		t.Errorf("upstream got %q", got)
 	}
 }
 

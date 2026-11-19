@@ -1,9 +1,10 @@
 ---
 id: TASK-370
 title: 'pep/proxy gateway: pep''s own cookies are not forwarded upstream'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-17T06:45:00Z'
+updated_date: '2026-11-19 08:46'
 labels:
   - pep-proxy
   - security
@@ -20,5 +21,11 @@ The gateway's `Rewrite` (`go/pep/proxy/gateway.go:171-205`) strips `Authorizatio
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The gateway removes its own session and snapshot cookies from upstream requests and keeps the others. Test named after the requirement.
+- [x] #1 The gateway removes its own session and snapshot cookies from upstream requests and keeps the others. Test named after the requirement.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+The gateway's Rewrite removes the cookies this server sets from the Cookie fields it forwards (withoutCookies: every other cookie-pair stays as received, in order; a field left empty is dropped). The server hands the gateway both names, the session cookie's and the snapshot's, also when no snapshot is in use. Tests TestRFC9700_4_9_TheGatewayForwardsNoneOfItsOwnCookies and …_TheServersGatewayKnowsBothOfItsCookies.
+<!-- SECTION:NOTES:END -->

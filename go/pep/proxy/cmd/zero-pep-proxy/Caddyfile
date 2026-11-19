@@ -25,10 +25,11 @@
 			uri /oauth2/auth
 			copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Groups X-Auth-Request-Identity
 
-			# On 401/403 the proxy denies; send the browser to the login start with a return-to.
+			# On 401/403 the proxy denies; send the browser to the login start with a return-to. The URI is
+			# encoded for the query: left as it is, its own query would add parameters to /oauth2/start.
 			@error status 401 403
 			handle_response @error {
-				redir * /oauth2/start?rd={http.request.uri} 302
+				redir * /oauth2/start?rd={http.request.uri_escaped} 302
 			}
 		}
 
