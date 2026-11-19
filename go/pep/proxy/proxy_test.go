@@ -607,3 +607,119 @@ func TestRFC9700_2_1_1_ACrossDeviceLoginCompletesWithoutTheCookie(t *testing.T) 
 		})
 	}
 }
+
+// refusingBackend is a modeBackend that counts the codes it is given and redeems none.
+type refusingBackend struct{ modeBackend }
+
+func (b *refusingBackend) Complete(_ context.Context, _ *Session, _ string) error {
+	b.redeemed++
+	return errors.New("the token endpoint refused the code")
+}
+
+// callback sends the callback with query to s, with cookie when it is not nil.
+func callback(s *Server, query string, cookie *http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodGet, "/oauth2/callback?"+query, nil)
+	if cookie != nil {
+		r.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, r)
+	return rec
+}
+
+// RFC 9700 section 4.2.4: the callback is answered at the URL that carries code and state. Whatever the answer
+// is, it is not kept by a cache and its URL is not sent on as a Referer.
+func TestRFC9700_4_2_4_NoCallbackResponseIsCachedOrNamedInAReferer(t *testing.T) {
+	const good = "state=test-state&code=code-value"
+	for name, c := range map[string]struct {
+		backend    Backend
+		query      string
+		withCookie bool
+		status     int
+	}{
+		"completed in the starting browser": {&modeBackend{mode: "redirect"}, good, true, http.StatusFound},
+		"completed on another device":       {&modeBackend{mode: "decoupled"}, good, false, http.StatusOK},
+		"refused in another browser":        {&modeBackend{mode: "redirect"}, good, false, http.StatusBadRequest},
+		"an unknown state":                  {&modeBackend{mode: "redirect"}, "state=unknown&code=code-value", true, http.StatusBadRequest},
+		"no parameters":                     {&modeBackend{mode: "redirect"}, "", true, http.StatusBadRequest},
+		"refused by the identity provider":  {&modeBackend{mode: "redirect"}, "state=test-state&error=access_denied", true, 0},
+		"a code that is not redeemed":       {&refusingBackend{modeBackend{mode: "redirect"}}, good, true, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, err := New(testConfig(c.backend))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cookie := startLogin(t, s)
+			if !c.withCookie {
+				cookie = nil
+			}
+			rec := callback(s, c.query, cookie)
+			if c.status != 0 && rec.Code != c.status {
+				t.Errorf("status = %d, want %d", rec.Code, c.status)
+			}
+			if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+				t.Errorf("Cache-Control = %q", got)
+			}
+			if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+				t.Errorf("Referrer-Policy = %q", got)
+			}
+		})
+	}
+}
+
+// RFC 9700 section 4.2.4: the state is used once. The first callback that names it consumes it, whether the code
+// is redeemed, the exchange fails or the identity provider refused the login; a second callback with the same
+// state finds none, and nothing the starting browser does afterwards brings it back.
+func TestRFC9700_4_2_4_TheStateIsUsedOnceWhateverBecomesOfTheCallback(t *testing.T) {
+	for name, c := range map[string]struct {
+		backend  func() (Backend, *int)
+		first    string
+		redeemed int
+	}{
+		"the exchange fails": {
+			func() (Backend, *int) {
+				b := &refusingBackend{modeBackend{mode: "redirect"}}
+				return b, &b.redeemed
+			}, "state=test-state&code=first", 1,
+		},
+		"the identity provider refused": {
+			func() (Backend, *int) {
+				b := &modeBackend{mode: "redirect"}
+				return b, &b.redeemed
+			}, "state=test-state&error=access_denied", 0,
+		},
+		"the login completes": {
+			func() (Backend, *int) {
+				b := &modeBackend{mode: "redirect"}
+				return b, &b.redeemed
+			}, "state=test-state&code=first", 1,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			backend, redeemed := c.backend()
+			s, err := New(testConfig(backend))
+			if err != nil {
+				t.Fatal(err)
+			}
+			cookie := startLogin(t, s)
+			callback(s, c.first, cookie)
+			if *redeemed != c.redeemed {
+				t.Fatalf("the first callback redeemed %d codes, want %d", *redeemed, c.redeemed)
+			}
+
+			// A request of the starting browser saves its session again; the state must not come back with it.
+			poll := httptest.NewRequest(http.MethodGet, "/oauth2/poll", nil)
+			poll.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+			s.Handler().ServeHTTP(httptest.NewRecorder(), poll)
+
+			second := callback(s, "state=test-state&code=second", cookie)
+			if second.Code != http.StatusBadRequest {
+				t.Errorf("the second callback = %d, want 400", second.Code)
+			}
+			if *redeemed != c.redeemed {
+				t.Errorf("the second callback redeemed a code: %d in all", *redeemed)
+			}
+		})
+	}
+}

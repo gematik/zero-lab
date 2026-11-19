@@ -441,12 +441,24 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // login completes only in the browser holding the cookie from /oauth2/start; a cross-device one completes
 // without it, and the cookie is not set there (DESIGN.md §3).
 func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
+	// Every answer is served at the URL that carries code and state: it is neither kept by a cache nor named
+	// in the Referer of what the page loads or links to (RFC 9700 Section 4.2.4).
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	q := r.URL.Query()
 	// Resolve the session by state first so error pages know which provider to retry.
 	sess, serr := s.sessions.byState(r.Context(), q.Get("state"))
 	var idpIss, rd string
 	if serr == nil {
 		idpIss, rd = sess.IDPIss, sess.ReturnTo
+		// The state is used once, by the first callback that names it and whatever becomes of that callback
+		// (RFC 9700 Section 4.2.4). The session is saved without it, or a later save would index it again.
+		s.sessions.deleteState(r.Context(), sess.State)
+		sess.State = ""
+		if err := s.sessions.save(r.Context(), sess); err != nil {
+			s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
+			return
+		}
 	}
 	if e := q.Get("error"); e != "" {
 		s.log.Warn("identity provider refused the login", "idp_iss", idpIss, "error", oauthErrorCode(e))
@@ -472,9 +484,6 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		s.renderFailure(w, "exchange_failed", loginNotCompleted, err, idpIss, rd, q.Get("code"), q.Get("state"))
 		return
 	}
-	// Consume the one-time state so it can't be replayed; clearing it also stops save() from re-indexing it.
-	s.sessions.deleteState(r.Context(), sess.State)
-	sess.State = ""
 	if err := s.sessions.save(r.Context(), sess); err != nil {
 		s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)
 		return

@@ -109,6 +109,15 @@ func TestRFC9700_2_1_SessionStateSingleUse(t *testing.T) {
 	if _, err := store.byID(t.Context(), sess.ID); err != nil {
 		t.Errorf("session itself lost after state consumption: %v", err)
 	}
+	// A session saved again without its state does not bring the state back; saved with it, it would
+	// (RFC 9700 Section 4.2.4: the callback clears the state before it saves).
+	sess.State = ""
+	if err := store.save(t.Context(), sess); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.byState(t.Context(), "s-123"); err == nil {
+		t.Error("a later save brought the consumed state back")
+	}
 }
 
 func TestSessionStoreTokenHashing(t *testing.T) {
