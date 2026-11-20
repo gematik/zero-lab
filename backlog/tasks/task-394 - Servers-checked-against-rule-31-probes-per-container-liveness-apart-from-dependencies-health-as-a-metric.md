@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-19 13:42'
+updated_date: '2026-11-20 16:05'
 labels:
   - servers
   - kubernetes
@@ -28,3 +29,9 @@ servers.md rule 31 (TASK-393) asks for startup, readiness and liveness probes on
 - [ ] #1 zero-pep-proxy, zero-caddy, zero-epa, metsubushi and hsm-proxy are each checked against rule 31, with what conforms and what does not in the notes
 - [ ] #2 Each gap is fixed or has a task of its own
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+hsm-proxy: the missing log line and metric on a change of health, and the interface's metrics, are TASK-405.
+<!-- SECTION:NOTES:END -->
