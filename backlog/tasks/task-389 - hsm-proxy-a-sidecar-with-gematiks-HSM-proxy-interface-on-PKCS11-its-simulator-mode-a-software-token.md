@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-19 07:17'
-updated_date: '2026-11-20 08:04'
+updated_date: '2026-11-20 08:26'
 labels:
   - rust
   - security
@@ -103,4 +103,6 @@ Sources of the licence research of 2026-11-19. Utimaco: https://utimaco.com/data
 2026-11-20, #3 in part, on branch docs/hsm-proxy-rule6-operator: just hsm-proxy-simulator starts the sidecar in the simulator mode with one command on a fresh SoftHSM2 token (keys of ti-hsm-proxy/simulator/keys.json, named after A_28831); HSM_PROXY_SIMULATOR_SEED_PATH makes the keys deterministic: HKDF-SHA256 over the SHA-256 of the seed file, the kind and the key_id (src/simulator.rs, HMAC-SHA256 from the workspace's hmac, the public point from p256/p384; no new crate), put on the token with C_CreateObject sensitive and not extractable (CKA_NEVER_EXTRACTABLE false, as for any imported key); a key already on the token is found, not derived again. tests/simulator_softhsm2.rs: two tokens with one seed hold the same keys (public keys equal on P-256 and P-384, one decrypts what the other encrypts), another seed other keys, a restart finds the keys. 26 tests against SoftHSM2 pass. Still open for #3: x86_64 (simulator image building under emulation) and Linux natively; 'without an account' holds (SoftHSM2 from source). #5 needs a CI, which the repository does not have yet: the maintainer's decision.
 
 2026-11-20: the simulator image builds and runs for linux/amd64 too (docker under emulation in colima): as 1000680000:0 with a read-only root, keys derived from a seed, health ready and live 0, exit 0 on SIGTERM. Run so far: macOS arm64 natively, Linux arm64 and Linux x86_64 in the image. Not yet: Linux natively outside an image, macOS x86_64; so #3 stays open on 'natively'.
+
+2026-11-20, the ZETA clients checked (origin/main each): every one speaks gRPC over TCP, none HTTP/JSON. ngx_pep ossl_hsm: tonic client, http:// on loopback only, https:// with TLS or mTLS, no Unix socket. ngx_pep hsm_sim: tonic server, TCP, TLS optional, no HTTP/JSON. keycloak-zeta, keycloak-integrity-provider and the notification service: gematik/zeta-guard-java-hsm-proxy-provider (Apache-2.0, JCA provider HSMPROXY, HsmCrypto), plaintext gRPC only, mTLS planned. zeta-guard-helm: HSM_PROXY_ENDPOINT host:port, no transcoder. hsm-proxy.proto (unchanged since 49f10d8) carries google.api.http annotations (POST /v1/sign, GET /v1/keys/{key_id}, POST /v1/encrypt, POST /v1/decrypt, GET /v1/certs/{key_id}, GET /v1/health): a REST/JSON mapping that needs a transcoder or an own HTTP server; gemSpec_ZETA says only 'gemäß [hsm-proxy.proto]' (A_28829). A later JSON transport could take that mapping rather than JSON-RPC. Plaintext Java clients vs. rule 29: TASK-404. Also in gematik/zeta: src/gRPC/zeta-attestation-service.proto, not yet read.
 <!-- SECTION:NOTES:END -->
