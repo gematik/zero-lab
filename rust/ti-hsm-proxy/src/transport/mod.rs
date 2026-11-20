@@ -56,9 +56,10 @@ pub enum Listener {
         /// The health socket.
         probe: PathBuf,
     },
-    /// A TCP address inside the cluster in plaintext (h2c), which the deployment's declared
-    /// mesh protects; who calls is the mesh's policy. `probe` as for [`Listener::Tls`].
-    Mesh {
+    /// A TCP address inside the cluster in plaintext (h2c), which the operator has accepted:
+    /// the deployment protects the connection and decides who calls. `probe` as for
+    /// [`Listener::Tls`].
+    Plaintext {
         /// The address to listen on.
         address: SocketAddr,
         /// The health socket.
@@ -73,7 +74,7 @@ pub(crate) enum Bound {
     /// The TCP listener, its TLS and the health socket beside it.
     Tls(TcpListener, TlsListener, UnixListener),
     /// The TCP listener in plaintext and the health socket beside it.
-    Mesh(TcpListener, UnixListener),
+    Plaintext(TcpListener, UnixListener),
 }
 
 impl Listener {
@@ -86,8 +87,8 @@ impl Listener {
                 tls,
                 probe,
             } => Bound::Tls(bind_tcp(address).await?, tls, bind_unix(&probe).await?),
-            Listener::Mesh { address, probe } => {
-                Bound::Mesh(bind_tcp(address).await?, bind_unix(&probe).await?)
+            Listener::Plaintext { address, probe } => {
+                Bound::Plaintext(bind_tcp(address).await?, bind_unix(&probe).await?)
             }
         })
     }
@@ -143,6 +144,10 @@ async fn remove_stale_socket(socket: &Path) -> io::Result<()> {
 /// `fsGroup` has, or else the process's primary group, which is 0 on OpenShift.
 const SOCKET_MODE: u32 = 0o660;
 
+/// Counts the binds of this process, so that each gets a staging directory of its own: two
+/// sockets bound at once must not share one.
+static BINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Binds the socket where nobody else can reach it, a directory of mode 0700 beside its
 /// path, gives it [`SOCKET_MODE`] and only then links it to its path. However the umask is
 /// set, the socket is never reachable with other permissions; and a link, unlike a rename,
@@ -153,7 +158,8 @@ fn open_socket(socket: &Path) -> io::Result<UnixListener> {
     let parent = socket
         .parent()
         .ok_or_else(|| named(io::Error::from(io::ErrorKind::InvalidInput)))?;
-    let staging = parent.join(format!(".hsm-proxy-{}", std::process::id()));
+    let bind = BINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let staging = parent.join(format!(".hsm-proxy-{}-{bind}", std::process::id()));
     std::fs::DirBuilder::new()
         .mode(0o700)
         .create(&staging)

@@ -13,7 +13,7 @@ Three layers in one crate, each usable without the next:
 |---|---|---|
 | PKCS#11 adapter | `Module`, `Token`, `Pool`: load a module, log in, find or make keys by label, sign, encrypt, decrypt, a fixed pool of sessions | `cryptoki` |
 | Operations | `HsmProxy`: the six operations of the interface without a transport, the keys it was told to serve, refusals as `Failure` | the adapter, the PEM/DER/JWK encoders |
-| Transports | `transport`: the listener (Unix socket, TCP with own TLS or mTLS, TCP for a mesh) and its TLS; `transport::grpc`, behind the `grpc` feature (on by default): `HsmProxyService` and `grpc.health.v1`, the probe of `hsm-proxy health` | tokio, rustls; tonic, prost |
+| Transports | `transport`: the listener (Unix socket, TCP with own TLS or mTLS, TCP in plaintext the operator accepts) and its TLS; `transport::grpc`, behind the `grpc` feature (on by default): `HsmProxyService` and `grpc.health.v1`, the probe of `hsm-proxy health` | tokio, rustls; tonic, prost |
 
 The gRPC code is generated from `proto/` by `just hsm-proxy-codegen` and committed, so a
 build needs neither protoc nor prost-build; `just check` fails if it is stale. The sidecar
@@ -23,6 +23,7 @@ tests.
 ## Running
 
 ```console
+just hsm-proxy-simulator   # the sidecar in the simulator mode on a fresh SoftHSM2 token, one command
 just hsm-proxy-softhsm2    # the token and the gRPC suites against SoftHSM2 2.7, or TI_HSM_PKCS11_MODULE_PATH
 just hsm-proxy-codegen     # regenerate src/generated and tests/generated from proto/
 ```
@@ -31,7 +32,7 @@ Features:
 
 | Feature | Default | What it adds | Where |
 |---|---|---|---|
-| `transport` | with `grpc` | what every transport shares: the listener (Unix, TLS, mesh) and the TLS on rustls | every build that serves |
+| `transport` | with `grpc` | what every transport shares: the listener (Unix, TLS, plaintext) and the TLS on rustls | every build that serves |
 | `grpc` | on | the gRPC transport and `hsm-proxy health` | every build that serves |
 | `simulator` | off | `HSM_PROXY_SIMULATOR`: a software token provisioned with TEST-ONLY PINs, missing keys made | the development image only |
 | `conformance` | off | the probes the token suite asks a token with: a misuse it must refuse, a secret value it must not give out, a given GCM IV | the test suite only |
@@ -43,10 +44,10 @@ The binary `hsm-proxy` is configured by its environment:
 
 | Variable | Meaning |
 |---|---|
-| `HSM_PROXY_LISTEN_URL` | where it listens, the scheme is the mode (servers.md rule 29): `unix:///absolute/path` inside the pod; `https://host:port` with its own TLS; `http://host:port` in plaintext for a declared mesh |
+| `HSM_PROXY_LISTEN_URL` | where it listens, the scheme is the mode (servers.md rule 29): `unix:///absolute/path` inside the pod; `https://host:port` with its own TLS; `http://host:port` in plaintext the operator accepts |
 | `HSM_PROXY_LISTEN_TLS_CERT_PATH`, `_KEY_PATH` | for `https://`: the certificate chain and key, PEM, read at start; a key that does not match, or a certificate not valid now, stops the start |
 | `HSM_PROXY_LISTEN_TLS_CA_PATH`, `_PEER_NAME` | for mTLS: the client CA bundle, and the identities admitted, DNS names or URIs (SPIFFE IDs), comma-separated; one without the other stops the start |
-| `HSM_PROXY_LISTEN_MESH` | for `http://`: the mesh that protects it; plaintext without it stops the start |
+| `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED` | for `http://`: `true` is the operator's statement that the deployment protects the connection and decides who calls; the sidecar then neither encrypts nor checks the caller. Unset, plaintext stops the start; any other value too |
 | `HSM_PROXY_PKCS11_MODULE_PATH` | the PKCS#11 module |
 | `HSM_PROXY_PKCS11_MODULE_SHA256` | its SHA-256 in hex, checked before it is loaded (rule 7); required outside the simulator mode |
 | `HSM_PROXY_TOKEN_LABEL` | the token |
@@ -56,7 +57,8 @@ The binary `hsm-proxy` is configured by its environment:
 | `HSM_PROXY_SESSIONS` | sessions on the token, default 4 |
 | `HSM_PROXY_SESSION_WAIT_MS` | how long a call waits for a free session before UNAVAILABLE, default 2000 |
 | `HSM_PROXY_HEALTH_INTERVAL_MS` | how often `grpc.health.v1` asks the token, default 5000 |
-| `HSM_PROXY_SIMULATOR` | `true`, in a build with the feature `simulator`: the token is provisioned if it is not, with TEST-ONLY PINs, and missing keys are made |
+| `HSM_PROXY_SIMULATOR_SEED_PATH` | in the simulator mode: a file of at least 16 bytes whose SHA-256 is the seed missing keys are derived from (HKDF-SHA256 over the seed, the kind and the `key_id`) and put on the token, so that every run and replica with the seed has the same keys; without it they are made at random. TEST-ONLY: a derived key is as secret as the seed |
+| `HSM_PROXY_SIMULATOR` | `true`, in a build with the feature `simulator`: the token is provisioned if it is not, with TEST-ONLY PINs, and missing keys are made. Each process gets a token directory of its own: two that start at once on one directory can each make a missing key, which leaves two keys under one label |
 
 Outside the simulator mode a key of the list that is not on the token stops the start; a
 vendor's HSM is provisioned by its own tools.
@@ -113,6 +115,63 @@ Not here yet: access by component and `key_id` (A_28830) beyond the listener's a
 a peer check on the socket (rule 8), metrics and a log line on a change of health (rule 31), certificate chains
 beyond the end entity, P-521 and the brainpool curves in the interface, fuzz targets for
 the keys file and the public point (TASK-397).
+
+## Attestation to the HSM
+
+gemSpec_ZETA A_28747 lets the ZETA keys be used only through an HSM proxy that is either
+attested to the HSM, or paired with it in a documented key ceremony with access credentials
+exclusive to the proxy; paired, A_28814 asks the proxy to seal those credentials so that only a
+correctly started proxy has them after a restart. The sidecar takes the pairing: it needs no code
+in the HSM and works with every vendor and with SoftHSM2. Sealing its credentials is not done yet
+(TASK-403): today the PIN is a file.
+
+Attested to the HSM means code inside the HSM that checks an attestation before a key is used.
+What was found on 2026-11-20 (specifications checked through gemspec; the rest from the vendors'
+public pages):
+
+| Where | Attestation checked inside the HSM | Source |
+|---|---|---|
+| ePA für alle, Aktensystem | required: the VAU-Token-Modul runs only in the VAU-HSM and checks the attestation token and that VAU software and hardware are known to the HSM, fresh and replay-proof; the reference hashes come in under four eyes with gematik | gemSpec_Aktensystem_ePAfueralle 1.8.2 A_25281, A_25282-05, A_24667, A_24611-09, A_24612-07 |
+| PoPP-Service | required: the HSM validates VAU images and tells PoPP and **ZETA Guard** images apart | gemSpec_PoPP_Service 1.1.0 A_26602 |
+| E-Rezept Fachdienst | the specification asks for technical means only (A_19713); IBM's public `eRP-FD/vau-hsm` is a C firmware module for Utimaco CryptoServer that checks TPM 2.0 quotes covering secure boot and the SGX enclave, enrolled in a ceremony with gematik | gemSpec_FD_eRp 2.6.0; github.com/eRP-FD/vau-hsm |
+| ePA SGD | a firmware module, evaluated for gematik, that checks certificates, not attestation | gemSpec_SGD_ePA 1.6.0 A_17907, A_17917 |
+| ZETA HSM proxy, HCC, NCPeH | not required: attestation is checked in front of the HSM by a paired component | gemSpec_ZETA A_28747, A_28814; gemSpec_HCC A_29099, A_29102; NCPeH A_28104 |
+
+So a ZETA Guard needs the HSM to check images only where it runs inside a PoPP-Service
+(A_26602); that is vendor code, not something the sidecar or SoftHSM2 can provide.
+
+| HSM | Code inside it | Can make a key usable only after a check | Simulator that runs that code |
+|---|---|---|---|
+| Utimaco CryptoServer, u.trust GP | firmware modules (SDK, C) | yes, a module that holds the key; the module leaves FIPS mode | yes, the SDK's: Linux i386 or Windows, no arm64, test and evaluation only |
+| Entrust nShield 5 | CodeSafe 5 (SEE) | yes, a key's ACL binds it to the signed image; FIPS unaffected by Entrust's statement | none found |
+| Thales Luna | Functionality Modules | only through its own commands; PKCS#11 cannot be intercepted; not FIPS | none ("no emulation mode") |
+| Thales ProtectServer | Functionality Modules | yes, PKCS#11 can be patched | an emulation behind the customer portal |
+| Azure, AWS, Google | none | a service policy outside the HSM only | — |
+| SoftHSM2, Kryoptic | no extension point | only by patching the token | — |
+
+Open: the HSMs and attestation formats of the ePA systems; whether any TI HSM checks AMD SEV-SNP
+or Intel TDX evidence directly; how gematik weighs an HSM running such a module against the FIPS
+or CC certificate it requires.
+
+## Simulator token and ngx_pep's hsm_sim
+
+The simulator mode brings SoftHSM2 2.7.0, built from source (maintainer, 2026-11-20). Kryoptic
+was weighed and not taken: its token has no brainpool curves, macOS is untested upstream, its
+default build does not build on Debian bookworm, and fixes for sensitive keys were not yet in a
+release.
+
+ngx_pep's `hsm_sim` stays beside the sidecar; the choice is ngx_pep's. `hsm-proxy` in the
+simulator mode serves the same interface and can stand in for it, with these differences:
+
+| | `hsm_sim` | `hsm-proxy`, simulator mode |
+|---|---|---|
+| Keys | derived from the `key_id` by HKDF, the curve from its suffix (`.p256`, …), so every replica has the same key | listed in `HSM_PROXY_KEYS_PATH` with their kind; made on the token at random, or derived from `HSM_PROXY_SIMULATOR_SEED_PATH` and put on it, the same in every replica |
+| Way to the key | in process, OpenSSL | PKCS#11, as with a vendor's HSM |
+| Listener | TCP, TLS optional | Unix socket, or TCP with own TLS/mTLS or in plaintext the operator accepts |
+| Certificates | issued by a configured CA | the one the token keeps under the key's label, if any |
+
+How an operator brings a vendor's module into the pod, what the image holds and what was
+verified of each vendor's terms is in [docs/operating.md](docs/operating.md).
 
 What SoftHSM2 does on this path, its throughput and the transport comparison are in
 [docs/softhsm2.md](docs/softhsm2.md).

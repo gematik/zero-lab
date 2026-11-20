@@ -2092,6 +2092,7 @@ dependencies = [
  "der",
  "ecdsa",
  "getrandom 0.4.3",
+ "hmac",
  "hyper-util",
  "p256",
  "p384",

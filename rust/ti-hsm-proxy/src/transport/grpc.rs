@@ -299,7 +299,7 @@ pub async fn serve(
             prober.abort();
             served
         }
-        Bound::Mesh(tcp, probe) => {
+        Bound::Plaintext(tcp, probe) => {
             let prober = probe_only(probe);
             let served = tonic::transport::Server::builder()
                 .add_service(health)

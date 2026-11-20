@@ -838,7 +838,13 @@ konnektor-e2e:
 # SoftHSM2 token in a temporary directory (TASK-389).
 # TI_HSM_PKCS11_MODULE_PATH names the module; without it, SoftHSM2's beside softhsm2-util.
 hsm-proxy-softhsm2:
-    @just _softhsm2 cargo test -p ti-hsm-proxy --features conformance --test token_softhsm2 --test grpc_softhsm2 --test recovery_softhsm2 --test tcp_softhsm2 -- --ignored
+    @just _softhsm2 cargo test -p ti-hsm-proxy --features conformance,simulator --test token_softhsm2 --test grpc_softhsm2 --test recovery_softhsm2 --test tcp_softhsm2 --test simulator_softhsm2 -- --ignored
+
+# hsm-proxy in the simulator mode with one command, on a fresh SoftHSM2 token that goes when it
+# stops: the keys of ti-hsm-proxy/simulator/keys.json (or HSM_PROXY_KEYS_PATH), random or, with
+# HSM_PROXY_SIMULATOR_SEED_PATH, derived from that seed; the socket is printed at start.
+hsm-proxy-simulator:
+    @just _softhsm2 'HSM_PROXY_SIMULATOR=true HSM_PROXY_PKCS11_MODULE_PATH="$TI_HSM_PKCS11_MODULE_PATH" HSM_PROXY_TOKEN_LABEL=hsm-proxy-simulator HSM_PROXY_KEYS_PATH="${HSM_PROXY_KEYS_PATH:-ti-hsm-proxy/simulator/keys.json}" HSM_PROXY_LISTEN_URL="${HSM_PROXY_LISTEN_URL:-unix://$SOFTHSM_DIR/hsm-proxy.sock}" cargo run -q -p ti-hsm-proxy --bin hsm-proxy --features simulator'
 
 # ti-hsm-proxy's gRPC code from its proto/ (tonic-prost-build on protox, no protoc); the
 # generated file is committed, so building the sidecar needs neither (TASK-389)
@@ -883,7 +889,8 @@ _softhsm2 +command:
     mkdir "$dir/tokens"
     printf 'directories.tokendir = %s\nobjectstore.backend = file\nlog.level = ERROR\nslots.removable = false\n' "$dir/tokens" > "$dir/softhsm2.conf"
     echo "==> $module"
-    SOFTHSM2_CONF="$dir/softhsm2.conf" TI_HSM_PKCS11_MODULE_PATH="$module" {{command}}
+    export SOFTHSM2_CONF="$dir/softhsm2.conf" TI_HSM_PKCS11_MODULE_PATH="$module" SOFTHSM_DIR="$dir"
+    {{command}}
 
 # Optional TI_TEST_PDFA_PATH adds PAdES. A person enters the PIN; not part of `check`.
 # PIN entry, ExternalAuthenticate, sign and encrypt at the Konnektor of TI_TEST_KON_PATH

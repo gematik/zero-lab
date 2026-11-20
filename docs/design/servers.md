@@ -48,8 +48,8 @@ everything outside the workload untrusted.
      an image of its own, never in production. No other workload or sidecar loads native
      code.
 5. **All data is encrypted outside the workload.** TLS ends inside the workload, not at
-   an ingress or sidecar outside the TCB; inside the cluster a declared mesh may carry it
-   instead (rule 29). Data at rest in `kv`, Redis, Postgres, files or
+   an ingress or sidecar outside the TCB; inside the cluster the deployment may protect it
+   instead where the operator accepts plaintext (rule 29). Data at rest in `kv`, Redis, Postgres, files or
    backups is encrypted and authenticated by the workload (AEAD, with the record's key,
    tenant and type as associated data, so records cannot be swapped or replayed into
    another context); the store sees ciphertext only. Logs, metrics and traces carry no
@@ -68,13 +68,24 @@ everything outside the workload untrusted.
    KMS that holds a workload key is part of the workload's trusted base, and its key
    policy admits only this workload, proven by attestation and a workload identity the
    platform provides (the SPIFFE Workload API where it is mounted), never by a credential
-   in a file. The channel is a cloud KMS API or a key provider sidecar over a Unix socket
-   (the pattern of the Kubernetes KMS plugin); the vendor's native library is never in the
-   workload's image, and only digests cross the channel.
+   in a file. The channel is a cloud KMS API or a key provider sidecar (the pattern of the
+   Kubernetes KMS plugin), on a Unix socket inside the pod or inside the cluster as rule 29
+   has it.
+   - **No private key crosses the channel.** What crosses is what each operation needs: a
+     digest or a message to sign, and for a key-encryption key the data key it wraps or
+     unwraps, in the clear. On the pod's socket the sidecar is in the workload's trust
+     domain, which holds that data key anyway: it serves the keys it is configured with and
+     does not ask who calls. Outside the pod, who may call is rule 29's, and per key the
+     HSM proxy's (gemSpec_ZETA A_28830).
+   - **The vendor's library is in neither image.** The workload's image never holds it,
+     and the sidecar's image does not either: the operator mounts the module read-only and
+     the sidecar loads it only if its SHA-256 is the configured one (rules 4 and 7).
 7. **Attestation friendly, signed workloads.** Builds are reproducible (pinned toolchain,
    base images by digest, `-trimpath`, no build-time network for code), images are
    signed with provenance and an SBOM, a vulnerability scan of the image is a CI gate, and
-   the measured image contains everything that runs: no code or plugins loaded at runtime.
+   the measured image contains everything that runs: no code or plugins loaded at runtime,
+   except the HSM's PKCS#11 module of rule 4, loaded only from a read-only mount and only if
+   its SHA-256 is the configured one, which is reported with the configuration.
    Third-party code that runs in the workload, a sidecar such as OPA included, is rebuilt
    reproducibly from source like our own, never taken as the vendor's image
    ([decision-17](../../backlog/decisions/)). Configuration that changes behaviour is
@@ -131,7 +142,7 @@ everything outside the workload untrusted.
      their standard interfaces and never provided here. A sidecar outside the enclave
      gets only ciphertext or data that is public anyway. Mesh mTLS ends in a proxy that
      the mesh's control plane configures: it is defence in depth, and a workload's channel
-     protection only where a deployment declares the mesh for a connection inside the
+     protection only where the operator accepts plaintext for a connection inside the
      cluster (rule 29).
 9. **Cloud native preferred.** Standard, portable building blocks: OCI images,
    Kubernetes primitives (Deployments, probes, PodDisruptionBudgets, topology spread,
@@ -238,7 +249,7 @@ everything outside the workload untrusted.
     trust source: the deployment sets them through environment and mounted paths, which
     are measured or hashed and reported (rule 7), and a URL's scheme picks the mode
     (`unix://`, `https://`; rule 29 has the grammar). Start-up refuses every inconsistent
-    combination: plaintext to a peer outside the pod without a declared mesh (rule 29), TLS without a trust source, two
+    combination: plaintext to a peer outside the pod the operator has not accepted (rule 29), TLS without a trust source, two
     trust sources for one connection, a client certificate without its key, a key and a
     certificate that do not match, a certificate that has expired or is not yet valid, an
     empty CA bundle, an mTLS peer without an expected name.
@@ -441,19 +452,21 @@ everything outside the workload untrusted.
       an explicit scheme it is https. Plaintext is an opt-out the deployment writes out as
       `http://`: it is logged at start and refused where the tier does not allow it.
     - **Inside the cluster, one of two.** A listener or peer outside the pod and inside the
-      cluster is protected either by the workload or by the deployment's mesh; connections
+      cluster is protected either by the workload or by the deployment; connections
       to hosts outside the cluster are rule 30. Inside the pod, a Unix socket needs neither.
       - **Own TLS or mTLS:** `https://`, terminated by the workload itself with the
         material below, and a client CA and an allowlist of identities for mTLS.
-      - **A declared mesh:** `http://`, with the deployment's mesh providing mTLS between
-        the pods. The mesh is declared by a setting of its own beside the URL
-        (`…_MESH`, the mesh's name), so a plaintext URL without it is refused at start;
-        the mesh and its mode are logged and reported (rule 7). The workload does not
-        check the caller then: the mesh's policy does.
-      - **Now and later.** For now a declared mesh is allowed wherever its proxy runs
-        (maintainer, 2026-11-19). The target is a mesh proxy inside the enclave, in the pod
-        and measured with it (rule 7), so that the channel still ends inside the TCB as
-        rule 5 has it.
+      - **Plaintext the operator accepts:** `http://`, with the deployment protecting the
+        connection, by a mesh's mTLS or otherwise. The workload cannot tell whether
+        anything does, so it does not guess and does not name it: the operator accepts
+        plaintext explicitly, like terms of service, with a setting of its own beside the
+        URL (`…_PLAINTEXT_ACCEPTED=true`). Unset, or any other value, a plaintext URL is
+        refused at start; accepted, the acceptance is logged and reported (rule 7). The
+        workload neither encrypts nor checks the caller then: the deployment does.
+      - **Now and later.** For now accepted plaintext is allowed wherever the protection
+        runs (maintainer, 2026-11-19). The target is the protecting proxy inside the
+        enclave, in the pod and measured with it (rule 7), so that the channel still ends
+        inside the TCB as rule 5 has it.
     - **TLS from files.**
       - Per listener and per peer: certificate, key and CA bundle, each a `*_PATH`. Who
         wrote the file is the deployment's assurance, not the server's concern (rule 6).

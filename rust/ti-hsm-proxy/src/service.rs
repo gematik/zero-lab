@@ -75,6 +75,11 @@ pub enum MissingKeys {
     /// The key is made on the token, sensitive, not extractable and for its one use: the
     /// simulator mode, in which a test needs no provisioning step.
     Make,
+    /// As [`MissingKeys::Make`], but the key is derived from the seed and the `key_id` and
+    /// put on the token, so that every run and replica with the seed has the same keys. The
+    /// simulator mode only (feature `simulator`); TEST-ONLY.
+    #[cfg(feature = "simulator")]
+    Derive([u8; 32]),
 }
 
 /// The hash the interface asks for before signing (`DigestAlgorithm`).
@@ -255,6 +260,8 @@ impl HsmProxy {
         for spec in keys {
             let id = spec.key_id.as_str();
             let key = pool.with(wait, |token| match (signing_curve(spec.kind), missing) {
+                #[cfg(feature = "simulator")]
+                (curve, MissingKeys::Derive(seed)) => derive(token, id, curve, &seed).map(Some),
                 (Some(curve), MissingKeys::Make) => {
                     token.signing_key(id, curve).map(|k| Some(Key::Signing(k)))
                 }
@@ -504,6 +511,28 @@ impl HsmProxy {
             hsm_info: self.hsm_info.clone(),
         }
     }
+}
+
+/// The key `id` on the token, or else the one `seed` derives, put there.
+#[cfg(feature = "simulator")]
+fn derive(token: &Token, id: &str, curve: Option<Curve>, seed: &[u8; 32]) -> Result<Key, Error> {
+    if let Some(curve) = curve {
+        if let Some(key) = token.find_signing_key(id, curve)? {
+            return Ok(Key::Signing(key));
+        }
+        let (scalar, point) = crate::simulator::signing_key(seed, id, curve).ok_or(
+            Error::Input("the simulator derives keys on P-256 and P-384"),
+        )?;
+        return token
+            .import_signing_key(id, curve, &scalar, &point)
+            .map(Key::Signing);
+    }
+    if let Some(key) = token.find_key_encryption_key(id)? {
+        return Ok(Key::Encryption(key));
+    }
+    token
+        .import_key_encryption_key(id, &crate::simulator::key_encryption_key(seed, id))
+        .map(Key::Encryption)
 }
 
 /// The curve of a signing key; `None` for a key-encryption key.

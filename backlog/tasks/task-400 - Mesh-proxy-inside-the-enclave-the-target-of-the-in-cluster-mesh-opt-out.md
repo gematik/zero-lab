@@ -4,6 +4,7 @@ title: 'Mesh proxy inside the enclave: the target of the in-cluster mesh opt-out
 status: To Do
 assignee: []
 created_date: '2026-11-19 15:20'
+updated_date: '2026-11-20 09:00'
 labels:
   - servers
   - transport
@@ -27,3 +28,9 @@ servers.md rule 29 (TASK-399) allows http:// inside the cluster with a declared 
 - [ ] #1 For each mesh a deployment here uses, it is recorded whether and how its proxy runs inside the enclave and is measured
 - [ ] #2 Rule 29 drops the transitional allowance, or records why it stays
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-20: rule 29 no longer names a mesh: the operator accepts plaintext with …_PLAINTEXT_ACCEPTED=true, and the target reads 'the protecting proxy inside the enclave'.
+<!-- SECTION:NOTES:END -->

@@ -754,6 +754,119 @@ impl Token {
         }))
     }
 
+    /// Puts the EC key pair of `scalar` and its uncompressed `point` on the token under
+    /// `label`: the private key sensitive, not extractable and only signing, the public key
+    /// only verifying. For the simulator's derived keys; a key made on the token is better,
+    /// as it was never outside (its `CKA_NEVER_EXTRACTABLE` is true, this one's false).
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Input`] for a label outside its grammar or a point of another length than
+    /// the curve's; [`Error::Key`] if the token refuses.
+    #[cfg(feature = "simulator")]
+    pub fn import_signing_key(
+        &self,
+        label: &str,
+        curve: Curve,
+        scalar: &[u8],
+        point: &[u8],
+    ) -> Result<SigningKey, Error> {
+        check_label(label)?;
+        let point_len = 1 + 2 * curve.field_len();
+        let Ok(der_len) = u8::try_from(point_len) else {
+            return Err(Error::Input("a point of the curve's length"));
+        };
+        if point.len() != point_len || der_len >= 0x80 {
+            return Err(Error::Input("a point of the curve's length"));
+        }
+        let id = label.as_bytes().to_vec();
+        let mut wrapped = vec![0x04, der_len];
+        wrapped.extend_from_slice(point);
+        let public = self
+            .session
+            .create_object(&[
+                Attribute::Class(ObjectClass::PUBLIC_KEY),
+                Attribute::KeyType(KeyType::EC),
+                Attribute::Token(true),
+                Attribute::Private(false),
+                Attribute::Verify(true),
+                Attribute::Encrypt(false),
+                Attribute::Wrap(false),
+                Attribute::Derive(false),
+                Attribute::EcParams(curve.params().to_vec()),
+                Attribute::EcPoint(wrapped),
+                Attribute::Label(id.clone()),
+                Attribute::Id(id.clone()),
+            ])
+            .map_err(key_error("import the public key", label))?;
+        let private = self
+            .session
+            .create_object(&[
+                Attribute::Class(ObjectClass::PRIVATE_KEY),
+                Attribute::KeyType(KeyType::EC),
+                Attribute::Token(true),
+                Attribute::Private(true),
+                Attribute::Sensitive(true),
+                Attribute::Extractable(false),
+                Attribute::Sign(true),
+                Attribute::Decrypt(false),
+                Attribute::Unwrap(false),
+                Attribute::Derive(false),
+                Attribute::EcParams(curve.params().to_vec()),
+                Attribute::Value(scalar.to_vec()),
+                Attribute::Label(id.clone()),
+                Attribute::Id(id),
+            ])
+            .map_err(key_error("import the signing key", label))?;
+        Ok(SigningKey {
+            label: label.to_owned(),
+            curve,
+            private,
+            public,
+        })
+    }
+
+    /// Puts the AES-256 key `value` on the token under `label`, sensitive, not extractable,
+    /// encrypting and decrypting only. For the simulator's derived keys.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Input`] for a label outside its grammar; [`Error::Key`] if the token refuses.
+    #[cfg(feature = "simulator")]
+    pub fn import_key_encryption_key(
+        &self,
+        label: &str,
+        value: &[u8; 32],
+    ) -> Result<KeyEncryptionKey, Error> {
+        check_label(label)?;
+        let id = label.as_bytes().to_vec();
+        let handle = self
+            .session
+            .create_object(&[
+                Attribute::Class(ObjectClass::SECRET_KEY),
+                Attribute::KeyType(KeyType::AES),
+                Attribute::Token(true),
+                Attribute::Private(true),
+                Attribute::Sensitive(true),
+                Attribute::Extractable(false),
+                Attribute::Encrypt(true),
+                Attribute::Decrypt(true),
+                Attribute::Wrap(false),
+                Attribute::Unwrap(false),
+                Attribute::Sign(false),
+                Attribute::Verify(false),
+                Attribute::Derive(false),
+                Attribute::Value(value.to_vec()),
+                Attribute::Label(id.clone()),
+                Attribute::Id(id),
+            ])
+            .map_err(key_error("import the key-encryption key", label))?;
+        Ok(KeyEncryptionKey {
+            label: label.to_owned(),
+            handle,
+        })
+    }
+
     /// The AES-256 key-encryption key `label`: the one on the token, or a new one made
     /// there. A new key is sensitive, not extractable, encrypts and decrypts, and does
     /// nothing else.
