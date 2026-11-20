@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-19 07:17'
-updated_date: '2026-11-20 07:26'
+updated_date: '2026-11-20 07:29'
 labels:
   - rust
   - security
@@ -64,7 +64,7 @@ Still open: which token the simulator mode brings, and whether ngx_pep's `hsm_si
 - [x] #7 A spike drives SoftHSM2 through the sidecar's PKCS#11 path and records what worked as specified and what did not: the mechanisms, associated data, who makes the IV, key attributes
 - [ ] #8 Tests that connect a vendor's module exist and say how they are run where the vendor's software may be used, with what was found for each vendor that was tried
 - [x] #9 docs/design/servers.md rule 6 says what crosses the channel to a key provider in the workload's own trust domain, and the vendor's module is loaded as a library pinned by its SHA-256 (rule 7)
-- [ ] #10 It is recorded which token the simulator mode brings and what becomes of ngx_pep's hsm_sim
+- [x] #10 It is recorded which token the simulator mode brings and what becomes of ngx_pep's hsm_sim
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -95,4 +95,6 @@ Sources of the licence research of 2026-11-19. Utimaco: https://utimaco.com/data
 2026-11-19, code review of the branch (10 findings, all checked and found true): fixed a lost session (restart, logout) is replaced by the pool and the key found again by its label, the call tried once more (Error::session_lost, Token::reopen, tests/recovery_softhsm2.rs; SoftHSM2 gives keys new handles after a login and crashes in its exit handlers once unloaded after a logout, so the binary keeps the module loaded); a found key is served only if of the listed kind (EC with CKA_SIGN and the public key's curve and CKA_ID; AES with CKA_VALUE_LEN 32, encrypt and decrypt) and sensitive and not extractable (test with unfit keys made by conformance probes); GetCertificate only for a certificate whose SPKI is the signing key's; CKR_AEAD_DECRYPT_FAILED (0x35, unnamed in cryptoki 0.12) is INVALID_ARGUMENT when decrypting; a stale socket is removed only on ConnectionRefused; the socket is bound in a 0700 directory, set to 0660 and hard-linked to its path; the health watcher starts after the bind; the module hash takes hex digits only; health checks the login state; zero-pdp/CONFIG.md describes rotation as rollouts. Left: fuzz targets (TASK-397). just check in rust/ and check-changed in go/ green; 23 tests against SoftHSM2 2.7.0.
 
 2026-11-20, #9 and #6 on branch docs/hsm-proxy-rule6-operator. #9: servers.md rule 6 says that no private key crosses the channel, that a digest or message to sign and a key-encryption key's data key in the clear do, that on the pod's socket the sidecar shares the workload's trust domain and does not ask who calls, that outside the pod who may call is rule 29's and A_28830's, and that the vendor's library is in neither image but mounted read-only and loaded by its SHA-256; rule 7 names the HSM's module as the one code loaded at run time, reported with the configuration (hsm-proxy now reports the module's path and SHA-256 at start). #6: rust/ti-hsm-proxy/docs/operating.md (what the image holds and its licences; cryptoki-sys carries latchset's public-domain pkcs11.h, not the OASIS headers; how an operator brings a vendor's module into the pod, image volume or init container, read-only, pinned, LD_LIBRARY_PATH, PIN from a Secret, NetworkPolicy to the HSM; HSM_PROXY_GCM_IV per module; what was verified of each vendor's terms). Found and fixed on the way: open_socket's staging directory was named by the PID only, so two sockets bound at once in one process collided (File exists); it is now unique per bind. The TCP suite made its key in parallel from two tests and could leave two keys under one label; the key is now made once.
+
+2026-11-20, #10 decided by the maintainer: the simulator mode brings SoftHSM2 (2.7.0 from source) and nothing else; Kryoptic was weighed (agent research of 68dfe4c, v1.5.4: Rust, Apache-2.0 from 1.5.3, Red Hat, every mechanism on P-256/384/521 but no brainpool in the token, single-part GCM takes the caller's IV like SoftHSM2 while the 3.0 message API makes it, default build fails on bookworm (eddsa needs OpenSSL 3.2, libsqlite3-sys wants SQLite 3.45.3), macOS untested upstream, 57 runtime crates with serial_test as a normal dependency, fixes of November 2026 for sensitive-key exposure #549/#577 and a SIGSEGV #554 not yet released) and not taken, with no follow-up task. ngx_pep's hsm_sim stays beside it; the README says how hsm-proxy in the simulator mode can stand in for it and how they differ.
 <!-- SECTION:NOTES:END -->

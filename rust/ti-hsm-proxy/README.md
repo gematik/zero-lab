@@ -114,6 +114,23 @@ a peer check on the socket (rule 8), metrics and a log line on a change of healt
 beyond the end entity, P-521 and the brainpool curves in the interface, fuzz targets for
 the keys file and the public point (TASK-397).
 
+## Simulator token and ngx_pep's hsm_sim
+
+The simulator mode brings SoftHSM2 2.7.0, built from source (maintainer, 2026-11-20). Kryoptic
+was weighed and not taken: its token has no brainpool curves, macOS is untested upstream, its
+default build does not build on Debian bookworm, and fixes for sensitive keys were not yet in a
+release.
+
+ngx_pep's `hsm_sim` stays beside the sidecar; the choice is ngx_pep's. `hsm-proxy` in the
+simulator mode serves the same interface and can stand in for it, with these differences:
+
+| | `hsm_sim` | `hsm-proxy`, simulator mode |
+|---|---|---|
+| Keys | derived from the `key_id` by HKDF, the curve from its suffix (`.p256`, …), so every replica has the same key | listed in `HSM_PROXY_KEYS_PATH` with their kind, made on the token at start, random |
+| Way to the key | in process, OpenSSL | PKCS#11, as with a vendor's HSM |
+| Listener | TCP, TLS optional | Unix socket, or TCP with own TLS/mTLS or for a declared mesh |
+| Certificates | issued by a configured CA | the one the token keeps under the key's label, if any |
+
 How an operator brings a vendor's module into the pod, what the image holds and what was
 verified of each vendor's terms is in [docs/operating.md](docs/operating.md).
 
