@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-19 07:17'
-updated_date: '2026-11-20 08:01'
+updated_date: '2026-11-20 08:04'
 labels:
   - rust
   - security
@@ -101,4 +101,6 @@ Sources of the licence research of 2026-11-19. Utimaco: https://utimaco.com/data
 2026-11-20, research (two agents, gemspec checked through the skill's script; vendor pages public): ZETA A_28747 allows a proxy attested to the HSM or paired in a documented key ceremony; paired needs A_28814 sealing (TASK-403). The sidecar takes the pairing. Attestation checked inside the HSM is required by ePA für alle (gemSpec_Aktensystem_ePAfueralle 1.8.2 A_25281, A_25282-05, A_24667, A_24611-09, A_24612-07: the VAU-Token-Modul in the VAU-HSM) and by PoPP (gemSpec_PoPP_Service 1.1.0 A_26602: the HSM validates VAU images and tells ZETA Guard images apart); E-Rezept does it without being asked to in such words (IBM's github.com/eRP-FD/vau-hsm: Utimaco SDK firmware checking TPM 2.0 quotes of secure boot and the SGX enclave, enrolled in a ceremony with gematik). HSM code: Utimaco firmware modules (SDK simulator, Linux i386/Windows, test and evaluation only; module leaves FIPS mode), Entrust CodeSafe 5 (key ACL bound to the signed image, FIPS unaffected per Entrust, no simulator), Thales Luna FMs (no PKCS#11 interception, not FIPS, no emulation), ProtectServer FMs (PKCS#11 patching, emulation behind the portal); none in SoftHSM2 or Kryoptic. Summary in rust/ti-hsm-proxy/README.md, Attestation to the HSM.
 
 2026-11-20, #3 in part, on branch docs/hsm-proxy-rule6-operator: just hsm-proxy-simulator starts the sidecar in the simulator mode with one command on a fresh SoftHSM2 token (keys of ti-hsm-proxy/simulator/keys.json, named after A_28831); HSM_PROXY_SIMULATOR_SEED_PATH makes the keys deterministic: HKDF-SHA256 over the SHA-256 of the seed file, the kind and the key_id (src/simulator.rs, HMAC-SHA256 from the workspace's hmac, the public point from p256/p384; no new crate), put on the token with C_CreateObject sensitive and not extractable (CKA_NEVER_EXTRACTABLE false, as for any imported key); a key already on the token is found, not derived again. tests/simulator_softhsm2.rs: two tokens with one seed hold the same keys (public keys equal on P-256 and P-384, one decrypts what the other encrypts), another seed other keys, a restart finds the keys. 26 tests against SoftHSM2 pass. Still open for #3: x86_64 (simulator image building under emulation) and Linux natively; 'without an account' holds (SoftHSM2 from source). #5 needs a CI, which the repository does not have yet: the maintainer's decision.
+
+2026-11-20: the simulator image builds and runs for linux/amd64 too (docker under emulation in colima): as 1000680000:0 with a read-only root, keys derived from a seed, health ready and live 0, exit 0 on SIGTERM. Run so far: macOS arm64 natively, Linux arm64 and Linux x86_64 in the image. Not yet: Linux natively outside an image, macOS x86_64; so #3 stays open on 'natively'.
 <!-- SECTION:NOTES:END -->
