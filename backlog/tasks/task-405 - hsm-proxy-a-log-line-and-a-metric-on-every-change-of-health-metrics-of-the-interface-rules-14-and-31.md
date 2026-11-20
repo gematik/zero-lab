@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-20 16:05'
-updated_date: '2026-11-20 16:07'
+updated_date: '2026-11-20 16:59'
 labels:
   - servers
   - hsm-proxy
@@ -45,4 +45,6 @@ ZETA Guard as of 2026-11-20 (keycloak-zeta abb8cef1, zeta-guard-helm main):
 - Traces and logs go by OTLP push to the gateway (KC_TRACING_ENABLED, KC_TELEMETRY_LOGS_ENABLED); ngx_pep alone pushes its metrics by OTLP as well (one gRPC endpoint, OTEL_EXPORTER_OTLP_ENDPOINT). docs/explanations/Telemetry.md says Keycloak's metrics go by OTLP; the chart scrapes them.
 - Lesson from keycloak-zeta (quarkus.properties, CVE-2026-40984 family): Quarkus' http-server binder took the HTTP method as an unbounded label and grew without limit until OOM; it is disabled. Every label here must be bounded: key_id only from the keys file, method and codes from closed enums, never a value from the request.
 Recommendation: Prometheus exposition on a management listener apart from the interface, like Keycloak's port 9000, so the gateway scrapes it with one more job; OTLP push is not needed for metrics.
+
+Blocked on the detailed observability specification (maintainer, 2026-11-20); the drafted rules and the dependency evaluation are in DRAFT-1.
 <!-- SECTION:NOTES:END -->
