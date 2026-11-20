@@ -31,6 +31,10 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   `HSM_PROXY_LISTEN_TLS_PEER_NAME`, or `http://` for the mesh named in `HSM_PROXY_LISTEN_MESH`.
   Certificate and key are read at start and refused if they do not match or are not valid; on
   TCP a Unix health socket serves `hsm-proxy health`.
+- ti-hsm-proxy's simulator mode starts with one command (`just hsm-proxy-simulator`) and makes
+  its keys deterministic with `HSM_PROXY_SIMULATOR_SEED_PATH`: derived from the seed and the
+  `key_id` and put on the token, the same in every run and replica. The module's path and
+  SHA-256 are reported at start (servers.md rule 7).
 
 ### jwz
 

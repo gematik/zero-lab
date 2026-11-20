@@ -39,7 +39,7 @@ grpc = [
 ]
 # The simulator mode (HSM_PROXY_SIMULATOR): provisions a software token with TEST-ONLY PINs and
 # makes missing keys. For the development image only, never in a production build (rule 17).
-simulator = []
+simulator = ["dep:hmac", "dep:p256", "dep:p384"]
 # Probes that ask a token to do what it must refuse, for the conformance suite against a token
 # (tests/token_softhsm2.rs); never in a production build (servers.md rule 17).
 conformance = []
@@ -66,6 +66,11 @@ tokio-stream = { workspace = true, optional = true }
 hyper-util = { workspace = true, optional = true }
 tower = { workspace = true, optional = true }
 tokio-rustls = { workspace = true, optional = true }
+# The simulator's keys derived from a seed (feature simulator): HKDF on HMAC-SHA256, and the
+# public point of a derived scalar.
+hmac = { workspace = true, optional = true }
+p256 = { workspace = true, optional = true, features = ["alloc", "pkcs8"] }
+p384 = { workspace = true, optional = true, features = ["alloc", "pkcs8"] }
 rustls = { workspace = true, optional = true }
 rustls-pki-types = { workspace = true, optional = true, features = ["alloc"] }
 
@@ -92,6 +97,10 @@ required-features = ["conformance"]
 [[test]]
 name = "recovery_softhsm2"
 required-features = ["conformance"]
+
+[[test]]
+name = "simulator_softhsm2"
+required-features = ["simulator"]
 
 [lints]
 workspace = true

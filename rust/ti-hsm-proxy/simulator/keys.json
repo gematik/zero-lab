@@ -1,0 +1,8 @@
+{
+  "keys": [
+    { "key_id": "pep-sig-es256-v1", "kind": "ecdsa-p256" },
+    { "key_id": "authserver-sig-es256-v1", "kind": "ecdsa-p256" },
+    { "key_id": "authserver-sig-es384-v1", "kind": "ecdsa-p384" },
+    { "key_id": "pdp-db-aes256gcm-v1", "kind": "aes-256-gcm" }
+  ]
+}

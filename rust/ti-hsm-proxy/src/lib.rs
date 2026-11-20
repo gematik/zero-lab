@@ -50,6 +50,8 @@
 mod pkcs11;
 mod pool;
 mod service;
+#[cfg(feature = "simulator")]
+mod simulator;
 #[cfg(feature = "transport")]
 pub mod transport;
 

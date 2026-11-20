@@ -68,6 +68,10 @@ pub struct Config {
     /// not, with TEST-ONLY PINs, and missing keys are made. Only a build with the feature
     /// `simulator` has it.
     pub simulator: bool,
+    /// In the simulator mode, a file whose SHA-256 is the seed missing keys are derived
+    /// from, so that every run and replica with it has the same keys
+    /// (`HSM_PROXY_SIMULATOR_SEED_PATH`); without it they are made at random.
+    pub simulator_seed: Option<PathBuf>,
 }
 
 /// What is wrong with the configuration; it names the variable or file, never a secret.
@@ -297,6 +301,12 @@ impl Config {
             }
             Some(_) => return Err(error("HSM_PROXY_SIMULATOR: true or false")),
         };
+        let simulator_seed = var("HSM_PROXY_SIMULATOR_SEED_PATH").map(PathBuf::from);
+        if simulator_seed.is_some() && !simulator {
+            return Err(error(
+                "HSM_PROXY_SIMULATOR_SEED_PATH is for the simulator mode (HSM_PROXY_SIMULATOR=true)",
+            ));
+        }
         let listen = listen(&var)?;
         let module_sha256 = var("HSM_PROXY_PKCS11_MODULE_SHA256")
             .map(|hex| parse_sha256(&hex))
@@ -359,6 +369,7 @@ impl Config {
             wait,
             iv: iv.unwrap_or(Iv::Random),
             simulator,
+            simulator_seed,
         })
     }
 }

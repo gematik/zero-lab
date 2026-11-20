@@ -177,7 +177,12 @@ fn run(config: &Config) -> Result<(), String> {
     #[cfg(feature = "simulator")]
     let missing = if config.simulator {
         simulator::provision(&module, &config.token, &user_pin)?;
-        MissingKeys::Make
+        if let Some(path) = &config.simulator_seed {
+            MissingKeys::Derive(simulator::seed(path)?)
+        } else {
+            eprintln!("hsm-proxy: simulator mode: missing keys are made at random");
+            MissingKeys::Make
+        }
     } else {
         MissingKeys::Refuse
     };
@@ -302,11 +307,27 @@ mod simulator {
     const SO_PIN: &str = "so-pin-TEST-ONLY";
     pub const USER_PIN: &str = "user-pin-TEST-ONLY";
 
+    /// The seed of derived keys: the SHA-256 of the file at `path`, of at least 16 bytes.
+    pub fn seed(path: &std::path::Path) -> Result<[u8; 32], String> {
+        use sha2::Digest as _;
+        let bytes = std::fs::read(path)
+            .map_err(|e| format!("HSM_PROXY_SIMULATOR_SEED_PATH {}: {e}", path.display()))?;
+        if bytes.len() < 16 {
+            return Err(format!(
+                "HSM_PROXY_SIMULATOR_SEED_PATH {}: a seed of at least 16 bytes",
+                path.display()
+            ));
+        }
+        eprintln!(
+            "hsm-proxy: simulator mode: missing keys are derived from the seed in {}",
+            path.display()
+        );
+        Ok(sha2::Sha256::digest(&bytes).into())
+    }
+
     /// Provisions the token `label` if it is not, with the TEST-ONLY PINs, and says so.
     pub fn provision(module: &Module, label: &str, user_pin: &AuthPin) -> Result<(), String> {
-        eprintln!(
-            "hsm-proxy: simulator mode: token {label} is provisioned with TEST-ONLY PINs and missing keys are made"
-        );
+        eprintln!("hsm-proxy: simulator mode: token {label} is provisioned with TEST-ONLY PINs");
         module
             .provision(label, &AuthPin::from(SO_PIN), user_pin)
             .map_err(|e| e.to_string())

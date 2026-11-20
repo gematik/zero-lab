@@ -23,6 +23,7 @@ tests.
 ## Running
 
 ```console
+just hsm-proxy-simulator   # the sidecar in the simulator mode on a fresh SoftHSM2 token, one command
 just hsm-proxy-softhsm2    # the token and the gRPC suites against SoftHSM2 2.7, or TI_HSM_PKCS11_MODULE_PATH
 just hsm-proxy-codegen     # regenerate src/generated and tests/generated from proto/
 ```
@@ -56,6 +57,7 @@ The binary `hsm-proxy` is configured by its environment:
 | `HSM_PROXY_SESSIONS` | sessions on the token, default 4 |
 | `HSM_PROXY_SESSION_WAIT_MS` | how long a call waits for a free session before UNAVAILABLE, default 2000 |
 | `HSM_PROXY_HEALTH_INTERVAL_MS` | how often `grpc.health.v1` asks the token, default 5000 |
+| `HSM_PROXY_SIMULATOR_SEED_PATH` | in the simulator mode: a file of at least 16 bytes whose SHA-256 is the seed missing keys are derived from (HKDF-SHA256 over the seed, the kind and the `key_id`) and put on the token, so that every run and replica with the seed has the same keys; without it they are made at random. TEST-ONLY: a derived key is as secret as the seed |
 | `HSM_PROXY_SIMULATOR` | `true`, in a build with the feature `simulator`: the token is provisioned if it is not, with TEST-ONLY PINs, and missing keys are made. Each process gets a token directory of its own: two that start at once on one directory can each make a missing key, which leaves two keys under one label |
 
 Outside the simulator mode a key of the list that is not on the token stops the start; a
@@ -163,7 +165,7 @@ simulator mode serves the same interface and can stand in for it, with these dif
 
 | | `hsm_sim` | `hsm-proxy`, simulator mode |
 |---|---|---|
-| Keys | derived from the `key_id` by HKDF, the curve from its suffix (`.p256`, …), so every replica has the same key | listed in `HSM_PROXY_KEYS_PATH` with their kind, made on the token at start, random |
+| Keys | derived from the `key_id` by HKDF, the curve from its suffix (`.p256`, …), so every replica has the same key | listed in `HSM_PROXY_KEYS_PATH` with their kind; made on the token at random, or derived from `HSM_PROXY_SIMULATOR_SEED_PATH` and put on it, the same in every replica |
 | Way to the key | in process, OpenSSL | PKCS#11, as with a vendor's HSM |
 | Listener | TCP, TLS optional | Unix socket, or TCP with own TLS/mTLS or for a declared mesh |
 | Certificates | issued by a configured CA | the one the token keeps under the key's label, if any |
