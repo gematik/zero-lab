@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-20 16:05'
+updated_date: '2026-11-20 16:07'
 labels:
   - servers
   - hsm-proxy
@@ -35,3 +36,13 @@ Metrics need a dependency (prometheus-client, opentelemetry or a hand-written ex
 - [ ] #5 Tests named after the rules prove the log line on a change (token lost and back) and the metrics' values on the software token
 - [ ] #6 README (Health in a pod, Not here yet) and ReleaseNotes updated; TASK-394 notes point here
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+ZETA Guard as of 2026-11-20 (keycloak-zeta abb8cef1, zeta-guard-helm main):
+- Metrics are Prometheus, scraped by the telemetry-gateway (an OpenTelemetry collector, prometheus receiver, static scrape_configs in charts/zeta-guard/values.yaml): Keycloak on its management port authserver:9000/auth-mgmt/metrics (Quarkus Micrometer, KC_METRICS_ENABLED), the PEP's nginx-prometheus-exporter on pep-proxy-svc:9113, OPA on :8181, nginx-ingress on :9113. The job names are load-bearing for the shipped dashboards.
+- Traces and logs go by OTLP push to the gateway (KC_TRACING_ENABLED, KC_TELEMETRY_LOGS_ENABLED); ngx_pep alone pushes its metrics by OTLP as well (one gRPC endpoint, OTEL_EXPORTER_OTLP_ENDPOINT). docs/explanations/Telemetry.md says Keycloak's metrics go by OTLP; the chart scrapes them.
+- Lesson from keycloak-zeta (quarkus.properties, CVE-2026-40984 family): Quarkus' http-server binder took the HTTP method as an unbounded label and grew without limit until OOM; it is disabled. Every label here must be bounded: key_id only from the keys file, method and codes from closed enums, never a value from the request.
+Recommendation: Prometheus exposition on a management listener apart from the interface, like Keycloak's port 9000, so the gateway scrapes it with one more job; OTLP push is not needed for metrics.
+<!-- SECTION:NOTES:END -->
