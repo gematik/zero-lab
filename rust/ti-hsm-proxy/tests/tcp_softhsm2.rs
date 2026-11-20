@@ -78,6 +78,12 @@ fn module() -> &'static Module {
                 &AuthPin::from("user-pin-TEST-ONLY"),
             )
             .expect("the token is provisioned");
+        // The key is made once, here: the tests start their sidecars in parallel, and two
+        // that each made a missing key would leave two keys under one label.
+        module
+            .open(TOKEN, &AuthPin::from("user-pin-TEST-ONLY"))
+            .and_then(|token| token.signing_key("sig", ti_hsm_proxy::Curve::P256))
+            .expect("the signing key is on the token");
         module
     })
 }
@@ -98,13 +104,42 @@ fn proxy() -> Arc<HsmProxy> {
         HsmProxy::start(
             pool,
             &keys,
-            MissingKeys::Make,
+            MissingKeys::Refuse,
             Duration::from_secs(5),
             Iv::Random,
             String::new(),
         )
         .unwrap(),
     )
+}
+
+/// Starts the sidecar on a free port of 127.0.0.1 and returns the port once it accepts
+/// connections. A port is free when it is picked, but another process may take it before the
+/// sidecar binds it; then the sidecar is started again on another one.
+fn start(
+    runtime: &tokio::runtime::Runtime,
+    listener: impl Fn(SocketAddr) -> Listener,
+) -> SocketAddr {
+    for _ in 0..5 {
+        let address = free_address();
+        let server = runtime.spawn(grpc::serve(
+            proxy(),
+            listener(address),
+            Duration::from_secs(5),
+            std::future::pending(),
+        ));
+        for _ in 0..100 {
+            if std::net::TcpStream::connect(address).is_ok() {
+                return address;
+            }
+            if server.is_finished() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        server.abort();
+    }
+    panic!("the sidecar did not come up on any of five ports");
 }
 
 fn free_address() -> SocketAddr {
@@ -174,28 +209,22 @@ fn servers_rule_29_mtls_admits_the_allowlist_and_nobody_else() {
         valid_for(1),
     );
     let old = ca.issue("pep", vec![uri("spiffe://zeta/pep")], expired());
-    let tls = TlsListener::new(
-        server.cert.as_bytes(),
-        server.key.as_bytes(),
-        Some(Clients {
-            ca: ca.cert.as_bytes(),
-            allow: vec!["spiffe://zeta/pep".to_owned()],
-        }),
-        SystemTime::now(),
-    )
-    .unwrap();
-    let (address, probe) = (free_address(), probe_socket("mtls"));
+    let probe = probe_socket("mtls");
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime.spawn(grpc::serve(
-        proxy(),
-        Listener::Tls {
-            address,
-            tls,
-            probe: probe.clone(),
-        },
-        Duration::from_secs(5),
-        std::future::pending(),
-    ));
+    let address = start(&runtime, |address| Listener::Tls {
+        address,
+        tls: TlsListener::new(
+            server.cert.as_bytes(),
+            server.key.as_bytes(),
+            Some(Clients {
+                ca: ca.cert.as_bytes(),
+                allow: vec!["spiffe://zeta/pep".to_owned()],
+            }),
+            SystemTime::now(),
+        )
+        .unwrap(),
+        probe: probe.clone(),
+    });
     runtime.block_on(async {
         let admitted = channel(tls_endpoint(address, &ca, Some(&pep)))
             .await
@@ -249,17 +278,12 @@ fn servers_rule_29_mtls_admits_the_allowlist_and_nobody_else() {
 #[test]
 #[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
 fn servers_rule_29_plaintext_in_the_cluster_for_a_declared_mesh() {
-    let (address, probe) = (free_address(), probe_socket("mesh"));
+    let probe = probe_socket("mesh");
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    runtime.spawn(grpc::serve(
-        proxy(),
-        Listener::Mesh {
-            address,
-            probe: probe.clone(),
-        },
-        Duration::from_secs(5),
-        std::future::pending(),
-    ));
+    let address = start(&runtime, |address| Listener::Mesh {
+        address,
+        probe: probe.clone(),
+    });
     runtime.block_on(async {
         let plain = channel(Endpoint::from_shared(format!("http://{address}")).unwrap())
             .await

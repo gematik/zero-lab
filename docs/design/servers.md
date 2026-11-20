@@ -68,13 +68,24 @@ everything outside the workload untrusted.
    KMS that holds a workload key is part of the workload's trusted base, and its key
    policy admits only this workload, proven by attestation and a workload identity the
    platform provides (the SPIFFE Workload API where it is mounted), never by a credential
-   in a file. The channel is a cloud KMS API or a key provider sidecar over a Unix socket
-   (the pattern of the Kubernetes KMS plugin); the vendor's native library is never in the
-   workload's image, and only digests cross the channel.
+   in a file. The channel is a cloud KMS API or a key provider sidecar (the pattern of the
+   Kubernetes KMS plugin), on a Unix socket inside the pod or inside the cluster as rule 29
+   has it.
+   - **No private key crosses the channel.** What crosses is what each operation needs: a
+     digest or a message to sign, and for a key-encryption key the data key it wraps or
+     unwraps, in the clear. On the pod's socket the sidecar is in the workload's trust
+     domain, which holds that data key anyway: it serves the keys it is configured with and
+     does not ask who calls. Outside the pod, who may call is rule 29's, and per key the
+     HSM proxy's (gemSpec_ZETA A_28830).
+   - **The vendor's library is in neither image.** The workload's image never holds it,
+     and the sidecar's image does not either: the operator mounts the module read-only and
+     the sidecar loads it only if its SHA-256 is the configured one (rules 4 and 7).
 7. **Attestation friendly, signed workloads.** Builds are reproducible (pinned toolchain,
    base images by digest, `-trimpath`, no build-time network for code), images are
    signed with provenance and an SBOM, a vulnerability scan of the image is a CI gate, and
-   the measured image contains everything that runs: no code or plugins loaded at runtime.
+   the measured image contains everything that runs: no code or plugins loaded at runtime,
+   except the HSM's PKCS#11 module of rule 4, loaded only from a read-only mount and only if
+   its SHA-256 is the configured one, which is reported with the configuration.
    Third-party code that runs in the workload, a sidecar such as OPA included, is rebuilt
    reproducibly from source like our own, never taken as the vendor's image
    ([decision-17](../../backlog/decisions/)). Configuration that changes behaviour is

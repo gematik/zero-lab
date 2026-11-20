@@ -151,6 +151,17 @@ fn run(config: &Config) -> Result<(), String> {
             ));
         }
     }
+    // Rule 7: the module loaded at run time is reported with the configuration.
+    let pinned = config.module_sha256.map_or_else(
+        || "not pinned (simulator)".to_owned(),
+        |sha| {
+            sha.iter().fold(String::from("SHA-256 "), |mut hex, byte| {
+                use std::fmt::Write as _;
+                let _ = write!(hex, "{byte:02x}");
+                hex
+            })
+        },
+    );
     let user_pin = match &config.user_pin {
         Some(path) => {
             let pin = std::fs::read_to_string(path)
@@ -195,8 +206,9 @@ fn run(config: &Config) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let (listener, mode) = listener(&config.listen)?;
     eprintln!(
-        "hsm-proxy {}: {hsm_info}, token {}, {} sessions, {} keys, {mode}",
+        "hsm-proxy {}: {hsm_info} from {} ({pinned}), token {}, {} sessions, {} keys, {mode}",
         env!("CARGO_PKG_VERSION"),
+        config.module.display(),
         config.token,
         config.sessions,
         config.keys.len(),

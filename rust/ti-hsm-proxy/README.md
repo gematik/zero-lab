@@ -56,7 +56,7 @@ The binary `hsm-proxy` is configured by its environment:
 | `HSM_PROXY_SESSIONS` | sessions on the token, default 4 |
 | `HSM_PROXY_SESSION_WAIT_MS` | how long a call waits for a free session before UNAVAILABLE, default 2000 |
 | `HSM_PROXY_HEALTH_INTERVAL_MS` | how often `grpc.health.v1` asks the token, default 5000 |
-| `HSM_PROXY_SIMULATOR` | `true`, in a build with the feature `simulator`: the token is provisioned if it is not, with TEST-ONLY PINs, and missing keys are made |
+| `HSM_PROXY_SIMULATOR` | `true`, in a build with the feature `simulator`: the token is provisioned if it is not, with TEST-ONLY PINs, and missing keys are made. Each process gets a token directory of its own: two that start at once on one directory can each make a missing key, which leaves two keys under one label |
 
 Outside the simulator mode a key of the list that is not on the token stops the start; a
 vendor's HSM is provisioned by its own tools.
@@ -113,6 +113,9 @@ Not here yet: access by component and `key_id` (A_28830) beyond the listener's a
 a peer check on the socket (rule 8), metrics and a log line on a change of health (rule 31), certificate chains
 beyond the end entity, P-521 and the brainpool curves in the interface, fuzz targets for
 the keys file and the public point (TASK-397).
+
+How an operator brings a vendor's module into the pod, what the image holds and what was
+verified of each vendor's terms is in [docs/operating.md](docs/operating.md).
 
 What SoftHSM2 does on this path, its throughput and the transport comparison are in
 [docs/softhsm2.md](docs/softhsm2.md).

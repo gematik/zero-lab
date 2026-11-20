@@ -143,6 +143,10 @@ async fn remove_stale_socket(socket: &Path) -> io::Result<()> {
 /// `fsGroup` has, or else the process's primary group, which is 0 on OpenShift.
 const SOCKET_MODE: u32 = 0o660;
 
+/// Counts the binds of this process, so that each gets a staging directory of its own: two
+/// sockets bound at once must not share one.
+static BINDS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Binds the socket where nobody else can reach it, a directory of mode 0700 beside its
 /// path, gives it [`SOCKET_MODE`] and only then links it to its path. However the umask is
 /// set, the socket is never reachable with other permissions; and a link, unlike a rename,
@@ -153,7 +157,8 @@ fn open_socket(socket: &Path) -> io::Result<UnixListener> {
     let parent = socket
         .parent()
         .ok_or_else(|| named(io::Error::from(io::ErrorKind::InvalidInput)))?;
-    let staging = parent.join(format!(".hsm-proxy-{}", std::process::id()));
+    let bind = BINDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let staging = parent.join(format!(".hsm-proxy-{}-{bind}", std::process::id()));
     std::fs::DirBuilder::new()
         .mode(0o700)
         .create(&staging)
