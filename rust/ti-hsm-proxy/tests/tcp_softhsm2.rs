@@ -22,8 +22,8 @@
  */
 
 //! The TCP listener inside the cluster against the sidecar on a software token (servers.md
-//! rule 29): the sidecar's own mTLS with an allowlist, and plaintext for a declared mesh,
-//! each with its health socket for `hsm-proxy health`.
+//! rule 29): the sidecar's own mTLS with an allowlist, and plaintext the operator has
+//! accepted, each with its health socket for `hsm-proxy health`.
 //!
 //! Gated like the token suite (`just hsm-proxy-softhsm2`). The CA and the certificates are
 //! made by the test, keys included.
@@ -272,15 +272,15 @@ fn servers_rule_29_mtls_admits_the_allowlist_and_nobody_else() {
     });
 }
 
-/// servers.md rule 29: plaintext inside the cluster, for a declared mesh: the interface
-/// answers over h2c without TLS, the caller is the mesh's to check, and the health socket
+/// servers.md rule 29: plaintext inside the cluster, accepted by the operator: the interface
+/// answers over h2c without TLS, the caller is the deployment's to check, and the health socket
 /// answers `hsm-proxy health`.
 #[test]
 #[ignore = "needs TI_HSM_PKCS11_MODULE_PATH: just hsm-proxy-softhsm2"]
-fn servers_rule_29_plaintext_in_the_cluster_for_a_declared_mesh() {
-    let probe = probe_socket("mesh");
+fn servers_rule_29_plaintext_in_the_cluster_once_the_operator_accepts_it() {
+    let probe = probe_socket("plaintext");
     let runtime = tokio::runtime::Runtime::new().unwrap();
-    let address = start(&runtime, |address| Listener::Mesh {
+    let address = start(&runtime, |address| Listener::Plaintext {
         address,
         probe: probe.clone(),
     });

@@ -2,10 +2,11 @@
 id: TASK-404
 title: >-
   hsm-proxy: the Java clients reach it in plaintext gRPC over TCP, which it
-  takes only for a declared mesh
+  takes only once the operator accepts plaintext
 status: To Do
 assignee: []
 created_date: '2026-11-20 08:26'
+updated_date: '2026-11-20 09:00'
 labels:
   - rust
   - hsm
@@ -30,3 +31,9 @@ Found 2026-11-20 checking the ZETA clients (origin/main of each): keycloak-zeta,
 - [ ] #1 It is decided and in rule 29 whether a plaintext listener on loopback inside the pod needs a declared mesh
 - [ ] #2 hsm-proxy serves the Java provider and ossl_hsm as they are, or the gap is recorded against TASK-389 #1
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-20: the maintainer replaced the mesh declaration by an acceptance: HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true (like terms of service, the value exactly true), no mesh named, since the sidecar cannot tell whether one protects the connection. With it the Java clients reach the sidecar unchanged; the open question stays whether loopback inside the pod needs the acceptance too.
+<!-- SECTION:NOTES:END -->

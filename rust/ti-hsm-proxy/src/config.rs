@@ -162,13 +162,11 @@ pub enum Listen {
         /// For mTLS: the client CA bundle and the identities admitted.
         clients: Option<(PathBuf, Vec<String>)>,
     },
-    /// `http://host:port`: inside the cluster in plaintext, which only a mesh declared in
-    /// `HSM_PROXY_LISTEN_MESH` may carry.
-    Mesh {
+    /// `http://host:port`: inside the cluster in plaintext, which the operator has accepted
+    /// with `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true`.
+    Plaintext {
         /// The address.
         address: SocketAddr,
-        /// The mesh's name.
-        mesh: String,
     },
 }
 
@@ -190,7 +188,9 @@ impl Listen {
     pub fn probe_socket(&self) -> PathBuf {
         match self {
             Listen::Unix(socket) => socket.clone(),
-            Listen::Tls { .. } | Listen::Mesh { .. } => std::env::temp_dir().join(PROBE_SOCKET),
+            Listen::Tls { .. } | Listen::Plaintext { .. } => {
+                std::env::temp_dir().join(PROBE_SOCKET)
+            }
         }
     }
 }
@@ -208,30 +208,41 @@ fn address(authority: &str) -> Result<SocketAddr, ConfigError> {
 }
 
 /// Reads `HSM_PROXY_LISTEN_URL` and what its mode needs, and refuses what rule 17 refuses:
-/// TLS settings beside plaintext, plaintext without a declared mesh, a mesh beside TLS, a
-/// client CA without identities, identities without a client CA.
+/// TLS settings beside plaintext, plaintext the operator has not accepted, an acceptance
+/// beside TLS or a Unix socket, a client CA without identities, identities without a client
+/// CA.
 pub fn listen(var: impl Fn(&str) -> Option<String>) -> Result<Listen, ConfigError> {
     let url =
         var("HSM_PROXY_LISTEN_URL").ok_or_else(|| error("HSM_PROXY_LISTEN_URL is not set"))?;
     let tls_set = ["CERT_PATH", "KEY_PATH", "CA_PATH", "PEER_NAME"]
         .iter()
         .any(|suffix| var(&format!("HSM_PROXY_LISTEN_TLS_{suffix}")).is_some());
-    let mesh = var("HSM_PROXY_LISTEN_MESH").filter(|mesh| !mesh.trim().is_empty());
+    // Like a terms-of-service agreement: one exact value, so that neither an empty
+    // variable nor a "false" or "no" reads as consent.
+    let accepted = match var("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED").as_deref() {
+        None => None,
+        Some("true") => Some(true),
+        Some(_) => {
+            return Err(error(
+                "HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED: true, or not set",
+            ));
+        }
+    };
     if let Some(path) = url.strip_prefix("unix://") {
         if !path.starts_with('/') {
             return Err(error("HSM_PROXY_LISTEN_URL: unix:///absolute/path"));
         }
-        if tls_set || mesh.is_some() {
+        if tls_set || accepted.is_some() {
             return Err(error(
-                "HSM_PROXY_LISTEN_TLS_* and HSM_PROXY_LISTEN_MESH are for a TCP listener, not a Unix socket",
+                "HSM_PROXY_LISTEN_TLS_* and HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED are for a TCP listener, not a Unix socket",
             ));
         }
         return Ok(Listen::Unix(PathBuf::from(path)));
     }
     if let Some(authority) = url.strip_prefix("https://") {
-        if mesh.is_some() {
+        if accepted.is_some() {
             return Err(error(
-                "HSM_PROXY_LISTEN_MESH is for http://; https:// is the sidecar's own TLS",
+                "HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED is for http://; https:// is the sidecar's own TLS",
             ));
         }
         let path = |suffix: &str| {
@@ -272,12 +283,13 @@ pub fn listen(var: impl Fn(&str) -> Option<String>) -> Result<Listen, ConfigErro
         if tls_set {
             return Err(error("HSM_PROXY_LISTEN_TLS_* is for https://"));
         }
-        let mesh = mesh.ok_or_else(|| {
-            error("http:// inside the cluster needs the mesh that protects it in HSM_PROXY_LISTEN_MESH (servers.md rule 29)")
-        })?;
-        return Ok(Listen::Mesh {
+        if accepted.is_none() {
+            return Err(error(
+                "http:// is plaintext the sidecar neither encrypts nor checks the caller of; the operator accepts it with HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true (servers.md rule 29)",
+            ));
+        }
+        return Ok(Listen::Plaintext {
             address: address(authority)?,
-            mesh: mesh.trim().to_owned(),
         });
     }
     Err(error("HSM_PROXY_LISTEN_URL: unix://, https:// or http://"))
@@ -472,8 +484,8 @@ mod tests {
     }
 
     /// servers.md rule 29: the listener is a URL whose scheme is the mode: a Unix socket at
-    /// an absolute path, https:// with the sidecar's own TLS, or http:// with a declared
-    /// mesh. Anything else is refused.
+    /// an absolute path, https:// with the sidecar's own TLS, or http:// in plaintext the
+    /// operator has accepted. Anything else is refused.
     #[test]
     fn servers_rule_29_the_listener_is_a_url_whose_scheme_is_the_mode() {
         for url in [
@@ -506,43 +518,69 @@ mod tests {
             panic!("{mtls:?}");
         };
         assert_eq!(allow, &["spiffe://zeta/pep", "pdp.zeta.svc"]);
-        let mesh = listen_of(&[
+        let plaintext = listen_of(&[
             ("HSM_PROXY_LISTEN_URL", "http://127.0.0.1:50051"),
-            ("HSM_PROXY_LISTEN_MESH", "istio"),
+            ("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "true"),
         ])
         .unwrap();
         assert!(
-            matches!(mesh, Listen::Mesh { ref mesh, .. } if mesh == "istio"),
-            "{mesh:?}"
+            matches!(plaintext, Listen::Plaintext { .. }),
+            "{plaintext:?}"
         );
-        assert_ne!(mesh.probe_socket(), PathBuf::from("/run/hsm/proxy.sock"));
+        assert_ne!(
+            plaintext.probe_socket(),
+            PathBuf::from("/run/hsm/proxy.sock")
+        );
     }
 
     /// servers.md rules 17 and 29: inconsistent combinations do not start: plaintext in the
-    /// cluster without a declared mesh, TLS settings beside plaintext or a Unix socket, a
-    /// mesh beside the sidecar's own TLS, a client CA without identities and identities
-    /// without a client CA.
+    /// cluster the operator has not accepted, or accepted with anything but `true`, TLS
+    /// settings beside plaintext or a Unix socket, an acceptance beside the sidecar's own TLS
+    /// or a Unix socket, a client CA without identities and identities without a client CA.
     #[test]
     fn servers_rule_17_an_inconsistent_listener_does_not_start() {
         let tls = [
             ("HSM_PROXY_LISTEN_TLS_CERT_PATH", "/tls/cert.pem"),
             ("HSM_PROXY_LISTEN_TLS_KEY_PATH", "/tls/key.pem"),
         ];
-        let cases: [Case<'_>; 6] = [
-            ("http://127.0.0.1:1", vec![], "HSM_PROXY_LISTEN_MESH"),
+        let cases: [Case<'_>; 9] = [
             (
                 "http://127.0.0.1:1",
-                vec![("HSM_PROXY_LISTEN_MESH", "istio"), tls[0]],
+                vec![],
+                "HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true",
+            ),
+            (
+                "http://127.0.0.1:1",
+                vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "")],
+                "true, or not set",
+            ),
+            (
+                "http://127.0.0.1:1",
+                vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "yes")],
+                "true, or not set",
+            ),
+            (
+                "http://127.0.0.1:1",
+                vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "false")],
+                "true, or not set",
+            ),
+            (
+                "http://127.0.0.1:1",
+                vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "true"), tls[0]],
                 "for https",
             ),
             (
                 "unix:///run/hsm.sock",
-                vec![("HSM_PROXY_LISTEN_MESH", "istio")],
+                vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "true")],
                 "not a Unix socket",
             ),
             (
                 "https://127.0.0.1:1",
-                vec![tls[0], tls[1], ("HSM_PROXY_LISTEN_MESH", "istio")],
+                vec![
+                    tls[0],
+                    tls[1],
+                    ("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "true"),
+                ],
                 "own TLS",
             ),
             (

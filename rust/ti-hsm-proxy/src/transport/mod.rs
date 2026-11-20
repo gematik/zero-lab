@@ -56,9 +56,10 @@ pub enum Listener {
         /// The health socket.
         probe: PathBuf,
     },
-    /// A TCP address inside the cluster in plaintext (h2c), which the deployment's declared
-    /// mesh protects; who calls is the mesh's policy. `probe` as for [`Listener::Tls`].
-    Mesh {
+    /// A TCP address inside the cluster in plaintext (h2c), which the operator has accepted:
+    /// the deployment protects the connection and decides who calls. `probe` as for
+    /// [`Listener::Tls`].
+    Plaintext {
         /// The address to listen on.
         address: SocketAddr,
         /// The health socket.
@@ -73,7 +74,7 @@ pub(crate) enum Bound {
     /// The TCP listener, its TLS and the health socket beside it.
     Tls(TcpListener, TlsListener, UnixListener),
     /// The TCP listener in plaintext and the health socket beside it.
-    Mesh(TcpListener, UnixListener),
+    Plaintext(TcpListener, UnixListener),
 }
 
 impl Listener {
@@ -86,8 +87,8 @@ impl Listener {
                 tls,
                 probe,
             } => Bound::Tls(bind_tcp(address).await?, tls, bind_unix(&probe).await?),
-            Listener::Mesh { address, probe } => {
-                Bound::Mesh(bind_tcp(address).await?, bind_unix(&probe).await?)
+            Listener::Plaintext { address, probe } => {
+                Bound::Plaintext(bind_tcp(address).await?, bind_unix(&probe).await?)
             }
         })
     }

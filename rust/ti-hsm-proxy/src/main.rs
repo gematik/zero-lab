@@ -281,15 +281,15 @@ fn listener(
                 format!("{mode}, health on unix://{}", probe.display()),
             )
         }
-        config::Listen::Mesh { address, mesh } => {
+        config::Listen::Plaintext { address } => {
             let probe = listen.probe_socket();
             (
-                Listener::Mesh {
+                Listener::Plaintext {
                     address: *address,
                     probe: probe.clone(),
                 },
                 format!(
-                    "on http://{address} in plaintext, protected by the mesh {mesh} (servers.md rule 29), health on unix://{}",
+                    "on http://{address} in plaintext, accepted by the operator, the caller unchecked (servers.md rule 29), health on unix://{}",
                     probe.display()
                 ),
             )

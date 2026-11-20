@@ -13,7 +13,7 @@ Three layers in one crate, each usable without the next:
 |---|---|---|
 | PKCS#11 adapter | `Module`, `Token`, `Pool`: load a module, log in, find or make keys by label, sign, encrypt, decrypt, a fixed pool of sessions | `cryptoki` |
 | Operations | `HsmProxy`: the six operations of the interface without a transport, the keys it was told to serve, refusals as `Failure` | the adapter, the PEM/DER/JWK encoders |
-| Transports | `transport`: the listener (Unix socket, TCP with own TLS or mTLS, TCP for a mesh) and its TLS; `transport::grpc`, behind the `grpc` feature (on by default): `HsmProxyService` and `grpc.health.v1`, the probe of `hsm-proxy health` | tokio, rustls; tonic, prost |
+| Transports | `transport`: the listener (Unix socket, TCP with own TLS or mTLS, TCP in plaintext the operator accepts) and its TLS; `transport::grpc`, behind the `grpc` feature (on by default): `HsmProxyService` and `grpc.health.v1`, the probe of `hsm-proxy health` | tokio, rustls; tonic, prost |
 
 The gRPC code is generated from `proto/` by `just hsm-proxy-codegen` and committed, so a
 build needs neither protoc nor prost-build; `just check` fails if it is stale. The sidecar
@@ -32,7 +32,7 @@ Features:
 
 | Feature | Default | What it adds | Where |
 |---|---|---|---|
-| `transport` | with `grpc` | what every transport shares: the listener (Unix, TLS, mesh) and the TLS on rustls | every build that serves |
+| `transport` | with `grpc` | what every transport shares: the listener (Unix, TLS, plaintext) and the TLS on rustls | every build that serves |
 | `grpc` | on | the gRPC transport and `hsm-proxy health` | every build that serves |
 | `simulator` | off | `HSM_PROXY_SIMULATOR`: a software token provisioned with TEST-ONLY PINs, missing keys made | the development image only |
 | `conformance` | off | the probes the token suite asks a token with: a misuse it must refuse, a secret value it must not give out, a given GCM IV | the test suite only |
@@ -44,10 +44,10 @@ The binary `hsm-proxy` is configured by its environment:
 
 | Variable | Meaning |
 |---|---|
-| `HSM_PROXY_LISTEN_URL` | where it listens, the scheme is the mode (servers.md rule 29): `unix:///absolute/path` inside the pod; `https://host:port` with its own TLS; `http://host:port` in plaintext for a declared mesh |
+| `HSM_PROXY_LISTEN_URL` | where it listens, the scheme is the mode (servers.md rule 29): `unix:///absolute/path` inside the pod; `https://host:port` with its own TLS; `http://host:port` in plaintext the operator accepts |
 | `HSM_PROXY_LISTEN_TLS_CERT_PATH`, `_KEY_PATH` | for `https://`: the certificate chain and key, PEM, read at start; a key that does not match, or a certificate not valid now, stops the start |
 | `HSM_PROXY_LISTEN_TLS_CA_PATH`, `_PEER_NAME` | for mTLS: the client CA bundle, and the identities admitted, DNS names or URIs (SPIFFE IDs), comma-separated; one without the other stops the start |
-| `HSM_PROXY_LISTEN_MESH` | for `http://`: the mesh that protects it; plaintext without it stops the start |
+| `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED` | for `http://`: `true` is the operator's statement that the deployment protects the connection and decides who calls; the sidecar then neither encrypts nor checks the caller. Unset, plaintext stops the start; any other value too |
 | `HSM_PROXY_PKCS11_MODULE_PATH` | the PKCS#11 module |
 | `HSM_PROXY_PKCS11_MODULE_SHA256` | its SHA-256 in hex, checked before it is loaded (rule 7); required outside the simulator mode |
 | `HSM_PROXY_TOKEN_LABEL` | the token |
@@ -167,7 +167,7 @@ simulator mode serves the same interface and can stand in for it, with these dif
 |---|---|---|
 | Keys | derived from the `key_id` by HKDF, the curve from its suffix (`.p256`, …), so every replica has the same key | listed in `HSM_PROXY_KEYS_PATH` with their kind; made on the token at random, or derived from `HSM_PROXY_SIMULATOR_SEED_PATH` and put on it, the same in every replica |
 | Way to the key | in process, OpenSSL | PKCS#11, as with a vendor's HSM |
-| Listener | TCP, TLS optional | Unix socket, or TCP with own TLS/mTLS or for a declared mesh |
+| Listener | TCP, TLS optional | Unix socket, or TCP with own TLS/mTLS or in plaintext the operator accepts |
 | Certificates | issued by a configured CA | the one the token keeps under the key's label, if any |
 
 How an operator brings a vendor's module into the pod, what the image holds and what was

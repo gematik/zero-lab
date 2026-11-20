@@ -17,7 +17,7 @@ path = "src/main.rs"
 
 [features]
 default = ["grpc"]
-# What every transport shares: the listener (Unix socket, TLS, mesh) and the sidecar's own TLS.
+# What every transport shares: the listener (Unix socket, TLS, plaintext) and the sidecar's own TLS.
 transport = [
     "dep:tokio",
     "dep:tokio-stream",

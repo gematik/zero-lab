@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-19 07:17'
-updated_date: '2026-11-20 08:26'
+updated_date: '2026-11-20 09:02'
 labels:
   - rust
   - security
@@ -105,4 +105,6 @@ Sources of the licence research of 2026-11-19. Utimaco: https://utimaco.com/data
 2026-11-20: the simulator image builds and runs for linux/amd64 too (docker under emulation in colima): as 1000680000:0 with a read-only root, keys derived from a seed, health ready and live 0, exit 0 on SIGTERM. Run so far: macOS arm64 natively, Linux arm64 and Linux x86_64 in the image. Not yet: Linux natively outside an image, macOS x86_64; so #3 stays open on 'natively'.
 
 2026-11-20, the ZETA clients checked (origin/main each): every one speaks gRPC over TCP, none HTTP/JSON. ngx_pep ossl_hsm: tonic client, http:// on loopback only, https:// with TLS or mTLS, no Unix socket. ngx_pep hsm_sim: tonic server, TCP, TLS optional, no HTTP/JSON. keycloak-zeta, keycloak-integrity-provider and the notification service: gematik/zeta-guard-java-hsm-proxy-provider (Apache-2.0, JCA provider HSMPROXY, HsmCrypto), plaintext gRPC only, mTLS planned. zeta-guard-helm: HSM_PROXY_ENDPOINT host:port, no transcoder. hsm-proxy.proto (unchanged since 49f10d8) carries google.api.http annotations (POST /v1/sign, GET /v1/keys/{key_id}, POST /v1/encrypt, POST /v1/decrypt, GET /v1/certs/{key_id}, GET /v1/health): a REST/JSON mapping that needs a transcoder or an own HTTP server; gemSpec_ZETA says only 'gemäß [hsm-proxy.proto]' (A_28829). A later JSON transport could take that mapping rather than JSON-RPC. Plaintext Java clients vs. rule 29: TASK-404. Also in gematik/zeta: src/gRPC/zeta-attestation-service.proto, not yet read.
+
+2026-11-20, #1 for ngx_pep: the released image europe-west3-docker.pkg.dev/gematik-pt-zeta-prod/zeta-dcr/ngx_pep:2.0.1 (nginx, OpenSSL 3.5.7, libossl_hsm.so from its openssl.cnf), unchanged, against the simulator image of this branch on a Docker network: GetPublicKey and TLS 1.3 handshakes with the server key in the sidecar (openssl s_server -key hsm:<key_id>, s_client verifies), P-256 (ecdsa_secp256r1_sha256) and P-384 (ecdsa_secp384r1_sha384); over mTLS with HSM_PROXY_LISTEN_TLS_PEER_NAME=spiffe://zeta/pep (a client of another identity and one without a certificate get Unauthenticated, 'a client certificate naming an admitted identity is required'), and over http:// with HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true (client: HSM_PROXY_ALLOW_PLAINTEXT=1). Keys and certificates made for the test. On the provider's side, not ours: openssl req and dgst with hsm: keys fail in the client before any call to the sidecar (req aborts with 'free(): invalid pointer' after digest_sign_init, dgst 'unknown digest sha256'), and with the provider in openssl.cnf even a CSR with a software key fails; nginx's path is not affected. Still open for #1: the Java provider (keycloak-zeta, notification service).
 <!-- SECTION:NOTES:END -->
