@@ -837,8 +837,11 @@ konnektor-e2e:
 # ti-hsm-proxy's conformance suites, the PKCS#11 adapter and the gRPC interface, against a fresh
 # SoftHSM2 token in a temporary directory (TASK-389).
 # TI_HSM_PKCS11_MODULE_PATH names the module; without it, SoftHSM2's beside softhsm2-util.
+# The token suite runs on one thread: on Linux, SoftHSM2 2.7 with Debian's OpenSSL 3.0 refuses
+# about one in seven runs a key made while another session makes one (CKR_TEMPLATE_INCONSISTENT,
+# TASK-389). That suite proves one token's behaviour; concurrency is the grpc and recovery suites'.
 hsm-proxy-softhsm2:
-    @just _softhsm2 cargo test -p ti-hsm-proxy --features conformance,simulator --test token_softhsm2 --test grpc_softhsm2 --test recovery_softhsm2 --test tcp_softhsm2 --test simulator_softhsm2 -- --ignored
+    @just _softhsm2 'cargo test -p ti-hsm-proxy --features conformance,simulator --test token_softhsm2 -- --ignored --test-threads 1 && cargo test -p ti-hsm-proxy --features conformance,simulator --test grpc_softhsm2 --test recovery_softhsm2 --test tcp_softhsm2 --test simulator_softhsm2 -- --ignored'
 
 # hsm-proxy in the simulator mode with one command, on a fresh SoftHSM2 token that goes when it
 # stops: the keys of ti-hsm-proxy/simulator/keys.json (or HSM_PROXY_KEYS_PATH), random or, with
