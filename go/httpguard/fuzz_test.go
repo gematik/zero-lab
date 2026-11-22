@@ -28,6 +28,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gematik/zero-lab/go/httpguard"
 )
@@ -107,6 +108,41 @@ func FuzzValue(f *testing.F) {
 			t.Fatalf("Value(%q) over %q = %v", key, query, err)
 		case n == 1 && v != values[key][0]:
 			t.Fatalf("Value(%q) = %q", key, v)
+		}
+	})
+}
+
+// FuzzQuery asserts what an accepted query is: every name non-empty and occurring once, every name and value
+// text, and its encoding parsing back to the same values. A refusal is one of the sentinels.
+func FuzzQuery(f *testing.F) {
+	f.Add("a=1&b=2")
+	f.Add("a=1&a=2")
+	f.Add("a=%00")
+	f.Add("a=1;b=2")
+	f.Add("=x&&y")
+	f.Add("a=%C3%A4+b")
+	f.Fuzz(func(t *testing.T, raw string) {
+		values, err := httpguard.Query(raw)
+		if err != nil {
+			if !errors.Is(err, httpguard.ErrQuery) && !errors.Is(err, httpguard.ErrRepeated) {
+				t.Fatalf("Query(%q) = %v", raw, err)
+			}
+			return
+		}
+		for key, v := range values {
+			if key == "" || len(v) != 1 || !utf8.ValidString(key) || !utf8.ValidString(v[0]) ||
+				strings.ContainsFunc(key+v[0], func(r rune) bool { return r < ' ' || r == 0x7f }) {
+				t.Fatalf("Query(%q) accepted %q=%q", raw, key, v)
+			}
+		}
+		again, err := httpguard.Query(values.Encode())
+		if err != nil || len(again) != len(values) {
+			t.Fatalf("Query(%q): its encoding %q parses to %v, %v", raw, values.Encode(), again, err)
+		}
+		for key, v := range values {
+			if again.Get(key) != v[0] {
+				t.Fatalf("Query(%q): %q changed to %q", raw, v[0], again.Get(key))
+			}
 		}
 	})
 }

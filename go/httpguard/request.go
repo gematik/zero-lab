@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"unicode/utf8"
 )
 
 // ErrRepeated refuses a parameter that occurs more than once (RFC 6749 Section 3.1).
@@ -54,6 +55,45 @@ func Single(values url.Values) error {
 		}
 	}
 	return nil
+}
+
+// ErrQuery refuses a query that does not parse, or a name or value that is not text: an empty name, a control
+// character or invalid UTF-8, after decoding.
+var ErrQuery = errors.New("httpguard: the query is malformed")
+
+// Query parses a raw query for an endpoint that reads each parameter once. A malformed escape or a ';' separator
+// is ErrQuery; so is an empty name, or a name or value that decodes to a control character or invalid UTF-8.
+// A repeated name is ErrRepeated. Both come wrapped in a ParameterError once a name is known.
+func Query(raw string) (url.Values, error) {
+	values, err := url.ParseQuery(raw)
+	if err != nil {
+		return nil, ErrQuery
+	}
+	for key, v := range values {
+		if key == "" || !isText(key) {
+			return nil, ErrQuery
+		}
+		if len(v) > 1 {
+			return nil, &ParameterError{Name: key, Err: ErrRepeated}
+		}
+		if !isText(v[0]) {
+			return nil, &ParameterError{Name: key, Err: ErrQuery}
+		}
+	}
+	return values, nil
+}
+
+// isText reports whether s is valid UTF-8 without C0 controls or DEL.
+func isText(s string) bool {
+	if !utf8.ValidString(s) {
+		return false
+	}
+	for i := range len(s) {
+		if s[i] < ' ' || s[i] == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // ParameterError names the parameter a check refused. The name is the endpoint's own when it asked for it
