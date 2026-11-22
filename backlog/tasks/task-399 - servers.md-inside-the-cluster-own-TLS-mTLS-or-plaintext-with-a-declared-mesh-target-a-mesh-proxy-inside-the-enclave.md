@@ -1,12 +1,12 @@
 ---
 id: TASK-399
 title: >-
-  servers.md: inside the cluster, own TLS/mTLS or plaintext with a declared
-  mesh; target a mesh proxy inside the enclave
-status: In Progress
+  servers.md: inside the cluster, own TLS/mTLS or plaintext the operator
+  accepts; target a protecting proxy inside the enclave
+status: Done
 assignee: []
 created_date: '2026-11-19 15:19'
-updated_date: '2026-11-19 15:20'
+updated_date: '2026-11-22 11:08'
 labels:
   - docs
   - servers
@@ -36,4 +36,12 @@ Maintainer, 2026-11-19: on a Unix socket inside the pod the sidecar does not ask
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-19: rule 29 has 'Inside the cluster, one of two' (own TLS/mTLS, or http:// with a declared mesh via …_MESH, refused without it, reported; now wherever the mesh proxy runs, target inside the enclave); rule 5 points to it, rule 8's mesh sentence allows it as channel protection where declared, rule 17 refuses plaintext outside the pod only without a declared mesh; naming-and-config.md has the …_MESH suffix. Follow-ups: TASK-400 (the target), TASK-401 (hsm-proxy's TCP listener).
+
+2026-11-20 (f4bf9298): the declared mesh was replaced by the operator's acceptance: http:// inside the cluster needs …_PLAINTEXT_ACCEPTED=true, one exact value like a terms-of-service agreement, since the workload cannot tell whether a mesh protects the connection. The criteria below read 'declared mesh' as decided on 2026-11-19; rule 29 and naming-and-config now say acceptance.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+servers.md rule 29: a listener or peer inside the cluster is own TLS/mTLS (https://) or plaintext the operator accepts (http:// with …_PLAINTEXT_ACCEPTED=true), refused at start without the acceptance, which is logged and reported; the target is the protecting proxy inside the enclave. Rules 5, 8 and 17 refer to rule 29; naming-and-config lists the suffix.
+<!-- SECTION:FINAL_SUMMARY:END -->

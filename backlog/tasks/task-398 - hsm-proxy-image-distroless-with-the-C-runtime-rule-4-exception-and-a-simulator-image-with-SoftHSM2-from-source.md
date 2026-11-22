@@ -3,10 +3,10 @@ id: TASK-398
 title: >-
   hsm-proxy image: distroless with the C runtime (rule 4 exception), and a
   simulator image with SoftHSM2 from source
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-19 14:37'
-updated_date: '2026-11-19 14:46'
+updated_date: '2026-11-22 11:08'
 labels:
   - rust
   - docker
@@ -40,3 +40,9 @@ The sidecar loads a PKCS#11 module with dlopen, which a static binary on scratch
 
 2026-11-19: split into two files at the maintainer's request: rust/ti-hsm-proxy/Dockerfile is the production image only (one build, no SoftHSM2, no simulator), Dockerfile.simulator the simulator image. Both rebuilt and checked again: the simulator answers health ready and live under 1000680000:0 with a read-only root and exits 0 on SIGTERM; the production image refuses HSM_PROXY_SIMULATOR=true and holds no SoftHSM2.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+servers.md rule 4 names the HSM proxy as its one exception (dynamically linked on distroless/cc, the vendor module mounted and loaded by SHA-256). rust/ti-hsm-proxy/Dockerfile builds the production image and the simulator image (SoftHSM2 2.7.0 from its source archive, checked by SHA-256), base images by digest; the simulator image starts under an arbitrary UID with a read-only root filesystem and answers hsm-proxy health ready, on arm64 and on x86_64.
+<!-- SECTION:FINAL_SUMMARY:END -->

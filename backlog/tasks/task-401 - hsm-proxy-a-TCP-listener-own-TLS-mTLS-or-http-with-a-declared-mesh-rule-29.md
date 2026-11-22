@@ -1,12 +1,12 @@
 ---
 id: TASK-401
 title: >-
-  hsm-proxy: a TCP listener, own TLS/mTLS or http:// with a declared mesh (rule
-  29)
-status: In Progress
+  hsm-proxy: a TCP listener, own TLS/mTLS or http:// once the operator accepts
+  plaintext (rule 29)
+status: Done
 assignee: []
 created_date: '2026-11-19 15:20'
-updated_date: '2026-11-19 15:42'
+updated_date: '2026-11-22 11:08'
 labels:
   - rust
   - hsm
@@ -38,4 +38,12 @@ The sidecar listens on a Unix socket only (HSM_PROXY_LISTEN_URL unix://). Inside
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-19, built on feat/hsm-proxy-tcp, not committed (the maintainer wants to see its size first). Structure at the maintainer's question: src/transport/mod.rs (Listener: Unix, Tls, Mesh; binding, the Unix socket helpers, the health socket), src/transport/tls.rs (profile = ti-tls's TLSV-010 to 012, checks at start per rule 17, acceptor on tokio-rustls with a handshake timeout, client identity from the certificate's SAN DNS names and URIs), src/transport/grpc.rs (tonic, an interceptor holding every interface call to the allowlist over mTLS, grpc.health.v1 without a client certificate, tonic's Connected for the TLS connection). Features: transport (tokio, rustls, tokio-rustls), grpc = transport + tonic; a later jsonrpc takes transport alone. Config: HSM_PROXY_LISTEN_URL unix:// | https:// | http://, HSM_PROXY_LISTEN_TLS_CERT_PATH, _KEY_PATH, _CA_PATH, _PEER_NAME, HSM_PROXY_LISTEN_MESH; inconsistent combinations refused. On TCP the sidecar serves grpc.health.v1 alone on $TMPDIR/hsm-proxy-health.sock for hsm-proxy health. Tests: tests/tls_listener.rs (rule 17 refusals, the profile equal to ti-tls's), tests/tcp_softhsm2.rs (mTLS admits the allowlist, refuses another identity, no certificate and an expired one, health without a certificate; mesh plaintext; the health socket), config tests; certificates and keys made in the test (tests/support/pki.rs, x509-cert's builder; no new crate). 25 tests against SoftHSM2 pass; just check-changed green; tokio-rustls exempted in vet with a note. A_28830: Unix socket, no caller check, the configured keys; mTLS, the listener's allowlist for every key; mesh, the mesh's policy. Per key_id is TASK-402.
+
+2026-11-20 (f4bf9298): HSM_PROXY_LISTEN_MESH became HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true (exact value; empty, 'false' or 'yes' refused; refused beside unix:// and https://). The criteria below read 'declared mesh' as decided on 2026-11-19.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+HSM_PROXY_LISTEN_URL takes unix://, https:// with the sidecar's own TLS or mTLS (allowlist of SAN identities, grpc.health.v1 without a client certificate), and http:// (h2c) only with HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true; each mode is logged at start, with a health socket for the exec probes on TCP. tests/tcp_softhsm2.rs proves the allowlist (stranger, anonymous and expired refused) and plaintext once accepted; config tests prove the refusals. Proven against ngx_pep's released ossl_hsm over mTLS and accepted plaintext (TASK-389). A_28830 per key_id beyond the allowlist stays open in TASK-389; the Java clients' plaintext is TASK-404.
+<!-- SECTION:FINAL_SUMMARY:END -->

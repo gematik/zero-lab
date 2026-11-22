@@ -3,10 +3,10 @@ id: TASK-393
 title: >-
   servers.md rule 31: every container's health is probed, and startup, readiness
   and liveness mean different things
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-19 13:42'
-updated_date: '2026-11-19 13:42'
+updated_date: '2026-11-22 11:08'
 labels:
   - docs
   - servers
@@ -36,3 +36,9 @@ The rules say only that liveness and readiness reflect real state (rule 8) and t
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-19: rule 31 written; rule 8 points to it for probes and native sidecar ordering, rule 23 allows the bare probe path without a client certificate. The servers are checked in TASK-394. docs/principles.md item 10 lists the rules only up to 27 (28 to 30 were not added either); left as it is.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+servers.md rule 31: probes for every container, sidecars included; startup, readiness and liveness each answer their own question; health read from a background check's state; exec probes for a Unix-socket sidecar, grpc.health.v1 or a health path on the admin listener otherwise; the health change as a log line and a metric; tests named. Rules 8 and 23 refer to it; CLAUDE.md counts 31 rules. Checking the servers against it is TASK-394; the metrics' detail waits for the observability specification (DRAFT-1).
+<!-- SECTION:FINAL_SUMMARY:END -->
