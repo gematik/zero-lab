@@ -119,7 +119,7 @@ func (a *Authenticator) now() time.Time {
 //
 // httpClient carries the metadata and key fetches, and a redirect-suppressing copy of it the challenge
 // flow. It is the host's, as is its TLS: for the IDP-Dienst the web profile of spec/pki-validation
-// (titls.NewWebHTTPClient). It is a parameter so that no caller can leave it out; nil is refused.
+// (egress.NewClient). It is a parameter so that no caller can leave it out; nil is refused.
 func NewAuthenticator(config AuthenticatorConfig, httpClient *http.Client) (*Authenticator, error) {
 	if config.Trust == nil {
 		return nil, errors.New("no trust for the IDP-Dienst's certificates")

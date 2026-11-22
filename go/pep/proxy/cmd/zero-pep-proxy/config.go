@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/idpd"
 	"github.com/gematik/zero-lab/go/oidf"
 	"github.com/gematik/zero-lab/go/openid"
@@ -53,7 +54,10 @@ func loadProviders(path, publicURL string, client *http.Client, documents oidf.D
 	env := providers.Env{BaseDir: filepath.Dir(path), RedirectURI: publicURL + "/oauth2/callback", HTTPClient: client}
 	set, err := providers.Build(entries, env, providers.Kinds{
 		"oidc": providers.OIDC,
-		"idpd": idpd.Kind(func(c *idpd.ClientConfig) { c.AuthenticatorMode = true }),
+		"idpd": idpd.Kind(func(c *idpd.ClientConfig) {
+			c.AuthenticatorMode = true
+			c.MarkSelfVerifying = egress.SelfVerifying
+		}),
 		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), documents, loadOIDFKeys, nil),
 	})
 	if err != nil {
@@ -137,6 +141,7 @@ func providersFromEnv(publicURL string, httpClient *http.Client, documents oidf.
 			UserAgent:         os.Getenv("PEP_IDPD_USER_AGENT"),
 			TrustBundlePath:   os.Getenv("PEP_IDPD_TRUST_BUNDLE_PATH"),
 			TrustFetch:        os.Getenv("PEP_IDPD_TRUST_FETCH") == "true",
+			MarkSelfVerifying: egress.SelfVerifying,
 		}, httpClient)
 		if err != nil {
 			log.Fatalf("create idpd client: %v", err)

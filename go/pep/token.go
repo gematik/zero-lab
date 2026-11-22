@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -155,35 +156,46 @@ func isBase64URL(c byte) bool {
 	return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
 }
 
-// verifyJWS verifies the compact JWS raw with keys and returns its payload.
+// verifyJWS verifies the compact JWS raw with keys and returns its payload and its protected typ header.
 //
 // The token has to name an algorithm of the allowlist and, by kid, the key to verify it with; a token without a
 // kid is refused, however few keys the set holds. Only the first key of that kid is used, and it has to fit the
 // algorithm: its type and curve, its use if stated and its alg if stated.
-func verifyJWS(raw string, keys *jose.JSONWebKeySet) ([]byte, error) {
+func verifyJWS(raw string, keys *jose.JSONWebKeySet) ([]byte, string, error) {
 	if keys == nil {
-		return nil, errors.New("no key set to verify with")
+		return nil, "", errors.New("no key set to verify with")
 	}
 	if err := checkCompact(raw, maxAccessTokenBytes, 3, -1); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	parsed, err := jose.ParseSignedCompact(raw, verificationAlgorithms)
 	if err != nil {
-		return nil, &reasonError{reason: "token is no compact JWS of an allowed algorithm", err: err}
+		return nil, "", &reasonError{reason: "token is no compact JWS of an allowed algorithm", err: err}
 	}
 	header := parsed.Signatures[0].Protected
 	if header.KeyID == "" {
-		return nil, errors.New("token has no kid")
+		return nil, "", errors.New("token has no kid")
 	}
 	named := keys.Key(header.KeyID)
 	if len(named) == 0 {
-		return nil, errors.New("no key with the token's kid")
+		return nil, "", errors.New("no key with the token's kid")
 	}
 	key := &named[0]
 	if err := keyFits(key, jose.SignatureAlgorithm(header.Algorithm)); err != nil {
-		return nil, fmt.Errorf("the key of the token's kid: %w", err)
+		return nil, "", fmt.Errorf("the key of the token's kid: %w", err)
 	}
-	return parsed.Verify(key.Key)
+	payload, err := parsed.Verify(key.Key)
+	if err != nil {
+		return nil, "", err
+	}
+	typ, _ := header.ExtraHeaders[jose.HeaderType].(string)
+	return payload, typ, nil
+}
+
+// isAccessTokenType reports whether typ names a JWT access token, at+jwt or application/at+jwt; media types compare
+// without case (RFC 9068 Section 4, RFC 7515 Section 4.1.9).
+func isAccessTokenType(typ string) bool {
+	return strings.EqualFold(typ, "at+jwt") || strings.EqualFold(typ, "application/at+jwt")
 }
 
 func keyFits(key *jose.JSONWebKey, alg jose.SignatureAlgorithm) error {

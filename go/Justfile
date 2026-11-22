@@ -126,7 +126,8 @@ modernize-fix: (_each "go run " + MODERNIZE + " -fix -test ./...; gofmt -w .")
 vuln: (_each_check "go run " + GOVULNCHECK + " ./...")
 
 # go.mod and go.sum as `go mod tidy` leaves them, with sums matching what was downloaded;
-# openid and oidf carry no TI trust path in their module graph, and base libraries compile no
+# openid and oidf carry no TI trust path in their module graph, egress no module of this workspace
+# (the internet profile is apart from the TI's), and base libraries compile no
 # format dependency (decision-13); no package imports a test federation or fake
 mod-check: (_each_check "go mod tidy -diff && go mod verify")
     #!/usr/bin/env bash
@@ -136,9 +137,11 @@ mod-check: (_each_check "go mod tidy -diff && go mod verify")
         found=$(cd "$dir" && GOWORK=off go list -m all | grep -E 'zero-lab/go/(brainpool|tipki|pkcs12|idpd)( |$)')
         if [ -n "$found" ]; then echo "$dir carries: $found"; fail=1; fi
     done
+    found=$(cd egress && GOWORK=off go list -m all | grep 'zero-lab/go/' | grep -vE 'zero-lab/go/egress( |$)')
+    if [ -n "$found" ]; then echo "egress carries: $found"; fail=1; fi
     found=$(cd pep && GOWORK=off go list -m all | grep 'zero-lab/go/' | grep -vE 'zero-lab/go/(pep|dpop)( |$)')
     if [ -n "$found" ]; then echo "pep, which zaddy takes in, carries: $found"; fail=1; fi
-    for dir in brainpool dpop idpd kv nonce oidf oidftest openid pep pkcs12 tipki; do
+    for dir in brainpool dpop egress idpd kv nonce oidf oidftest openid pep pkcs12 tipki; do
         found=$(cd "$dir" && GOWORK=off go list -deps ./... | grep -E 'yaml')
         if [ -n "$found" ]; then echo "$dir compiles: $found"; fail=1; fi
         if grep -qE 'yaml' "$dir/go.mod"; then echo "$dir/go.mod names yaml"; fail=1; fi
@@ -162,7 +165,7 @@ test-race: (_each_check _UNGATE + "; CGO_ENABLED=1 go test -race -count=1 ./..."
 tls-bench:
     #!/usr/bin/env bash
     set -euo pipefail
-    out=$(go test -run '^$' -bench '^Benchmark(Ti|Web)(Cold|Cached)$' -cpu 1 -count 5 ./tipki/titls)
+    out=$(go test -run '^$' -bench '^Benchmark(Ti|Web)(Cold|Cached)$' -cpu 1 -count 5 ./tipki/titls ./egress)
     echo "$out" | awk '
         /^Benchmark/ { ns[$1] = ns[$1] " " $3 }
         END {
@@ -265,7 +268,7 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
     done
     go work sync
     # It also lifts a yaml module the tests of a dependency use; a base library names none (decision-13).
-    for dir in brainpool dpop idpd kv nonce oidf oidftest openid pep pkcs12 tipki; do
+    for dir in brainpool dpop egress idpd kv nonce oidf oidftest openid pep pkcs12 tipki; do
         ( cd "$dir" && go mod edit -droprequire=go.yaml.in/yaml/v3 -droprequire=gopkg.in/yaml.v3 )
     done
     # go work sync raises versions to what the workspace selects, so tidy again or go.sum

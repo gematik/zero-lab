@@ -153,16 +153,16 @@ stands for exactly one leftmost label), and last the OCSP status: from the stapl
 within `OCSPGrace` (10 minutes by default), else from the responder. `NotAfter`, `ProducedAt` and
 `NextUpdate` bound how long an accepted verdict may be reused.
 
-Package `titls` puts both profiles of the spec into a `crypto/tls` client configuration: `ti` through
-`ServerCheck` over a `TrustSource` the host swaps on each TSL reload, and `web` over the system's roots with
-the profile's key, name, validity and revocation rules (stapled OCSP, the responder, the CRL). It reuses
-accepted verdicts in a bounded cache and reaches responders and CRL hosts only through the host's
-`*http.Client`. `NewWebHTTPClient` is the web profile as an `*http.Client`, for the libraries a host hands
-one. Its package documentation lists what `crypto/tls` cannot offer as `handshake.json` has it.
+Package `titls` puts the spec's `ti` profile into a `crypto/tls` client configuration, through `ServerCheck`
+over a `TrustSource` the host swaps on each TSL reload. It reuses accepted verdicts in a bounded cache and
+reaches responders only through the host's `*http.Client`; `HTTPFetcher.Mark` marks its requests for an
+egress client that refuses plain http otherwise. Its package documentation lists what `crypto/tls` cannot
+offer as `handshake.json` has it. The `web` profile, for servers on the internet, is `go/egress`'s.
 
 Package `fetch` is the host-side piece for a workload with no producer to mount a bundle from: over the
 host's `*http.Client` it downloads an environment's roots and TSL from the fixed hosts, takes a list only
-under the SHA-256 the HTTPS host names, verifies everything as a bundle, refreshes hourly in the background
+under the SHA-256 the HTTPS host names (`WithSelfVerifying` marks the plain-http downloads of A_21175 for an
+egress client), verifies everything as a bundle, refreshes hourly in the background
 and fails closed once the copy is 24 hours past its last good refresh or the list's `NextUpdate` has passed.
 Its `Source` is the `titls.TrustSource` it swaps on each change, and withdraws at that moment.
 
@@ -210,7 +210,7 @@ This library has **not** undergone an independent third-party audit.
 ```
 tipki/      Certificates, profiles, TSL, chains, OCSP, Validator, ServerCheck
   oid/      The identifiers of gemSpec_OID
-  titls/    TLS client configurations for the ti and web profiles of spec/pki-validation
+  titls/    TLS client configuration for the ti profile of spec/pki-validation
   fetch/    Download and background refresh of an environment's trust material
   bundlefile/ A mounted bundle file, plain or gzipped, read again when it changes
 ```
@@ -223,6 +223,5 @@ The [repository's rules](../../docs/README.md) apply, and versions are this modu
 ```bash
 go test ./...
 go test -run x -fuzz FuzzParseTSL -fuzztime 30s .
-go test -run x -fuzz FuzzWebCheck -fuzztime 30s ./titls
 go test -run x -fuzz FuzzDecode -fuzztime 30s ./bundlefile
 ```

@@ -284,7 +284,7 @@ func TestServerRule28_ATokenIsCheckedAgainstCompactFormAndSizeBeforeItIsDecoded(
 		t.Fatal(err)
 	}
 	long := strings.Repeat("a", maxAccessTokenBytes) + ".b.c"
-	_, err = verifyJWS(long, set)
+	_, _, err = verifyJWS(long, set)
 	if err == nil {
 		t.Fatal("an access token over the limit was read")
 	}

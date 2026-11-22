@@ -31,9 +31,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/tipki"
 	"github.com/gematik/zero-lab/go/tipki/fetch"
-	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 // The download and refresh are proven in go/tipki/fetch; these prove idpd's checks over the store it yields.
@@ -42,7 +42,7 @@ import (
 // the same roots.json, list, signature and signer status, verified the same way.
 func fetched(t *testing.T) *FetchingTrust {
 	t.Helper()
-	base, err := newVerifier(EnvironmentReference, http.DefaultClient)
+	base, err := newVerifier(EnvironmentReference, http.DefaultClient, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,11 +110,11 @@ func TestIDPV007TheLiveReferenceEnvironment(t *testing.T) {
 	if os.Getenv("IDPD_TRUST_FETCH") == "" {
 		t.Skip("IDPD_TRUST_FETCH not set: needs a route to gematik's hosts; proves the download and both IDP certificates live")
 	}
-	web, err := titls.NewWebHTTPClient(30*time.Second, titls.Options{})
+	web, err := egress.NewClient(30*time.Second, egress.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	trust, err := NewFetchingTrust(EnvironmentReference, web)
+	trust, err := NewFetchingTrust(EnvironmentReference, web, WithSelfVerifying(egress.SelfVerifying))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,9 +30,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/idpd"
 	"github.com/gematik/zero-lab/go/openid"
-	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 // sample keys and certificates from https://github.com/gematik/erp-e2e-testsuite
@@ -129,10 +129,10 @@ func TestIDPD(t *testing.T) {
 
 // mustLiveTrust uses the mounted bundle when one is named and downloads the material otherwise,
 // so a login test needs nothing beyond the IDP client configuration.
-// mustWebClient is what a host hands idpd for the IDP-Dienst and its trust material: the web profile.
+// mustWebClient is what a host hands idpd for the IDP-Dienst and its trust material: the egress client.
 func mustWebClient(t *testing.T) *http.Client {
 	t.Helper()
-	client, err := titls.NewWebHTTPClient(30*time.Second, titls.Options{})
+	client, err := egress.NewClient(30*time.Second, egress.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,14 +142,14 @@ func mustWebClient(t *testing.T) *http.Client {
 func mustLiveTrust(t *testing.T) idpd.CertificateTrust {
 	t.Helper()
 	if path := os.Getenv("IDPD_TRUST_BUNDLE_PATH"); path != "" {
-		trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, path, mustWebClient(t), nil)
+		trust, err := idpd.NewBundleTrust(idpd.EnvironmentReference, path, mustWebClient(t), nil, idpd.WithSelfVerifying(egress.SelfVerifying))
 		if err != nil {
 			t.Fatalf("IDPD_TRUST_BUNDLE_PATH: %v", err)
 		}
 		t.Cleanup(trust.Close)
 		return trust
 	}
-	trust, err := idpd.NewFetchingTrust(idpd.EnvironmentReference, mustWebClient(t))
+	trust, err := idpd.NewFetchingTrust(idpd.EnvironmentReference, mustWebClient(t), idpd.WithSelfVerifying(egress.SelfVerifying))
 	if err != nil {
 		t.Fatalf("download trust material: %v", err)
 	}

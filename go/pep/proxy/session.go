@@ -116,8 +116,10 @@ type SessionStore interface {
 	Save(ctx context.Context, s *Session, ttl time.Duration) error
 	// Load returns the session stored under id, or [ErrSessionNotFound].
 	Load(ctx context.Context, id string) (*Session, error)
-	// SessionID returns the ID of the session whose login has state, or [ErrSessionNotFound].
-	SessionID(ctx context.Context, state string) (string, error)
+	// TakeSessionID returns the ID of the session whose login has state, or [ErrSessionNotFound], and removes the
+	// index of state in the same operation, so that of two callers with the same state at most one gets the ID,
+	// on one replica or across several (server rule 11).
+	TakeSessionID(ctx context.Context, state string) (string, error)
 	// Delete removes the session stored under id, and DeleteState the index of state; what is gone already is
 	// no error.
 	Delete(ctx context.Context, id string) error
@@ -251,16 +253,13 @@ func (m *sessionManager) remove(ctx context.Context, s *Session) {
 	}
 }
 
-// deleteState consumes a one-time login state: it removes the state index so the same OAuth state cannot be
-// replayed after the callback has used it.
-func (m *sessionManager) deleteState(ctx context.Context, state string) {
-	if state != "" {
-		_ = m.store.DeleteState(context.WithoutCancel(ctx), state)
+// takeByState returns the session whose login has state and consumes the state: the first callback that names it
+// gets the session, whatever becomes of that callback (RFC 9700 Section 4.2.4), and no later one does.
+func (m *sessionManager) takeByState(ctx context.Context, state string) (*Session, error) {
+	if state == "" {
+		return nil, ErrSessionNotFound
 	}
-}
-
-func (m *sessionManager) byState(ctx context.Context, state string) (*Session, error) {
-	id, err := m.store.SessionID(ctx, state)
+	id, err := m.store.TakeSessionID(context.WithoutCancel(ctx), state)
 	if err != nil {
 		return nil, err
 	}

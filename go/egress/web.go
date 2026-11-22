@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package titls
+package egress
 
 import (
 	"context"
@@ -35,8 +35,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/gematik/zero-lab/go/tipki"
 )
 
 // MaxValidity is TLSV-045's cap: the CA/Browser Forum's longest validity period.
@@ -69,7 +67,7 @@ func NewWebCheck(roots []*x509.Certificate) *WebCheck {
 func SystemWebCheck() (*WebCheck, error) {
 	pool, err := x509.SystemCertPool()
 	if err != nil {
-		return nil, fmt.Errorf("titls: system roots: %w", err)
+		return nil, fmt.Errorf("egress: system roots: %w", err)
 	}
 	return &WebCheck{roots: pool}, nil
 }
@@ -145,7 +143,7 @@ func (c *WebCheck) Verify(ctx context.Context, chain [][]byte, host string, stap
 // weakIn names the first weak signature below the anchor of path.
 func weakIn(path []*x509.Certificate) string {
 	for _, cert := range path[:len(path)-1] {
-		if name, weak := tipki.WeakSignature(cert); weak {
+		if name, weak := weakSignature(cert); weak {
 			return fmt.Sprintf("%q is signed with %s", cert.Subject.CommonName, name)
 		}
 	}
@@ -188,7 +186,7 @@ func pathRefusal(err error, leaf *x509.Certificate, sent []*x509.Certificate, ro
 	visited := []*x509.Certificate{leaf}
 	weakLink := ""
 	for cert := leaf; ; {
-		name, weak := tipki.WeakSignature(cert)
+		name, weak := weakSignature(cert)
 		if weak && weakLink == "" {
 			weakLink = fmt.Sprintf("%q is signed with %s", cert.Subject.CommonName, name)
 		}
@@ -266,7 +264,7 @@ func namesHost(cert *x509.Certificate, host string) bool {
 			return ok && addr == ip
 		})
 	}
-	return slices.ContainsFunc(cert.DNSNames, func(presented string) bool { return tipki.DNSNameMatches(presented, host) })
+	return slices.ContainsFunc(cert.DNSNames, func(presented string) bool { return dnsNameMatches(presented, host) })
 }
 
 // key is a public key as the web profile judges it: an ECDSA curve by name, or an RSA modulus by length.
@@ -306,71 +304,55 @@ func (k key) String() string {
 	return "of a type not admitted"
 }
 
-// revocation is TLSV-044: the stapled OCSP response, the responder, the CRL, in that order; the first
-// status decides, and without one the server is accepted with [WarningRevocationUnavailable].
-func revocation(ctx context.Context, leaf, issuer *x509.Certificate, stapled []byte, now time.Time, fetch Fetcher) Verdict {
-	ocsp := func(der []byte) (Verdict, bool) {
-		check := tipki.NewResponseCheck(now)
-		check.Stapled, check.AllowMissingCertHash = true, true
-		status, err := tipki.VerifyResponse(der, leaf, issuer, check)
-		if err != nil {
-			return Verdict{}, false
-		}
-		switch status.Status {
-		case tipki.RevocationGood:
-			return accepted(leaf, now, status.NextUpdate), true
-		case tipki.RevocationRevoked:
-			return refuse(Revoked, "revoked (OCSP)"), true
-		}
-		return Verdict{}, false
-	}
-	if len(stapled) > 0 {
-		if verdict, ok := ocsp(stapled); ok {
-			return verdict
-		}
-	}
-	if fetch == nil {
-		fetch = Offline{}
-	}
-	if request, err := tipki.OCSPRequest(leaf, issuer); err == nil {
-		for _, url := range leaf.OCSPServer {
-			if der, err := fetch.OCSP(ctx, url, request); err == nil {
-				if verdict, ok := ocsp(der); ok {
-					return verdict
-				}
-			}
-		}
-	}
-	for _, url := range leaf.CRLDistributionPoints {
-		der, err := fetch.CRL(ctx, url)
-		if err != nil {
-			continue
-		}
-		if revoked, nextUpdate, ok := crlStatus(der, url, leaf, issuer, now); ok {
-			if revoked {
-				return refuse(Revoked, "revoked (CRL)")
-			}
-			return accepted(leaf, now, nextUpdate)
-		}
-	}
-	// TLSV-044's deviation: accepted without a status. It rests on none, so it is not reused (TLSV-050)
-	// and the next connection asks the sources again.
-	return Verdict{
-		Code:     Valid,
-		Detail:   "valid without a revocation status: no source gave one",
-		Warnings: []string{WarningRevocationUnavailable},
-	}
+// weakSignatures are TLSV-023's SHA-1, MD5 and SHA-224 signatures, by algorithm OID.
+var weakSignatures = map[string]string{
+	"1.2.840.113549.1.1.5":  "SHA-1 with RSA",
+	"1.2.840.113549.1.1.4":  "MD5 with RSA",
+	"1.2.840.113549.1.1.14": "SHA-224 with RSA",
+	"1.2.840.10045.4.1":     "ECDSA with SHA-1",
+	"1.2.840.10045.4.3.1":   "ECDSA with SHA-224",
 }
 
-// accepted is a valid verdict, reusable until the earliest of notAfter, the status's nextUpdate and
-// MaxStatusReuse from now (TLSV-050, TLSV-051).
-func accepted(leaf *x509.Certificate, now time.Time, nextUpdate time.Time) Verdict {
-	until := now.Add(MaxStatusReuse)
-	if leaf.NotAfter.Before(until) {
-		until = leaf.NotAfter
+// weakSignature names the algorithm cert is signed with when it is one of TLSV-023's weak ones, read from the
+// certificate's outer signature algorithm.
+func weakSignature(cert *x509.Certificate) (string, bool) {
+	var outer struct {
+		TBS       asn1.RawValue
+		Algorithm pkix.AlgorithmIdentifier
+		Signature asn1.BitString
 	}
-	if !nextUpdate.IsZero() && nextUpdate.Before(until) {
-		until = nextUpdate
+	if _, err := asn1.Unmarshal(cert.Raw, &outer); err != nil {
+		// Parsed certificates were DER already; an outer structure that does not decode is no
+		// certificate to trust.
+		return "an algorithm that does not decode", true
 	}
-	return Verdict{Code: Valid, Detail: "valid", ReusableUntil: until}
+	name, weak := weakSignatures[outer.Algorithm.Algorithm.String()]
+	return name, weak
+}
+
+// dnsNameMatches compares a presented name with the reference host case-insensitively in ASCII (TLSV-024):
+// a wildcard is "*" as the whole leftmost label and stands for exactly one label, under at least two.
+func dnsNameMatches(presented, host string) bool {
+	presented = strings.TrimSuffix(presented, ".")
+	if presented == "" || !isASCII(presented) || !isASCII(host) {
+		return false
+	}
+	rest, wildcard := strings.CutPrefix(presented, "*.")
+	if !wildcard {
+		return !strings.Contains(presented, "*") && strings.EqualFold(presented, host)
+	}
+	if strings.Contains(rest, "*") || !strings.Contains(rest, ".") {
+		return false
+	}
+	first, parent, ok := strings.Cut(host, ".")
+	return ok && first != "" && strings.EqualFold(parent, rest)
+}
+
+func isASCII(text string) bool {
+	for i := range len(text) {
+		if text[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }

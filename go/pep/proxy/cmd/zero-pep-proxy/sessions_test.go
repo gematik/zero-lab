@@ -32,6 +32,8 @@ import (
 	"log/slog"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -126,7 +128,7 @@ func TestServerRule5_SessionStoreRejectsARepointedLoginState(t *testing.T) {
 	if err := raw.Set(t.Context(), stateKey("state-a"), []byte(`"session-b"`), time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.SessionID(t.Context(), "state-a"); !errors.Is(err, kv.ErrIntegrity) {
+	if _, err := m.TakeSessionID(t.Context(), "state-a"); !errors.Is(err, kv.ErrIntegrity) {
 		t.Fatalf("got %v, want ErrIntegrity", err)
 	}
 }
@@ -170,7 +172,7 @@ func TestServerRule10_AStateKeyHoldsNoState(t *testing.T) {
 			t.Errorf("key %q holds the state", key)
 		}
 	}
-	if id, err := m.SessionID(t.Context(), sess.State); err != nil || id != sess.ID {
+	if id, err := m.TakeSessionID(t.Context(), sess.State); err != nil || id != sess.ID {
 		t.Errorf("not found again: %q %v", id, err)
 	}
 }
@@ -194,7 +196,7 @@ func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
 	if _, err := m.Load(context.Background(), "session-id-value"); !errors.Is(err, proxy.ErrSessionNotFound) || strings.Contains(err.Error(), "session-id-value") {
 		t.Errorf("err = %v", err)
 	}
-	if _, err := m.SessionID(context.Background(), "state-value"); !errors.Is(err, proxy.ErrSessionNotFound) || strings.Contains(err.Error(), "state-value") {
+	if _, err := m.TakeSessionID(context.Background(), "state-value"); !errors.Is(err, proxy.ErrSessionNotFound) || strings.Contains(err.Error(), "state-value") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -298,4 +300,30 @@ func FuzzDecodeSession(f *testing.F) {
 			t.Fatalf("an accepted record does not read back: %v", err)
 		}
 	})
+}
+
+// Server rule 11: over the kv store, two replicas that take the same login state at once get the session ID once.
+func TestServerRule11_TwoReplicasTakeALoginStateOnceOverTheKVStore(t *testing.T) {
+	shared := kv.NewMemory()
+	first, second := newKVSessions(shared), newKVSessions(shared)
+	if err := first.Save(t.Context(), &proxy.Session{ID: "session-a", State: "login-state"}, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	var taken atomic.Int32
+	var wg sync.WaitGroup
+	for i := range 32 {
+		replica := first
+		if i%2 == 1 {
+			replica = second
+		}
+		wg.Go(func() {
+			if id, err := replica.TakeSessionID(t.Context(), "login-state"); err == nil && id == "session-a" {
+				taken.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	if got := taken.Load(); got != 1 {
+		t.Errorf("taken %d times, want 1", got)
+	}
 }

@@ -25,10 +25,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/tipki"
 	"github.com/gematik/zero-lab/go/tipki/fetch"
@@ -48,7 +48,7 @@ type tiTrust struct {
 // newTiTrust fetches the TSL of each of envs; a failure fails the start with the reason. The TSL hosts are
 // on the internet and verified under the web profile.
 func newTiTrust(envs ...epa.Env) (*tiTrust, error) {
-	webClient, err := titls.NewWebHTTPClient(tiHTTPTimeout, titls.Options{})
+	webClient, err := egress.NewClient(tiHTTPTimeout, egress.Options{})
 	if err != nil {
 		return nil, fmt.Errorf("the TSL hosts' TLS: %w", err)
 	}
@@ -62,13 +62,13 @@ func newTiTrust(envs ...epa.Env) (*tiTrust, error) {
 			t.Close()
 			return nil, err
 		}
-		trust, err := fetch.New(tslEnv, webClient)
+		trust, err := fetch.New(tslEnv, webClient, fetch.WithSelfVerifying(egress.SelfVerifying))
 		if err != nil {
 			t.Close()
 			return nil, fmt.Errorf("the TI trust material of %s: %w", env, err)
 		}
 		t.trusts = append(t.trusts, trust)
-		responder := tipki.NewOCSPChecker(titls.OCSPTransport(titls.NewHTTPFetcher(&http.Client{Timeout: tiHTTPTimeout})))
+		responder := tipki.NewOCSPChecker(titls.OCSPTransport(&titls.HTTPFetcher{Client: webClient, Mark: egress.SelfVerifying}))
 		t.configs[env] = titls.NewTiVerifier(trust.Source(), responder, titls.Options{}).ClientConfig()
 	}
 	return t, nil

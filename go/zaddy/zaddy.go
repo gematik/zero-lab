@@ -65,6 +65,9 @@ type App struct {
 	// storage, which every replica configured with the same storage shares; "memory" or empty in this process,
 	// which detects a proof replayed at this replica only.
 	DPoPReplays string `json:"dpop_replays,omitempty"`
+	// AcceptUntypedAccessTokens takes access tokens whose typ is not at+jwt (RFC 9068 Section 4), for an
+	// authorization server known to omit it; without it such a token is refused.
+	AcceptUntypedAccessTokens bool `json:"accept_untyped_access_tokens,omitempty"`
 
 	logger      *slog.Logger
 	nonceKeys   nonce.Keys
@@ -88,7 +91,11 @@ func (a *App) Start() error {
 	if err != nil {
 		return fmt.Errorf("DPoP nonces: %w", err)
 	}
-	a.pep, err = pep.NewBuilder().
+	builder := pep.NewBuilder()
+	if a.AcceptUntypedAccessTokens {
+		builder = builder.AcceptUntypedAccessTokens()
+	}
+	a.pep, err = builder.
 		Resource(a.Resource).
 		PublicOrigin(a.PublicOrigin).
 		WithJWKSetPath(a.JWKSPath).
@@ -185,8 +192,13 @@ func (a *App) Provision(ctx caddy.Context) error {
 	return a.loadNonceKeys()
 }
 
-// Validate rejects a configuration without jwks_path or with an unknown dpop_replays.
+// Validate rejects a configuration without resource or jwks_path, or with an unknown dpop_replays. Without a
+// resource no token's audience could be checked, so any token of the authorization server would do (RFC 9700
+// Section 4.10.2).
 func (a *App) Validate() error {
+	if a.Resource == "" {
+		return errors.New("resource must be set: the URI the access tokens' aud names")
+	}
 	if a.JWKSPath == "" {
 		return errors.New("jwks_path must be set")
 	}
@@ -240,6 +252,11 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.DPoPReplays = d.Val()
+		case "accept_untyped_access_tokens":
+			if d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.AcceptUntypedAccessTokens = true
 		default:
 			return nil, d.Errf("unrecognized subdirective: %s", d.Val())
 		}

@@ -19,7 +19,7 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package titls
+package egress
 
 import (
 	"context"
@@ -37,8 +37,8 @@ import (
 
 // TLSV-001 and TLSV-040: the host's internet client verifies under the web profile against the system's
 // roots, so a server whose root the system does not hold is refused before a request is sent (TLSV-002).
-func TestTLSV040TheWebHTTPClientRefusesAnUnknownIssuer(t *testing.T) {
-	client, err := NewWebHTTPClient(5*time.Second, Options{})
+func TestTLSV040TheEgressClientRefusesAnUnknownIssuer(t *testing.T) {
+	client, err := NewClient(5*time.Second, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

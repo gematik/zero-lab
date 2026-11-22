@@ -14,7 +14,7 @@ Go keeps servers and relying parties, their libraries and the ePA client
               │  flags, env, files, secrets (*_PATH), logger, servers, signals
  servers    pdp/authzserver  pep/proxy  epa/vau                     (http.Handler)
               │
- libraries  oauth  oidf  idpd  dpop  nonce  kv  tipki  brainpool  pkcs12  (no ambient I/O)
+ libraries  oauth  oidf  idpd  dpop  nonce  kv  tipki  egress  brainpool  pkcs12  (no ambient I/O)
  test       oidftest  (a test federation: master and IDP; test code only)
 ```
 
@@ -44,9 +44,12 @@ Go keeps servers and relying parties, their libraries and the ePA client
   ([architecture](../../docs/architecture.md#the-host-owns-the-transport-the-core-owns-trust)):
   a client for a TI endpoint gets a `tls.Config` whose `VerifyConnection` applies the
   shared verification rules (natively under `spec/pki-validation`, or through `ti`),
-  never the system roots alone (TASK-98). In Go that is `tipki/titls`: ePA and KIM take
-  the `ti` profile, every other endpoint the `web` profile, which a command hands its
-  libraries as `titls.NewWebHTTPClient`; no path falls back to unverified TLS.
+  never the system roots alone (TASK-98). ePA and KIM take the `ti` profile from
+  `tipki/titls`; every other endpoint the `web` profile from `go/egress`, whose egress client
+  (`egress.NewClient`, servers.md rule 30) a command hands its libraries; no path falls back to
+  unverified TLS. A library that fetches self-verifying data (OCSP, CRLs, the TSL) over that
+  client takes the marking as a `func(context.Context) context.Context` the command fills with
+  `egress.SelfVerifying`, so neither module imports the other.
 
 ## 3. Keys and cryptography
 

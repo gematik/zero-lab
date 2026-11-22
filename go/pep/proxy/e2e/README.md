@@ -39,6 +39,7 @@ One front port — point your browser or rathole tunnel at it; the rest is inter
 ```sh
 docker compose -f docker-compose.yaml up --build -d
 
+PEP_LISTEN_URL=http://0.0.0.0:4180 PEP_LISTEN_PLAINTEXT_ACCEPTED=true \
 PEP_PUBLIC_URL=http://localhost:8080 PEP_INSECURE_COOKIE=true \
 PEP_OIDC_ISSUER=https://accounts.google.com \
 PEP_OIDC_CLIENT_ID=... PEP_OIDC_CLIENT_SECRET=... \
@@ -81,7 +82,7 @@ All via environment; full reference in [`../cmd/zero-pep-proxy/CONFIG.md`](../cm
 ## Two-replica revocation check
 
 With `DATABASE_URL`, `PEP_SESSION_STORE_KEY_PATH` and `PEP_SESSION_KEY_PATH` set, run a second proxy on
-`PEP_ADDR=:4181` against the same DB and keys. A logout on one replica is honored on the other instantly (Postgres LISTEN/NOTIFY), and a freshly
+`PEP_LISTEN_URL=http://0.0.0.0:4181` (with `PEP_LISTEN_PLAINTEXT_ACCEPTED=true`) against the same DB and keys. A logout on one replica is honored on the other instantly (Postgres LISTEN/NOTIFY), and a freshly
 started replica loads revocations from the durable `pep:revoked` set. See
 [`../docs/stateless-session-validation.md`](../docs/stateless-session-validation.md).
 
@@ -109,7 +110,7 @@ docker compose -f docker-compose.pdp.yaml up --build -d
 # 2) pep on the host, PDP backend
 PEP_BACKEND=pdp PEP_AS_ISSUER=http://localhost:8011 PEP_CLIENT_ID=pep-client \
 PEP_CLIENT_SIGNING_KEY_PATH=pdp-config/pep-client.jwk \
-PEP_PUBLIC_URL=http://localhost:8080 PEP_ADDR=:8080 PEP_INSECURE_COOKIE=true \
+PEP_PUBLIC_URL=http://localhost:8080 PEP_LISTEN_URL=http://127.0.0.1:8080 PEP_INSECURE_COOKIE=true \
 PEP_SCOPES=protected PEP_API_UPSTREAM=http://localhost:8010 \
   go run ../cmd/zero-pep-proxy
 ```
@@ -144,7 +145,7 @@ PORT=8082 metsubushi &
 # 3) pep standalone, gateway mode, PDP backend
 PEP_BACKEND=pdp PEP_AS_ISSUER=http://localhost:8011 PEP_CLIENT_ID=pep-client \
 PEP_CLIENT_SIGNING_KEY_PATH=pdp-config/pep-client.jwk \
-PEP_PUBLIC_URL=http://localhost:8080 PEP_ADDR=:8080 PEP_INSECURE_COOKIE=true PEP_SCOPES=protected \
+PEP_PUBLIC_URL=http://localhost:8080 PEP_LISTEN_URL=http://127.0.0.1:8080 PEP_INSECURE_COOKIE=true PEP_SCOPES=protected \
 PEP_SESSION_KEY_PATH=/tmp/pep-snap.key \
 PEP_WEBAPP_UPSTREAM=http://localhost:8082 PEP_API_UPSTREAM=http://localhost:8010 \
   go run ../cmd/zero-pep-proxy

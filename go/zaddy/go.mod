@@ -6,8 +6,10 @@ require (
 	github.com/caddyserver/caddy/v2 v2.11.9
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4
+	github.com/gematik/zero-lab/go/httpguard v0.2.0
 	github.com/gematik/zero-lab/go/nonce v0.24.0
 	github.com/gematik/zero-lab/go/pep v0.29.0
+	github.com/go-jose/go-jose/v4 v4.1.9
 )
 
 require (
@@ -52,7 +54,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
 	github.com/go-chi/chi/v5 v5.4.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.9 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-sql-driver/mysql v1.10.1 // indirect

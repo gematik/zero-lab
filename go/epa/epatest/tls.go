@@ -23,10 +23,10 @@ package epatest
 
 import (
 	"crypto/tls"
-	"net/http"
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/tipki"
 	"github.com/gematik/zero-lab/go/tipki/fetch"
 	"github.com/gematik/zero-lab/go/tipki/titls"
@@ -41,15 +41,15 @@ func TiTLSConfig(tb testing.TB, env string) *tls.Config {
 	if err != nil {
 		tb.Fatal(err)
 	}
-	webClient, err := titls.NewWebHTTPClient(30*time.Second, titls.Options{})
+	webClient, err := egress.NewClient(30*time.Second, egress.Options{})
 	if err != nil {
 		tb.Fatal(err)
 	}
-	trust, err := fetch.New(tslEnv, webClient)
+	trust, err := fetch.New(tslEnv, webClient, fetch.WithSelfVerifying(egress.SelfVerifying))
 	if err != nil {
 		tb.Fatalf("the TI trust material of %s: %v", env, err)
 	}
 	tb.Cleanup(trust.Close)
-	responder := tipki.NewOCSPChecker(titls.OCSPTransport(titls.NewHTTPFetcher(&http.Client{Timeout: 30 * time.Second})))
+	responder := tipki.NewOCSPChecker(titls.OCSPTransport(&titls.HTTPFetcher{Client: webClient, Mark: egress.SelfVerifying}))
 	return titls.NewTiVerifier(trust.Source(), responder, titls.Options{}).ClientConfig()
 }

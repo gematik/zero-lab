@@ -50,7 +50,7 @@ type Options struct {
 	// negative size keeps none.
 	CacheSize int
 	// OCSPGrace is the ti profile's grace period for a stapled response; zero means
-	// [tipki.DefaultOCSPGrace]. The web profile ignores it.
+	// [tipki.DefaultOCSPGrace].
 	OCSPGrace time.Duration
 }
 
@@ -68,7 +68,7 @@ func (o Options) timeout() time.Duration {
 	return o.RevocationTimeout
 }
 
-// TLSV-010 and TLSV-011: what both profiles offer.
+// TLSV-010 and TLSV-011: what the ti profile offers. The web profile has its own, in go/egress.
 var (
 	versions = [2]uint16{tls.VersionTLS12, tls.VersionTLS13}
 	// cipherSuites are TLS 1.2's; crypto/tls does not let TLS 1.3's be chosen.
@@ -212,53 +212,5 @@ func (v *TiVerifier) ClientConfig() *tls.Config {
 		// ones included, and refuses an empty server name.
 		InsecureSkipVerify: true, //nolint:gosec // G402: the ti profile is verified in full in VerifyConnection (TLSV-030).
 		VerifyConnection:   verifyConnection(v.timeout, v.now, v.Verify),
-	}
-}
-
-// WebVerifier is the web profile for TLS: a [WebCheck], its revocation sources through a [Fetcher], and
-// reuse of accepted verdicts. Safe for concurrent use.
-type WebVerifier struct {
-	check    *WebCheck
-	fetch    Fetcher
-	now      func() time.Time
-	timeout  time.Duration
-	verdicts *verdictCache
-}
-
-// NewWebVerifier is the verifier for check, reaching responders and CRL hosts through fetch.
-func NewWebVerifier(check *WebCheck, fetch Fetcher, opts Options) *WebVerifier {
-	return &WebVerifier{
-		check: check, fetch: fetch, now: opts.now(), timeout: opts.timeout(),
-		verdicts: newVerdictCache(opts.CacheSize),
-	}
-}
-
-// Verify judges a server as the handshake does: chain is DER, end entity first. A verdict reached with the
-// same chain and host is reused while it may be (TLSV-050, TLSV-051).
-func (v *WebVerifier) Verify(ctx context.Context, chain [][]byte, host string, stapled []byte, now time.Time) Verdict {
-	key := keyFor("web", 0, host, chain)
-	if reused, ok := v.verdicts.reusable(key, now); ok {
-		return reused
-	}
-	verdict := v.check.Verify(ctx, chain, host, stapled, now, v.fetch)
-	v.verdicts.keep(key, verdict, now)
-	return verdict
-}
-
-// ClientConfig is a client configuration for web servers: the handshake of TLSV-010 to 012, crypto/tls's
-// own verification against the check's roots, and the profile's remaining rules and revocation in
-// VerifyConnection. The host sets ServerName, or lets net/http set it, and may add NextProtos and client
-// certificates; it must not change the verification fields.
-func (v *WebVerifier) ClientConfig() *tls.Config {
-	// TLSV-010 to 012, as the ti configuration has them.
-	return &tls.Config{
-		MinVersion:       versions[0],
-		MaxVersion:       versions[1],
-		CipherSuites:     slices.Clone(cipherSuites),
-		CurvePreferences: slices.Clone(curves),
-		Renegotiation:    tls.RenegotiateNever,
-		Time:             v.now,
-		RootCAs:          v.check.roots,
-		VerifyConnection: verifyConnection(v.timeout, v.now, v.Verify),
 	}
 }

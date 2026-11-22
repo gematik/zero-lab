@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-19 05:49'
+updated_date: '2026-11-22 14:21'
 labels: []
 dependencies: []
 priority: medium
@@ -29,4 +29,6 @@ ordinal: 367000
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-19: still valid with go/pdp frozen (decision-19). The PDP backend is pep/proxy's own code and speaks to any authorization server with these endpoints; zero-pdp was only one of them. If the backend is removed together with go/pdp, which decision-19 leaves to a later decision, this task goes with it.
+
+2026-11-22: archived by the maintainer's decision: go/pdp is frozen; the PDP backend serves the e2e setup only.
 <!-- SECTION:NOTES:END -->

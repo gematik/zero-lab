@@ -27,7 +27,9 @@
 // openid-providers.example.yaml); when that file is absent, the single-provider PEP_* env vars below are used
 // instead. Everything else (server, session, secrets) is env-only — see CONFIG.md.
 //
-//	PEP_ADDR                 listen address (default :4180)
+//	PEP_LISTEN_URL           the listener, the scheme its mode (servers.md rule 29): http://0.0.0.0:4180 with
+//	                         PEP_LISTEN_PLAINTEXT_ACCEPTED=true, https://… with PEP_LISTEN_TLS_CERT_PATH and _KEY_PATH
+//	                         (and _CA_PATH with _PEER_NAME for mutual TLS), or http://127.0.0.1:4180 in the pod; required
 //	PEP_PUBLIC_URL           public origin the browser reaches the proxy at (default http://127.0.0.1:4180)
 //	PEP_HOSTS                more names requests may be sent to, comma-separated; the host of PEP_PUBLIC_URL always is one
 //	PEP_OPENID_PROVIDERS_PATH  providers YAML (default ./openid-providers.yaml); the multi-provider source
@@ -69,6 +71,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -79,12 +82,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/openid/providers"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/gematik/zero-lab/go/pep/proxy"
-	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 func env(key, def string) string {
@@ -99,12 +102,11 @@ func env(key, def string) string {
 // those of an application behind the gateway (4 KiB each); 64 KiB holds them, where Go's default is 1 MiB.
 const maxHeaderBytes = 64 << 10
 
-// newHTTPServer returns the server that serves handler at addr. Proxied uploads and downloads may legitimately
+// newHTTPServer returns the server that serves handler. Proxied uploads and downloads may legitimately
 // take long, so there is no whole-request read or write deadline; slow headers, large headers and idle
 // connections are bounded here, and upstream calls by the proxy's transport.
-func newHTTPServer(addr string, handler http.Handler) *http.Server {
+func newHTTPServer(handler http.Handler) *http.Server {
 	return &http.Server{
-		Addr:              addr,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		MaxHeaderBytes:    maxHeaderBytes,
@@ -242,7 +244,10 @@ func main() {
 	if os.Getenv("DEBUG") != "" {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
 	}
-	addr := env("PEP_ADDR", ":4180")
+	listener, err := listenFromEnv(os.Getenv, time.Now())
+	if err != nil {
+		log.Fatal(err)
+	}
 	publicURL := strings.TrimRight(env("PEP_PUBLIC_URL", "http://127.0.0.1:4180"), "/")
 	hosts, err := servedHosts(publicURL, os.Getenv("PEP_HOSTS"))
 	if err != nil {
@@ -263,11 +268,18 @@ func main() {
 		}
 	}
 
-	// The PDP and the OpenID providers, the IDP-Dienst and the federation master among them, are on the
-	// internet: every outbound request goes under the web profile of spec/pki-validation.
-	webClient, err := titls.NewWebHTTPClient(outboundHTTPTimeout, titls.Options{})
+	// The OpenID providers, the IDP-Dienst and the federation master among them, are on the internet: their
+	// requests go through the egress client, under the web profile of spec/pki-validation and over https, plain http
+	// only for OCSP, CRLs and the TSL (servers.md rule 30).
+	webClient, err := egress.NewClient(outboundHTTPTimeout, egress.Options{})
 	if err != nil {
 		log.Fatalf("outbound TLS: %v", err)
+	}
+	// An upstream behind the gateway and the PDP are peers the deployment configured, which may be plain http; an
+	// https one gets the web profile too.
+	upstreamTransport, err := egress.NewTransport(egress.Options{})
+	if err != nil {
+		log.Fatalf("upstream TLS: %v", err)
 	}
 
 	// One store for the sessions, the revocations and oidf's federation documents. The documents are public
@@ -280,7 +292,7 @@ func main() {
 	// gated /api proxy); otherwise pep drives the configured OIDC/OIDF/idpd providers directly.
 	var backend proxy.Backend
 	if os.Getenv("PEP_BACKEND") == "pdp" {
-		backend = pdpBackendFromEnv(publicURL, webClient)
+		backend = pdpBackendFromEnv(publicURL, &http.Client{Transport: upstreamTransport, Timeout: outboundHTTPTimeout})
 	} else {
 		// Providers run in parallel. When the providers file exists it is the source; otherwise a single
 		// provider of each type comes from the PEP_OIDC_* / PEP_OIDF_RP_CONFIG_PATH / PEP_IDPD_* env vars.
@@ -333,18 +345,21 @@ func main() {
 		SnapshotTTL:             snapshotTTL,
 		Routes:                  routes,
 		Hosts:                   hosts,
-		// An https upstream is on the internet as far as pep can tell, so it gets the web profile too; the
-		// transport alone, as the client's timeout would cut off long uploads and downloads.
-		UpstreamTransport: webClient.Transport,
+		// The transport alone, as a client's timeout would cut off long uploads and downloads.
+		UpstreamTransport: upstreamTransport,
 		Logger:            slog.Default(),
 	})
 	if err != nil {
 		log.Fatalf("create proxy: %v", err)
 	}
 
-	srv := newHTTPServer(addr, server.Handler())
+	srv := newHTTPServer(server.Handler())
+	ln, err := listen(listener)
+	if err != nil {
+		log.Fatalf("listen on %s: %v", listener.address, err)
+	}
 
-	slog.Info("zero-pep-proxy listening", "version", pep.Version, "addr", addr, "public_url", publicURL)
+	slog.Info("zero-pep-proxy listening", "version", pep.Version, "addr", listener.address, "mode", listener.mode, "public_url", publicURL)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	// Fail closed (server rule 17): a replica that cannot learn the revocations of the others would admit
 	// snapshots they ended.
@@ -353,7 +368,7 @@ func main() {
 		log.Fatalf("follow revocations: %v", err)
 	}
 	go kv.Reap(ctx, store, reapEvery)
-	err = serve(ctx, srv)
+	err = serve(ctx, srv, ln)
 	stop()
 	if err != nil {
 		log.Fatal(err)
@@ -362,9 +377,9 @@ func main() {
 
 // serve runs srv until ctx ends, then drains in-flight requests within the Kubernetes
 // termination grace period (30 s by default).
-func serve(ctx context.Context, srv *http.Server) error {
+func serve(ctx context.Context, srv *http.Server, ln net.Listener) error {
 	errc := make(chan error, 1)
-	go func() { errc <- srv.ListenAndServe() }()
+	go func() { errc <- srv.Serve(ln) }()
 
 	select {
 	case err := <-errc:

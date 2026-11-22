@@ -22,57 +22,10 @@
 package titls
 
 import (
-	"crypto/x509"
 	"slices"
 	"testing"
 	"time"
 )
-
-// TLSV-020, TLSV-021, TLSV-022, TLSV-023, TLSV-024, TLSV-040, TLSV-041, TLSV-042, TLSV-043, TLSV-044 and
-// TLSV-045: every web case of the corpus ends in the code it expects, with the case's root standing in for
-// the system store and its OCSP answer and CRL as the network.
-func TestTLSV040TheWebCasesAreJudgedAsTheCorpusSays(t *testing.T) {
-	m := readManifest(t)
-	judged := 0
-	for _, c := range m.Cases {
-		trust := m.Trust[c.Trust]
-		if trust.Profile != "web" {
-			continue
-		}
-		judged++
-		t.Run(c.Name, func(t *testing.T) {
-			when, err := time.Parse(time.RFC3339, c.At)
-			if err != nil {
-				t.Fatal(err)
-			}
-			var roots []*x509.Certificate
-			for _, root := range trust.Roots {
-				roots = append(roots, corpusCert(t, root))
-			}
-			check := NewWebCheck(roots)
-			var chain [][]byte
-			for _, name := range c.Chain {
-				chain = append(chain, corpusDER(t, name))
-			}
-			fetch := &network{ocsp: optionalFile(t, c.ResponderOCSP), crl: optionalFile(t, c.CRL)}
-			verdict := check.Verify(t.Context(), chain, c.Host, optionalFile(t, c.StapledOCSP), when, fetch)
-			if string(verdict.Code) != c.Expect {
-				t.Errorf("code %s, expected %s: %s", verdict.Code, c.Expect, verdict.Detail)
-			}
-			if !slices.Equal(verdict.Warnings, c.Warnings) {
-				t.Errorf("warnings %q, expected %q", verdict.Warnings, c.Warnings)
-			}
-			// TLSV-050: an accepted verdict is reused unless it rests on no revocation status.
-			restsOnStatus := verdict.Valid() && !slices.Contains(verdict.Warnings, WarningRevocationUnavailable)
-			if restsOnStatus != verdict.ReusableUntil.After(when) {
-				t.Errorf("reusable until %s, valid %v, warnings %q", verdict.ReusableUntil, verdict.Valid(), verdict.Warnings)
-			}
-		})
-	}
-	if judged < 20 {
-		t.Fatalf("only %d web cases", judged)
-	}
-}
 
 // TLSV-030 to 033 through this package: every ti case of the corpus, judged by the ti verifier over a
 // trust source as a handshake would judge it, ends in the code and warnings it expects.

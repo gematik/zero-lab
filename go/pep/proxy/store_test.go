@@ -84,11 +84,15 @@ func (m *memorySessions) Load(_ context.Context, id string) (*Session, error) {
 	return &s, nil
 }
 
-func (m *memorySessions) SessionID(_ context.Context, state string) (string, error) {
-	data, ok := m.get(m.states, state)
-	if !ok {
+func (m *memorySessions) TakeSessionID(_ context.Context, state string) (string, error) {
+	m.mu.Lock()
+	r, ok := m.states[state]
+	delete(m.states, state)
+	m.mu.Unlock()
+	if !ok || time.Now().After(r.expires) {
 		return "", ErrSessionNotFound
 	}
+	data := r.value
 	var id string
 	err := json.Unmarshal(data, &id)
 	return id, err

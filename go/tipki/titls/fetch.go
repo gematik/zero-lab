@@ -67,6 +67,10 @@ const (
 type HTTPFetcher struct {
 	// Client carries every request; nil fails every request, as no default client is used.
 	Client *http.Client
+	// Mark, when set, marks each request's context as fetching data that proves itself, so that a client which
+	// refuses plain http otherwise lets OCSP and CRLs through: go/egress's SelfVerifying fits. A function, so
+	// that neither module imports the other.
+	Mark func(context.Context) context.Context
 	// MaxOCSPBytes and MaxCRLBytes bound a response body; zero means the defaults.
 	MaxOCSPBytes int64
 	MaxCRLBytes  int64
@@ -120,6 +124,9 @@ func (f *HTTPFetcher) request(ctx context.Context, method, target string, body [
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
+	if f.Mark != nil {
+		ctx = f.Mark(ctx)
+	}
 	return http.NewRequestWithContext(ctx, method, target, reader)
 }
 
@@ -143,7 +150,7 @@ func (f *HTTPFetcher) do(req *http.Request, limit int64) ([]byte, error) {
 }
 
 // OCSPTransport carries tipki's OCSP queries over f, so the ti profile's responder ([tipki.OCSPChecker])
-// and the web profile reach the network the same way.
+// reaches the network through the host's client.
 func OCSPTransport(f Fetcher) tipki.OCSPTransport { return ocspTransport{f} }
 
 type ocspTransport struct{ fetch Fetcher }

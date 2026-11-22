@@ -46,7 +46,7 @@ const defaultUserAgent = "zero-lab"
 
 // errNoHTTPClient refuses a client or authenticator without the host's HTTP client: the host decides TLS
 // (go/docs/design.md §2), and the library has no default to fall back to.
-var errNoHTTPClient = errors.New("no HTTP client: the host supplies it, for the IDP-Dienst under the web profile (titls.NewWebHTTPClient)")
+var errNoHTTPClient = errors.New("no HTTP client: the host supplies it, for the IDP-Dienst under the web profile (egress.NewClient)")
 
 // transportOrDefault returns http.DefaultTransport when rt is nil, so a decorated client always
 // has a concrete base transport to wrap.
