@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign out</title>
+  {{template "styles"}}
+</head>
+<body>
+  <main class="card">
+    <h1>Sign out?</h1>
+    <p class="muted">Confirm to end your session.</p>
+    <form method="post" action="/oauth2/sign_out">
+      <button class="btn" type="submit">Sign out</button>
+    </form>
+  </main>
+</body>
+</html>
