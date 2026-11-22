@@ -51,11 +51,13 @@ type gatewayContext struct {
 	deny  func(pep.Context, pep.Error)
 	now   func() time.Time
 	log   *slog.Logger
+	// revocations reach an EnforcerSessionCookie in a route's policy; the gateway's own gates hold them too.
+	revocations Revocations
 }
 
-func newGatewayContext(w http.ResponseWriter, r *http.Request, now func() time.Time, log *slog.Logger) *gatewayContext {
+func newGatewayContext(w http.ResponseWriter, r *http.Request, now func() time.Time, log *slog.Logger, revocations Revocations) *gatewayContext {
 	st := &gatewayState{}
-	c := &gatewayContext{w: w, r: r, state: st, now: now, log: log}
+	c := &gatewayContext{w: w, r: r, state: st, now: now, log: log, revocations: revocations}
 	c.deny = func(_ pep.Context, err pep.Error) {
 		st.denied = true
 		st.denyErr = err
@@ -69,6 +71,14 @@ func (c *gatewayContext) Deny(err pep.Error)          { c.deny(c, err) }
 func (c *gatewayContext) Now() time.Time              { return c.now() }
 func (c *gatewayContext) Slogger() *slog.Logger       { return c.log }
 func (c *gatewayContext) SetClaims(raw []byte)        { c.state.claimsRaw = raw }
+
+// SessionRevocations implements pep.Context; nil when the gateway has none, and an EnforcerSessionCookie denies.
+func (c *gatewayContext) SessionRevocations() pep.SessionRevocations {
+	if c.revocations == nil {
+		return nil
+	}
+	return c.revocations
+}
 
 // WithDeny clones the context but shares the state, so claims/session a gate sets remain visible to the
 // original context (and the terminal next).

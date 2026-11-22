@@ -126,7 +126,7 @@ func TestServerRule14_RefusedMetadataIsNotQuoted(t *testing.T) {
 // Server rule 14: claims a policy cannot read into its type are refused without the value; the gateway's context
 // words it as pep's does.
 func TestServerRule14_GatewayClaimsOfAnotherTypeAreNotQuoted(t *testing.T) {
-	c := newGatewayContext(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), nil, nil)
+	c := newGatewayContext(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil), nil, nil, nil)
 	c.SetClaims([]byte(`{"n":987654321987}`))
 	var claims struct {
 		N uint8 `json:"n"`

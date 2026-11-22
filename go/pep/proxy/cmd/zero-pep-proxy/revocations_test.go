@@ -55,8 +55,17 @@ func TestMemBusPubSub(t *testing.T) {
 // followed returns revocations over bus and store that follow the other replicas until the test ends.
 func followed(t *testing.T, bus kv.Bus, store kv.Store) *kvRevocations {
 	t.Helper()
-	r := newKVRevocations(bus, store, time.Hour)
+	r := kvRevocationsFor(t, bus, store)
 	if err := r.Follow(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func kvRevocationsFor(t *testing.T, bus kv.Bus, store kv.Store) *kvRevocations {
+	t.Helper()
+	r, err := newKVRevocations(bus, store, time.Hour, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return r
@@ -135,7 +144,7 @@ func TestRevocations_ReconcileCatchesWhatTheBusMissed(t *testing.T) {
 	if revoked(t, r, "sid-missed") {
 		t.Fatal("should not be revoked before reconcile")
 	}
-	if err := r.reconcile(t.Context()); err != nil {
+	if err := r.Reconcile(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if !revoked(t, r, "sid-missed") {
@@ -191,7 +200,7 @@ func (failingStore) Keys(context.Context, string) ([]string, error) {
 
 // Server rule 14: a revocation that does not get out says why, without the sid, and holds here all the same.
 func TestServerRule14_ARevocationThatFailsNamesNoSid(t *testing.T) {
-	r := newKVRevocations(failingBus{}, failingStore{kv.NewMemory()}, time.Hour)
+	r := kvRevocationsFor(t, failingBus{}, failingStore{kv.NewMemory()})
 	const sid = "sid-token-hash-value"
 	err := r.Revoke(t.Context(), sid, time.Now().Add(time.Hour))
 	if err == nil || !strings.Contains(err.Error(), "not stored") || !strings.Contains(err.Error(), "not published") {
@@ -207,10 +216,10 @@ func TestServerRule14_ARevocationThatFailsNamesNoSid(t *testing.T) {
 
 // Server rule 17, fail closed: a replica that cannot follow the others' revocations does not start.
 func TestServerRule17_RevocationsThatCannotBeFollowedRefuseToStart(t *testing.T) {
-	if err := newKVRevocations(failingBus{}, kv.NewMemory(), time.Hour).Follow(t.Context()); err == nil {
+	if err := kvRevocationsFor(t, failingBus{}, kv.NewMemory()).Follow(t.Context()); err == nil {
 		t.Error("followed without a bus")
 	}
-	if err := newKVRevocations(kv.NewMemBus(), failingStore{kv.NewMemory()}, time.Hour).Follow(t.Context()); err == nil {
+	if err := kvRevocationsFor(t, kv.NewMemBus(), failingStore{kv.NewMemory()}).Follow(t.Context()); err == nil {
 		t.Error("followed without the stored revocations")
 	}
 }

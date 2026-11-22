@@ -132,6 +132,9 @@ be dropped).
 **Durable backstop:** `Revoke` also writes `sid` to a `kv` set `pep:revoked` with TTL = `SNAPSHOT_TTL`. Each
 replica **loads it on startup** (so a freshly-joined replica is not blind) and **reconciles** it on a short
 interval. So a dropped pub/sub message bounds exposure to the reconcile interval, not the whole TTL.
+The set is `kv/revoked`, shared with zaddy: both use the names `pep.SessionRevocationsKeyPrefix`
+(`pep:revoked:`) and `pep.SessionRevocationsChannel` (`pep_revoked`), and a set that has not read the stored
+revocations for three reconcile intervals answers "cannot tell" for a sid it does not hold, which denies.
 
 ### 5. Revocation, logout, and rotation are one mechanism
 

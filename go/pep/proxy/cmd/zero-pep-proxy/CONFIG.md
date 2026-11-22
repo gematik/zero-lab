@@ -67,7 +67,7 @@ needs no file). The file and the shortcuts are mutually exclusive (the file wins
 
 | Var | Purpose | Default |
 | --- | --- | --- |
-| `PEP_DATABASE_URL` | Postgres DSN for the session store (durable + shared across replicas). Requires `PEP_SESSION_STORE_KEY_PATH`. Unset → in-memory, for a single replica (dev; lost on restart, not shared) | in-memory |
+| `PEP_DATABASE_URL` | Postgres DSN for the session store (durable + shared across replicas) and the session revocations, which zaddy reads from the same database (its `revocations_database_url`). Requires `PEP_SESSION_STORE_KEY_PATH`. Unset → in-memory, for a single replica (dev; lost on restart, not shared). A replica that cannot read the stored revocations for 90 s refuses session snapshots it cannot tell are live | in-memory |
 | `PEP_SESSION_STORE_KEY_PATH` | key file sealing everything in the kv store, the same on all replicas. **Required with `PEP_DATABASE_URL`**: pep refuses to start without it, and nothing makes a key at start | — |
 | `PEP_SESSION_KEY_PATH` | file with a base64 256-bit key → enables the `/oauth2/auth` snapshot fast path (local decrypt, no DB per request). Unset → per-request DB validation | off |
 | `PEP_SESSION_PREVIOUS_KEY_PATH` | optional second key file for rotation overlap | — |

@@ -22,6 +22,7 @@
 package pep
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
@@ -33,6 +34,24 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 )
+
+// SessionRevocationsKeyPrefix and SessionRevocationsChannel are where zero-pep-proxy shares its session
+// revocations and where every other host that admits its snapshots reads them: one key per revoked session ID,
+// the prefix followed by the ID, in the kv store, and the ID on the kv bus channel. Stored revocations outlive a
+// release, so these values do not change.
+const (
+	SessionRevocationsKeyPrefix = "pep:revoked:"
+	SessionRevocationsChannel   = "pep_revoked"
+)
+
+// SessionRevocations tell whether a session was ended before its snapshot expires: signed out, or rotated to a
+// new ID. The host implements them over the store zero-pep-proxy shares its revocations in, so this package
+// stays free of any store.
+type SessionRevocations interface {
+	// Revoked reports whether the session sid was revoked. An error means it cannot tell, and the request is
+	// denied.
+	Revoked(ctx context.Context, sid string) (bool, error)
+}
 
 // sessionCookieClaims is the encrypted snapshot payload. Its format (JWE dir+A256GCM, these json tags) is the
 // contract between pep/proxy's minting and this validation; keep them in sync. Only pep/proxy writes it, so a
@@ -85,9 +104,10 @@ func decodeSessionCookieClaims(payload []byte) (sessionCookieClaims, error) {
 	return c, nil
 }
 
-// EnforcerSessionCookie gates a request on a valid pep session cookie (the stateless snapshot) and populates
-// the context's claims with the identity, so downstream policies (EnforcerScope) work. It is the BFF/gateway
-// and forward_auth counterpart to the token-verifying enforcers.
+// EnforcerSessionCookie gates a request on a valid pep session cookie (the stateless snapshot) whose session was
+// not revoked, and populates the context's claims with the identity, so downstream policies (EnforcerScope) work.
+// It is the BFF/gateway and forward_auth counterpart to the token-verifying enforcers. It asks the context's
+// SessionRevocations; without them it denies every request, as a snapshot outlives the sign-out that ended it.
 type EnforcerSessionCookie struct {
 	TypeVal     EnforcerType `json:"type"`
 	CookieName  string       `json:"cookie_name"`
@@ -107,9 +127,16 @@ func NewEnforcerSessionCookie(cookieName string, keys [][]byte) *EnforcerSession
 // Type returns EnforcerTypeSessionCookie.
 func (e *EnforcerSessionCookie) Type() EnforcerType { return EnforcerTypeSessionCookie }
 
-// Apply denies with ErrSessionRequired whatever goes wrong, including unavailable keys, so a client learns
-// nothing about the cause. Keys configured by path are read on the first request, not at start-up.
+// Apply denies with ErrSessionRequired whatever goes wrong, including unavailable keys, missing revocations or a
+// revocation check that fails (server rule 16), so a client learns nothing about the cause. Keys configured by
+// path are read on the first request, not at start-up.
 func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
+	revocations := ctx.SessionRevocations()
+	if revocations == nil {
+		ctx.Slogger().Error("session cookie enforcer without session revocations, denying")
+		ctx.Deny(ErrSessionRequired)
+		return
+	}
 	keys, err := e.ensureKeys()
 	if err != nil {
 		ctx.Slogger().Error("session cookie keys unavailable", "error", err)
@@ -121,8 +148,17 @@ func (e *EnforcerSessionCookie) Apply(ctx Context, next HandlerFunc) {
 		ctx.Deny(ErrSessionRequired)
 		return
 	}
-	identity, _, ok := OpenSessionCookie(c.Value, keys, ctx.Now())
+	identity, sid, ok := OpenSessionCookie(c.Value, keys, ctx.Now())
 	if !ok {
+		ctx.Deny(ErrSessionRequired)
+		return
+	}
+	revoked, err := revocations.Revoked(ctx.Request().Context(), sid)
+	if err != nil {
+		// Without the sid, which names a live session (server rule 14).
+		ctx.Slogger().Error("session revocation check failed, denying", "error", err)
+	}
+	if revoked || err != nil {
 		ctx.Deny(ErrSessionRequired)
 		return
 	}

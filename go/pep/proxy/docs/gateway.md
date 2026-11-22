@@ -28,14 +28,15 @@ The DPoP key constraint forces two session gates that share the `pep.Enforcer` m
 
 | Gate | Where | State | Yields | Used by |
 | --- | --- | --- | --- | --- |
-| `EnforcerSessionCookie` | `pep` | **stateless** (snapshot JWE) | identity | zaddy `forward_auth` |
+| `EnforcerSessionCookie` | `pep` | snapshot JWE **+** the host's `pep.SessionRevocations` | identity | zaddy `forward_auth` |
 | snapshot gate | `pep/proxy` | snapshot JWE **+** the in-memory revoked set (`Revocations`) | identity | gateway identity routes (default) |
 | stateful session gate | `pep/proxy` | **stateful** (kv lookup) | full session (identity **+** DPoP key/token) | gateway `dpop` routes, **opt-in** |
 
 The stateful gate is **only used when explicitly configured** (`gate: session`) — the snapshot is the
 default, so most requests never touch the kv. The gateway's snapshot gate asks `Revocations` as `/oauth2/auth`
 does, so a signed-out session is refused at once rather than when its snapshot expires; a check that fails
-denies. `inject: dpop` requires `gate: session` (the snapshot can't
+denies. `EnforcerSessionCookie` does the same through the `pep.SessionRevocations` its context carries (zaddy
+follows zero-pep-proxy's revocations over `kv/revoked`, TASK-313) and denies without them. `inject: dpop` requires `gate: session` (the snapshot can't
 carry the DPoP key); this is enforced at load.
 
 ### `pep.EnforcerSessionCookie` (stateless, implemented here)

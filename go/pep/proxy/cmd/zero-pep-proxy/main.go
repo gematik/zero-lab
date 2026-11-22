@@ -239,7 +239,11 @@ func openRevocations(store kv.Store, ttl time.Duration) proxy.Revocations {
 	if ttl <= 0 {
 		ttl = proxy.DefaultSnapshotTTL
 	}
-	return newKVRevocations(bus, store, ttl)
+	revocations, err := newKVRevocations(bus, store, ttl, slog.Default())
+	if err != nil {
+		log.Fatalf("revocations: %v", err)
+	}
+	return revocations
 }
 
 func main() {

@@ -192,7 +192,8 @@ func rule28PEP(tb testing.TB) *PEP {
 
 func rule28PEPWith(tb testing.TB, set *jose.JSONWebKeySet) *PEP {
 	tb.Helper()
-	p, err := NewBuilder().Resource("https://example.com").WithJWKSet(set).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).Build()
+	p, err := NewBuilder().Resource("https://example.com").WithJWKSet(set).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).
+		WithSessionRevocations(fakeRevocations{}).Build()
 	if err != nil {
 		tb.Fatal(err)
 	}
