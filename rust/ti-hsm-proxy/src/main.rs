@@ -288,10 +288,17 @@ fn listener(
                     address: *address,
                     probe: probe.clone(),
                 },
-                format!(
-                    "on http://{address} in plaintext, accepted by the operator, the caller unchecked (servers.md rule 29), health on unix://{}",
-                    probe.display()
-                ),
+                if address.ip().is_loopback() {
+                    format!(
+                        "on http://{address}, loopback inside the pod, health on unix://{}",
+                        probe.display()
+                    )
+                } else {
+                    format!(
+                        "on http://{address} in plaintext, accepted by the operator, the caller unchecked (servers.md rule 29), health on unix://{}",
+                        probe.display()
+                    )
+                },
             )
         }
     })

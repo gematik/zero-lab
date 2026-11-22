@@ -3,10 +3,10 @@ id: TASK-404
 title: >-
   hsm-proxy: the Java clients reach it in plaintext gRPC over TCP, which it
   takes only once the operator accepts plaintext
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-20 08:26'
-updated_date: '2026-11-22 14:01'
+updated_date: '2026-11-22 18:16'
 labels:
   - rust
   - hsm
@@ -29,7 +29,7 @@ Found 2026-11-20 checking the ZETA clients (origin/main of each): keycloak-zeta,
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 It is decided and in rule 29 whether a plaintext listener on loopback inside the pod needs a declared mesh
-- [ ] #2 hsm-proxy serves the Java provider and ossl_hsm as they are, or the gap is recorded against TASK-389 #1
+- [x] #2 hsm-proxy serves the Java provider and ossl_hsm as they are, or the gap is recorded against TASK-389 #1
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -39,3 +39,9 @@ Found 2026-11-20 checking the ZETA clients (origin/main of each): keycloak-zeta,
 
 2026-11-22, decided by the maintainer and written into rule 29: a loopback address (127.0.0.1, ::1) inside the pod needs no acceptance, like a Unix socket. Left for #2: hsm-proxy still asks HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true for http:// on loopback; it should take http://127.0.0.1 and http://[::1] without it (rust/ti-hsm-proxy/src/config.rs listen()), so the Java provider and ossl_hsm reach it unchanged as sidecars in the pod.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+servers.md rule 29 (2026-11-22): a loopback address inside the pod needs no acceptance, like a Unix socket. hsm-proxy takes http://127.0.0.1:port and http://[::1]:port without HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED, refuses the acceptance beside a loopback address, and still asks it for any other address; the start log names loopback. So gematik's Java provider (plaintext gRPC to HSM_PROXY_ENDPOINT, here localhost:port) and ngx_pep's ossl_hsm (http:// on loopback only) reach the sidecar in the pod as they are; ossl_hsm was proven over accepted plaintext in TASK-389, the Java provider is still untested (TASK-389 #1). Tests: servers_rule_29_plaintext_on_loopback_needs_no_acceptance and the updated inconsistent-listener cases. README and ReleaseNotes updated.
+<!-- SECTION:FINAL_SUMMARY:END -->

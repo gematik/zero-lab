@@ -28,7 +28,9 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   (rules 27, 29). Tested against SoftHSM2 2.7 (`just hsm-proxy-softhsm2`).
 - ti-hsm-proxy listens inside the cluster too (servers.md rule 29, TASK-401): `https://` with
   its own TLS on the profile of spec/pki-validation, mTLS admitting the identities of
-  `HSM_PROXY_LISTEN_TLS_PEER_NAME`, or `http://` once the operator accepts plaintext with `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true`.
+  `HSM_PROXY_LISTEN_TLS_PEER_NAME`, or `http://` once the operator accepts plaintext with `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true`;
+  `http://` on a loopback address (`127.0.0.1`, `[::1]`) stays inside the pod and needs no
+  acceptance, so the Java provider and ossl_hsm reach it as a sidecar unchanged (TASK-404).
   Certificate and key are read at start and refused if they do not match or are not valid; on
   TCP a Unix health socket serves `hsm-proxy health`.
 - ti-hsm-proxy's simulator mode starts with one command (`just hsm-proxy-simulator`) and makes

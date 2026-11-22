@@ -162,8 +162,9 @@ pub enum Listen {
         /// For mTLS: the client CA bundle and the identities admitted.
         clients: Option<(PathBuf, Vec<String>)>,
     },
-    /// `http://host:port`: inside the cluster in plaintext, which the operator has accepted
-    /// with `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true`.
+    /// `http://host:port`: on a loopback address, inside the pod, which needs no acceptance like
+    /// a Unix socket; elsewhere inside the cluster in plaintext, which the operator has accepted
+    /// with `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true` (servers.md rule 29).
     Plaintext {
         /// The address.
         address: SocketAddr,
@@ -283,14 +284,20 @@ pub fn listen(var: impl Fn(&str) -> Option<String>) -> Result<Listen, ConfigErro
         if tls_set {
             return Err(error("HSM_PROXY_LISTEN_TLS_* is for https://"));
         }
-        if accepted.is_none() {
+        let address = address(authority)?;
+        // A loopback address is reached by the pod's own containers only, as a Unix socket is.
+        let loopback = address.ip().is_loopback();
+        if loopback && accepted.is_some() {
             return Err(error(
-                "http:// is plaintext the sidecar neither encrypts nor checks the caller of; the operator accepts it with HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true (servers.md rule 29)",
+                "HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED accepts nothing for a loopback address, which stays inside the pod",
             ));
         }
-        return Ok(Listen::Plaintext {
-            address: address(authority)?,
-        });
+        if !loopback && accepted.is_none() {
+            return Err(error(
+                "http:// is plaintext the sidecar neither encrypts nor checks the caller of; the operator accepts it with HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true, or it listens on loopback inside the pod (servers.md rule 29)",
+            ));
+        }
+        return Ok(Listen::Plaintext { address });
     }
     Err(error("HSM_PROXY_LISTEN_URL: unix://, https:// or http://"))
 }
@@ -519,7 +526,7 @@ mod tests {
         };
         assert_eq!(allow, &["spiffe://zeta/pep", "pdp.zeta.svc"]);
         let plaintext = listen_of(&[
-            ("HSM_PROXY_LISTEN_URL", "http://127.0.0.1:50051"),
+            ("HSM_PROXY_LISTEN_URL", "http://0.0.0.0:50051"),
             ("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "true"),
         ])
         .unwrap();
@@ -533,8 +540,24 @@ mod tests {
         );
     }
 
+    /// servers.md rule 29: a loopback address stays inside the pod like a Unix socket, so
+    /// plaintext there needs no acceptance; the Java provider and ossl_hsm reach the sidecar on
+    /// it as they are (TASK-404).
+    #[test]
+    fn servers_rule_29_plaintext_on_loopback_needs_no_acceptance() {
+        for url in ["http://127.0.0.1:50051", "http://[::1]:50051"] {
+            let listen = listen_of(&[("HSM_PROXY_LISTEN_URL", url)]).unwrap();
+            assert!(
+                matches!(listen, Listen::Plaintext { .. }),
+                "{url}: {listen:?}"
+            );
+        }
+        assert!(listen_of(&[("HSM_PROXY_LISTEN_URL", "http://0.0.0.0:50051")]).is_err());
+    }
+
     /// servers.md rules 17 and 29: inconsistent combinations do not start: plaintext in the
-    /// cluster the operator has not accepted, or accepted with anything but `true`, TLS
+    /// cluster the operator has not accepted, or accepted with anything but `true`, an
+    /// acceptance for a loopback address, which accepts nothing, TLS
     /// settings beside plaintext or a Unix socket, an acceptance beside the sidecar's own TLS
     /// or a Unix socket, a client CA without identities and identities without a client CA.
     #[test]
@@ -543,29 +566,34 @@ mod tests {
             ("HSM_PROXY_LISTEN_TLS_CERT_PATH", "/tls/cert.pem"),
             ("HSM_PROXY_LISTEN_TLS_KEY_PATH", "/tls/key.pem"),
         ];
-        let cases: [Case<'_>; 9] = [
+        let cases: [Case<'_>; 10] = [
             (
                 "http://127.0.0.1:1",
+                vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "true")],
+                "loopback",
+            ),
+            (
+                "http://0.0.0.0:1",
                 vec![],
                 "HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true",
             ),
             (
-                "http://127.0.0.1:1",
+                "http://0.0.0.0:1",
                 vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "")],
                 "true, or not set",
             ),
             (
-                "http://127.0.0.1:1",
+                "http://0.0.0.0:1",
                 vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "yes")],
                 "true, or not set",
             ),
             (
-                "http://127.0.0.1:1",
+                "http://0.0.0.0:1",
                 vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "false")],
                 "true, or not set",
             ),
             (
-                "http://127.0.0.1:1",
+                "http://0.0.0.0:1",
                 vec![("HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED", "true"), tls[0]],
                 "for https",
             ),

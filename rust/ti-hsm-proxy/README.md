@@ -44,10 +44,10 @@ The binary `hsm-proxy` is configured by its environment:
 
 | Variable | Meaning |
 |---|---|
-| `HSM_PROXY_LISTEN_URL` | where it listens, the scheme is the mode (servers.md rule 29): `unix:///absolute/path` inside the pod; `https://host:port` with its own TLS; `http://host:port` in plaintext the operator accepts |
+| `HSM_PROXY_LISTEN_URL` | where it listens, the scheme is the mode (servers.md rule 29): `unix:///absolute/path` inside the pod; `https://host:port` with its own TLS; `http://127.0.0.1:port` (or `[::1]`) on loopback inside the pod, plaintext without acceptance, as gematik's Java provider and ngx_pep's ossl_hsm need; `http://host:port` elsewhere in plaintext the operator accepts |
 | `HSM_PROXY_LISTEN_TLS_CERT_PATH`, `_KEY_PATH` | for `https://`: the certificate chain and key, PEM, read at start; a key that does not match, or a certificate not valid now, stops the start |
 | `HSM_PROXY_LISTEN_TLS_CA_PATH`, `_PEER_NAME` | for mTLS: the client CA bundle, and the identities admitted, DNS names or URIs (SPIFFE IDs), comma-separated; one without the other stops the start |
-| `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED` | for `http://`: `true` is the operator's statement that the deployment protects the connection and decides who calls; the sidecar then neither encrypts nor checks the caller. Unset, plaintext stops the start; any other value too |
+| `HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED` | for `http://` on an address other than loopback (refused on loopback, which accepts nothing): `true` is the operator's statement that the deployment protects the connection and decides who calls; the sidecar then neither encrypts nor checks the caller. Unset, plaintext stops the start; any other value too |
 | `HSM_PROXY_PKCS11_MODULE_PATH` | the PKCS#11 module |
 | `HSM_PROXY_PKCS11_MODULE_SHA256` | its SHA-256 in hex, checked before it is loaded (rule 7); required outside the simulator mode |
 | `HSM_PROXY_TOKEN_LABEL` | the token |
