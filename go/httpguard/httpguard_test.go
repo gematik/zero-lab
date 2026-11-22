@@ -110,6 +110,34 @@ func TestRFC6749_3_1_ARepeatedParameterIsRefused(t *testing.T) {
 	}
 }
 
+// Server rule 28, "Parameters" and "Values": a query is parsed strictly; a repeated name, a malformed escape, a
+// ';' separator, an empty name and a control character or invalid UTF-8 after decoding are refused.
+func TestServerRule28_AQueryIsParsedStrictly(t *testing.T) {
+	for raw, want := range map[string]error{
+		"a=1&a=2":    httpguard.ErrRepeated,
+		"a=1&b=%zz":  httpguard.ErrQuery,
+		"a=1;b=2":    httpguard.ErrQuery,
+		"=1":         httpguard.ErrQuery,
+		"a=%00":      httpguard.ErrQuery,
+		"a=x%0Ay":    httpguard.ErrQuery,
+		"a%7F=1":     httpguard.ErrQuery,
+		"a=%FF":      httpguard.ErrQuery,
+		"a%0D%0A=1":  httpguard.ErrQuery,
+		"a=%C3%A4&b": nil,
+		"":           nil,
+		"a=1&b=2":    nil,
+	} {
+		values, err := httpguard.Query(raw)
+		if !errors.Is(err, want) || (want == nil && err != nil) {
+			t.Errorf("Query(%q) = %v, %v; want %v", raw, values, err, want)
+		}
+	}
+	values, err := httpguard.Query("a=%C3%A4&b")
+	if err != nil || values.Get("a") != "ä" || !values.Has("b") {
+		t.Errorf("Query = %v, %v", values, err)
+	}
+}
+
 // Server rule 28, "Headers": Host is one of the configured names, compared as received.
 func TestServerRule28_AHostOutsideTheConfiguredNamesIsRefused(t *testing.T) {
 	names := []string{"pep.example", "pep.example:8443"}

@@ -156,7 +156,8 @@ func TestAnAktensystemErrorInLatin1KeepsTheAnswerJSON(t *testing.T) {
 	}))
 	defer aktensystem.Close()
 	p := &Proxy{
-		records: map[string]PatientRecordMetadata{},
+		records:         map[string]PatientRecordMetadata{},
+		maxRequestBytes: DefaultMaxRequestBytes,
 		sessionManager: &sessionManager{
 			sessions: map[ProviderNumber]*Session{},
 			login: func(provider ProviderNumber) (*Session, error) {
@@ -168,9 +169,8 @@ func TestAnAktensystemErrorInLatin1KeepsTheAnswerJSON(t *testing.T) {
 		"GET /insurants/{insurantID}": p.HandleInsurantInfo,
 		"into the VAU":                p.HandleForwardToVAUInsurant,
 	} {
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/insurants/X000000001/vau/x", nil)
 		req.SetPathValue("insurantID", "X000000001")
-		req.SetPathValue("path", "x")
 		recorder := httptest.NewRecorder()
 		handle(recorder, req)
 		body := recorder.Body.Bytes()

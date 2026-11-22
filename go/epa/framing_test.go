@@ -28,6 +28,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -51,19 +52,22 @@ func TestServerRule28_AChunkedRequestIsFramedByItsLengthInsideTheVAU(t *testing.
 		t.Fatal(err)
 	}
 	provider := AllProviders[0]
-	p := &Proxy{sessionManager: &sessionManager{sessions: map[ProviderNumber]*Session{provider: {VAUChannel: channel}}}}
+	p := &Proxy{
+		sessionManager:  &sessionManager{sessions: map[ProviderNumber]*Session{provider: {VAUChannel: channel}}},
+		maxRequestBytes: DefaultMaxRequestBytes,
+	}
 	var framing []string
 	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		framing = r.TransferEncoding
-		r.SetPathValue("path", "epa/xds-document/api/I_Document_Management_Insurant")
-		p.forwardToVAU(w, r, provider, "")
+		r.SetPathValue("providerNumber", strconv.Itoa(int(provider)))
+		p.HandleForwardToVAUProvider(w, r)
 	}))
 	defer front.Close()
 
 	const smuggled = "POST /epa/x HTTP/1.1\r\nHost: vau\r\nContent-Length: 0\r\n\r\n"
 	body := "first" + smuggled
 	// A reader of unknown length makes the client send the body chunked.
-	req, err := http.NewRequest(http.MethodPost, front.URL+"/forward", io.MultiReader(strings.NewReader(body)))
+	req, err := http.NewRequest(http.MethodPost, front.URL+"/providers/"+strconv.Itoa(int(provider))+"/vau/epa/xds-document/api/I_Document_Management_Insurant", io.MultiReader(strings.NewReader(body)))
 	if err != nil {
 		t.Fatal(err)
 	}

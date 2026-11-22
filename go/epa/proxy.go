@@ -23,13 +23,13 @@ package epa
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"maps"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -39,6 +39,8 @@ import (
 	"sync"
 	"time"
 	"uuid"
+
+	"github.com/gematik/zero-lab/go/httpguard"
 
 	"github.com/gematik/zero-lab/go/epa/ti"
 	"github.com/gematik/zero-lab/go/epa/vau"
@@ -79,6 +81,8 @@ type Proxy struct {
 	records        map[string]PatientRecordMetadata
 	recordsLock    sync.RWMutex
 	now            func() time.Time
+	// maxRequestBytes bounds a forwarded body.
+	maxRequestBytes int64
 }
 
 // ProxyConfig configures a Proxy. It comes from the configuration file, and [ProxyConfig.Init]
@@ -88,6 +92,8 @@ type ProxyConfig struct {
 	Name    string        `yaml:"name"`
 	Env     Env           `yaml:"env"`
 	Timeout time.Duration `yaml:"timeout"`
+	// MaxRequestBytes bounds a body the proxy forwards; 0 means [DefaultMaxRequestBytes].
+	MaxRequestBytes int64 `yaml:"max_request_bytes"`
 
 	// SMC-B identity, loaded and used by the `ti` tool: a PKCS#12 (authn_p12_path, its
 	// password in the file authn_p12_password_path names, default 00), a PEM cert+key
@@ -289,14 +295,18 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 	if config.TLSConfig == nil {
 		return nil, fmt.Errorf("proxy %q: no TLS verification configured for the Aktensysteme (ProxyConfig.TLSConfig)", config.Name)
 	}
+	if config.MaxRequestBytes < 0 {
+		return nil, fmt.Errorf("proxy %q: max_request_bytes is negative", config.Name)
+	}
 	p := &Proxy{
-		Env:           config.Env,
-		config:        config,
-		Authenticator: config.Authenticator,
-		mux:           http.NewServeMux(),
-		records:       make(map[string]PatientRecordMetadata),
-		recordsLock:   sync.RWMutex{},
-		now:           config.Clock,
+		Env:             config.Env,
+		config:          config,
+		Authenticator:   config.Authenticator,
+		mux:             http.NewServeMux(),
+		records:         make(map[string]PatientRecordMetadata),
+		recordsLock:     sync.RWMutex{},
+		now:             config.Clock,
+		maxRequestBytes: cmp.Or(config.MaxRequestBytes, DefaultMaxRequestBytes),
 	}
 	if p.now == nil {
 		p.now = time.Now
@@ -320,25 +330,100 @@ func NewProxy(config *ProxyConfig) (*Proxy, error) {
 		go p.sessionManager.WatchSession(providerNumber)
 	}
 
-	p.mux.Handle("/providers", http.HandlerFunc(p.GetProviders))
-	// add direct VAU handler
-	p.mux.Handle("/providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
-	// add direct provider handler
-	p.mux.Handle("/providers/{providerNumber}/{path...}", http.HandlerFunc(p.HandleForwardToProvider))
+	p.registerRoutes()
+	return p, nil
+}
 
-	// add insurants handlers
-	p.mux.Handle("/insurants", http.HandlerFunc(p.GetInsurants))
+// registerRoutes mounts the proxy's API. Each route takes its declared methods only; the mux answers any other
+// with 405 and Allow.
+func (p *Proxy) registerRoutes() {
+	p.mux.Handle("GET /providers", http.HandlerFunc(p.GetProviders))
+	for _, method := range forwardMethods {
+		p.mux.Handle(method+" /providers/{providerNumber}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUProvider))
+		p.mux.Handle(method+" /providers/{providerNumber}/{path...}", http.HandlerFunc(p.HandleForwardToProvider))
+		p.mux.Handle(method+" /insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
+	}
+
+	p.mux.Handle("GET /insurants", http.HandlerFunc(p.GetInsurants))
 	p.mux.Handle("GET /insurants/{insurantID}", http.HandlerFunc(p.HandleInsurantInfo))
 	p.mux.Handle("POST /insurants/{insurantID}/entitlement", http.HandlerFunc(p.HandleEntitleInsurant))
-	p.mux.Handle("/insurants/{insurantID}/vau/{path...}", http.HandlerFunc(p.HandleForwardToVAUInsurant))
 
-	// shows proxy info
-	p.mux.Handle("/info", http.HandlerFunc(p.HandleProxyInfo))
+	p.mux.Handle("GET /info", http.HandlerFunc(p.HandleProxyInfo))
 
 	// aggregated VAU/session status of all providers
 	p.mux.Handle("GET /status", http.HandlerFunc(p.HandleProxyStatus))
+}
 
-	return p, nil
+// forwardMethods are the methods the forwarding routes take: those of the Aktensystem's interfaces.
+var forwardMethods = []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete}
+
+// DefaultMaxRequestBytes bounds a forwarded body when the configuration names no limit: one document of the
+// largest size an Aktensystem takes (A_14937, 25 MiB without transport encoding), base64-encoded as it travels
+// inline, and 1 MiB for the message around it. A submission of several documents up to the 250 MiB package limit
+// needs a larger [ProxyConfig.MaxRequestBytes]; the proxy holds each body whole in memory while the VAU encrypts it.
+const DefaultMaxRequestBytes = (maxDocumentBytes+2)/3*4 + 1<<20
+
+const maxDocumentBytes = 25 << 20
+
+// relayedHeaderNames are the Aktensystem's response headers a client gets. The rest stay behind: cookies, the
+// names of its servers, and caching or security policy meant for its own clients.
+var relayedHeaderNames = []string{
+	"Content-Disposition",
+	"Content-Encoding",
+	"Content-Language",
+	"Content-Type",
+	"Etag",
+	"Last-Modified",
+	"Retry-After",
+	"X-Request-Id",
+}
+
+func relayHeaders(dst, src http.Header) {
+	for _, name := range relayedHeaderNames {
+		for _, v := range src.Values(name) {
+			dst.Add(name, v)
+		}
+	}
+}
+
+// readBody reads r's body within the proxy's limit, before any session is touched: a declared length above it
+// is refused before anything is read, and a body of unknown length is cut off at it.
+func (p *Proxy) readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	if r.ContentLength > p.maxRequestBytes {
+		writeJSONError(w, http.StatusRequestEntityTooLarge, "request_too_large", "the body exceeds the proxy's limit")
+		return nil, false
+	}
+	if r.Body == nil {
+		return nil, true
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, p.maxRequestBytes))
+	if err != nil {
+		if tooLarge := new(http.MaxBytesError); errors.As(err, &tooLarge) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "request_too_large", "the body exceeds the proxy's limit")
+			return nil, false
+		}
+		slog.Warn("Failed to read the request body", "error", err)
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "the body could not be read")
+		return nil, false
+	}
+	return body, true
+}
+
+// forwardedTarget is what of r's target the proxy passes on: the path after prefix as received, and the query
+// parsed strictly and encoded anew. Decoding the path would turn an encoded '?' or '#' into the inner request's
+// query or fragment; the query a client sent is checked, and what is forwarded is what was checked.
+func forwardedTarget(w http.ResponseWriter, r *http.Request, prefix string) (path, query string, ok bool) {
+	path, found := strings.CutPrefix(r.URL.EscapedPath(), prefix)
+	if !found || httpguard.CheckPath(path) != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "the path is not canonical")
+		return "", "", false
+	}
+	values, err := httpguard.Query(r.URL.RawQuery)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "a query parameter is repeated or malformed")
+		return "", "", false
+	}
+	return path, values.Encode(), true
 }
 
 // HandleForwardToProvider forwards a request outside the VAU to the provider in the path.
@@ -346,6 +431,14 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 	provider, ok := providerOf(r)
 	if !ok {
 		http.Error(w, "unknown provider", http.StatusNotFound)
+		return
+	}
+	path, query, ok := forwardedTarget(w, r, "/providers/"+r.PathValue("providerNumber"))
+	if !ok {
+		return
+	}
+	body, ok := p.readBody(w, r)
+	if !ok {
 		return
 	}
 
@@ -356,18 +449,18 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	target, err := providerURL(session.BaseURL, r.PathValue("path"))
+	target, err := providerURL(session.BaseURL, path)
 	if err != nil {
-		http.Error(w, "invalid path", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "the path is not canonical")
 		return
 	}
-	r2, err := http.NewRequest(r.Method, target, r.Body)
+	r2, err := http.NewRequest(r.Method, target, bytes.NewReader(body)) //nolint:gosec // the host is one of AllProviders (providerOf), and providerURL keeps the path canonical and below its base URL
 	if err != nil {
 		slog.Error("Failed to create request", "error", err)
 		http.Error(w, "failed to create request", http.StatusInternalServerError)
 		return
 	}
-	r2.URL.RawQuery = r.URL.RawQuery
+	r2.URL.RawQuery = query
 
 	copyAndPrepareHeaders(r.Header, r2.Header)
 
@@ -381,7 +474,7 @@ func (p *Proxy) HandleForwardToProvider(w http.ResponseWriter, r *http.Request) 
 	}
 	defer resp.Body.Close()
 
-	maps.Copy(w.Header(), resp.Header)
+	relayHeaders(w.Header(), resp.Header)
 	w.WriteHeader(resp.StatusCode)
 
 	if _, err := io.Copy(w, resp.Body); err != nil {
@@ -397,19 +490,36 @@ func (p *Proxy) HandleForwardToVAUProvider(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	p.forwardToVAU(w, r, provider, "")
+	path, query, ok := forwardedTarget(w, r, "/providers/"+r.PathValue("providerNumber")+"/vau")
+	if !ok {
+		return
+	}
+	body, ok := p.readBody(w, r)
+	if !ok {
+		return
+	}
+	p.forwardToVAU(w, r, provider, "", path, query, body)
 }
 
-// providerURL is path below the provider's base URL. The request picks the path only: whatever it holds,
-// the host stays the provider's.
+// errLeavesProvider refuses a forwarded path that would not stay below the provider's base URL.
+var errLeavesProvider = errors.New("the path leaves the provider")
+
+// providerURL is the escaped, canonical path below the provider's base URL. The request picks the path only:
+// it is refused, not cleaned, when it is not canonical, and whatever it holds, the host stays the provider's.
 func providerURL(baseURL, path string) (string, error) {
+	if err := httpguard.CheckPath(path); err != nil {
+		return "", err
+	}
 	base, err := url.Parse(baseURL)
 	if err != nil {
 		return "", err
 	}
 	target := base.JoinPath(path)
 	if target.Scheme != base.Scheme || target.Host != base.Host || target.User != nil {
-		return "", fmt.Errorf("%q leaves the provider", path)
+		return "", errLeavesProvider
+	}
+	if basePath := base.EscapedPath(); basePath != "" && !httpguard.HasPrefix(target.EscapedPath(), basePath) {
+		return "", errLeavesProvider
 	}
 	return target.String(), nil
 }
@@ -425,16 +535,22 @@ func providerOf(r *http.Request) (ProviderNumber, bool) {
 	return provider, slices.Contains(AllProviders, provider)
 }
 
+// proxyBlockedHeaderNames are client headers the Aktensystem never sees: credentials, proxy headers, and the
+// method-override headers, which would let a request reach a route under a method it did not declare.
 var proxyBlockedHeaderNames = []string{
 	"authorization",
 	"via",
 	"x-forwarded-host",
 	"x-forwarded-for",
+	"x-http-method",
+	"x-http-method-override",
+	"x-method-override",
 }
 
-func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNumber ProviderNumber, insurantID string) {
-	path := r.PathValue("path")
-	path = "/" + path
+// forwardToVAU sends the request into the VAU with path and query as forwardedTarget made them. The inner
+// request is framed by the length of body (RFC 9112 Section 6.3), never by the client's framing: a chunked body
+// forwarded as is would leave the Aktensystem to guess where the request ends.
+func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNumber ProviderNumber, insurantID, path, query string, body []byte) {
 	session, err := p.sessionManager.GetSession(providerNumber)
 	if err != nil {
 		slog.Error("Failed to get session", "provider", providerNumber, "error", err)
@@ -442,15 +558,6 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		return
 	}
 
-	// The inner request is framed by the length of the body it carries (RFC 9112 Section 6.3), never by the
-	// client's framing: a chunked body forwarded as is would leave the Aktensystem to guess where the request
-	// ends. The VAU encrypts the whole message at once, so reading the body first holds nothing more in memory.
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		slog.Warn("Failed to read the request body", "error", err)
-		http.Error(w, "failed to read the request body", http.StatusBadRequest)
-		return
-	}
 	r2, err := http.NewRequest(r.Method, path, bytes.NewReader(body)) //nolint:gosec // the path only travels inside the VAU channel, which posts to its own ChannelURL and nowhere else
 	if err != nil {
 		slog.Error("Failed to create request", "error", err)
@@ -458,7 +565,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 		return
 	}
 
-	r2.URL.RawQuery = r.URL.RawQuery
+	r2.URL.RawQuery = query
 	r2.Host = session.VAUChannel.ChannelURL.Host
 
 	copyAndPrepareHeaders(r.Header, r2.Header)
@@ -482,7 +589,7 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 	}
 	defer resp.Body.Close()
 
-	maps.Copy(w.Header(), resp.Header)
+	relayHeaders(w.Header(), resp.Header)
 
 	slog.Info("Got forwarded request response", "method", r2.Method, "path", r2.URL.Path, "status", resp.StatusCode)
 
@@ -493,7 +600,13 @@ func (p *Proxy) forwardToVAU(w http.ResponseWriter, r *http.Request, providerNum
 	}
 }
 
+// ServeHTTP checks the path as received before any route matches it: the mux would otherwise clean a dot
+// segment or decode an escape into a route the client did not name.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if err := httpguard.Path(r); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "invalid_request", "the path is not canonical")
+		return
+	}
 	p.mux.ServeHTTP(w, r)
 }
 
@@ -639,6 +752,18 @@ func (p *Proxy) findAndCacheRecord(insurantID string) (*PatientRecordMetadata, e
 // record of the insurant in the path, entitling on the first request.
 func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Request) {
 	insurantID := r.PathValue("insurantID")
+	if !kvnrRegexp.MatchString(insurantID) {
+		writeJSONError(w, http.StatusBadRequest, "invalid_kvnr", "KVNR must be an uppercase letter followed by 9 digits")
+		return
+	}
+	path, query, ok := forwardedTarget(w, r, "/insurants/"+insurantID+"/vau")
+	if !ok {
+		return
+	}
+	body, ok := p.readBody(w, r)
+	if !ok {
+		return
+	}
 	rm, err := p.findAndCacheRecord(insurantID)
 	if err != nil {
 		slog.Error("Failed to find record", "error", err)
@@ -651,7 +776,7 @@ func (p *Proxy) HandleForwardToVAUInsurant(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	p.forwardToVAU(w, r, rm.Provider, rm.InsurantID)
+	p.forwardToVAU(w, r, rm.Provider, rm.InsurantID, path, query, body)
 }
 
 // ProxyInfo is what GET /info tells about a proxy and its SMC-B.

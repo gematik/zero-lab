@@ -55,6 +55,7 @@ func (s *Session) GetNonce() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("sending request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", parseHTTPError(resp)
@@ -81,6 +82,7 @@ func (s *Session) SendAuthorizationRequestSC() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("sending request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusFound {
 		return "", parseHTTPError(resp)
@@ -109,6 +111,7 @@ func (s *Session) SendAuthCodeSC(authCode SendAuthCodeSCtype) error {
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return parseHTTPError(resp)

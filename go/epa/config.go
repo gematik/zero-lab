@@ -35,6 +35,9 @@ import (
 type Config struct {
 	BaseDir      string        `yaml:"-"` // set to the base directory of config files when loading
 	ProxyConfigs []ProxyConfig `yaml:"proxies"`
+	// Hosts are the names, with port, the server answers to in Host; none means the loopback names of the
+	// listen address.
+	Hosts []string `yaml:"hosts"`
 }
 
 // Redacted is a copy to show: the secrets a proxy's configuration may hold are replaced.

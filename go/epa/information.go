@@ -42,6 +42,7 @@ func (c *Client) GetRecordStatus(insurantID string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer resp.Body.Close()
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
@@ -69,6 +70,7 @@ func (c *Client) GetConsentDecisionInformation(insurantID string) (*GetConsentDe
 	if err != nil {
 		return nil, err
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, parseHTTPError(resp)
