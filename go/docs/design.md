@@ -215,7 +215,8 @@ The [server rules](../../docs/design/servers.md), in Go terms:
     (`PEP_AS_ISSUER`, gateway upstreams) and the admin listener's report are not built in Go yet.
 - Rule 30, egress: one client per command, `egress.NewClient` ([`go/egress`](../egress)), handed to every
   library that fetches from the internet (oidf, openid, idpd, tipki/fetch); libraries take a caller's
-  `*http.Client` and build none.
+  `*http.Client` and build none. zaddy reads its authorization server's metadata and key set through it; pep sees
+  only the `pep.KeySource` zaddy hands it.
   - https only: the rule sits in the transport's `Proxy` hook, which net/http asks before every request and
     redirect, so the clone a library makes to add a client certificate keeps it; `ErrPlainHTTP` otherwise.
   - Plain http only for self-verifying data: a request whose context carries `egress.SelfVerifying` (OCSP,

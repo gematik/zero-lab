@@ -57,6 +57,65 @@ authorization server known to omit the `typ`, the global `pep` block takes
 }
 ```
 
+## Keys of the authorization server
+
+Access tokens are verified with the keys of the authorization server. With `jwks_path` in the global `pep`
+block they come from that file, read once at start; a changed file is taken by a rollout or a reload, like
+every other file zaddy reads. Without `jwks_path`, `authorization_server` is required, as the issuer
+identifier: an https URL without query or fragment (RFC 8414 Section 2). zaddy then reads the server's
+metadata from `/.well-known/oauth-authorization-server` inserted after the host (RFC 8414 Section 3.1), or
+from `<authorization_server>/.well-known/openid-configuration` when the first answers 404, checks that it
+names exactly the configured issuer (RFC 8414 Section 3.3) and an https `jwks_uri`, and reads the key set
+from there. All of it goes through the egress client (servers.md rule 30): https only, verified against the
+system's roots, a forward proxy from `HTTPS_PROXY`, no redirects, bounded responses.
+
+zaddy does not start when it cannot read the keys. It reads them again every 15 minutes, and when a token
+names a `kid` the set does not hold, at most once a minute, since the client picks the `kid`. A set that is
+read and parses replaces the one in force as a whole; a failed read keeps it and is logged.
+
+```caddyfile
+{
+	pep {
+		resource https://api.example.com
+		authorization_server https://as.example.com
+	}
+}
+```
+
+## Protected resource metadata
+
+A 401 of `enforce_policy` names the resource's metadata in the `resource_metadata` parameter of its
+`WWW-Authenticate` challenge (RFC 9728 Section 5.1), Bearer and DPoP alike, so a client that starts at the
+resource learns where to find the authorization server. The URL is the one RFC 9728 Section 3.1 derives
+from `resource`: `/.well-known/oauth-protected-resource` inserted between the host and the resource's path.
+
+The `protected_resource_metadata` handler serves that document (RFC 9728 Section 3) from the global `pep`
+block: `resource`, `authorization_servers` with `authorization_server`, `bearer_methods_supported`
+`["header"]`, `scopes_supported` from the subdirective of that name, and the members a deployment adds
+with `metadata_member <name> <JSON value>`, such as gematik's `zeta_asl_use`. A value is one JSON text,
+so a string is quoted inside backticks; a name zaddy sets itself, or another typed member of RFC 9728, is
+refused. It answers GET and HEAD with `application/json`, any other method with 405.
+
+```caddyfile
+{
+	pep {
+		resource https://api.example.com
+		authorization_server https://as.example.com
+		scopes_supported epa.read epa.write
+		metadata_member zeta_asl_use `"required"`
+	}
+}
+
+https://api.example.com {
+	handle /.well-known/oauth-protected-resource {
+		protected_resource_metadata
+	}
+}
+```
+
+For a resource with a path, such as `https://api.example.com/fhir`, the handler belongs at
+`/.well-known/oauth-protected-resource/fhir`.
+
 ## DPoP replays
 
 zaddy accepts a DPoP proof once (RFC 9449 Section 11.1). By default it remembers the proofs it

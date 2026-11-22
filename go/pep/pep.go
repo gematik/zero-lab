@@ -24,6 +24,7 @@
 package pep
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -44,12 +45,16 @@ const defaultHTTPTimeout = 30 * time.Second
 // PEP holds what the enforcers verify requests against: the JWK set, the protected resource and its public
 // origin. It is made by a Builder.
 type PEP struct {
-	slogger                   *slog.Logger
-	httpClient                *http.Client
-	provideJwkSetFunc         func() (*jose.JSONWebKeySet, error)
+	slogger           *slog.Logger
+	httpClient        *http.Client
+	provideJwkSetFunc func() (*jose.JSONWebKeySet, error)
+	// keySource is asked again when a token names a kid the set does not hold; nil for a fixed set.
+	keySource                 KeySource
 	decryptAccessTokenFunc    func(string) (string, error)
 	accessTokenAcceptableSkew time.Duration
 	resource                  string // URI of the resource being protected
+	// resourceMetadataURL is where the resource's metadata is (RFC 9728 Section 3.1); every 401 challenge names it.
+	resourceMetadataURL string
 	// acceptUntyped takes an access token whose typ is not at+jwt, for an authorization server known to omit it.
 	acceptUntyped bool
 	// publicOrigin is the scheme, host and port clients reach the protected resource at; the
@@ -80,7 +85,8 @@ func NewBuilder() *Builder {
 
 // Build returns the PEP or the recorded error. It fails without a JWK set source or with a public origin
 // that is not an absolute http or https URL. Defaults: a 30 s HTTP client, no logging, one
-// minute of skew, and the resource's origin as public origin.
+// minute of skew, the resource's origin as public origin, and the resource metadata URL RFC 9728 Section 3.1
+// derives from the resource.
 func (b *Builder) Build() (*PEP, error) {
 	if b.err != nil {
 		return nil, b.err
@@ -92,6 +98,15 @@ func (b *Builder) Build() (*PEP, error) {
 	// audience, so a PEP always has one.
 	if b.p.resource == "" {
 		return nil, errors.New("no resource: call Resource with the URI the access tokens' aud names (RFC 9700 Section 4.10.2)")
+	}
+	if b.p.resourceMetadataURL == "" {
+		metadataURL, err := ProtectedResourceMetadataURL(b.p.resource)
+		if err != nil {
+			return nil, fmt.Errorf("resource metadata URL: %w", err)
+		}
+		b.p.resourceMetadataURL = metadataURL
+	} else if err := checkMetadataURL(b.p.resourceMetadataURL); err != nil {
+		return nil, fmt.Errorf("resource metadata URL: %w", err)
 	}
 	if b.p.httpClient == nil {
 		b.p.httpClient = &http.Client{Timeout: defaultHTTPTimeout}
@@ -151,6 +166,28 @@ func originOf(raw string) (string, error) {
 // key rotation and should cache.
 func (b *Builder) WithJWKSetFunc(f func() (*jose.JSONWebKeySet, error)) *Builder {
 	b.p.provideJwkSetFunc = f
+	b.p.keySource = nil
+	return b
+}
+
+// KeySource is a source of verification keys that follows the authorization server's key rotation: Keys is
+// the set in force, called for every token, and Refresh fetches the set again, called once when a token names a
+// kid the set in force does not hold. Refresh returns the set to verify with afterwards: a newly verified set, or
+// the one in force when the source declines to fetch. The host bounds how often Refresh fetches, since a client
+// chooses the kid; a failed fetch keeps the set in force.
+type KeySource interface {
+	Keys() (*jose.JSONWebKeySet, error)
+	Refresh(ctx context.Context) (*jose.JSONWebKeySet, error)
+}
+
+// WithKeySource sets source as the source of the verification keys, replacing any other.
+func (b *Builder) WithKeySource(source KeySource) *Builder {
+	if source == nil {
+		b.err = errors.New("no key source")
+		return b
+	}
+	b.p.keySource = source
+	b.p.provideJwkSetFunc = source.Keys
 	return b
 }
 
@@ -159,6 +196,7 @@ func (b *Builder) WithJWKSet(jwkSet *jose.JSONWebKeySet) *Builder {
 	b.p.provideJwkSetFunc = func() (*jose.JSONWebKeySet, error) {
 		return jwkSet, nil
 	}
+	b.p.keySource = nil
 	return b
 }
 
@@ -256,6 +294,22 @@ func (b *Builder) AcceptUntypedAccessTokens() *Builder {
 	return b
 }
 
+// ResourceMetadataURL sets the URL of the resource's metadata that the resource_metadata parameter of every 401
+// challenge names (RFC 9728 Section 5.1), for a deployment that serves it elsewhere than Section 3.1 derives
+// from the resource. It must be an absolute http or https URL a quoted-string carries unescaped.
+func (b *Builder) ResourceMetadataURL(metadataURL string) *Builder {
+	b.p.resourceMetadataURL = metadataURL
+	return b
+}
+
+// checkMetadataURL refuses a resource metadata URL that is not absolute http or https or does not fit a challenge.
+func checkMetadataURL(raw string) error {
+	if _, err := originOf(raw); err != nil {
+		return err
+	}
+	return checkChallengeURL(raw)
+}
+
 // PublicOrigin sets the scheme, host and port clients reach the protected resource at, for the
 // DPoP htu check. Without it, the resource's origin is used.
 func (b *Builder) PublicOrigin(origin string) *Builder {
@@ -273,8 +327,14 @@ func (p *PEP) deny(ctx Context, err Error) {
 	w := ctx.Writer()
 	r := ctx.Request()
 	ctx.Slogger().Debug("Request denied", "method", r.Method, "path", r.URL.Path)
-	if err.WWWAuthenticate != "" {
-		w.Header().Set("WWW-Authenticate", err.WWWAuthenticate)
+	challenge := err.WWWAuthenticate
+	// RFC 9728 Section 5.1: a client that starts at the resource learns from the 401 where the metadata naming
+	// the authorization server is. A 403 is about a token the client already has, so it does not.
+	if err.HTTPStatus == http.StatusUnauthorized {
+		challenge = withResourceMetadata(challenge, p.resourceMetadataURL)
+	}
+	if challenge != "" {
+		w.Header().Set("WWW-Authenticate", challenge)
 	}
 	if err.DPoPNonce != "" {
 		handOutNonce(w, err.DPoPNonce)
@@ -388,6 +448,12 @@ const (
 
 func (c *pepContext) verifyAuthorizationBearer() error {
 	bearerToken, err := c.bearerCredentials()
+	if errors.Is(err, ErrNoAuthorizationHeader) {
+		// RFC 6750 Section 3: a 401 names the scheme it wants, here bare, so that it can carry resource_metadata.
+		challenged := ErrNoAuthorizationHeader
+		challenged.WWWAuthenticate = "Bearer"
+		return challenged
+	}
 	if err != nil {
 		return err
 	}
@@ -397,7 +463,7 @@ func (c *pepContext) verifyAuthorizationBearer() error {
 		Description:     descriptionInvalidToken,
 		WWWAuthenticate: fmt.Sprintf(`Bearer error=%q, error_description=%q`, codeInvalidToken, descriptionInvalidToken),
 	}
-	token, err := c.pep.VerifyAccessToken(bearerToken)
+	token, err := c.pep.verifyAccessToken(c.request.Context(), bearerToken)
 	if err != nil {
 		return invalid
 	}
@@ -517,7 +583,7 @@ func (c *pepContext) bearerCredentials() (string, error) {
 
 // verifyAccessToken leaves the denial to the scheme's caller. VerifyAccessToken has logged why the token was refused.
 func (c *pepContext) verifyAccessToken(accessToken string) error {
-	jwtToken, err := c.pep.VerifyAccessToken(accessToken)
+	jwtToken, err := c.pep.verifyAccessToken(c.request.Context(), accessToken)
 	if err != nil {
 		return err
 	}
@@ -554,11 +620,26 @@ func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWri
 // the PEP accepts untyped tokens (RFC 9068 Section 4), and its audience names the resource (RFC 9700 Section
 // 4.10.2).
 func (p *PEP) VerifyAccessToken(tokenRaw string) (*AccessToken, error) {
+	return p.verifyAccessToken(context.Background(), tokenRaw)
+}
+
+// verifyAccessToken is VerifyAccessToken with the request's context, which a key source's Refresh is called with.
+func (p *PEP) verifyAccessToken(ctx context.Context, tokenRaw string) (*AccessToken, error) {
 	jwks, err := p.provideJwkSetFunc()
 	if err != nil {
 		return nil, fmt.Errorf("could not get JWKSet: %w", err)
 	}
 	payload, typ, err := verifyJWS(tokenRaw, jwks)
+	// A kid the set does not hold may be the authorization server's next key; the set is asked once more, and the
+	// key source decides whether that fetches.
+	if errors.Is(err, errUnknownKeyID) && p.keySource != nil {
+		refreshed, refreshErr := p.keySource.Refresh(ctx)
+		if refreshErr != nil {
+			p.slogger.Warn("could not refresh the JWKSet", "error", refreshErr)
+		} else {
+			payload, typ, err = verifyJWS(tokenRaw, refreshed)
+		}
+	}
 	if err == nil && !p.acceptUntyped && !isAccessTokenType(typ) {
 		err = errors.New("token typ is not at+jwt")
 	}
