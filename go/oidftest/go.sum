@@ -1,5 +1,5 @@
-github.com/gematik/zero-lab/go/oidf v0.54.2 h1:KXPxv/cujqXseqBYJ8s+mxH32Oy9hwMAlPoqdMP/4vM=
-github.com/gematik/zero-lab/go/oidf v0.54.2/go.mod h1:HjYt2U+f10fCh/hFjH553t8CkkerOGWq+kxKLohWVNI=
+github.com/gematik/zero-lab/go/oidf v0.54.3-0.20261122115816-be4ce915d4a8 h1:LO49ApQfwfDzGbUs7cQq38oFKQUX8ND+yKcSnrjrc7w=
+github.com/gematik/zero-lab/go/oidf v0.54.3-0.20261122115816-be4ce915d4a8/go.mod h1:HjYt2U+f10fCh/hFjH553t8CkkerOGWq+kxKLohWVNI=
 github.com/gematik/zero-lab/go/openid v0.55.1 h1:4p8m19UtfVuT11ZjXsrZQA4fQttuZ+PkWc/ZV+KOEkE=
 github.com/gematik/zero-lab/go/openid v0.55.1/go.mod h1:/sIAqTwaunEa8iOxyOSYXFU5Vrcp+gE3sg0pqrfrM5c=
 github.com/go-jose/go-jose/v4 v4.1.9 h1:pKfeQkig1NmgK4hJrZYXLEYURXfoJB61Larw0uIW4gY=

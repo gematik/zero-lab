@@ -7,7 +7,8 @@ require (
 	github.com/gematik/zero-lab/go/httpguard v0.2.0
 	github.com/gematik/zero-lab/go/idpd v0.3.0
 	github.com/gematik/zero-lab/go/kv v0.6.0
-	github.com/gematik/zero-lab/go/oidf v0.54.2
+	github.com/gematik/zero-lab/go/oidf v0.54.3-0.20261122115816-be4ce915d4a8
+	github.com/gematik/zero-lab/go/oidftest v0.0.0-20261122115816-be4ce915d4a8
 	github.com/gematik/zero-lab/go/openid v0.55.1
 	github.com/gematik/zero-lab/go/pep v0.29.0
 	github.com/gematik/zero-lab/go/tipki v0.33.0
