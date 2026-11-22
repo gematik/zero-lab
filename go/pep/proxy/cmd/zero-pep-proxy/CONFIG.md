@@ -52,7 +52,10 @@ needs no file). The file and the shortcuts are mutually exclusive (the file wins
 
 | Var | Purpose | Default |
 | --- | --- | --- |
-| `PEP_ADDR` | listen address | `:4180` |
+| `PEP_LISTEN_URL` | the listener, its scheme the mode (servers.md rule 29): `http://0.0.0.0:4180` behind an edge in another pod (with `PEP_LISTEN_PLAINTEXT_ACCEPTED=true`), `https://0.0.0.0:4180` with the server's own certificate, `http://127.0.0.1:4180` behind an edge in the same pod. A host name is refused: the URL binds an address; the public name is `PEP_PUBLIC_URL`'s. Replaces `PEP_ADDR`, which is refused at start | required |
+| `PEP_LISTEN_PLAINTEXT_ACCEPTED` | `true`: the operator accepts plaintext on an address outside the pod and protects the connection itself (a NetworkPolicy that admits only the edge, a mesh). Any other value is refused; not needed and refused on loopback | unset |
+| `PEP_LISTEN_TLS_CERT_PATH`, `PEP_LISTEN_TLS_KEY_PATH` | the certificate chain and key of an `https://` listener, PEM, read at start; a pair that does not match or a certificate not valid now stops the start | — |
+| `PEP_LISTEN_TLS_CA_PATH`, `PEP_LISTEN_TLS_PEER_NAME` | mutual TLS, both or neither: the CA bundle clients chain to, and the comma-separated identities (DNS names or URIs such as SPIFFE IDs) admitted | — |
 | `PEP_PUBLIC_URL` | public origin the browser reaches pep at (the Caddy/ingress front, not pep directly) | `http://127.0.0.1:4180` |
 | `PEP_HOSTS` | more names requests may be sent to, comma-separated, for a proxy in front that sends another Host; a request for any other name is answered 421 | the host of PEP_PUBLIC_URL |
 | `PEP_COOKIE_NAME` | session cookie name | `ZERO-PEP-SID` |

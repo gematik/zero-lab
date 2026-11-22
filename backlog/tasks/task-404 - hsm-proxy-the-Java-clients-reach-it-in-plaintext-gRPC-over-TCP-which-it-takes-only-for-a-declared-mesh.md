@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-20 08:26'
-updated_date: '2026-11-20 09:00'
+updated_date: '2026-11-22 14:01'
 labels:
   - rust
   - hsm
@@ -28,7 +28,7 @@ Found 2026-11-20 checking the ZETA clients (origin/main of each): keycloak-zeta,
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 It is decided and in rule 29 whether a plaintext listener on loopback inside the pod needs a declared mesh
+- [x] #1 It is decided and in rule 29 whether a plaintext listener on loopback inside the pod needs a declared mesh
 - [ ] #2 hsm-proxy serves the Java provider and ossl_hsm as they are, or the gap is recorded against TASK-389 #1
 <!-- AC:END -->
 
@@ -36,4 +36,6 @@ Found 2026-11-20 checking the ZETA clients (origin/main of each): keycloak-zeta,
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-20: the maintainer replaced the mesh declaration by an acceptance: HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true (like terms of service, the value exactly true), no mesh named, since the sidecar cannot tell whether one protects the connection. With it the Java clients reach the sidecar unchanged; the open question stays whether loopback inside the pod needs the acceptance too.
+
+2026-11-22, decided by the maintainer and written into rule 29: a loopback address (127.0.0.1, ::1) inside the pod needs no acceptance, like a Unix socket. Left for #2: hsm-proxy still asks HSM_PROXY_LISTEN_PLAINTEXT_ACCEPTED=true for http:// on loopback; it should take http://127.0.0.1 and http://[::1] without it (rust/ti-hsm-proxy/src/config.rs listen()), so the Java provider and ossl_hsm reach it unchanged as sidecars in the pod.
 <!-- SECTION:NOTES:END -->

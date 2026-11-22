@@ -453,7 +453,9 @@ everything outside the workload untrusted.
       `http://`: it is logged at start and refused where the tier does not allow it.
     - **Inside the cluster, one of two.** A listener or peer outside the pod and inside the
       cluster is protected either by the workload or by the deployment; connections
-      to hosts outside the cluster are rule 30. Inside the pod, a Unix socket needs neither.
+      to hosts outside the cluster are rule 30. Inside the pod, a Unix socket needs neither,
+      and neither does a loopback address (`127.0.0.1`, `::1`), which only the pod's own containers
+      reach (maintainer, 2026-11-22).
       - **Own TLS or mTLS:** `https://`, terminated by the workload itself with the
         material below, and a client CA and an allowlist of identities for mTLS.
       - **Plaintext the operator accepts:** `http://`, with the deployment protecting the

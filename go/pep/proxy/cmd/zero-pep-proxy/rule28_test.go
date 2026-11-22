@@ -34,7 +34,7 @@ import (
 // of 1 MiB. A request within the limit reaches the handler; one above it is answered 431 and does not.
 func TestServerRule28_ARequestHeaderAboveTheLimitIsRefusedBeforeTheHandler(t *testing.T) {
 	reached := 0
-	srv := newHTTPServer("", http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached++ }))
+	srv := newHTTPServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached++ }))
 	if srv.MaxHeaderBytes != maxHeaderBytes || srv.ReadHeaderTimeout <= 0 {
 		t.Fatalf("MaxHeaderBytes = %d, ReadHeaderTimeout = %s", srv.MaxHeaderBytes, srv.ReadHeaderTimeout)
 	}
