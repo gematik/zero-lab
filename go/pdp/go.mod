@@ -3,9 +3,9 @@ module github.com/gematik/zero-lab/go/pdp
 go 1.27.0
 
 require (
-	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3.0.20261122101340-ccecb27010d0
+	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4
 	github.com/gematik/zero-lab/go/idpd v0.3.0
-	github.com/gematik/zero-lab/go/kv v0.5.1-0.20261122101340-ccecb27010d0
+	github.com/gematik/zero-lab/go/kv v0.6.0
 	github.com/gematik/zero-lab/go/nonce v0.24.0
 	github.com/gematik/zero-lab/go/oidf v0.54.2
 	github.com/gematik/zero-lab/go/openid v0.55.1

@@ -1,12 +1,12 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gematik/zero-lab/go/brainpool v1.4.1 h1:JICIWCZhxO+S/1LS0CyFUPZjQj0djgWfuDptiz7smL4=
 github.com/gematik/zero-lab/go/brainpool v1.4.1/go.mod h1:Xnlw3vNWuuX7zZEGAYS9JOAuQPd/iNz0QVl8y/91Q7g=
-github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3.0.20261122101340-ccecb27010d0 h1:DWXDCHwsekr4bWMl65OetY9VCPTtOIifFzYqxglYnAk=
-github.com/gematik/zero-lab/go/dpop v1.0.0-beta.3.0.20261122101340-ccecb27010d0/go.mod h1:r7onca0S7sWaAYsvGdwNQDkR6AUrZYhMzuhueQrQa9o=
+github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4 h1:DIeFOsFt57e/q5S8GycgYxJLV5XnCm74pd0pff1vx9o=
+github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4/go.mod h1:r7onca0S7sWaAYsvGdwNQDkR6AUrZYhMzuhueQrQa9o=
 github.com/gematik/zero-lab/go/idpd v0.3.0 h1:Z+O8FWNt+fx+bDbCBhyIrYOoIwXEumP1m5P6FrjghQw=
 github.com/gematik/zero-lab/go/idpd v0.3.0/go.mod h1:b2SwwV7uKhsqgbPSC1j18p7tVuhorhWPKfIdzfDYers=
-github.com/gematik/zero-lab/go/kv v0.5.1-0.20261122101340-ccecb27010d0 h1:4tCqxzcI0j/+iE7JY0WC5DQxWCHmiA1oqAfC1IszjHA=
-github.com/gematik/zero-lab/go/kv v0.5.1-0.20261122101340-ccecb27010d0/go.mod h1:pRQiYPn+JqdCFX7W6NIE/53LWkCoM1YBecmcV7VNkuU=
+github.com/gematik/zero-lab/go/kv v0.6.0 h1:ODLjTCr0JivXZ00N8/T10GpSgLYx0Xn8LRD2XOmQY+Q=
+github.com/gematik/zero-lab/go/kv v0.6.0/go.mod h1:pRQiYPn+JqdCFX7W6NIE/53LWkCoM1YBecmcV7VNkuU=
 github.com/gematik/zero-lab/go/nonce v0.24.0 h1:Rpevd82zBzocnjmTw+DWulXy+WQ+cQ3BKgsZ2VC30OU=
 github.com/gematik/zero-lab/go/nonce v0.24.0/go.mod h1:vaGIBw6GACwzuAR3jffMMI1zZQq60TsrtMYB2sVSuXU=
 github.com/gematik/zero-lab/go/oidf v0.54.2 h1:KXPxv/cujqXseqBYJ8s+mxH32Oy9hwMAlPoqdMP/4vM=
