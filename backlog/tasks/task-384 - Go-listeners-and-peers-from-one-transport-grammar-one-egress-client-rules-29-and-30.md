@@ -3,10 +3,10 @@ id: TASK-384
 title: >-
   Go: zero-pep-proxy and zero-epa from one transport grammar and one egress
   client (rules 29 and 30)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-18 21:34'
-updated_date: '2026-11-22 12:47'
+updated_date: '2026-11-22 14:13'
 labels:
   - go
   - servers
@@ -27,9 +27,9 @@ servers.md rules 29 and 30 (TASK-382) for the Go servers that need them, cut dow
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 zero-pep-proxy builds its listener from a URL as rule 29 says (https by default, http:// only with the operator's acceptance), refuses at start what rule 17 refuses, and reports the mode (rule 7)
-- [ ] #2 zero-pep-proxy's and zero-epa's outbound fetches to external hosts go through one egress client with the allowlist, limits and response checks of rule 30; plain http only for OCSP and CRLs
-- [ ] #3 Tests named after rules 29 and 30 prove the listener modes and refusals and the egress client's allowlist, limits and http refusal, on the code, not per image
+- [x] #1 zero-pep-proxy builds its listener from a URL as rule 29 says (https by default, http:// only with the operator's acceptance), refuses at start what rule 17 refuses, and reports the mode (rule 7)
+- [x] #2 zero-pep-proxy's and zero-epa's outbound fetches to external hosts go through one egress client with the allowlist, limits and response checks of rule 30; plain http only for OCSP and CRLs
+- [x] #3 Tests named after rules 29 and 30 prove the listener modes and refusals and the egress client's allowlist, limits and http refusal, on the code, not per image
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -41,3 +41,9 @@ servers.md rules 29 and 30 (TASK-382) for the Go servers that need them, cut dow
 
 2026-11-22: the egress client moves to go/egress (TASK-408); TASK-384 takes it from there. No listener TLS in titls (maintainer).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zero-pep-proxy: listener from PEP_LISTEN_URL: http:// on loopback (inside the pod, rule 29 amended 2026-11-22), http:// elsewhere only with PEP_LISTEN_PLAINTEXT_ACCEPTED=true, https:// with its own certificate (read at start, refused if not matching or not valid now) and optional mutual TLS with an allowlist of DNS names or URIs; the gemSpec_Krypt handshake as constants; the mode logged at start. Egress: zero-pep-proxy's providers and zero-epa's TSL and OCSP go through go/egress's client (TASK-408): https only, plain http only for self-verifying data; the PDP backend and gateway upstreams, peers of the deployment, take egress.NewTransport. Tests: TestServerRule29_* in cmd/zero-pep-proxy/listen_test.go (the mTLS test fails without the allowlist check) and TestServerRule30_* in go/egress. Not released; for the release see TASK-385 (chart variables). Follow-ups: forward proxy TASK-407; per-peer rule 29 URLs for PEP_AS_ISSUER and gateway upstreams are not built.
+<!-- SECTION:FINAL_SUMMARY:END -->
