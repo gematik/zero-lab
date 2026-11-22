@@ -89,7 +89,10 @@ enters the Go process.
   file holding the password; default `00`), or `authn_cert_path` + `authn_key_path`, or
   `authn_card` (+ `authn_connector`) for an SMC-B at the Konnektor. `vau_cert_verify:
   warn|enforce|off` (default `warn`) says what a bad verdict on the VAU's certificates
-  does.
+  does. `max_request_bytes` bounds a forwarded body (default: one 25 MiB document,
+  base64-encoded, plus 1 MiB). The top-level `hosts` lists the names with port that
+  `zero-epa proxy` answers to in `Host` (default: `localhost`, `127.0.0.1` and `[::1]`
+  at the listen port); behind a reverse proxy, name the public host there.
 - `zero-epa proxy` and `zero-epa probe` verify the Aktensysteme' TLS under the `ti` profile
   (`tipki/titls`) over the TSL of each environment they use, which they download at start
   (`tipki/fetch`, from hosts verified under the `web` profile) and keep fresh. Without it

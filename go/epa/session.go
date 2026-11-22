@@ -251,6 +251,7 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 	// layer the TLS configuration and User-Agent onto the chosen client without mutating the caller's
 	decorated := *base
 	decorated.Transport = &customTransport{t: transportWithTLS(base.Transport, client.tlsConfig.Clone())}
+	decorated.CheckRedirect = refuseRedirect
 	if client.Timeout > 0 {
 		decorated.Timeout = client.Timeout
 	} else if decorated.Timeout == 0 {
@@ -262,6 +263,13 @@ func NewClient(env Env, provider ProviderNumber, sf *SecurityFunctions, options 
 
 	return client, nil
 }
+
+// ErrRedirect refuses a redirect from an Aktensystem: no interface of it answers with one outside the VAU, and
+// one followed would send the request, its headers included, to wherever the answer points (servers.md rule 28,
+// "Outbound responses").
+var ErrRedirect = errors.New("the Aktensystem answered with a redirect")
+
+func refuseRedirect(*http.Request, []*http.Request) error { return ErrRedirect }
 
 // OpenSession performs the VAU handshake and returns a Session that can be
 // Authorized for VAU-bound calls. The underlying Client (HTTP transport,

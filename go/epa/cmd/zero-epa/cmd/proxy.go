@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -41,6 +42,7 @@ import (
 	"github.com/gematik/zero-lab/go/epa"
 	"github.com/gematik/zero-lab/go/epa/portal"
 	"github.com/gematik/zero-lab/go/epa/ti"
+	"github.com/gematik/zero-lab/go/httpguard"
 )
 
 var listenAddr = ""
@@ -93,11 +95,65 @@ func runProxy() error {
 		return err
 	}
 
-	slog.Info("starting Proxy at " + listenAddr)
-	server := &http.Server{Addr: listenAddr, Handler: router, ReadHeaderTimeout: 10 * time.Second}
+	names, err := hostNames(listenAddr, config.Hosts)
+	if err != nil {
+		return err
+	}
+	slog.Info("starting Proxy at "+listenAddr, "hosts", names)
+	server := &http.Server{
+		Addr:              listenAddr,
+		Handler:           guard(names, router),
+		MaxHeaderBytes:    maxHeaderBytes,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       2 * time.Minute,
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	return serve(ctx, server)
+}
+
+// The server's bounds (servers.md rule 28, "Limits before work"). The ePA headers a client sends are a few
+// hundred bytes; a body may be a document of 25 MiB and more, uploaded or answered over a slow line, so reading
+// and writing get minutes, and writing more, because it waits for the Aktensystem too.
+const (
+	maxHeaderBytes = 32 << 10
+	readTimeout    = 5 * time.Minute
+	writeTimeout   = 10 * time.Minute
+)
+
+// hostNames are the names the server answers to: the configured ones, or else the loopback names of the
+// listen address's port.
+func hostNames(addr string, configured []string) ([]string, error) {
+	if len(configured) > 0 {
+		return configured, nil
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen address %q: %w", addr, err)
+	}
+	switch host {
+	case "", "0.0.0.0", "::":
+		return []string{net.JoinHostPort("localhost", port), net.JoinHostPort("127.0.0.1", port), net.JoinHostPort("::1", port)}, nil
+	}
+	return []string{net.JoinHostPort(host, port)}, nil
+}
+
+// guard checks each request before the router sees it (servers.md rule 28): Host is one of names, and the path
+// is canonical as received, which the router would otherwise redirect to its cleaned form.
+func guard(names []string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if httpguard.Host(r, names) != nil {
+			http.Error(w, "unknown host", http.StatusMisdirectedRequest)
+			return
+		}
+		if httpguard.Path(r) != nil {
+			http.Error(w, "the path is not canonical", http.StatusBadRequest)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // serve runs server until ctx ends, then lets the requests in flight finish.

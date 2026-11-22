@@ -105,6 +105,7 @@ func (s *Session) SetEntitlementPN(insurantID string, auditEvidence string, hcv 
 	if err != nil {
 		return fmt.Errorf("sending request: %w", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
 		return parseHTTPError(resp)
