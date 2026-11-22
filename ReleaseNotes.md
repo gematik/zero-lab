@@ -1,5 +1,69 @@
 # Release Notes
 
+# Release 2026-11-22: go/kv v0.6.0, go/dpop v1.0.0-beta.4, go/pep v0.29.0, go/pep/proxy v0.6.0
+
+The request checks of servers.md rule 28 and the RFC 9700 findings of TASK-259 for the PEP, and key files read
+once at start (servers.md rule 8). Verified for all four on main at da17652c:
+- `just check` across all Go modules passed; `api-lint` was skipped without `GEMATIK_API_TOOLS_DIR`.
+- OpenID Federation (`just oidf-test`) against https://app-ref.federationmaster.de; kv on Postgres (Postgres 18,
+  `TEST_DATABASE_URL`) and the revocations of zero-pep-proxy over Postgres (`PEP_PG_DSN`): all passed on
+  2026-11-22.
+- Live logins on zerobin with `spilikin/zero-pep-proxy:0.5.1-dev.aa2d9929` (main at aa2d9929, the code of this
+  release): Techniker Krankenkasse RU2 (OpenID Federation, decoupled) and the gematik IDP-Dienst through the
+  gematik Authenticator and the TI-Gateway, 2026-11-22.
+
+# Release go/kv v0.6.0
+
+### breaking
+- `LoadKeyring` and `LoadKeychain` read their file once, at start, and no longer follow it; a changed file takes
+  effect with a rollout (servers.md rule 8). `Current`, `Lookup`, `Entries`, `Revoked`, `Ready` and `NameKeys`
+  do no file I/O (TASK-396).
+- `WithKeychainCheck` is removed: it looked only at a changed file. A consumer holds the file it starts with
+  against what is sealed through `Entries` and `Revoked`.
+
+# Release go/dpop v1.0.0-beta.4
+
+### added
+- `IsToken68`: the token68 syntax of DPoP and Bearer credentials (RFC 9110 Section 11.2), for go/pep (TASK-353).
+
+# Release go/pep v0.29.0
+
+### breaking
+- The Bearer enforcer refuses a sender-constrained token (any `cnf` member) with 401 `invalid_token`; an
+  `any_of` of bearer and DPoP still admits it with its proof (TASK-365).
+
+### security
+- Bearer credentials are read as DPoP ones are: one `Authorization` header, the scheme in any case, token68
+  within 16 KiB, else 400 before a token is parsed. An access token and a session snapshot are held to their
+  size and compact form before they are parsed (servers.md rule 28, TASK-353).
+
+# Release go/pep/proxy v0.6.0
+
+### breaking
+- A request whose `Host` is neither the host of `PEP_PUBLIC_URL` nor a name in the new `PEP_HOSTS` is answered
+  421 before anything looks at it. A deployment whose front proxy sends another Host sets `PEP_HOSTS`
+  (TASK-354).
+- `/oauth2/start`, `/oauth2/sign_in` and the callback declare their parameters: 400 for one that occurs twice,
+  an unknown one, an `rd` outside its grammar (a backslash or a control character included), an issuer the
+  chooser does not list and a scope the backend was not configured with. The callback refuses a repeated
+  parameter and ignores an unknown one. The shipped Caddyfile encodes the return-to (TASK-351).
+- The gateway answers 400 to a path that is not canonical before any route matches; a prefix matches on a
+  segment boundary only, and a non-canonical route prefix is refused at load (TASK-350).
+- Key files are read at start (go/kv v0.6.0): rotating the session store key is a rollout.
+
+### security
+- A redirect login completes only in the browser that started it (RFC 9700 Section 2.1.1): a callback without
+  the cookie of the session its `state` names is refused before the code is redeemed, and the session and its
+  state are removed. Decoupled (OpenID Federation) and authenticator (idpd) logins are cross-device and
+  complete without the cookie; `docs/DESIGN.md` §3 names the risk that remains and the mitigations in force
+  (TASK-364).
+- The first callback that names a state consumes it, whatever its outcome (RFC 9700 Section 4.2.4); every
+  answer of the callback carries `Cache-Control: no-store` and `Referrer-Policy: no-referrer` (TASK-369).
+- The gateway removes the session cookie and the snapshot from what it forwards upstream and leaves the
+  application's cookies as they came (RFC 9700 Sections 4.9 and 4.13, TASK-370).
+- The request header is bounded at 64 KiB, and a session cookie that is not the 43 base64url characters the
+  server sets names no session without the store being asked (TASK-354).
+
 # Release go/kv v0.5.0
 
 The keychain gets the format it is meant to keep, before anything but a test installation uses it (TASK-388),
