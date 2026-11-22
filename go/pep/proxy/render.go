@@ -33,6 +33,11 @@ import (
 
 // renderer loads and executes the UI templates. The template set is the embedded default unless a
 // TemplateDir is configured (os.DirFS), so a deployment can replace the UI from outside without rebuilding.
+// requiredTemplates are the pages the server renders.
+var requiredTemplates = []string{
+	"authenticator.html", "complete.html", "error.html", "qr.html", "sign_in.html", "sign_out.html", "signed_out.html",
+}
+
 type renderer struct {
 	tmpl *template.Template
 	log  *slog.Logger
@@ -46,6 +51,13 @@ func newRenderer(templateDir string, log *slog.Logger) (*renderer, error) {
 	t, err := template.New("").ParseFS(fsys, "*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
+	}
+	// A directory of replacements that lacks a page fails the start, not the first request for it (servers.md
+	// rule 17).
+	for _, name := range requiredTemplates {
+		if t.Lookup(name) == nil {
+			return nil, fmt.Errorf("templates: %s is missing", name)
+		}
 	}
 	return &renderer{tmpl: t, log: log}, nil
 }

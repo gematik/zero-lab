@@ -29,6 +29,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -866,5 +868,118 @@ func TestServerRule11_OfConcurrentCallbacksWithOneStateOneRedeemsTheCode(t *test
 				t.Errorf("redeemed %d codes, want 1", got)
 			}
 		})
+	}
+}
+
+// signedIn returns a server and the cookie of a signed-in session on it.
+func signedIn(t *testing.T) (*Server, *Session, *http.Cookie) {
+	t.Helper()
+	s := newTestServer(t)
+	sess := s.sessions.create()
+	sess.Identity = map[string]any{"sub": "x"}
+	if err := s.sessions.save(t.Context(), sess); err != nil {
+		t.Fatal(err)
+	}
+	return s, sess, &http.Cookie{Name: s.cookie.Name, Value: sess.token} //nolint:gosec // request cookie in a test: only name and value go on the wire
+}
+
+func send(s *Server, method, target string, cookie *http.Cookie, headers map[string]string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(method, target, nil)
+	r.AddCookie(cookie)
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, r)
+	return rec
+}
+
+// RFC 9700 Section 2.1 (logout CSRF, RFC 6819 Section 4.4.1.8): a sign-out another site triggers by a link, an image
+// or a form leaves the session intact; a GET that is not from this origin or typed by the user only asks to confirm.
+func TestRFC9700_2_1_ASignOutFromAnotherSiteLeavesTheSessionIntact(t *testing.T) {
+	for name, c := range map[string]struct {
+		method  string
+		headers map[string]string
+		status  int
+	}{
+		"GET cross-site":              {http.MethodGet, map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusOK},
+		"GET same-site":               {http.MethodGet, map[string]string{"Sec-Fetch-Site": "same-site"}, http.StatusOK},
+		"GET without fetch metadata":  {http.MethodGet, nil, http.StatusOK},
+		"POST form cross-site":        {http.MethodPost, map[string]string{"Sec-Fetch-Site": "cross-site"}, http.StatusForbidden},
+		"POST without fetch metadata": {http.MethodPost, nil, http.StatusForbidden},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, sess, cookie := signedIn(t)
+			rec := send(s, c.method, "/oauth2/sign_out", cookie, c.headers)
+			if rec.Code != c.status {
+				t.Fatalf("status = %d, want %d", rec.Code, c.status)
+			}
+			if _, err := s.sessions.byID(t.Context(), sess.ID); err != nil {
+				t.Error("the session was ended")
+			}
+			if c.method == http.MethodGet && !strings.Contains(rec.Body.String(), `method="post" action="/oauth2/sign_out"`) {
+				t.Error("no confirmation form")
+			}
+		})
+	}
+}
+
+// RFC 9700 Section 2.1: a sign-out from this server's own pages, the confirmation form's POST included, or typed by
+// the user ends the session.
+func TestRFC9700_2_1_ASignOutFromThisOriginEndsTheSession(t *testing.T) {
+	for name, c := range map[string]struct {
+		method  string
+		headers map[string]string
+	}{
+		"GET same-origin":       {http.MethodGet, map[string]string{"Sec-Fetch-Site": "same-origin"}},
+		"GET typed by user":     {http.MethodGet, map[string]string{"Sec-Fetch-Site": "none"}},
+		"POST form same-origin": {http.MethodPost, map[string]string{"Sec-Fetch-Site": "same-origin"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, sess, cookie := signedIn(t)
+			rec := send(s, c.method, "/oauth2/sign_out", cookie, c.headers)
+			if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Signed out") {
+				t.Fatalf("status = %d", rec.Code)
+			}
+			if _, err := s.sessions.byID(t.Context(), sess.ID); err == nil {
+				t.Error("the session survived")
+			}
+		})
+	}
+}
+
+// RFC 9700 Section 2.1: a login another site starts in a signed-in browser does not replace its session; the browser
+// goes where it was headed. From this origin a new login may still begin.
+func TestRFC9700_2_1_ALoginStartFromAnotherSiteKeepsTheSignedInSession(t *testing.T) {
+	s, sess, cookie := signedIn(t)
+	rec := send(s, http.MethodGet, "/oauth2/start?rd=/app", cookie, map[string]string{"Sec-Fetch-Site": "cross-site"})
+	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/app" {
+		t.Fatalf("start = %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if len(rec.Result().Cookies()) != 0 {
+		t.Error("the session cookie was replaced")
+	}
+	if _, err := s.sessions.byID(t.Context(), sess.ID); err != nil {
+		t.Error("the session was lost")
+	}
+	same := send(s, http.MethodGet, "/oauth2/start?rd=/app", cookie, map[string]string{"Sec-Fetch-Site": "same-origin"})
+	if same.Code != http.StatusFound || len(same.Result().Cookies()) == 0 {
+		t.Errorf("a same-origin start = %d without a new cookie", same.Code)
+	}
+}
+
+// Server rule 17: a template directory that lacks a page the server renders fails the start.
+func TestServerRule17_ATemplateDirectoryWithoutEveryPageIsRefusedAtStart(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range requiredTemplates {
+		if name == "sign_out.html" {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(`{{define "styles"}}{{end}}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := newRenderer(dir, slog.New(slog.DiscardHandler)); err == nil || !strings.Contains(err.Error(), "sign_out.html") {
+		t.Errorf("err = %v, want sign_out.html missing", err)
 	}
 }

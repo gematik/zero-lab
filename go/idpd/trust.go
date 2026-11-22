@@ -68,7 +68,8 @@ const (
 type TrustOption func(*trustSettings)
 
 type trustSettings struct {
-	mark func(context.Context) context.Context
+	mark   func(context.Context) context.Context
+	logger *slog.Logger
 }
 
 // WithSelfVerifying marks the fetches of data that proves itself (OCSP answers, and with [NewFetchingTrust] the
@@ -77,6 +78,12 @@ type trustSettings struct {
 // transport; nil leaves the requests as they are.
 func WithSelfVerifying(mark func(context.Context) context.Context) TrustOption {
 	return func(s *trustSettings) { s.mark = mark }
+}
+
+// WithTrustLogger has [NewFetchingTrust]'s background refresh log a failed download to logger; without it nothing
+// is logged (go/docs/design.md section 2).
+func WithTrustLogger(logger *slog.Logger) TrustOption {
+	return func(s *trustSettings) { s.logger = logger }
 }
 
 func trustOptions(opts []TrustOption) trustSettings {
@@ -117,11 +124,13 @@ func (v *verifier) check(ctx context.Context, store *tipki.TrustStore, which IDP
 	if result.Valid {
 		return nil
 	}
+	// The findings' codes only: their messages name certificates, and error text ends up in logs (servers.md
+	// rule 14).
 	reasons := make([]string, 0, len(result.Errors))
 	for _, finding := range result.Errors {
-		reasons = append(reasons, string(finding.Code)+": "+finding.Message)
+		reasons = append(reasons, string(finding.Code))
 	}
-	return fmt.Errorf("%s: %q is not valid for an IDP-Dienst: %s", which, certs[0].Subject.CommonName, strings.Join(reasons, "; "))
+	return fmt.Errorf("%s: the certificate is not valid for an IDP-Dienst: %s", which, strings.Join(reasons, "; "))
 }
 
 // BundleTrust checks a certificate against a mounted bundle with the idpd-sig profile, and its revocation

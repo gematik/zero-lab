@@ -200,7 +200,7 @@ func isAccessTokenType(typ string) bool {
 
 func keyFits(key *jose.JSONWebKey, alg jose.SignatureAlgorithm) error {
 	if key.Use != "" && key.Use != "sig" {
-		return fmt.Errorf("marked use=%q, not for signatures", key.Use)
+		return errors.New("marked for another use than signatures")
 	}
 	if key.Algorithm != "" && key.Algorithm != string(alg) {
 		return fmt.Errorf("states alg %s, the token names %s", key.Algorithm, alg)

@@ -112,3 +112,13 @@ func TestServerRule14_ClaimsOfAnotherTypeAreNotQuoted(t *testing.T) {
 	}
 	requireRefusedFor(t, c.UnmarshalClaims(&claims), "token claims: do not decode into the type asked for")
 }
+
+// Server rule 14: a key of the set marked for another use is refused without quoting the use it names.
+func TestServerRule14_AKeysUseIsNotQuoted(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = keyFits(&jose.JSONWebKey{Key: &key.PublicKey, Use: marker}, jose.ES256)
+	requireRefusedFor(t, err, "marked for another use than signatures")
+}

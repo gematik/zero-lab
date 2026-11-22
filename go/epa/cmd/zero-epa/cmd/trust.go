@@ -25,6 +25,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -62,7 +63,7 @@ func newTiTrust(envs ...epa.Env) (*tiTrust, error) {
 			t.Close()
 			return nil, err
 		}
-		trust, err := fetch.New(tslEnv, webClient, fetch.WithSelfVerifying(egress.SelfVerifying))
+		trust, err := fetch.New(tslEnv, webClient, fetch.WithSelfVerifying(egress.SelfVerifying), fetch.WithLogger(slog.Default()))
 		if err != nil {
 			t.Close()
 			return nil, fmt.Errorf("the TI trust material of %s: %w", env, err)

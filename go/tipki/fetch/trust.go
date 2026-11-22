@@ -63,7 +63,9 @@ type Trust struct {
 	// checker asks for the TSL signer's status when the published .ocsp does not answer it.
 	checker tipki.RevocationChecker
 	// mark marks the fetches of data that proves itself; nil leaves them as they are.
-	mark     func(context.Context) context.Context
+	mark func(context.Context) context.Context
+	// log is the host's logger (go/docs/design.md section 2); nil logs nothing.
+	log      *slog.Logger
 	client   *http.Client
 	now      func() time.Time
 	interval func(failed bool) time.Duration
@@ -94,6 +96,16 @@ type Option func(*Trust)
 // lets them through: go/egress's SelfVerifying fits. A function, so that neither module imports the other.
 func WithSelfVerifying(mark func(context.Context) context.Context) Option {
 	return func(t *Trust) { t.mark = mark }
+}
+
+// WithLogger has the background refresh log a failed fetch, and a list fetched without its signer's .ocsp, to
+// logger. Without it nothing is logged; a failed refresh is still kept and reported by the trust's status.
+func WithLogger(logger *slog.Logger) Option {
+	return func(t *Trust) {
+		if logger != nil {
+			t.log = logger
+		}
+	}
 }
 
 // New fetches once, so a host without a route to the material does not start, and keeps refreshing until
@@ -135,6 +147,7 @@ func newTrust(urls urls, anchor []byte, signerAnchors [][]byte, checker tipki.Re
 		anchor:        anchor,
 		signerAnchors: signerAnchors,
 		checker:       checker,
+		log:           slog.New(slog.DiscardHandler),
 		client:        &noRedirect,
 		now:           now,
 		interval:      interval,
@@ -215,7 +228,7 @@ func (t *Trust) run() {
 			cancel()
 			if err != nil {
 				// May be an outage, may be tampering: the old copy stands only until it is too old.
-				slog.Error("refreshing the TI trust material", "error", err)
+				t.log.Error("refreshing the TI trust material", "error", err)
 			}
 			fetching.Reset(t.interval(err != nil))
 		case <-expired:
@@ -295,7 +308,7 @@ func (t *Trust) fetch(ctx context.Context) error {
 	// Without a current .ocsp the signer's status is asked online, so its absence is not a failure.
 	signerStatus, err := t.get(t.selfVerifying(ctx), t.urls.list+".ocsp")
 	if err != nil {
-		slog.Warn("no .ocsp for the list's signer, asking its responder", "error", err)
+		t.log.Warn("no .ocsp for the list's signer, asking its responder", "error", err)
 		signerStatus = nil
 	}
 	roots, err := t.get(ctx, t.urls.roots)

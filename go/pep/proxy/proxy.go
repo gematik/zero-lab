@@ -385,6 +385,19 @@ func (s *Server) handleStart(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A login another site starts in a signed-in browser would replace that browser's session with a pending one,
+	// a sign-out by the back door: such a request goes where it was headed instead (RFC 9700 Section 2.1).
+	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" || site == "same-site" {
+		if current, ok := s.currentSession(r); ok && current.Authenticated() {
+			dest := rd
+			if dest == "" {
+				dest = "/"
+			}
+			http.Redirect(w, r, dest, http.StatusFound) //nolint:gosec // G710: rd passed checkReturnTo above, a local path of this origin only
+			return
+		}
+	}
+
 	sess := s.sessions.create()
 	sess.ReturnTo = rd
 	start, err := s.backend.StartLogin(r.Context(), sess, idpIss, q.Get("scope"))
@@ -580,11 +593,21 @@ func (s *Server) requestOwnsSession(r *http.Request, sess *Session) bool {
 // signOutTimeout bounds the store calls of a sign-out, which no longer end with the request.
 const signOutTimeout = 5 * time.Second
 
-// handleSignOut clears the session. POST (XHR) requires the X-Requested-With CSRF header and returns 204;
-// GET (a link) renders signed_out.html.
+// handleSignOut clears the session, but only on a request this server's own pages or the user made: a sign-out any
+// site can trigger with a link or an image is logout CSRF (RFC 9700 Section 2.1, RFC 6819 Section 4.4.1.8). The
+// browser says where a request comes from in Sec-Fetch-Site. A GET from this origin or typed by the user ("none")
+// signs out and renders signed_out.html; any other GET, a header missing included, renders sign_out.html, whose form
+// POSTs from this origin. A POST signs out when it comes from this origin or carries X-Requested-With, which a
+// cross-site page cannot set without CORS; an XHR gets 204, a form signed_out.html.
 func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost && r.Header.Get("X-Requested-With") == "" {
-		http.Error(w, "missing X-Requested-With", http.StatusForbidden)
+	site := r.Header.Get("Sec-Fetch-Site")
+	xhr := r.Header.Get("X-Requested-With") != ""
+	switch {
+	case r.Method == http.MethodGet && site != "same-origin" && site != "none":
+		s.render.render(w, http.StatusOK, "sign_out.html", nil)
+		return
+	case r.Method == http.MethodPost && !xhr && site != "same-origin":
+		http.Error(w, "sign-out from another site refused", http.StatusForbidden)
 		return
 	}
 	// A browser that navigates away right after the request cancels it; a sign-out cut short would leave a
@@ -599,7 +622,7 @@ func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	if s.snapCookie != nil {
 		expireCookie(w, s.snapCookie)
 	}
-	if r.Method == http.MethodGet {
+	if !xhr {
 		s.render.render(w, http.StatusOK, "signed_out.html", nil)
 		return
 	}

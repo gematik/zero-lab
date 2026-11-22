@@ -550,7 +550,7 @@ func parseTSL(data []byte) (*TSL, error) {
 func parseTSLTime(value, element string) (time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
 	if err != nil {
-		return time.Time{}, fmt.Errorf("%s %q is not an RFC 3339 dateTime", element, value)
+		return time.Time{}, fmt.Errorf("%s is not an RFC 3339 dateTime", element)
 	}
 	return parsed, nil
 }
@@ -563,7 +563,7 @@ func convertService(provider, name string, serviceType, status, start *string, i
 ) (Service, error) {
 	service := Service{Provider: provider, Name: name}
 	if serviceType == nil || status == nil || identity == nil {
-		return service, fmt.Errorf("service %q lacks a required element", name)
+		return service, errors.New("a service lacks a required element")
 	}
 	service.ServiceType = strings.TrimSpace(*serviceType)
 	service.Status = strings.TrimSpace(*status)
@@ -573,10 +573,10 @@ func convertService(provider, name string, serviceType, status, start *string, i
 		}
 		der, err := base64.StdEncoding.Strict().DecodeString(strings.Join(strings.Fields(*id.Certificate), ""))
 		if err != nil {
-			return service, fmt.Errorf("certificate of %q: %w", name, err)
+			return service, fmt.Errorf("certificate of a service: %w", err)
 		}
 		if service.Certificate, err = ParseCertificate(der); err != nil {
-			return service, fmt.Errorf("certificate of %q: %w", name, err)
+			return service, fmt.Errorf("certificate of a service: %w", err)
 		}
 		break
 	}
@@ -595,7 +595,7 @@ func convertService(provider, name string, serviceType, status, start *string, i
 		}
 		id, err := oid.Parse(strings.TrimSpace(*raw))
 		if err != nil {
-			return service, fmt.Errorf("ExtensionOID of %q: %w", name, err)
+			return service, fmt.Errorf("ExtensionOID of a service: %w", err)
 		}
 		if !id.Equal(tslPlaceholder) {
 			service.TypeOIDs = append(service.TypeOIDs, id)

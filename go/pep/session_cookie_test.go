@@ -23,8 +23,10 @@ package pep
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json/v2"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +37,8 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"github.com/gematik/zero-lab/go/dpop"
 )
 
 func mintTestCookie(t *testing.T, key []byte, identity map[string]any, exp int64) string {
@@ -82,20 +86,35 @@ func TestOpenSessionCookie(t *testing.T) {
 
 // testContext is a minimal pep.Context for exercising enforcers.
 type testContext struct {
-	r         *http.Request
-	claimsRaw []byte
-	denied    bool
-	denyErr   Error
+	r           *http.Request
+	revocations SessionRevocations
+	claimsRaw   []byte
+	denied      bool
+	denyErr     Error
 }
 
-func (c *testContext) Writer() http.ResponseWriter           { return httptest.NewRecorder() }
-func (c *testContext) Request() *http.Request                { return c.r }
-func (c *testContext) Deny(err Error)                        { c.denied = true; c.denyErr = err }
-func (c *testContext) WithDeny(func(Context, Error)) Context { return c }
-func (c *testContext) Slogger() *slog.Logger                 { return slog.Default() }
-func (c *testContext) Now() time.Time                        { return time.Now() }
-func (c *testContext) UnmarshalClaims(v any) error           { return json.Unmarshal(c.claimsRaw, v) }
-func (c *testContext) SetClaims(raw []byte)                  { c.claimsRaw = raw }
+func (c *testContext) Writer() http.ResponseWriter            { return httptest.NewRecorder() }
+func (c *testContext) Request() *http.Request                 { return c.r }
+func (c *testContext) Deny(err Error)                         { c.denied = true; c.denyErr = err }
+func (c *testContext) WithDeny(func(Context, Error)) Context  { return c }
+func (c *testContext) Slogger() *slog.Logger                  { return slog.Default() }
+func (c *testContext) Now() time.Time                         { return time.Now() }
+func (c *testContext) UnmarshalClaims(v any) error            { return json.Unmarshal(c.claimsRaw, v) }
+func (c *testContext) SetClaims(raw []byte)                   { c.claimsRaw = raw }
+func (c *testContext) SessionRevocations() SessionRevocations { return c.revocations }
+
+// fakeRevocations revoke the sessions named in revoked, or fail every check with err.
+type fakeRevocations struct {
+	revoked map[string]bool
+	err     error
+}
+
+func (f fakeRevocations) Revoked(_ context.Context, sid string) (bool, error) {
+	if f.err != nil {
+		return false, f.err
+	}
+	return f.revoked[sid], nil
+}
 
 func TestEnforcerSessionCookie(t *testing.T) {
 	key := bytes.Repeat([]byte{7}, 32)
@@ -104,7 +123,7 @@ func TestEnforcerSessionCookie(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: "SID", Value: tok}) //nolint:gosec // request cookie in a test: only name and value go on the wire
-	ctx := &testContext{r: req}
+	ctx := &testContext{revocations: fakeRevocations{}, r: req}
 	called := false
 	enf.Apply(ctx, func(c Context) {
 		called = true
@@ -120,11 +139,11 @@ func TestEnforcerSessionCookie(t *testing.T) {
 	}
 
 	// scope check composes on top — EnforcerScope reads the identity the cookie set.
-	enf.Apply(&testContext{r: req}, func(c Context) {
+	enf.Apply(&testContext{revocations: fakeRevocations{}, r: req}, func(c Context) {
 		(&EnforcerScope{Scope: "read"}).Apply(c, func(Context) {})
 	})
 
-	ctx2 := &testContext{r: httptest.NewRequest(http.MethodGet, "/", nil)}
+	ctx2 := &testContext{revocations: fakeRevocations{}, r: httptest.NewRequest(http.MethodGet, "/", nil)}
 	enf.Apply(ctx2, func(Context) { t.Error("next ran without a cookie") })
 	if !ctx2.denied || ctx2.denyErr.HTTPStatus != 401 {
 		t.Errorf("missing cookie: denied=%v status=%d", ctx2.denied, ctx2.denyErr.HTTPStatus)
@@ -152,7 +171,7 @@ func TestEnforcerSessionCookie_ConcurrentFirstRequestsShareTheLoadedKeys(t *test
 		waiting.Go(func() {
 			request := httptest.NewRequest(http.MethodGet, "/", nil)
 			request.AddCookie(&http.Cookie{Name: "SID", Value: token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
-			ctx := &testContext{r: request}
+			ctx := &testContext{revocations: fakeRevocations{}, r: request}
 			enforcer.Apply(ctx, func(Context) {})
 			if ctx.denied {
 				t.Errorf("denied: %v", ctx.denyErr)
@@ -171,16 +190,83 @@ func TestServerRule16_ASessionCookieKeyReadFailureDeniesAndIsRetried(t *testing.
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
 	request.AddCookie(&http.Cookie{Name: "SID", Value: token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
 
-	first := &testContext{r: request}
+	first := &testContext{revocations: fakeRevocations{}, r: request}
 	enforcer.Apply(first, func(Context) { t.Error("next ran without keys") })
 	if !first.denied || first.denyErr.HTTPStatus != http.StatusUnauthorized {
 		t.Errorf("without keys: denied=%v status=%d", first.denied, first.denyErr.HTTPStatus)
 	}
 
 	writeSessionKey(t, path, key)
-	second := &testContext{r: request}
+	second := &testContext{revocations: fakeRevocations{}, r: request}
 	enforcer.Apply(second, func(Context) {})
 	if second.denied {
 		t.Errorf("with keys: %v", second.denyErr)
+	}
+}
+
+// sessionCookieRequest is a request carrying a valid snapshot of session s1 under the cookie SID.
+func sessionCookieRequest(t *testing.T, key []byte) *http.Request {
+	t.Helper()
+	token := mintTestCookie(t, key, map[string]any{"sub": "u1"}, time.Now().Add(time.Hour).Unix())
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{Name: "SID", Value: token}) //nolint:gosec // request cookie in a test: only name and value go on the wire
+	return request
+}
+
+// Server rule 11 (TASK-313): a signed-out or rotated session's snapshot stays valid until it expires, so the
+// enforcer asks the shared revocations and refuses it; the session it asks about is the snapshot's.
+func TestServerRule11_TheSessionCookieEnforcerRefusesARevokedSessionsSnapshot(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	enforcer := NewEnforcerSessionCookie("SID", [][]byte{key})
+
+	revoked := &testContext{r: sessionCookieRequest(t, key), revocations: fakeRevocations{revoked: map[string]bool{"s1": true}}}
+	enforcer.Apply(revoked, func(Context) { t.Error("next ran for a revoked session") })
+	if !revoked.denied || revoked.denyErr.HTTPStatus != http.StatusUnauthorized {
+		t.Errorf("revoked: denied=%v status=%d", revoked.denied, revoked.denyErr.HTTPStatus)
+	}
+
+	other := &testContext{r: sessionCookieRequest(t, key), revocations: fakeRevocations{revoked: map[string]bool{"s2": true}}}
+	called := false
+	enforcer.Apply(other, func(Context) { called = true })
+	if !called || other.denied {
+		t.Errorf("another session revoked: called=%v denied=%v", called, other.denied)
+	}
+}
+
+// Server rule 16: a revocation check that fails denies, as the session may have been signed out.
+func TestServerRule16_AFailingRevocationCheckDeniesTheSessionCookie(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	ctx := &testContext{r: sessionCookieRequest(t, key), revocations: fakeRevocations{err: errors.New("revocations unavailable")}}
+	NewEnforcerSessionCookie("SID", [][]byte{key}).Apply(ctx, func(Context) { t.Error("next ran though the check failed") })
+	if !ctx.denied || ctx.denyErr.HTTPStatus != http.StatusUnauthorized {
+		t.Errorf("denied=%v status=%d", ctx.denied, ctx.denyErr.HTTPStatus)
+	}
+}
+
+// Server rule 16: a PEP built without session revocations cannot tell a signed-out session from a live one, so its
+// session cookie enforcer denies every snapshot; with them, the same snapshot passes.
+func TestServerRule16_ASessionCookieEnforcerWithoutRevocationsDenies(t *testing.T) {
+	key := bytes.Repeat([]byte{7}, 32)
+	enforcer := NewEnforcerSessionCookie("SID", [][]byte{key})
+	build := func(b *Builder) *PEP {
+		t.Helper()
+		p, err := b.Resource("https://example.com").WithJWKSet(&jose.JSONWebKeySet{}).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).Build()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	w := httptest.NewRecorder()
+	enforcer.Apply(build(NewBuilder()).NewContext(w, sessionCookieRequest(t, key)), func(Context) { t.Error("next ran without revocations") })
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("without revocations: status %d", w.Code)
+	}
+
+	called := false
+	p := build(NewBuilder().WithSessionRevocations(fakeRevocations{}))
+	enforcer.Apply(p.NewContext(httptest.NewRecorder(), sessionCookieRequest(t, key)), func(Context) { called = true })
+	if !called {
+		t.Error("with revocations: a live session was denied")
 	}
 }

@@ -120,7 +120,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.proxy.ServeHTTP(w, r)
 		return
 	}
-	gctx := newGatewayContext(w, r, g.deps.now, g.deps.log)
+	gctx := newGatewayContext(w, r, g.deps.now, g.deps.log, g.deps.revocations)
 	served := false
 	g.policyFor(rt).Apply(gctx, func(pep.Context) {
 		served = true

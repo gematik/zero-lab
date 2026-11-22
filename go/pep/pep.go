@@ -59,6 +59,8 @@ type PEP struct {
 	// dpopNonceVerifier checks proofs for the enforcers that require a nonce; nil without a nonce source.
 	dpopNonceVerifier *dpop.Verifier
 	dpopNonces        dpop.NonceSource
+	// sessionRevocations are what EnforcerSessionCookie asks whether a snapshot's session was ended; nil denies.
+	sessionRevocations SessionRevocations
 	// now is the time tokens, proofs and cookies are judged at.
 	now func() time.Time
 }
@@ -193,6 +195,14 @@ func (b *Builder) WithDPoPReplays(replays dpop.Replays) *Builder {
 	return b
 }
 
+// WithSessionRevocations sets the revocations EnforcerSessionCookie checks every snapshot's session against. A
+// PEP without them denies every request on the session cookie: a signed-out session's snapshot stays valid until
+// it expires, and only the revocations tell.
+func (b *Builder) WithSessionRevocations(revocations SessionRevocations) *Builder {
+	b.p.sessionRevocations = revocations
+	return b
+}
+
 // WithAccessTokenAcceptableSkew sets the clock skew tolerated on a token's time claims; zero means one minute.
 func (b *Builder) WithAccessTokenAcceptableSkew(d time.Duration) *Builder {
 	b.p.accessTokenAcceptableSkew = d
@@ -308,6 +318,9 @@ type Context interface {
 	// SetClaims sets the raw JSON claims that UnmarshalClaims reads. A token-verifying enforcer sets these
 	// from the verified token; a session-cookie enforcer sets them from the cookie identity.
 	SetClaims(raw []byte)
+	// SessionRevocations are the revocations EnforcerSessionCookie checks a snapshot's session against; nil
+	// when there are none, and the enforcer denies.
+	SessionRevocations() SessionRevocations
 }
 
 type pepContext struct {
@@ -345,6 +358,8 @@ func (c *pepContext) WithDeny(deny func(Context, Error)) Context {
 }
 
 func (c *pepContext) Now() time.Time { return c.pep.now() }
+
+func (c *pepContext) SessionRevocations() SessionRevocations { return c.pep.sessionRevocations }
 
 func (c *pepContext) Slogger() *slog.Logger {
 	return c.slogger

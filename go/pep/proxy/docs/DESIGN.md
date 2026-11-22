@@ -114,7 +114,10 @@ be that provider.
   authenticated session.
 - `return_to` is validated as a local path (open-redirect guard) at `/oauth2/start`.
 - `state` is single-use per login session and high-entropy; PKCE (`S256`) binds the code exchange.
-- `sign_out` is CSRF-guarded with `X-Requested-With` in addition to `SameSite`.
+- `sign_out` ends a session only on a request from this origin or typed by the user (`Sec-Fetch-Site` `same-origin`
+  or `none`) or an XHR with `X-Requested-With`; any other GET only renders a confirmation form, so another site
+  cannot sign a user out. A cross-site `/oauth2/start` in a signed-in browser redirects to its `rd` instead of
+  replacing the session (RFC 9700 Section 2.1).
 
 ## 4. Why `SameSite=Lax` (not Strict)
 

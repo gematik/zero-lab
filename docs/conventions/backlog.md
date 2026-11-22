@@ -42,6 +42,9 @@ backend that might be useful) does not get a task; it is written down when it be
 - **Labels:** the unit (`ti-pki`, `jwz`, `go`, `pdp`, …) and the kind (`fuzz`, `tests`,
   `deps`, `keys`, `spec`, `security`, `release`, `chore`, …), in the spelling existing
   tasks use.
+- **Type** (`--type`): one of the types in `backlog/config.yml`. `external` marks a task
+  that waits on someone outside this repository (an upstream release, an organisation's
+  setting, another team), so that it is not taken for work that can start.
 - **Priority:** `high` for security defects, release blockers and broken checks;
   `medium` for gaps against the rules and planned work; `low` for nice-to-have and
   housekeeping.

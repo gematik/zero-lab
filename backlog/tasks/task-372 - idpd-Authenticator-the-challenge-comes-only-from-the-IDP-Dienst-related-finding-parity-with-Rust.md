@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-17T06:45:00Z'
+updated_date: '2026-11-22 15:14'
 labels:
   - idpd
   - security
@@ -24,3 +25,9 @@ ordinal: 387000
 <!-- AC:BEGIN -->
 - [ ] #1 The authorization URL must have the origin of the IDP-Dienst's `authorization_endpoint` from its signed metadata, or nothing is fetched. Test named after the requirement, and the same rule in ti-idpd-client if it lacks it.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22, maintainer: to be built later, in the Rust sprint (parity with ti-directory-client).
+<!-- SECTION:NOTES:END -->

@@ -4,10 +4,11 @@ title: 'jwz: gematik GitHub team as crates.io owner'
 status: To Do
 assignee: []
 created_date: '2026-11-07T08:47:00Z'
-updated_date: '2026-11-08T12:06:00Z'
+updated_date: '2026-11-22 15:22'
 labels:
   - jwz
 dependencies: []
+type: external
 ordinal: 255000
 ---
 

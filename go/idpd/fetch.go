@@ -52,7 +52,7 @@ func NewFetchingTrust(env Environment, httpClient *http.Client, opts ...TrustOpt
 	if err != nil {
 		return nil, err
 	}
-	trust, err := fetch.New(fetchEnvironment(env), httpClient, fetch.WithSelfVerifying(options.mark))
+	trust, err := fetch.New(fetchEnvironment(env), httpClient, fetch.WithSelfVerifying(options.mark), fetch.WithLogger(options.logger))
 	if err != nil {
 		return nil, err
 	}
