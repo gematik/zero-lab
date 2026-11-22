@@ -1,10 +1,10 @@
 ---
 id: TASK-383
 title: 'Go profile: rules 29 and 30 mapped to the HTTP stack'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-18 21:34'
-updated_date: '2026-11-19 13:53'
+updated_date: '2026-11-22 16:03'
 labels:
   - go
   - docs
@@ -26,7 +26,7 @@ servers.md rules 29 (transport grammar) and 30 (egress client) are new (TASK-382
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 go/docs/design.md names, for each bullet of rules 29 and 30, the Go construct or package that meets it, without restating the rule
+- [x] #1 go/docs/design.md names, for each bullet of rules 29 and 30, the Go construct or package that meets it, without restating the rule
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -34,3 +34,9 @@ servers.md rules 29 (transport grammar) and 30 (egress client) are new (TASK-382
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-19: rule 29 no longer asks for TLS reload without restart (TASK-395): TLS material is read at start and rotated by a rollout. Nothing to map for reload.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/docs/design.md section 10 maps every bullet of servers.md rules 29 and 30 to its Go construct: the listener URL and its parsing (zero-pep-proxy's listen.go), loopback and the operator's acceptance, crypto/tls from files with VerifyConnection for the allowlist and the profile constants, egress.NewClient with its rule in the Proxy hook, egress.SelfVerifying passed as a function, egress.NewTransport for peers. It names what is not built in Go: Unix-socket listeners, peers by URL, the admin listener's report, a private-range check of resolved addresses, and the forward proxy's checks (TASK-407). It replaces the bullet that claimed an SSRF constructor with DNS checks that does not exist.
+<!-- SECTION:FINAL_SUMMARY:END -->
