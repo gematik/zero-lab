@@ -6,6 +6,7 @@ title: >-
 status: Draft
 assignee: []
 created_date: '2026-11-20 16:59'
+updated_date: '2026-11-22 17:02'
 labels:
   - servers
   - docs
@@ -46,3 +47,19 @@ Each change of the health state is one log line with the old state, the new stat
 
 **naming-and-config:** `…_PLAINTEXT_ACCEPTED` also for a plaintext admin listener (rule 23); new `…_TLS_ACCEPTED`: `true` accepts an admin listener with TLS but without client authentication; unset or any other value, an admin listener without a client CA is refused.
 <!-- SECTION:DESCRIPTION:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22, gemSpec_ZETA 1.3.2 (release; draft 2.0.0_CC unchanged on these points) checked for telemetry:
+- Signals: every ZETA Guard component except the databases produces OpenTelemetry-conformant traces, metrics and logs (A_27264). HTTP proxy, authorization server, policy engine and notification service send traces of every operation to the cluster's telemetry data service (A_27492-02). That service forwards by OTLP over gRPC or HTTP/JSON (A_27261), traces to gematik in batches, asynchronously (A_27727-01), and must keep that delivery working (A_27796).
+- Security monitoring to the TI-SIEM, through the telemetry service: per request, PEP and PDP send a fixed set of attributes as part of an OTel trace, named after OTel semantic conventions (client.address, user_agent.original, http.request.method, http.route, ...; A_28783); every detected attack as part of a trace (A_28795-01); the PDP's policy decision as an OTel log (A_28867); once a day security KPIs as an OTel metric (A_25484-03: attempts by unregistered clients, botnet hits, accesses per country split into insured and professionals, failed client activations); all of it linked by one correlation ID through the request (A_28796).
+- Privacy: no medical data, no security-relevant data (keys, tokens) and nothing suited to profiling in logging and monitoring (A_25744, A_25745, A_25746, A_27260), the HSM proxy likewise (A_28822); security telemetry not passed on and deleted on time (A_28960, A_28964).
+- Shared Signals: described in chapter 4.7.2 (the monitoring ends a client's session), but explicitly not supported by ZETA for now, as SIEMs and infrastructure lack support.
+- Not in the specification: health checks (no requirement), Prometheus (not named; ZETA Guard's chart scrapes Prometheus endpoints into its OTel collector, which turns them into OTel metrics, so a Prometheus exposition meets A_27264 through the collector).
+
+Maintainer's direction for the specification (2026-11-22):
+1. Health checks that work alike under Kubernetes, Docker and compose: an exec subcommand of the binary (<binary> health ready|live) serves all three (Kubernetes exec probes, Dockerfile HEALTHCHECK CMD, compose healthcheck test), with no shell in the image; an HTTP probe path on the admin listener where a server has one (rule 31).
+2. Metrics as a Prometheus exposition on the admin listener (as already drafted above); the collector converts them for ZETA.
+3. Telemetry data, above all security events: traces and logs by OTLP push to the collector (the dependency to be decided: OpenTelemetry Go SDK or a small OTLP exporter of our own), security events as their own signal with the attributes of A_28783/A_28795-01/A_28867 and the correlation ID of A_28796, designed so that a Shared Signals (SSF/CAEP) transmitter can be added later without changing the producers.
+<!-- SECTION:NOTES:END -->
