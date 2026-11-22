@@ -50,6 +50,8 @@ type PEP struct {
 	decryptAccessTokenFunc    func(string) (string, error)
 	accessTokenAcceptableSkew time.Duration
 	resource                  string // URI of the resource being protected
+	// acceptUntyped takes an access token whose typ is not at+jwt, for an authorization server known to omit it.
+	acceptUntyped bool
 	// publicOrigin is the scheme, host and port clients reach the protected resource at; the
 	// DPoP proof's htu is checked against it plus the request path (RFC 9449 Section 4.3).
 	publicOrigin string
@@ -83,6 +85,11 @@ func (b *Builder) Build() (*PEP, error) {
 	}
 	if b.p.provideJwkSetFunc == nil {
 		return nil, errors.New("none of the JWKSet provider has been set")
+	}
+	// RFC 9700 Section 4.10.2: a resource server refuses a token not meant for it, which it can tell only by the
+	// audience, so a PEP always has one.
+	if b.p.resource == "" {
+		return nil, errors.New("no resource: call Resource with the URI the access tokens' aud names (RFC 9700 Section 4.10.2)")
 	}
 	if b.p.httpClient == nil {
 		b.p.httpClient = &http.Client{Timeout: defaultHTTPTimeout}
@@ -228,6 +235,14 @@ func (b *Builder) WithSlogger(slogger *slog.Logger) *Builder {
 // public origin. Without it the audience is not restricted.
 func (b *Builder) Resource(resource string) *Builder {
 	b.p.resource = resource
+	return b
+}
+
+// AcceptUntypedAccessTokens takes access tokens whose typ is not at+jwt (RFC 9068 Section 4), for an authorization
+// server known to omit it. Without it such a token is refused, so that another JWT the same key signs, an ID token
+// among them, is not taken for an access token.
+func (b *Builder) AcceptUntypedAccessTokens() *Builder {
+	b.p.acceptUntyped = true
 	return b
 }
 
@@ -520,15 +535,18 @@ func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWri
 	}
 }
 
-// VerifyAccessToken parses and verifies a JWT access token against the configured JWKSet. When a
-// resource is set (guarding a resource server) the token's audience must match it; with no resource
-// configured the audience is not restricted.
+// VerifyAccessToken parses and verifies a JWT access token against the configured JWKSet: its typ is at+jwt unless
+// the PEP accepts untyped tokens (RFC 9068 Section 4), and its audience names the resource (RFC 9700 Section
+// 4.10.2).
 func (p *PEP) VerifyAccessToken(tokenRaw string) (*AccessToken, error) {
 	jwks, err := p.provideJwkSetFunc()
 	if err != nil {
 		return nil, fmt.Errorf("could not get JWKSet: %w", err)
 	}
-	payload, err := verifyJWS(tokenRaw, jwks)
+	payload, typ, err := verifyJWS(tokenRaw, jwks)
+	if err == nil && !p.acceptUntyped && !isAccessTokenType(typ) {
+		err = errors.New("token typ is not at+jwt")
+	}
 	if err == nil {
 		err = validateClaims(payload, p.now(), p.accessTokenAcceptableSkew, p.resource)
 	}

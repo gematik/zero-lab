@@ -29,44 +29,33 @@ import (
 	"github.com/gematik/zero-lab/go/pep"
 )
 
-// TestVerifyAccessToken_AudienceOptional proves the PEP can be reused both as a guard before a
-// resource server (audience enforced when Resource is set) and inside an authorization server
-// (audience unrestricted when no Resource is configured).
-func TestVerifyAccessToken_AudienceOptional(t *testing.T) {
+// RFC 9700 Section 4.10.2: a resource server refuses a token not meant for it, so a PEP without a resource is not
+// built, and a token for another resource is refused.
+func TestRFC9700_4_10_2_TheAudienceIsRequired(t *testing.T) {
 	jwks, err := pep.ParseJWKSet([]byte(publicJWSKSet))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if _, err := pep.NewBuilder().WithJWKSet(jwks).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build(); err == nil {
+		t.Fatal("a PEP was built without a resource")
 	}
 	// createTestAccessToken issues a token with audience "https://example.com".
 	token, err := createTestAccessToken([]byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// No resource configured (authorization-server use): audience is not restricted.
-	asPEP, err := pep.NewBuilder().WithJWKSet(jwks).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := asPEP.VerifyAccessToken(token); err != nil {
-		t.Fatalf("verify without resource should succeed: %v", err)
-	}
-
-	// Resource matching the token audience: accepted.
 	matchPEP, err := pep.NewBuilder().WithJWKSet(jwks).Resource("https://example.com").WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := matchPEP.VerifyAccessToken(token); err != nil {
-		t.Fatalf("verify with matching resource should succeed: %v", err)
+		t.Fatalf("a token for the resource was refused: %v", err)
 	}
-
-	// Resource guarding a different resource server: audience enforced, token rejected.
 	otherPEP, err := pep.NewBuilder().WithJWKSet(jwks).Resource("https://other.example.com").WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := otherPEP.VerifyAccessToken(token); err == nil {
-		t.Fatal("verify with mismatched resource should fail")
+		t.Fatal("a token for another resource was accepted")
 	}
 }

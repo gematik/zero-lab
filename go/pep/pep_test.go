@@ -68,6 +68,7 @@ func TestPEPBuilder(t *testing.T) {
 	}
 
 	pep, err := pep.NewBuilder().
+		Resource("https://example.com").
 		WithJWKSet(jwkSet).
 		WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).
 		Build()

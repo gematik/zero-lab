@@ -39,6 +39,24 @@ is not watched.
 }
 ```
 
+## Access tokens
+
+`resource` is required: an access token is taken only if its `aud` names it (RFC 9700 Section
+4.10.2), and a configuration without it is refused. A token must say it is one by its `typ`,
+`at+jwt` or `application/at+jwt` (RFC 9068 Section 4), so that another JWT the authorization server
+signs with the same key, an ID token among them, is not taken for an access token. For an
+authorization server known to omit the `typ`, the global `pep` block takes
+`accept_untyped_access_tokens`.
+
+```caddyfile
+{
+	pep {
+		resource https://api.example.com
+		accept_untyped_access_tokens
+	}
+}
+```
+
 ## DPoP replays
 
 zaddy accepts a DPoP proof once (RFC 9449 Section 11.1). By default it remembers the proofs it

@@ -324,7 +324,7 @@ func signTestClaims(keyBytes []byte, claims map[string]any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: prk}, (&jose.SignerOptions{}).WithType("JWT"))
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: prk}, (&jose.SignerOptions{}).WithType("at+jwt"))
 	if err != nil {
 		return "", err
 	}

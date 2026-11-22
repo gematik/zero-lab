@@ -24,11 +24,13 @@ package pep
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"math"
 	"os"
 	"strconv"
@@ -90,6 +92,12 @@ var refusedSinceMigration = map[string]string{
 	"iss_null":             "RFC 7519 Section 4.1.1: iss is a string",
 	"private_key_in_set":   "a key set is public material; a private key there is a mistake to surface",
 	"exp_twice_last_valid": "server rule 28: a claim named twice is refused, not read as its last occurrence",
+	// RFC 9700 Section 4.10.2 (TASK-366): every token names the resource in aud; these name none.
+	"exp_fractional":           "RFC 9700 Section 4.10.2: no aud",
+	"exp_exponent":             "RFC 9700 Section 4.10.2: no aud",
+	"exp_uppercase_is_not_exp": "RFC 9700 Section 4.10.2: no aud",
+	"nbf_past":                 "RFC 9700 Section 4.10.2: no aud",
+	"iat_past":                 "RFC 9700 Section 4.10.2: no aud",
 }
 
 func TestLegacyVerdicts_NothingRefusedBeforeIsAcceptedNow(t *testing.T) {
@@ -111,7 +119,14 @@ func TestLegacyVerdicts_NothingRefusedBeforeIsAcceptedNow(t *testing.T) {
 				}
 				return
 			}
-			p, err := NewBuilder().WithJWKSet(set).Resource(c.Resource).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
+			// The cases were recorded when a PEP could go without a resource and took any typ; the audience is now
+			// required and the typ is a rule of its own (TestRFC9068_4_*), so a case without a resource is judged for
+			// the audience every case names, and untyped tokens are accepted here.
+			resource := c.Resource
+			if resource == "" {
+				resource = "https://example.com"
+			}
+			p, err := NewBuilder().WithJWKSet(set).Resource(resource).AcceptUntypedAccessTokens().WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -201,7 +216,8 @@ func TestLegacyAccessTokenFromOldPDPStillVerifiesAndKeepsItsBinding(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := NewBuilder().WithJWKSet(set).Resource("https://rs.example").WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
+	// go/pdp signed its access tokens with typ JWT; a PEP in front of it takes them only by accepting untyped tokens.
+	p, err := NewBuilder().WithJWKSet(set).Resource("https://rs.example").AcceptUntypedAccessTokens().WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +270,7 @@ func signES256(t *testing.T, key *ecdsa.PrivateKey, kid string, payload string) 
 	t.Helper()
 	signer, err := jose.NewSigner(
 		jose.SigningKey{Algorithm: jose.ES256, Key: jose.JSONWebKey{Key: key, KeyID: kid}},
-		(&jose.SignerOptions{}).WithType("JWT"),
+		(&jose.SignerOptions{}).WithType("at+jwt"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -274,10 +290,10 @@ func signES256(t *testing.T, key *ecdsa.PrivateKey, kid string, payload string) 
 func TestTokenWithoutKidIsRefusedEvenWithOneKeyInTheSet(t *testing.T) {
 	key := newTestKey(t)
 	set := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: key.Public(), KeyID: "only"}}}
-	if _, err := verifyJWS(signES256(t, key, "only", `{}`), set); err != nil {
+	if _, _, err := verifyJWS(signES256(t, key, "only", `{}`), set); err != nil {
 		t.Fatalf("control: %v", err)
 	}
-	if _, err := verifyJWS(signES256(t, key, "", `{}`), set); err == nil {
+	if _, _, err := verifyJWS(signES256(t, key, "", `{}`), set); err == nil {
 		t.Fatal("a token without a kid was accepted")
 	}
 }
@@ -336,7 +352,7 @@ func FuzzVerifyAccessToken(f *testing.F) {
 		f.Fatal(err)
 	}
 	f.Fuzz(func(_ *testing.T, token string) {
-		payload, err := verifyJWS(token, set)
+		payload, _, err := verifyJWS(token, set)
 		if err != nil {
 			return
 		}
@@ -385,12 +401,87 @@ func TestWithJWKSetPathFailsTheBuildOnAnUnreadableOrInvalidFile(t *testing.T) {
 	if err := os.WriteFile(invalid, []byte(`{"keys":[{"kty":"nope"}]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewBuilder().WithJWKSetPath(valid).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build(); err != nil {
+	if _, err := NewBuilder().Resource("https://example.com").WithJWKSetPath(valid).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build(); err != nil {
 		t.Fatalf("valid file: %v", err)
 	}
 	for _, path := range []string{invalid, dir + "/absent.json"} {
-		if _, err := NewBuilder().WithJWKSetPath(path).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build(); err == nil {
+		if _, err := NewBuilder().Resource("https://example.com").WithJWKSetPath(path).WithDPoPReplays(dpop.NewMemoryReplays(100, nil)).Build(); err == nil {
 			t.Fatalf("%s: a PEP was built without its keys", path)
 		}
+	}
+}
+
+// signTyped signs payload with key under kid, with typ as the protected typ header ("" for none).
+func signTyped(t *testing.T, key *ecdsa.PrivateKey, kid, typ, payload string) string {
+	t.Helper()
+	options := &jose.SignerOptions{}
+	if typ != "" {
+		options = options.WithType(jose.ContentType(typ))
+	}
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.ES256, Key: jose.JSONWebKey{Key: key, KeyID: kid}}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signed, err := signer.Sign([]byte(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compact, err := signed.CompactSerialize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return compact
+}
+
+func typedPEP(t *testing.T, key *ecdsa.PrivateKey, untyped bool) *PEP {
+	t.Helper()
+	builder := NewBuilder().Resource("https://rs.example").
+		WithJWKSet(&jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: key.Public(), KeyID: "k"}}}).
+		WithDPoPReplays(dpop.NewMemoryReplays(16, nil))
+	if untyped {
+		builder = builder.AcceptUntypedAccessTokens()
+	}
+	p, err := builder.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// RFC 9068 Section 4: an access token says so by its typ, at+jwt in any case or as application/at+jwt; another JWT
+// the same key signs, an ID token among them, is not taken for one.
+func TestRFC9068_4_ATokenOfAnotherTypIsRefused(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := fmt.Sprintf(`{"aud":"https://rs.example","exp":%d}`, time.Now().Add(time.Hour).Unix())
+	p := typedPEP(t, key, false)
+	for typ, accepted := range map[string]bool{
+		"at+jwt": true, "AT+JWT": true, "application/at+jwt": true,
+		"JWT": false, "": false, "id_token+jwt": false, "application/jwt": false,
+	} {
+		t.Run("typ="+typ, func(t *testing.T) {
+			if _, err := p.VerifyAccessToken(signTyped(t, key, "k", typ, payload)); (err == nil) != accepted {
+				t.Errorf("err = %v, want accepted %v", err, accepted)
+			}
+		})
+	}
+}
+
+// RFC 9068 Section 4: an untyped token is taken only when the operator opts in for an authorization server known to
+// omit the typ; its audience is still required.
+func TestRFC9068_4_AnUntypedTokenIsTakenOnlyByOptIn(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := time.Now().Add(time.Hour).Unix()
+	untyped := typedPEP(t, key, true)
+	if _, err := untyped.VerifyAccessToken(signTyped(t, key, "k", "JWT", fmt.Sprintf(`{"aud":"https://rs.example","exp":%d}`, exp))); err != nil {
+		t.Errorf("an untyped token was refused despite the opt-in: %v", err)
+	}
+	if _, err := untyped.VerifyAccessToken(signTyped(t, key, "k", "JWT", fmt.Sprintf(`{"aud":"https://other.example","exp":%d}`, exp))); err == nil {
+		t.Error("an untyped token for another resource was accepted")
 	}
 }

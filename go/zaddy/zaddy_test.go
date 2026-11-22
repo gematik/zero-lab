@@ -70,7 +70,7 @@ func TestServersRule3_DPoPReplaysStorageKeepsReplaysInCaddyStorage(t *testing.T)
 }
 
 func TestDPoPReplays_CaddyfileOptionAndValidation(t *testing.T) {
-	d := caddyfile.NewTestDispenser("pep {\n jwks_path jwks.json\n dpop_replays storage\n}")
+	d := caddyfile.NewTestDispenser("pep {\n resource https://api.example.com\n jwks_path jwks.json\n dpop_replays storage\n}")
 	value, err := parseCaddyfilePEP(d, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -88,5 +88,38 @@ func TestDPoPReplays_CaddyfileOptionAndValidation(t *testing.T) {
 	a.DPoPReplays = "redis"
 	if err := a.Validate(); err == nil {
 		t.Fatal("accepted an unknown dpop_replays")
+	}
+}
+
+// RFC 9700 Section 4.10.2: zaddy refuses a configuration without a resource, as no token's audience could be
+// checked; RFC 9068 Section 4: accept_untyped_access_tokens is the operator's opt-in for untyped tokens, off unless
+// named.
+func TestRFC9700_4_10_2_ZaddyRefusesAConfigurationWithoutAResource(t *testing.T) {
+	parse := func(t *testing.T, block string) App {
+		t.Helper()
+		value, err := parseCaddyfilePEP(caddyfile.NewTestDispenser(block), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var a App
+		if err := json.Unmarshal(value.(httpcaddyfile.App).Value, &a); err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	without := parse(t, "pep {\n jwks_path jwks.json\n}")
+	if err := without.Validate(); err == nil {
+		t.Error("a configuration without resource was accepted")
+	}
+	typed := parse(t, "pep {\n resource https://api.example.com\n jwks_path jwks.json\n}")
+	if err := typed.Validate(); err != nil || typed.AcceptUntypedAccessTokens {
+		t.Errorf("default: %v, untyped accepted %v", err, typed.AcceptUntypedAccessTokens)
+	}
+	untyped := parse(t, "pep {\n resource https://api.example.com\n jwks_path jwks.json\n accept_untyped_access_tokens\n}")
+	if !untyped.AcceptUntypedAccessTokens {
+		t.Error("accept_untyped_access_tokens was not taken")
+	}
+	if _, err := parseCaddyfilePEP(caddyfile.NewTestDispenser("pep {\n accept_untyped_access_tokens yes\n}"), nil); err == nil {
+		t.Error("accept_untyped_access_tokens took an argument")
 	}
 }

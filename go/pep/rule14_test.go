@@ -75,12 +75,12 @@ func TestServerRule14_ARefusedTokensHeaderIsNotQuoted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = verifyJWS(unknownKid, keys)
+	_, _, err = verifyJWS(unknownKid, keys)
 	requireRefusedFor(t, err, "no key with the token's kid")
 
 	enc := base64.RawURLEncoding.EncodeToString
 	otherAlg := enc([]byte(`{"alg":"`+marker+`","kid":"k1"}`)) + "." + enc([]byte(`{}`)) + "." + enc([]byte("sig"))
-	_, err = verifyJWS(otherAlg, keys)
+	_, _, err = verifyJWS(otherAlg, keys)
 	requireRefusedFor(t, err, "token is no compact JWS of an allowed algorithm")
 }
 
