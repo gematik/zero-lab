@@ -3,10 +3,10 @@ id: TASK-356
 title: >-
   epa: proxy routes declare methods, canonical paths, parameters and response
   headers
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-22T09:41:00Z'
 labels: []
 dependencies:
   - TASK-360
