@@ -196,7 +196,21 @@ against the MariaDB version we would require (11.4 LTS) before building:
 | Expiry | batched `DELETE` | batched `DELETE … LIMIT`; the event scheduler is not used (needs rights the server should not have) |
 
 Consequences: revocations over MariaDB reach other replicas within the poll interval, not at once; a deployment
-that needs instant fan-out uses Postgres. The Go driver (`github.com/go-sql-driver/mysql`) is a new dependency
+that needs instant fan-out uses Postgres.
+
+**No Redis/Valkey needed for MariaDB.** A one-second poll per replica and topic on the indexed `kv_feed` is a
+negligible load (ten replicas: ten small queries a second per topic) and carries a revocation to every replica
+within about a second, far better than today's 30-second rescan. The cache stays InnoDB; at our volumes (sessions,
+federation documents) that is expected to suffice, to be confirmed by measurement before it is claimed. Valkey
+becomes worth its extra component only when sign-outs must arrive everywhere well under a second or the cache's
+write rate measurably exceeds InnoDB; then it backs the Ephemeral class and the Feed only (`SET NX PX`, `GETDEL`, a
+Lua script for Swap, Streams with their ids as cursors), never single-use values, which a Valkey failover can lose.
+
+**Galera: one writing node.** In a multi-writer Galera cluster `GET_LOCK` holds on the local node only, so neither
+the ordered ids per topic nor the single cleaner work, and `AUTO_INCREMENT` interleaves ids per node
+(`auto_increment_increment`), so ids do not rise in commit order across the cluster and a follower can step over
+an event. Supported: Galera with a single writing node (the others for failover). A multi-writer cluster would
+need another cursor (a timestamp with an overlap window and deduplication by event id) and is out of scope. The Go driver (`github.com/go-sql-driver/mysql`) is a new dependency
 and needs the maintainer's approval under the dependency rules; its contract tests would run gated by a
 `TEST_MARIADB_DSN`. Recommendation: plan the interfaces so that MariaDB fits (polling Feed, no Postgres-only
 semantics in kv), build it only when a deployment asks for it.
