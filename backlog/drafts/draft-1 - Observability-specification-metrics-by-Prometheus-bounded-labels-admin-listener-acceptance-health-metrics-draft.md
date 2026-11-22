@@ -6,7 +6,7 @@ title: >-
 status: Draft
 assignee: []
 created_date: '2026-11-20 16:59'
-updated_date: '2026-11-22 17:51'
+updated_date: '2026-11-22 17:57'
 labels:
   - servers
   - docs
@@ -81,4 +81,6 @@ Maintainer's direction for the specification (2026-11-22):
 - Open: metrics on a port of their own and protected (two management ports, as controller-runtime) or open on the health port (one diagnostic port, as OPA).
 
 2026-11-22, revised by the maintainer (supersedes the health :8081 default above): metrics always on a port of their own and protected (:9464, mTLS or plaintext by the operator's acceptance); health on the data port by default. /livez and /readyz are served on the data port, exempt from checks a probe cannot pass (the Host check of zero-pep-proxy) and from nothing else. A health listener of its own (<PREFIX>_HEALTH_URL, no authentication, NetworkPolicy to kubelet and pod network) only for one of four reasons: (1) the workload terminates mTLS on the data port; (2) the data port is not reachable by the kubelet (loopback, Unix socket: sidecars); (3) the data port is the public internet itself (an edge on :443); (4) a check on the data port that a probe can never pass and that cannot exempt the probe paths. <binary> health asks the health listener when one is configured, the data port otherwise. Our services: zero-pep-proxy on its data port :4180 (plaintext behind the edge, which forwards only /oauth2/* to it), a health listener when it terminates mTLS; zero-caddy a site :8081 (public :443); hsm-proxy over TCP with mTLS a health listener, as socket sidecar health over the socket with an exec probe; OPA --diagnostic-addr :8282 (decisions on loopback); zero-epa and metsubushi on their data ports. A typical service has two ports (data, metrics); services with mTLS, sidecars and edges three. Open question closed: metrics separate.
+
+2026-11-22, port consolidation agreed with the maintainer: every pod has a network of its own, so container ports differ only between a pod's main container and its sidecars. Main containers all use the same ports: data over http 8080, data over https 8443, a separate health listener (one of the four reasons) 8081, metrics 9464. Sidecars, which share the pod's network, have a block of their own: data on a Unix socket, else 8444; metrics 9465 (hsm-proxy). Third-party sidecars keep their upstream defaults (OPA 8181 for decisions on loopback, 8282 for diagnostics). Nothing below 1024 (no root, no capabilities, rule 8); the Service or load balancer maps 80/443. Changes: zero-pep-proxy 4180 -> 8080 (PEP_LISTEN_URL has no default, so docs, compose, e2e guide and the zero-lab-k8s chart only); zero-epa 8082 -> 8080 (the --addr default); hsm-proxy examples 50051 -> 8443, 8444 as a TCP sidecar; metsubushi 8080 and zero-caddy's 8080/8443 stay; zero-pdp (frozen) keeps 8011. Local development with several services on one host sets ports explicitly in the e2e configuration, as today; the defaults are for containers. The switch itself becomes a task once the specification is written.
 <!-- SECTION:NOTES:END -->
