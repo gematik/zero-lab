@@ -4,7 +4,7 @@ title: 'epa: answers carry no input, internals or unchecked Aktensystem text'
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-22 14:21'
 labels: []
 dependencies: []
 priority: medium
@@ -27,4 +27,6 @@ ordinal: 373000
 
 <!-- SECTION:NOTES:BEGIN -->
 Overlaps TASK-337 (rule 14 error texts), which fixes the error values; this task covers what the epa proxy answers to the client.
+
+2026-11-22: archived by the maintainer's decision: zero-epa is not for production.
 <!-- SECTION:NOTES:END -->

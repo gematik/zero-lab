@@ -4,6 +4,7 @@ title: 'metsubushi: methods declared and server limits explicit'
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
+updated_date: '2026-11-22 14:21'
 labels: []
 dependencies: []
 priority: medium
@@ -21,3 +22,9 @@ ordinal: 376000
 - [ ] #1 every route is `GET` (405 with `Allow` otherwise); the server sets `MaxHeaderBytes`, read, write and idle timeouts and shuts down on SIGTERM.
 - [ ] #2 `wantsHTML` has a fuzz target.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22: archived by the maintainer's decision: metsubushi is a smoke-test echo server.
+<!-- SECTION:NOTES:END -->
