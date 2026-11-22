@@ -3,7 +3,7 @@ module github.com/gematik/zero-lab/go/oidftest
 go 1.27.0
 
 require (
-	github.com/gematik/zero-lab/go/oidf v0.54.3-0.20261122164731-7f2a351e3ecf
+	github.com/gematik/zero-lab/go/oidf v0.54.3-0.20261122165346-56c6c247e654
 	github.com/gematik/zero-lab/go/openid v0.55.1
 	github.com/go-jose/go-jose/v4 v4.1.9
 )
