@@ -7,7 +7,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4
 	github.com/gematik/zero-lab/go/nonce v0.24.0
-	github.com/gematik/zero-lab/go/pep v0.28.2-0.20261122114335-902aeb9759c1
+	github.com/gematik/zero-lab/go/pep v0.29.0
 )
 
 require (
