@@ -3,10 +3,10 @@ id: TASK-394
 title: >-
   Servers checked against rule 31: probes per container, liveness apart from
   dependencies, health as a metric
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 13:42'
-updated_date: '2026-11-22 16:04'
+updated_date: '2026-11-22 18:13'
 labels:
   - servers
   - kubernetes
@@ -27,7 +27,7 @@ servers.md rule 31 (TASK-393) asks for startup, readiness and liveness probes on
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 zero-pep-proxy, zero-caddy, zero-epa, metsubushi and hsm-proxy are each checked against rule 31, with what conforms and what does not in the notes
-- [ ] #2 Each gap is fixed or has a task of its own
+- [x] #2 Each gap is fixed or has a task of its own
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -42,4 +42,12 @@ hsm-proxy: the missing log line and metric on a change of health, and the interf
 - metsubushi: /healthz on its main port answers always 200 and serves readiness and liveness alike (go/metsubushi/k8s.yaml); a smoke-test echo server without dependencies, so readiness and liveness are rightly the same; the probe path on the main port is a deviation from the admin listener of rule 23, acceptable for a test tool.
 - hsm-proxy: startup, readiness and liveness as exec probes over the Unix socket, health from a background check (TASK-389); the log line and metric on a change are TASK-405.
 AC #2 left open: the gaps of zero-pep-proxy and zaddy need tasks of their own, which the maintainer asked not to create yet (2026-11-22).
+
+2026-11-22, maintainer: the gaps of zero-pep-proxy and zaddy (health endpoints, probes, readiness by dependencies) are due in DRAFT-1, the observability specification, and become its tasks.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zero-pep-proxy, zero-caddy, zero-epa, metsubushi and hsm-proxy checked against servers.md rule 31 (notes). Gaps: zero-pep-proxy and zaddy lack health endpoints, probes and readiness by their dependencies; they are carried by DRAFT-1 (health on the data port unless one of four reasons, /livez and /readyz, <binary> health). zero-epa is not for production; metsubushi conforms for a test tool; hsm-proxy conforms, its log line and metrics are TASK-405.
+<!-- SECTION:FINAL_SUMMARY:END -->
