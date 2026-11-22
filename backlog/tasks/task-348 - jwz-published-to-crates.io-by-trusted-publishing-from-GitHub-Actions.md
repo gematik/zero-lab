@@ -4,8 +4,10 @@ title: 'jwz: published to crates.io by trusted publishing from GitHub Actions'
 status: To Do
 assignee: []
 created_date: '2026-11-16T19:40:00Z'
+updated_date: '2026-11-22 15:22'
 labels: []
 dependencies: []
+type: external
 ordinal: 363000
 ---
 

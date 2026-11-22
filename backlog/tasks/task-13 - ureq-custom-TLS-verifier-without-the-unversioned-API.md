@@ -3,8 +3,8 @@ id: TASK-13
 title: 'ureq: custom TLS verifier without the unversioned API (watch)'
 status: To Do
 assignee: []
-created_date: 2026-10-09 13:55
-updated_date: '2026-11-17T06:29:00Z'
+created_date: '2026-10-09 13:55'
+updated_date: '2026-11-22 15:22'
 labels:
   - ti-connector-client
   - ti-tls
@@ -13,6 +13,7 @@ labels:
 dependencies:
   - TASK-249
 priority: low
+type: external
 ordinal: 31000
 ---
 
