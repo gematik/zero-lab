@@ -1,10 +1,10 @@
 ---
 id: TASK-364
 title: 'pep/proxy: a login completes only in the browser that started it'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-17T06:44:00Z'
-updated_date: '2026-11-22 11:21'
+updated_date: '2026-11-22 11:34'
 labels:
   - pep-proxy
   - security
@@ -23,7 +23,7 @@ ordinal: 379000
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 In redirect mode a callback without the cookie of the session its `state` names is refused before the code is redeemed, and the state is consumed. Test named after RFC 9700 §2.1.1.
-- [ ] #2 The login mode is recorded on the session at `/oauth2/start`, so the callback knows which rule applies. Decoupled and authenticator modes keep working (e2e).
+- [x] #2 The login mode is recorded on the session at `/oauth2/start`, so the callback knows which rule applies. Decoupled and authenticator modes keep working (e2e).
 - [x] #3 The remaining cross-device risk of decoupled and authenticator logins is written down in the pep/proxy docs, with the mitigations in force.
 <!-- AC:END -->
 
@@ -33,4 +33,12 @@ ordinal: 379000
 Branch fix/rfc9700-gaps, commit 944a3110. Session.LoginMode (login_mode) is set from LoginStart.Mode at /oauth2/start. handleCallback: when the request does not own the session and the mode is not decoupled/authenticator, the session and its state are removed before Complete, and invalid_state is rendered; an empty mode (sessions stored before) gets the redirect rule. Tests: TestRFC9700_2_1_1_ARedirectLoginCompletesOnlyInTheBrowserThatStartedIt (no cookie, another cookie, then the starter is refused too; fails without the check), TestRFC9700_2_1_1_ACrossDeviceLoginCompletesWithoutTheCookie (decoupled, authenticator: callback 200 and poll 200). docs/DESIGN.md §3: who may complete a login, and the cross-device risk that remains with the mitigations in force. AC #2: unit-tested; the e2e of the OIDF QR and idpd logins is the maintainer's HITL. Rollout: zero-pep-proxy refuses unknown session members, so an older instance cannot read a session a newer one wrote; mixed versions only during a rolling update.
 
 2026-11-22: e2e decoupled passed on zerobin with spilikin/zero-pep-proxy:0.5.1-dev.aa2d9929 (main aa2d9929, fix included): Techniker Krankenkasse RU2 (https://idbroker.tk.ru2.nonprod-ehealth-id.de), login start mode=decoupled at 11:20:16, login complete decoupled=true at 11:21:01, the starting browser signed in (maintainer). Authenticator mode (idpd) not yet run e2e.
+
+2026-11-22: e2e authenticator passed on zerobin, same image: gematik IDP-Dienst (https://idp-ref.app.ti-dienste.de) through the gematik Authenticator and the TI-Gateway, login start mode=authenticator at 11:32:51, login complete decoupled=true at 11:33:06 (maintainer).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+A redirect login completes only in the browser that started it (RFC 9700 §2.1.1): Session.LoginMode is recorded at /oauth2/start, and a callback without the cookie of the session its state names is refused before the code is redeemed, the session and its state removed. Decoupled (OIDF) and authenticator (idpd) logins are cross-device and complete without the cookie; their remaining risk and the mitigations in force are in docs/DESIGN.md §3. Tests: TestRFC9700_2_1_1_ARedirectLoginCompletesOnlyInTheBrowserThatStartedIt, TestRFC9700_2_1_1_ACrossDeviceLoginCompletesWithoutTheCookie. e2e on zerobin with 0.5.1-dev.aa2d9929: TK RU2 (decoupled) and the gematik IDP-Dienst via Authenticator and TI-Gateway. Fix in 944a3110 on main; not yet in a pep/proxy release (latest v0.5.1).
+<!-- SECTION:FINAL_SUMMARY:END -->
