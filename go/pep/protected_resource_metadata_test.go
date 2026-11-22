@@ -22,20 +22,13 @@
 package pep
 
 import (
-	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
-	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-jose/go-jose/v4"
 
@@ -243,68 +236,5 @@ func TestRFC9728_2_ACollidingOrMalformedMetadataMemberIsRefused(t *testing.T) {
 		if _, err := NewProtectedResourceMetadataHandler(doc); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
-	}
-}
-
-// rotatingSource is a KeySource whose Refresh hands out next, or fails with err, and counts the calls.
-type rotatingSource struct {
-	current, next *jose.JSONWebKeySet
-	err           error
-	refreshes     int
-}
-
-func (s *rotatingSource) Keys() (*jose.JSONWebKeySet, error) { return s.current, nil }
-
-func (s *rotatingSource) Refresh(context.Context) (*jose.JSONWebKeySet, error) {
-	s.refreshes++
-	if s.err != nil {
-		return nil, s.err
-	}
-	s.current = s.next
-	return s.current, nil
-}
-
-// RFC 7517 Section 4.5 and the authorization server's key rotation: a token naming a kid the set in force does not
-// hold makes the PEP ask its key source once, and the rotated key verifies it; a known kid asks nothing, and a
-// failed refresh refuses the token with the set in force kept.
-func TestKeySource_AnUnknownKidRefreshesOnceAndVerifiesWithTheRotatedKey(t *testing.T) {
-	oldKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	newKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	oldSet := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: oldKey.Public(), KeyID: "old"}}}
-	newSet := &jose.JSONWebKeySet{Keys: []jose.JSONWebKey{{Key: oldKey.Public(), KeyID: "old"}, {Key: newKey.Public(), KeyID: "new"}}}
-	payload := fmt.Sprintf(`{"aud":"https://rs.example","exp":%d}`, time.Now().Add(time.Hour).Unix())
-	build := func(source KeySource) *PEP {
-		p, err := NewBuilder().Resource("https://rs.example").WithKeySource(source).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).Build()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return p
-	}
-
-	source := &rotatingSource{current: oldSet, next: newSet}
-	p := build(source)
-	if _, err := p.VerifyAccessToken(signTyped(t, oldKey, "old", "at+jwt", payload)); err != nil || source.refreshes != 0 {
-		t.Fatalf("known kid: %v, %d refreshes", err, source.refreshes)
-	}
-	if _, err := p.VerifyAccessToken(signTyped(t, newKey, "new", "at+jwt", payload)); err != nil || source.refreshes != 1 {
-		t.Fatalf("rotated kid: %v, %d refreshes", err, source.refreshes)
-	}
-
-	failing := &rotatingSource{current: oldSet, err: errors.New("authorization server unreachable")}
-	p = build(failing)
-	if _, err := p.VerifyAccessToken(signTyped(t, newKey, "new", "at+jwt", payload)); err == nil || failing.refreshes != 1 {
-		t.Fatalf("failed refresh: %v, %d refreshes", err, failing.refreshes)
-	}
-	if _, err := p.VerifyAccessToken(signTyped(t, oldKey, "old", "at+jwt", payload)); err != nil {
-		t.Fatalf("the set in force was not kept: %v", err)
-	}
-	if failing.current != oldSet {
-		t.Fatal("the set in force was replaced by a failed refresh")
 	}
 }

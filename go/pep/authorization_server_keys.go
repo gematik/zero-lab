@@ -48,9 +48,6 @@ const (
 	AuthorizationServerMetadataPath = "/.well-known/oauth-authorization-server"
 	// OpenIDConfigurationPath is OpenID Connect Discovery 1.0's (Section 4), asked when the first answers 404.
 	OpenIDConfigurationPath = "/.well-known/openid-configuration"
-	// DefaultKeysRefetchInterval is the least time between two fetches an unknown kid asks for, unless the
-	// configuration names another.
-	DefaultKeysRefetchInterval = time.Minute
 
 	// maxMetadataBytes and maxJWKSBytes bound what is read of a response before it is parsed (servers.md rule 28).
 	// Metadata documents and key sets are a few KiB; a set with certificate chains stays far below.
@@ -74,27 +71,21 @@ type AuthorizationServerKeysConfig struct {
 	HTTPClient *http.Client
 	// Logger receives a line when a fetched set replaces the one in force; nil logs nothing.
 	Logger *slog.Logger
-	// Now is the clock the refetch interval is measured with; nil means time.Now.
-	Now func() time.Time
-	// RefetchInterval is the least time between two fetches Refresh makes; zero means DefaultKeysRefetchInterval.
-	RefetchInterval time.Duration
 }
 
 // AuthorizationServerKeys is the key set of an authorization server, read from the jwks_uri of its metadata (RFC
-// 8414 Section 2), and a KeySource for Builder.WithKeySource. A fetched set replaces the one in force as a whole, and
-// a failed fetch keeps it (servers.md rule 8). It starts no goroutine: the host fetches the first set with Fetch
-// before it serves, and refreshes it in the background by calling Fetch again.
+// 8414 Section 2); its Keys is the source for Builder.WithJWKSetFunc. A fetched set replaces the one in force as a
+// whole, and a failed fetch keeps it (servers.md rule 8). It starts no goroutine and fetches nothing on the request
+// path: the host fetches the first set with Fetch before it serves and refreshes it in the background by calling
+// Fetch again, so a token naming a new key is refused until a fetch has brought that key.
 type AuthorizationServerKeys struct {
-	issuer   string
-	client   *http.Client
-	logger   *slog.Logger
-	now      func() time.Time
-	interval time.Duration
+	issuer string
+	client *http.Client
+	logger *slog.Logger
 
 	keys atomic.Pointer[jose.JSONWebKeySet]
-	// mu serialises fetches, so that requests arriving with the same new kid wait for one fetch and then take its set.
-	mu        sync.Mutex
-	lastFetch time.Time
+	// mu serialises fetches, so that sets are installed in the order they were fetched.
+	mu sync.Mutex
 }
 
 // NewAuthorizationServerKeys checks the configuration; it fetches nothing. Redirects are refused: the metadata
@@ -107,26 +98,15 @@ func NewAuthorizationServerKeys(config AuthorizationServerKeysConfig) (*Authoriz
 	if config.HTTPClient == nil {
 		return nil, errors.New("no HTTP client: the host hands its egress client")
 	}
-	if config.RefetchInterval < 0 {
-		return nil, errors.New("refetch interval must not be negative")
-	}
 	noRedirects := *config.HTTPClient
 	noRedirects.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	k := &AuthorizationServerKeys{
-		issuer:   config.Issuer,
-		client:   &noRedirects,
-		logger:   config.Logger,
-		now:      config.Now,
-		interval: config.RefetchInterval,
+		issuer: config.Issuer,
+		client: &noRedirects,
+		logger: config.Logger,
 	}
 	if k.logger == nil {
 		k.logger = slog.New(slog.DiscardHandler)
-	}
-	if k.now == nil {
-		k.now = time.Now
-	}
-	if k.interval == 0 {
-		k.interval = DefaultKeysRefetchInterval
 	}
 	return k, nil
 }
@@ -140,30 +120,16 @@ func (k *AuthorizationServerKeys) Keys() (*jose.JSONWebKeySet, error) {
 	return set, nil
 }
 
-// Fetch reads the set now, whenever it was read last, and returns it; for the host's first fetch and its
-// background refresh. An error keeps the set in force.
+// Fetch reads the set now and returns it, for the host's first fetch and its background refresh. An error keeps
+// the set in force.
 func (k *AuthorizationServerKeys) Fetch(ctx context.Context) (*jose.JSONWebKeySet, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	return k.fetchLocked(ctx)
 }
 
-// Refresh fetches the set again unless the last fetch was less than the refetch interval ago, and returns the set
-// to verify with: the fetched one, or the one in force when it declined. A client picks the kid that makes the PEP
-// call it, hence the bound. The fetch does not end with the request that asked for it, so a client that hangs up
-// does not use up the interval with a fetch it cancelled.
-func (k *AuthorizationServerKeys) Refresh(ctx context.Context) (*jose.JSONWebKeySet, error) {
-	k.mu.Lock()
-	defer k.mu.Unlock()
-	if !k.lastFetch.IsZero() && k.now().Sub(k.lastFetch) < k.interval {
-		return k.Keys()
-	}
-	return k.fetchLocked(context.WithoutCancel(ctx))
-}
-
 // fetchLocked fetches and installs the set; k.mu is held.
 func (k *AuthorizationServerKeys) fetchLocked(ctx context.Context) (*jose.JSONWebKeySet, error) {
-	k.lastFetch = k.now()
 	ctx, cancel := context.WithTimeout(ctx, keysFetchTimeout)
 	defer cancel()
 	set, err := k.fetch(ctx)

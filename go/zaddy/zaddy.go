@@ -132,7 +132,7 @@ func (a *App) Start() error {
 			a.stopBackground()
 			return fmt.Errorf("keys of authorization_server: %w", err)
 		}
-		builder = builder.WithKeySource(keys)
+		builder = builder.WithJWKSetFunc(keys.Keys)
 	}
 	a.pep, err = builder.
 		Resource(a.Resource).
@@ -157,9 +157,9 @@ func (a *App) Start() error {
 	return nil
 }
 
-// egressProxyCredentialsVar stands for the egress_proxy_credentials_path option where egress.ProxyFromHost asks for
+// egressProxyFileOption stands for the egress_proxy_credentials_path option where egress.ProxyFromHost asks for
 // the variable that names the credentials file.
-const egressProxyCredentialsVar = "egress_proxy_credentials_path"
+const egressProxyFileOption = "egress_proxy_credentials_path"
 
 // followAuthorizationServerKeys fetches the authorization server's keys through the egress client (servers.md
 // rule 30) and fetches them again every keysRefreshPeriod until Stop; pep starts no goroutine, so the loop is the
@@ -169,11 +169,11 @@ func (a *App) followAuthorizationServerKeys() (*pep.AuthorizationServerKeys, err
 	if client == nil {
 		var err error
 		proxy, err := egress.ProxyFromHost(func(name string) string {
-			if name == egressProxyCredentialsVar {
+			if name == egressProxyFileOption {
 				return a.EgressProxyCredentialsPath
 			}
 			return os.Getenv(name)
-		}, os.ReadFile, egressProxyCredentialsVar)
+		}, os.ReadFile, egressProxyFileOption)
 		if err != nil {
 			return nil, err
 		}

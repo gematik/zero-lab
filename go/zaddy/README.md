@@ -71,9 +71,10 @@ system's roots, a forward proxy from `HTTPS_PROXY`, no redirects, bounded respon
 `pep.AuthorizationServerKeys`, which zero-pep-proxy's gateway can use as well; zaddy hands it the egress
 client and runs the background refresh.
 
-zaddy does not start when it cannot read the keys. It reads them again every 15 minutes, and when a token
-names a `kid` the set does not hold, at most once a minute, since the client picks the `kid`. A set that is
-read and parses replaces the one in force as a whole; a failed read keeps it and is logged.
+zaddy does not start when it cannot read the keys. It reads them again every 15 minutes in the background,
+never on the request path (servers.md rule 8): a token signed with a key the set does not hold yet is refused
+until the next read brings that key. A set that is read and parses replaces the one in force as a whole; a
+failed read keeps it and is logged.
 
 ```caddyfile
 {

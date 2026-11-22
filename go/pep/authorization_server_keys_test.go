@@ -155,7 +155,7 @@ func TestRFC8414_3_3_AnIssuerMismatchOrANonHTTPSJwksURIRefusesTheKeys(t *testing
 		t.Run(name, func(t *testing.T) {
 			as := newFakeAuthorizationServer(t, generateKey(t))
 			as.metadata = metadata
-			if _, err := fetchedKeys(t, as, time.Now); err == nil {
+			if _, err := fetchedKeys(t, as); err == nil {
 				t.Error("keys accepted")
 			}
 			if as.jwksFetches.Load() != 0 {
@@ -170,7 +170,7 @@ func TestRFC8414_3_3_AnIssuerMismatchOrANonHTTPSJwksURIRefusesTheKeys(t *testing
 func TestRFC8414_3_1_TheOpenIDConfigurationIsAskedWhenTheMetadataIsAbsent(t *testing.T) {
 	as := newFakeAuthorizationServer(t, generateKey(t))
 	as.metadataPath = OpenIDConfigurationPath
-	keys, err := fetchedKeys(t, as, time.Now)
+	keys, err := fetchedKeys(t, as)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestServerRule28_AKeySetThatIsNotPublicKeysIsRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			as := newFakeAuthorizationServer(t, generateKey(t))
 			as.set(func() { change(as) })
-			if _, err := fetchedKeys(t, as, time.Now); err == nil {
+			if _, err := fetchedKeys(t, as); err == nil {
 				t.Error("keys accepted")
 			}
 		})
@@ -219,9 +219,9 @@ func TestServerRule28_AKeySetThatIsNotPublicKeysIsRefused(t *testing.T) {
 }
 
 // fetchedKeys are the keys of as after their first fetch, or the fetch's error.
-func fetchedKeys(t *testing.T, as *fakeAuthorizationServer, now func() time.Time) (*AuthorizationServerKeys, error) {
+func fetchedKeys(t *testing.T, as *fakeAuthorizationServer) (*AuthorizationServerKeys, error) {
 	t.Helper()
-	keys, err := NewAuthorizationServerKeys(AuthorizationServerKeysConfig{Issuer: as.URL, HTTPClient: as.Client(), Now: now})
+	keys, err := NewAuthorizationServerKeys(AuthorizationServerKeysConfig{Issuer: as.URL, HTTPClient: as.Client()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,61 +231,42 @@ func fetchedKeys(t *testing.T, as *fakeAuthorizationServer, now func() time.Time
 	return keys, nil
 }
 
-// fakeClock is a clock the test moves.
-type fakeClock struct{ now atomic.Pointer[time.Time] }
-
-func newFakeClock() *fakeClock {
-	c := &fakeClock{}
-	now := time.Now()
-	c.now.Store(&now)
-	return c
-}
-
-func (c *fakeClock) Now() time.Time { return *c.now.Load() }
-
-func (c *fakeClock) advance(d time.Duration) {
-	next := c.Now().Add(d)
-	c.now.Store(&next)
-}
-
-// servers.md rule 8 and the authorization server's key rotation: a token naming a kid the set does not hold makes
-// zaddy fetch the set once, and the rotated key verifies it; another unknown kid within the interval fetches
-// nothing, since the client picks the kid; after the interval a failed fetch keeps the set in force.
-func TestServerRule8_AnUnknownKidRefetchesTheKeysAtMostOncePerInterval(t *testing.T) {
+// servers.md rule 8: the keys are refreshed outside the request path only. A token naming a key the set does not hold
+// is refused without a fetch, and verifies once the host's background Fetch has installed the rotated set; a failed
+// fetch keeps the set in force.
+func TestServerRule8_TheKeysFollowARotationOnlyThroughTheBackgroundFetch(t *testing.T) {
 	oldKey, newKey := generateKey(t), generateKey(t)
 	as := newFakeAuthorizationServer(t, oldKey)
-	clock := newFakeClock()
-	keys, err := fetchedKeys(t, as, clock.Now)
+	keys, err := fetchedKeys(t, as)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := NewBuilder().Resource("https://rs.example").WithKeySource(keys).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).Build()
+	p, err := NewBuilder().Resource("https://rs.example").WithJWKSetFunc(keys.Keys).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.VerifyAccessToken(accessToken(t, oldKey, "k0")); err != nil || as.jwksFetches.Load() != 1 {
-		t.Fatalf("old key: %v, %d fetches", err, as.jwksFetches.Load())
+	if _, err := p.VerifyAccessToken(accessToken(t, oldKey, "k0")); err != nil {
+		t.Fatalf("old key: %v", err)
 	}
 
 	as.setKeys(oldKey, newKey)
-	clock.advance(DefaultKeysRefetchInterval)
-	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "k1")); err != nil || as.jwksFetches.Load() != 2 {
-		t.Fatalf("rotated key: %v, %d fetches", err, as.jwksFetches.Load())
+	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "k1")); err == nil || as.jwksFetches.Load() != 1 {
+		t.Fatalf("a key the set does not hold yet: %v, %d fetches", err, as.jwksFetches.Load())
+	}
+	if _, err := keys.Fetch(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "k1")); err != nil {
+		t.Fatalf("rotated key after the background fetch: %v", err)
 	}
 
-	clock.advance(DefaultKeysRefetchInterval / 2)
-	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "unknown")); err == nil || as.jwksFetches.Load() != 2 {
-		t.Fatalf("second unknown kid within the interval: %v, %d fetches", err, as.jwksFetches.Load())
-	}
-
-	clock.advance(DefaultKeysRefetchInterval)
 	as.set(func() { as.jwksStatus = http.StatusServiceUnavailable })
-	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "unknown")); err == nil || as.jwksFetches.Load() != 3 {
-		t.Fatalf("failed refetch: %v, %d fetches", err, as.jwksFetches.Load())
+	if _, err := keys.Fetch(t.Context()); err == nil {
+		t.Fatal("a failed fetch reported success")
 	}
 	for kid, key := range map[string]*ecdsa.PrivateKey{"k0": oldKey, "k1": newKey} {
 		if _, err := p.VerifyAccessToken(accessToken(t, key, kid)); err != nil {
-			t.Errorf("%s after a failed refetch: %v", kid, err)
+			t.Errorf("%s after a failed fetch: %v", kid, err)
 		}
 	}
 }
@@ -294,10 +275,9 @@ func TestServerRule8_AnUnknownKidRefetchesTheKeysAtMostOncePerInterval(t *testin
 // every token is refused.
 func TestRFC8414_2_AuthorizationServerKeysNeedAnIssuerAndAClient(t *testing.T) {
 	for name, config := range map[string]AuthorizationServerKeysConfig{
-		"http issuer":  {Issuer: "http://as.example", HTTPClient: http.DefaultClient},
-		"query":        {Issuer: "https://as.example?a=b", HTTPClient: http.DefaultClient},
-		"no client":    {Issuer: "https://as.example"},
-		"negative gap": {Issuer: "https://as.example", HTTPClient: http.DefaultClient, RefetchInterval: -time.Second},
+		"http issuer": {Issuer: "http://as.example", HTTPClient: http.DefaultClient},
+		"query":       {Issuer: "https://as.example?a=b", HTTPClient: http.DefaultClient},
+		"no client":   {Issuer: "https://as.example"},
 	} {
 		if _, err := NewAuthorizationServerKeys(config); err == nil {
 			t.Errorf("%s: accepted", name)

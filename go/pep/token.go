@@ -156,9 +156,6 @@ func isBase64URL(c byte) bool {
 	return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_'
 }
 
-// errUnknownKeyID is a token whose kid names no key of the set; a key source may know it after a refresh.
-var errUnknownKeyID = errors.New("no key with the token's kid")
-
 // verifyJWS verifies the compact JWS raw with keys and returns its payload and its protected typ header.
 //
 // The token has to name an algorithm of the allowlist and, by kid, the key to verify it with; a token without a
@@ -181,7 +178,7 @@ func verifyJWS(raw string, keys *jose.JSONWebKeySet) ([]byte, string, error) {
 	}
 	named := keys.Key(header.KeyID)
 	if len(named) == 0 {
-		return nil, "", errUnknownKeyID
+		return nil, "", errors.New("no key with the token's kid")
 	}
 	key := &named[0]
 	if err := keyFits(key, jose.SignatureAlgorithm(header.Algorithm)); err != nil {

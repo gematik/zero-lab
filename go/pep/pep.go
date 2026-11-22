@@ -24,7 +24,6 @@
 package pep
 
 import (
-	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -45,11 +44,9 @@ const defaultHTTPTimeout = 30 * time.Second
 // PEP holds what the enforcers verify requests against: the JWK set, the protected resource and its public
 // origin. It is made by a Builder.
 type PEP struct {
-	slogger           *slog.Logger
-	httpClient        *http.Client
-	provideJwkSetFunc func() (*jose.JSONWebKeySet, error)
-	// keySource is asked again when a token names a kid the set does not hold; nil for a fixed set.
-	keySource                 KeySource
+	slogger                   *slog.Logger
+	httpClient                *http.Client
+	provideJwkSetFunc         func() (*jose.JSONWebKeySet, error)
 	decryptAccessTokenFunc    func(string) (string, error)
 	accessTokenAcceptableSkew time.Duration
 	resource                  string // URI of the resource being protected
@@ -166,28 +163,6 @@ func originOf(raw string) (string, error) {
 // key rotation and should cache.
 func (b *Builder) WithJWKSetFunc(f func() (*jose.JSONWebKeySet, error)) *Builder {
 	b.p.provideJwkSetFunc = f
-	b.p.keySource = nil
-	return b
-}
-
-// KeySource is a source of verification keys that follows the authorization server's key rotation: Keys is
-// the set in force, called for every token, and Refresh fetches the set again, called once when a token names a
-// kid the set in force does not hold. Refresh returns the set to verify with afterwards: a newly verified set, or
-// the one in force when the source declines to fetch. The host bounds how often Refresh fetches, since a client
-// chooses the kid; a failed fetch keeps the set in force.
-type KeySource interface {
-	Keys() (*jose.JSONWebKeySet, error)
-	Refresh(ctx context.Context) (*jose.JSONWebKeySet, error)
-}
-
-// WithKeySource sets source as the source of the verification keys, replacing any other.
-func (b *Builder) WithKeySource(source KeySource) *Builder {
-	if source == nil {
-		b.err = errors.New("no key source")
-		return b
-	}
-	b.p.keySource = source
-	b.p.provideJwkSetFunc = source.Keys
 	return b
 }
 
@@ -196,7 +171,6 @@ func (b *Builder) WithJWKSet(jwkSet *jose.JSONWebKeySet) *Builder {
 	b.p.provideJwkSetFunc = func() (*jose.JSONWebKeySet, error) {
 		return jwkSet, nil
 	}
-	b.p.keySource = nil
 	return b
 }
 
@@ -463,7 +437,7 @@ func (c *pepContext) verifyAuthorizationBearer() error {
 		Description:     descriptionInvalidToken,
 		WWWAuthenticate: fmt.Sprintf(`Bearer error=%q, error_description=%q`, codeInvalidToken, descriptionInvalidToken),
 	}
-	token, err := c.pep.verifyAccessToken(c.request.Context(), bearerToken)
+	token, err := c.pep.VerifyAccessToken(bearerToken)
 	if err != nil {
 		return invalid
 	}
@@ -583,7 +557,7 @@ func (c *pepContext) bearerCredentials() (string, error) {
 
 // verifyAccessToken leaves the denial to the scheme's caller. VerifyAccessToken has logged why the token was refused.
 func (c *pepContext) verifyAccessToken(accessToken string) error {
-	jwtToken, err := c.pep.verifyAccessToken(c.request.Context(), accessToken)
+	jwtToken, err := c.pep.VerifyAccessToken(accessToken)
 	if err != nil {
 		return err
 	}
@@ -620,26 +594,11 @@ func (p *PEP) GuardedHandlerFunc(enforcer Enforcer, next func(w http.ResponseWri
 // the PEP accepts untyped tokens (RFC 9068 Section 4), and its audience names the resource (RFC 9700 Section
 // 4.10.2).
 func (p *PEP) VerifyAccessToken(tokenRaw string) (*AccessToken, error) {
-	return p.verifyAccessToken(context.Background(), tokenRaw)
-}
-
-// verifyAccessToken is VerifyAccessToken with the request's context, which a key source's Refresh is called with.
-func (p *PEP) verifyAccessToken(ctx context.Context, tokenRaw string) (*AccessToken, error) {
 	jwks, err := p.provideJwkSetFunc()
 	if err != nil {
 		return nil, fmt.Errorf("could not get JWKSet: %w", err)
 	}
 	payload, typ, err := verifyJWS(tokenRaw, jwks)
-	// A kid the set does not hold may be the authorization server's next key; the set is asked once more, and the
-	// key source decides whether that fetches.
-	if errors.Is(err, errUnknownKeyID) && p.keySource != nil {
-		refreshed, refreshErr := p.keySource.Refresh(ctx)
-		if refreshErr != nil {
-			p.slogger.Warn("could not refresh the JWKSet", "error", refreshErr)
-		} else {
-			payload, typ, err = verifyJWS(tokenRaw, refreshed)
-		}
-	}
 	if err == nil && !p.acceptUntyped && !isAccessTokenType(typ) {
 		err = errors.New("token typ is not at+jwt")
 	}
