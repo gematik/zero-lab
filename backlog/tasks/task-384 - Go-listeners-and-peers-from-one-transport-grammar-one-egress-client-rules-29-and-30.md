@@ -3,16 +3,16 @@ id: TASK-384
 title: >-
   Go: zero-pep-proxy and zero-epa from one transport grammar and one egress
   client (rules 29 and 30)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-18 21:34'
-updated_date: '2026-11-22 12:22'
+updated_date: '2026-11-22 12:47'
 labels:
   - go
   - servers
   - security
 dependencies:
-  - TASK-383
+  - TASK-408
 references:
   - docs/design/servers.md
 priority: medium
@@ -38,4 +38,6 @@ servers.md rules 29 and 30 (TASK-382) for the Go servers that need them, cut dow
 2026-11-19: zero-pdp is out of scope. go/pdp is frozen (decision-19), so 'each Go server' means zero-pep-proxy, zero-caddy, zero-epa and metsubushi.
 
 2026-11-22, cut down by the maintainer: the description's 'none reloads key material' is obsolete since TASK-395 (read at start, rotated by a rollout); zero-caddy and metsubushi out of scope; forward proxy split to TASK-407; AC #3 (rule 26 transport tests against each image) replaced by tests on the code.
+
+2026-11-22: the egress client moves to go/egress (TASK-408); TASK-384 takes it from there. No listener TLS in titls (maintainer).
 <!-- SECTION:NOTES:END -->

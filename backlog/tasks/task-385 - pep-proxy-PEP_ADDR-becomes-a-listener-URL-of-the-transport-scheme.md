@@ -1,9 +1,10 @@
 ---
 id: TASK-385
 title: 'pep/proxy: PEP_ADDR becomes a listener URL of the transport scheme'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-18 21:34'
+updated_date: '2026-11-22 12:28'
 labels:
   - pep-proxy
   - go
