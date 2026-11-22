@@ -211,8 +211,9 @@ The [server rules](../../docs/design/servers.md), in Go terms:
     rollout (rule 8).
   - The fixed profile: TLS 1.2 and 1.3, the ECDHE AES-GCM suites, P-256 and P-384 as constants in code;
     TLS 1.3's ChaCha20-Poly1305, which crypto/tls always offers, is refused in `VerifyConnection`.
-  - Reported: the mode in the start log line. Unix-socket listeners, peers configured by URL
-    (`PEP_AS_ISSUER`, gateway upstreams) and the admin listener's report are not built in Go yet.
+  - Reported: the mode in the start log line. Peers configured by URL (`PEP_AS_ISSUER`, gateway upstreams) and
+    the admin listener's report are not built in Go yet. A Unix-socket listener is built where a server needs
+    one; the Go servers sit behind an edge over TCP and need none today.
 - Rule 30, egress: one client per command, `egress.NewClient` ([`go/egress`](../egress)), handed to every
   library that fetches from the internet (oidf, openid, idpd, tipki/fetch); libraries take a caller's
   `*http.Client` and build none. zaddy reads its authorization server's metadata and key set through it; pep sees
