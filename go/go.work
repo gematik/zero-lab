@@ -3,6 +3,7 @@ go 1.27.0
 use (
 	./brainpool
 	./dpop
+	./egress
 	./epa
 	./httpguard
 	./idpd
