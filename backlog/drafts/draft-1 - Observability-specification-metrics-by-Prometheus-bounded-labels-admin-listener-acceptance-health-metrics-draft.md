@@ -6,7 +6,7 @@ title: >-
 status: Draft
 assignee: []
 created_date: '2026-11-20 16:59'
-updated_date: '2026-11-22 17:42'
+updated_date: '2026-11-22 17:51'
 labels:
   - servers
   - docs
@@ -79,4 +79,6 @@ Maintainer's direction for the specification (2026-11-22):
 - Our services: zero-pep-proxy :4180 / :8081 / :9464, ready on kv store and fresh revocations; zero-caddy :443 / :8081 (a zero_health site) / :9464, ready on the authorization server's keys and fresh revocations; hsm-proxy over TCP :8443 / :8081 / :9464, ready on the token answering; hsm-proxy as socket sidecar: health over the socket, exec probe, metrics only if configured; zero-epa :8080 / :8081 / :9464, ready on the TSL; metsubushi :8080 with health on the data port; OPA as sidecar: decisions on http://127.0.0.1:8181 (or a socket), health and metrics on --diagnostic-addr :8282, readiness /health?bundles, liveness /health.
 - Consequences for the rules: rule 23 drops the probe-path exception of the admin listener in favour of the health port; rule 31 needs an exception for third-party sidecars without an exec-able health command (OPA): a read-only diagnostic port reachable by the kubelet; rule 8 should say that a sidecar on TCP loopback loses the peer check of a Unix socket, which stays the stricter choice.
 - Open: metrics on a port of their own and protected (two management ports, as controller-runtime) or open on the health port (one diagnostic port, as OPA).
+
+2026-11-22, revised by the maintainer (supersedes the health :8081 default above): metrics always on a port of their own and protected (:9464, mTLS or plaintext by the operator's acceptance); health on the data port by default. /livez and /readyz are served on the data port, exempt from checks a probe cannot pass (the Host check of zero-pep-proxy) and from nothing else. A health listener of its own (<PREFIX>_HEALTH_URL, no authentication, NetworkPolicy to kubelet and pod network) only for one of four reasons: (1) the workload terminates mTLS on the data port; (2) the data port is not reachable by the kubelet (loopback, Unix socket: sidecars); (3) the data port is the public internet itself (an edge on :443); (4) a check on the data port that a probe can never pass and that cannot exempt the probe paths. <binary> health asks the health listener when one is configured, the data port otherwise. Our services: zero-pep-proxy on its data port :4180 (plaintext behind the edge, which forwards only /oauth2/* to it), a health listener when it terminates mTLS; zero-caddy a site :8081 (public :443); hsm-proxy over TCP with mTLS a health listener, as socket sidecar health over the socket with an exec probe; OPA --diagnostic-addr :8282 (decisions on loopback); zero-epa and metsubushi on their data ports. A typical service has two ports (data, metrics); services with mTLS, sidecars and edges three. Open question closed: metrics separate.
 <!-- SECTION:NOTES:END -->
