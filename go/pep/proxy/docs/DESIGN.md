@@ -95,6 +95,18 @@ victim confirms it, the attacker's browser holds a session with the victim's ide
 pep cannot detect that the person who confirms is not the person who started; the remaining defence is that
 user's attention. A shorter window for cross-device logins would narrow it further.
 
+### Mix-up: a gap accepted for now
+
+All providers answer at one `/oauth2/callback`, and the callback does not learn which authorization server
+sent the code: none of the TI's providers sends the `iss` of RFC 9207 or announces
+`authorization_response_iss_parameter_supported` (the IDP-Dienst, TK, RISE and BITMARCK federation IdPs, as of
+November 2026), and no gematik specification asks for it. RFC 9700 Section 2.1 requires a mix-up defence for a
+client of several authorization servers, by `iss` or by a redirect URI per issuer. Neither is built (maintainer,
+2026-11-22). In force against it: a callback redeems its code only at the token endpoint of the provider the
+session's `state` names, never one the response chooses; federation providers are admitted only from the
+master's signed IdP list, so an attacker's server has to be a federation member; and the ID token's `iss` must
+be that provider.
+
 ### Security properties
 
 - `/oauth2/poll` only ever returns `{authenticated, return_to}` to the **cookie holder** — never tokens or
