@@ -4,7 +4,7 @@ title: 'zero-epa: the proxy authenticates its callers'
 status: To Do
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-18T06:22:00Z'
+updated_date: '2026-11-22 14:17'
 labels:
   - epa
   - security
@@ -31,4 +31,6 @@ Found by the rule 28 audit of TASK-321 (2026-11-17): zero-epa's proxy listens on
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-18: the maintainer postponed the decision on how callers authenticate ("we do it later"). Options weighed: loopback bind by default plus a caller token from a file; a PEP access token; mTLS; a Unix socket only.
+
+2026-11-22: archived by the maintainer's decision: zero-epa is not for production, so caller authentication of its proxy is not built.
 <!-- SECTION:NOTES:END -->
