@@ -3,9 +3,10 @@ id: TASK-379
 title: >-
   zaddy: the 401 names the protected-resource metadata, the metadata comes from
   the configuration, and the keys follow the authorization server
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-18 10:42'
+updated_date: '2026-11-22 16:06'
 labels:
   - zaddy
   - go
