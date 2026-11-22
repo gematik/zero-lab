@@ -57,13 +57,13 @@ func BuildChain(leaf *x509.Certificate, intermediates, roots []*x509.Certificate
 	for len(chain) < MaxChainLen {
 		issuer, isRoot := findIssuer(current, intermediates, roots)
 		if issuer == nil {
-			return chain, fmt.Errorf("%w: no issuer found for %q", ErrChainIncomplete, current.Subject.CommonName)
+			return chain, fmt.Errorf("%w: no issuer found for a certificate of the chain", ErrChainIncomplete)
 		}
 		if isRoot {
 			return append(chain, issuer), nil
 		}
 		if slices.ContainsFunc(chain, issuer.Equal) {
-			return chain, fmt.Errorf("%w: cycle at %q", ErrChainIncomplete, issuer.Subject.CommonName)
+			return chain, fmt.Errorf("%w: the chain issues itself in a cycle", ErrChainIncomplete)
 		}
 		chain = append(chain, issuer)
 		current = issuer

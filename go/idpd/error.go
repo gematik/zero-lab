@@ -25,6 +25,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"io"
+	"slices"
 )
 
 // Error is an error response of the gematik IDP-Dienst, which has the following format:
@@ -46,18 +47,28 @@ type Error struct {
 	GematikCode      string `json:"gematik_code"`
 }
 
-// Error names the status and a gematik_code of digits, the form gemSpec_IDP_Dienst gives them. error,
-// gematik_error_text and anything else are the IDP-Dienst's text, which reaches the fields but not the error text:
-// error text ends up in logs (servers.md rule 14).
+// Error names the status, an error code RFC 6749 registers and a gematik_code of digits, the form gemSpec_IDP_Dienst
+// gives them. Another error, gematik_error_text and anything else are the IDP-Dienst's text, which reaches the fields
+// but not the error text: error text ends up in logs (servers.md rule 14).
 func (e *Error) Error() string {
 	text := "IDP-Dienst refused"
 	if e.HTTPCode != 0 {
 		text += fmt.Sprintf(" with status %d", e.HTTPCode)
 	}
+	if slices.Contains(registeredOAuthErrors, e.ErrorCode) {
+		text += ", error " + e.ErrorCode
+	}
 	if isGematikCode(e.GematikCode) {
 		text += ", gematik_code " + e.GematikCode
 	}
 	return text
+}
+
+// registeredOAuthErrors are the error codes of RFC 6749 Sections 4.1.2.1 and 5.2: words this package knows, so they
+// may stand in an error text where anything else the IDP-Dienst sends may not.
+var registeredOAuthErrors = []string{
+	"invalid_request", "unauthorized_client", "access_denied", "unsupported_response_type", "invalid_scope",
+	"server_error", "temporarily_unavailable", "invalid_client", "invalid_grant", "unsupported_grant_type",
 }
 
 // isGematikCode takes the gematik_code of gemSpec_IDP_Dienst, a few digits.

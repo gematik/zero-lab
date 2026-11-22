@@ -4,6 +4,7 @@ title: 'zaddy: session_cookie enforcer does not see revocations'
 status: To Do
 assignee: []
 created_date: '2026-11-14T16:47:00Z'
+updated_date: '2026-11-22 15:18'
 labels: []
 dependencies: []
 ordinal: 328000
@@ -21,3 +22,9 @@ pep.EnforcerSessionCookie (go/pep/session_cookie.go), which zaddy's forward_auth
 - [ ] #2 A signed-out session's snapshot is refused by zaddy's session_cookie enforcer, with a test
 - [ ] #3 A revocation check that fails denies (rule 16), with a test
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22, maintainer: use kv, behind a domain-specific interface implemented at the host, as zeta-pdp-go does it.
+<!-- SECTION:NOTES:END -->

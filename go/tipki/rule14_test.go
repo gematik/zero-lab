@@ -22,12 +22,19 @@
 package tipki
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"math/big"
 	"strings"
 	"testing"
+	"time"
 )
 
 // refusedFor says whether err refuses for reason, in its own text or in the decoder's error under it, which the text
@@ -113,5 +120,49 @@ func TestServerRule14_ARefusedRootsDocumentIsNotQuoted(t *testing.T) {
 				t.Fatalf("got %v, want a duplicate name to unwrap", err)
 			}
 		})
+	}
+}
+
+// personCertificate is a self-signed certificate whose common name is a person's, as an HBA's is.
+func personCertificate(t *testing.T, name string) *x509.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: name}, Issuer: pkix.Name{CommonName: "Unknown CA"}, NotAfter: time.Now().Add(time.Hour)}
+	parent := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "Unknown CA"}}
+	der, err := x509.CreateCertificate(rand.Reader, template, parent, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert
+}
+
+// servers.md rule 14: a chain that does not build names no certificate in its error, as an HBA's common name is a
+// person's.
+func TestServerRule14_AChainErrorNamesNoCertificate(t *testing.T) {
+	const name = "Erika Mustermann"
+	_, err := BuildChain(personCertificate(t, name), nil, nil)
+	if !errors.Is(err, ErrChainIncomplete) {
+		t.Fatalf("err = %v", err)
+	}
+	if strings.Contains(err.Error(), name) {
+		t.Errorf("the error names the certificate: %v", err)
+	}
+}
+
+// servers.md rule 14: a TSL value or service name a check refuses is not quoted in its error.
+func TestServerRule14_ATSLValueIsNotQuoted(t *testing.T) {
+	const value = "value-from-the-list"
+	if _, err := parseTSLTime(value, "NextUpdate"); err == nil || strings.Contains(err.Error(), value) {
+		t.Errorf("err = %v", err)
+	}
+	if _, err := convertService("provider", value, nil, nil, nil, nil, nil, nil); err == nil || strings.Contains(err.Error(), value) {
+		t.Errorf("err = %v", err)
 	}
 }

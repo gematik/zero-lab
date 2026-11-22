@@ -79,3 +79,10 @@ func TestServerRule14_AnEncryptedTokenOfAnotherAlgIsNotQuoted(t *testing.T) {
 	_, err := decryptToken(token, make([]byte, 32))
 	requireRefusedFor(t, err, "decrypting token: no compact JWE of dir and A256GCM")
 }
+
+// Server rule 14: an error code RFC 6749 registers is named in the error text, as pep/proxy names it; any other is
+// not.
+func TestServerRule14_AnIDPDienstErrorNamesARegisteredCodeOnly(t *testing.T) {
+	err := parseErrorResponse(http.StatusBadRequest, strings.NewReader(`{"error":"invalid_client","gematik_code":"2012"}`))
+	requireRefusedFor(t, err, "IDP-Dienst refused with status 400, error invalid_client, gematik_code 2012")
+}

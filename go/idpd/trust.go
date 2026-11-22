@@ -124,11 +124,13 @@ func (v *verifier) check(ctx context.Context, store *tipki.TrustStore, which IDP
 	if result.Valid {
 		return nil
 	}
+	// The findings' codes only: their messages name certificates, and error text ends up in logs (servers.md
+	// rule 14).
 	reasons := make([]string, 0, len(result.Errors))
 	for _, finding := range result.Errors {
-		reasons = append(reasons, string(finding.Code)+": "+finding.Message)
+		reasons = append(reasons, string(finding.Code))
 	}
-	return fmt.Errorf("%s: %q is not valid for an IDP-Dienst: %s", which, certs[0].Subject.CommonName, strings.Join(reasons, "; "))
+	return fmt.Errorf("%s: the certificate is not valid for an IDP-Dienst: %s", which, strings.Join(reasons, "; "))
 }
 
 // BundleTrust checks a certificate against a mounted bundle with the idpd-sig profile, and its revocation
