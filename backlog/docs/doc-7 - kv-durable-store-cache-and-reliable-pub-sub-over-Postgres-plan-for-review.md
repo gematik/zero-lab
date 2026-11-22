@@ -151,6 +151,56 @@ Today: `NewSealed` seals values with the key as associated data; keys stay clear
 cursors, retention, a broadcast to followers), so every consumer's tests run the same contract. One shared
 contract test suite runs against memory and, gated by `TEST_DATABASE_URL`, Postgres.
 
+## Schema creation and migrations: a separate image, a server without DDL rights
+
+Today `postgres.Open` runs the schema (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE`, a `DO` block) on every start:
+every replica's database role must own the tables, and a compromised server can drop or alter them. zaddy now
+inherits the same need (TASK-313). The plan separates the two roles:
+
+- **Migrations are code of their own.** kv/postgres (and a MariaDB backend, below) keep numbered, embedded SQL
+  steps and a table `kv_schema(version, applied_at)`. `Migrate(ctx, db, to)` applies the steps up to `to` under an
+  advisory lock (one migrator at a time), each step in its own transaction where the database allows.
+- **A separate image runs them.** `kv-migrate` (go/kv/cmd/kv-migrate, its own image, distroless, by digest) takes
+  an admin DSN from a file (`*_PATH`), applies the steps, and grants the server role `SELECT, INSERT, UPDATE,
+  DELETE` on the tables (and `USAGE` on the sequence of `kv_feed`). In Kubernetes it runs as a Job before the
+  rollout (a Helm pre-upgrade hook or an Argo sync wave), with the admin secret mounted into that Job only.
+- **The server image has no admin path.** `Open` runs no DDL: it reads `kv_schema`, and refuses to start when the
+  version is below what it needs or above what it knows how to read (servers.md rule 17), naming both. Its role
+  has DML rights only, so it cannot change the schema even if compromised. LISTEN/NOTIFY and advisory locks need
+  no extra rights.
+- **Expand, migrate, contract** (rule 22) map onto the migrator's steps: release N+1's migrator adds (expand)
+  before N+1 rolls out; a later step that removes (contract, e.g. the `metadata` column) is marked so and runs only
+  with `kv-migrate --contract`, after no replica of N is left.
+- **Development and tests**: the memory backend needs nothing; the gated Postgres tests run `Migrate` first.
+  A `kv-migrate` step in the e2e compose files replaces today's implicit schema.
+
+This becomes a rule of its own: proposed for servers.md rule 8 or 23, "a server's database role has no DDL rights;
+schema changes run in a separate job with their own credentials". To be decided with the review.
+
+## MariaDB as a second backend
+
+Feasible for the durable store and the cache; the feed has no push and falls back to polling. Facts to verify
+against the MariaDB version we would require (11.4 LTS) before building:
+
+| Need | Postgres | MariaDB |
+|---|---|---|
+| Atomic get-and-delete (Take) | `DELETE … RETURNING` | `DELETE … RETURNING` (since 10.0.5) |
+| Set if absent or expired | `INSERT … ON CONFLICT DO UPDATE … WHERE expired RETURNING` | `INSERT … ON DUPLICATE KEY UPDATE` with `IF(expires_at <= NOW(6), …)` and `ROW_COUNT()` (1 inserted, 2 replaced, 0 kept) |
+| Compare-and-swap | `UPDATE … WHERE value = $old` | the same, `ROW_COUNT()`; no `UPDATE … RETURNING` needed |
+| Prefix scans on an index | `COLLATE "C"` / `text_pattern_ops` | `VARBINARY` key or a `_bin` collation; `LIKE 'p%'` then uses the index |
+| Ephemeral table | `UNLOGGED` | no per-table equivalent: InnoDB is always logged; `MEMORY` holds no BLOB/TEXT; Aria with `TRANSACTIONAL=0` is not crash-safe and not transactional with InnoDB. Plan: the cache table stays InnoDB, and the Ephemeral promise is kept by semantics, not speed |
+| Asynchronous commit | `SET LOCAL synchronous_commit = off` per transaction | `innodb_flush_log_at_trx_commit` is global only; no per-transaction switch |
+| Push for the feed | `LISTEN`/`NOTIFY`, transactional | none. Followers poll `kv_feed WHERE topic = ? AND id > ?` on an index (e.g. every second), which is cheap, or MaxScale/binlog CDC, which we do not want |
+| Ordered ids per topic | advisory transaction lock | `GET_LOCK('kv_feed:<topic>', …)` around the insert; released explicitly (session-scoped, not transaction-scoped) |
+| One cleaner | `pg_try_advisory_lock` | `GET_LOCK(…, 0)` |
+| Expiry | batched `DELETE` | batched `DELETE … LIMIT`; the event scheduler is not used (needs rights the server should not have) |
+
+Consequences: revocations over MariaDB reach other replicas within the poll interval, not at once; a deployment
+that needs instant fan-out uses Postgres. The Go driver (`github.com/go-sql-driver/mysql`) is a new dependency
+and needs the maintainer's approval under the dependency rules; its contract tests would run gated by a
+`TEST_MARIADB_DSN`. Recommendation: plan the interfaces so that MariaDB fits (polling Feed, no Postgres-only
+semantics in kv), build it only when a deployment asks for it.
+
 ## Migration (servers.md rule 22: mixed versions work)
 
 1. Release N: new tables and indexes created additively by `Open`; nothing reads them yet. kv/postgres moves to
@@ -178,6 +228,9 @@ zero-pep-proxy's login states and replay sets, zeta-pdp-go's seen-once and codes
    but uses more of pgx. To confirm under the dependency rules.
 
 ## Tasks this would become
+
+- kv: numbered migrations and `kv_schema`, `Open` without DDL that checks the version; `kv-migrate` command and
+  image; e2e compose and zero-lab-k8s Jobs; the DML-only role documented (and the servers.md rule, if agreed).
 
 - kv/postgres: prefix index (`COLLATE "C"` / `text_pattern_ops`), batched and advisory-locked Cleanup, pgxpool.
 - kv: `Durability`, ephemeral memory store, `kv_cache` (unlogged, async commit) in kv/postgres.
