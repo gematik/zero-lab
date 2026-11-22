@@ -496,13 +496,11 @@ func (s *Server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Resolve the session by state first so error pages know which provider to retry.
-	sess, serr := s.sessions.byState(r.Context(), q.Get("state"))
+	sess, serr := s.sessions.takeByState(r.Context(), q.Get("state"))
 	var idpIss, rd string
 	if serr == nil {
 		idpIss, rd = sess.IDPIss, sess.ReturnTo
-		// The state is used once, by the first callback that names it and whatever becomes of that callback
-		// (RFC 9700 Section 4.2.4). The session is saved without it, or a later save would index it again.
-		s.sessions.deleteState(r.Context(), sess.State)
+		// takeByState consumed the state. The session is saved without it, or a later save would index it again.
 		sess.State = ""
 		if err := s.sessions.save(r.Context(), sess); err != nil {
 			s.renderFailure(w, "server_error", loginNotCompleted, err, idpIss, rd)

@@ -30,6 +30,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -204,7 +206,7 @@ func TestStart_RedirectsAndBindsCookie(t *testing.T) {
 	if sid == "" {
 		t.Fatal("no session cookie set")
 	}
-	sess, err := s.sessions.byState(t.Context(), "test-state")
+	sess, err := s.sessions.takeByState(t.Context(), "test-state")
 	if err != nil {
 		t.Fatalf("session not persisted by state: %v", err)
 	}
@@ -496,7 +498,7 @@ func TestServerRule14_SessionLookupErrorsNameNeitherIDNorState(t *testing.T) {
 	if _, err := store.byID(t.Context(), "session-id-value"); err == nil || strings.Contains(err.Error(), "session-id-value") {
 		t.Errorf("err = %v", err)
 	}
-	if _, err := store.byState(t.Context(), "state-value"); err == nil || strings.Contains(err.Error(), "state-value") {
+	if _, err := store.takeByState(t.Context(), "state-value"); err == nil || strings.Contains(err.Error(), "state-value") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -818,5 +820,51 @@ func TestServerRule28_ASessionCookieOfAnotherFormNeverReachesTheStore(t *testing
 	userinfo(strings.Repeat("A", sessionTokenLen))
 	if store.loads != 2 {
 		t.Errorf("tokens of the right form: the store was asked %d times, want 2", store.loads)
+	}
+}
+
+// countingBackend counts the codes it redeems, safe for concurrent callbacks.
+type countingBackend struct {
+	fakeBackend
+	redeemed atomic.Int32
+}
+
+func (b *countingBackend) Complete(ctx context.Context, sess *Session, code string) error {
+	b.redeemed.Add(1)
+	return b.fakeBackend.Complete(ctx, sess, code)
+}
+
+// Server rule 11: a login state is consumed in one store operation, so of concurrent callbacks with the same state,
+// on one replica or on two that share the store, exactly one redeems the code.
+func TestServerRule11_OfConcurrentCallbacksWithOneStateOneRedeemsTheCode(t *testing.T) {
+	for _, replicas := range []int{1, 2} {
+		t.Run(fmt.Sprintf("%d replicas", replicas), func(t *testing.T) {
+			backend := &countingBackend{}
+			backend.identity = map[string]any{"sub": "user-1"}
+			sessions := newMemorySessions()
+			servers := make([]*Server, replicas)
+			for i := range servers {
+				cfg := testConfig(backend)
+				cfg.Sessions = sessions
+				s, err := New(cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+				servers[i] = s
+			}
+			cookie := startLogin(t, servers[0])
+			var wg sync.WaitGroup
+			for i := range 32 {
+				wg.Go(func() {
+					callback := httptest.NewRequest(http.MethodGet, "/oauth2/callback?state=test-state&code=code-value", nil)
+					callback.AddCookie(cookie)
+					servers[i%replicas].Handler().ServeHTTP(httptest.NewRecorder(), callback)
+				})
+			}
+			wg.Wait()
+			if got := backend.redeemed.Load(); got != 1 {
+				t.Errorf("redeemed %d codes, want 1", got)
+			}
+		})
 	}
 }

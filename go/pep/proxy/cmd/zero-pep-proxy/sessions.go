@@ -101,9 +101,9 @@ func decodeSession(data []byte) (*proxy.Session, error) {
 	return &s, nil
 }
 
-// SessionID implements proxy.SessionStore.
-func (k kvSessions) SessionID(ctx context.Context, state string) (string, error) {
-	data, found, err := k.store.Get(ctx, stateKey(state))
+// TakeSessionID implements proxy.SessionStore with the store's atomic Take.
+func (k kvSessions) TakeSessionID(ctx context.Context, state string) (string, error) {
+	data, found, err := k.store.Take(ctx, stateKey(state))
 	if err != nil {
 		return "", reportIntegrity("login state", err)
 	}

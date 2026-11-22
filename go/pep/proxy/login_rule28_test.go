@@ -146,7 +146,7 @@ func TestServerRule28_TheLoginEndpointsRefuseWhatTheyDoNotDeclare(t *testing.T) 
 	if backend.idpIss != "https://other-idp.example" || backend.scope != "protected openid" {
 		t.Errorf("the backend got issuer %q and scope %q", backend.idpIss, backend.scope)
 	}
-	sess, err := s.sessions.byState(t.Context(), "test-state")
+	sess, err := s.sessions.takeByState(t.Context(), "test-state")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func FuzzLoginStart(f *testing.F) {
 					}
 				}
 			}
-			sess, err := s.sessions.byState(t.Context(), "test-state")
+			sess, err := s.sessions.takeByState(t.Context(), "test-state")
 			if err != nil {
 				t.Fatal(err)
 			}

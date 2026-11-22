@@ -99,12 +99,11 @@ func TestRFC9700_2_1_SessionStateSingleUse(t *testing.T) {
 	if err := store.save(t.Context(), sess); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.byState(t.Context(), "s-123"); err != nil {
-		t.Fatalf("state should resolve before consumption: %v", err)
+	if _, err := store.takeByState(t.Context(), "s-123"); err != nil {
+		t.Fatalf("state should resolve once: %v", err)
 	}
-	store.deleteState(t.Context(), "s-123")
-	if _, err := store.byState(t.Context(), "s-123"); err == nil {
-		t.Error("state still resolves after deleteState (replayable)")
+	if _, err := store.takeByState(t.Context(), "s-123"); err == nil {
+		t.Error("state resolves a second time (replayable)")
 	}
 	if _, err := store.byID(t.Context(), sess.ID); err != nil {
 		t.Errorf("session itself lost after state consumption: %v", err)
@@ -115,7 +114,7 @@ func TestRFC9700_2_1_SessionStateSingleUse(t *testing.T) {
 	if err := store.save(t.Context(), sess); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.byState(t.Context(), "s-123"); err == nil {
+	if _, err := store.takeByState(t.Context(), "s-123"); err == nil {
 		t.Error("a later save brought the consumed state back")
 	}
 }
