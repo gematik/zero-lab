@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-19 13:42'
-updated_date: '2026-11-20 16:05'
+updated_date: '2026-11-22 16:04'
 labels:
   - servers
   - kubernetes
@@ -26,7 +26,7 @@ servers.md rule 31 (TASK-393) asks for startup, readiness and liveness probes on
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 zero-pep-proxy, zero-caddy, zero-epa, metsubushi and hsm-proxy are each checked against rule 31, with what conforms and what does not in the notes
+- [x] #1 zero-pep-proxy, zero-caddy, zero-epa, metsubushi and hsm-proxy are each checked against rule 31, with what conforms and what does not in the notes
 - [ ] #2 Each gap is fixed or has a task of its own
 <!-- AC:END -->
 
@@ -34,4 +34,12 @@ servers.md rule 31 (TASK-393) asks for startup, readiness and liveness probes on
 
 <!-- SECTION:NOTES:BEGIN -->
 hsm-proxy: the missing log line and metric on a change of health, and the interface's metrics, are TASK-405.
+
+2026-11-22, checked against rule 31 (main at 17cd4350, zero-lab-k8s main):
+- zero-pep-proxy: no health endpoint and no admin listener at all; the chart (zero-lab-k8s pep/templates/deployment.yaml) has a tcpSocket readiness probe only, no startup and no liveness probe. Readiness would follow its dependencies: the kv store (Postgres) and, since TASK-313, the revocations' freshness (kv/revoked's ErrStale after 90 s). No background check, no log line or metric on a change of health.
+- zero-caddy (zaddy): no health of its own; Caddy's admin API on localhost:2019 answers liveness at most; readiness would follow zaddy's dependencies (the revocations it follows, its JWKS file loaded at start). The chart (proxy) has no probes.
+- zero-epa: no health endpoint; not for production (maintainer, TASK-362), so not to be fixed.
+- metsubushi: /healthz on its main port answers always 200 and serves readiness and liveness alike (go/metsubushi/k8s.yaml); a smoke-test echo server without dependencies, so readiness and liveness are rightly the same; the probe path on the main port is a deviation from the admin listener of rule 23, acceptable for a test tool.
+- hsm-proxy: startup, readiness and liveness as exec probes over the Unix socket, health from a background check (TASK-389); the log line and metric on a change are TASK-405.
+AC #2 left open: the gaps of zero-pep-proxy and zaddy need tasks of their own, which the maintainer asked not to create yet (2026-11-22).
 <!-- SECTION:NOTES:END -->
