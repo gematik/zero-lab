@@ -1,9 +1,10 @@
 ---
 id: TASK-406
 title: 'oidf: oidftest as a module of its own'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-22 11:42'
+updated_date: '2026-11-22 11:55'
 labels:
   - oidf
   - go

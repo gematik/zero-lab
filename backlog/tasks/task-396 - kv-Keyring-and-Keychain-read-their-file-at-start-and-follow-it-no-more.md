@@ -1,10 +1,10 @@
 ---
 id: TASK-396
 title: 'kv: Keyring and Keychain read their file at start and follow it no more'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-19 13:53'
-updated_date: '2026-11-19 14:02'
+updated_date: '2026-11-22 11:56'
 labels:
   - go
   - kv
@@ -27,7 +27,7 @@ LoadKeyring and LoadKeychain follow their file: at most every 30 s, inside Curre
 <!-- AC:BEGIN -->
 - [x] #1 LoadKeyring and LoadKeychain read and check the file once; Current and Lookup do no file I/O
 - [x] #2 zero-pep-proxy's flag help (main.go:51) and its at-rest encryption document say that a new key takes effect with a rollout
-- [ ] #3 The release notes of go/kv state the change of behaviour for users who relied on the file being followed
+- [x] #3 The release notes of go/kv state the change of behaviour for users who relied on the file being followed
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -39,3 +39,9 @@ LoadKeyring and LoadKeychain follow their file: at most every 30 s, inside Curre
 
 2026-11-19: zeta-pdp-go TASK-158 adapts its keychain to v0.6.0 (no WithKeychainCheck, the check at start); TASK-159 checks its own file following (signing keys every 30 s, attestation and backend files) against rule 8.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+LoadKeyring and LoadKeychain read their file once, at start; Current, Lookup and the others do no file I/O; WithKeychainCheck is removed. zero-pep-proxy's help and docs/at-rest-encryption.md describe rotation as rollouts. Released as go/kv v0.6.0 (2026-11-22), whose release notes state the breaking change. No external user to tell: the maintainer, 2026-11-22, we are its only user.
+<!-- SECTION:FINAL_SUMMARY:END -->
