@@ -4,7 +4,7 @@ title: 'egress: a module for outbound connections to the internet (rule 30)'
 status: In Progress
 assignee: []
 created_date: '2026-11-22 12:47'
-updated_date: '2026-11-22 13:08'
+updated_date: '2026-11-22 15:14'
 labels:
   - go
   - security
@@ -33,4 +33,6 @@ tipki is the TI's private PKI; outbound connections of TI 2.0 go mostly to the i
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-22: go/egress built (6cf9e1dd) and the consumers switched (180d024d), on feat/pep-listen-url-egress. API: NewClient(timeout, Options) (egress client, https only, plain http only for SelfVerifying requests, rule in the Proxy hook), NewTransport(Options) (peers, no rule, no proxy), SelfVerifying(ctx), ErrPlainHTTP, WebCheck/NewWebCheck/SystemWebCheck, WebVerifier/NewWebVerifier/ClientConfig, Verdict/Code/RefusedError, Fetcher/Offline/HTTPFetcher, MaxValidity, MaxStatusReuse, DefaultCacheSize. tipki/fetch.WithSelfVerifying, titls.HTTPFetcher.Mark and idpd.WithSelfVerifying / ClientConfig.MarkSelfVerifying take the marking as a func, so neither module imports the other. OCSP through x/crypto/ocsp; checked here: issuer or a delegate it certified directly with id-kp-OCSPSigning, valid now (±37.5 s); signature algorithm on the web list (no SHA-1); thisUpdate <= now <= nextUpdate; a present certHash names the leaf. Differences from tipki's path: x/crypto takes the first embedded certificate as the responder, not the one the ResponderID names, and matches the single response by serial only, not by the CertID's issuer hashes (the signature by the issuer or its delegate binds it to the issuer). All 32 web corpus cases pass, fuzz 30 s clean. Not yet: consumer go.mod requires of go/egress (a placeholder require breaks the workspace build, so none is added; before just sync: go mod edit -require=github.com/gematik/zero-lab/go/egress@v0.0.0 in idpd, epa, pep/proxy, pdp, then just sync); AC #3.
+
+2026-11-22, maintainer: AC #3 (hardening research) later.
 <!-- SECTION:NOTES:END -->

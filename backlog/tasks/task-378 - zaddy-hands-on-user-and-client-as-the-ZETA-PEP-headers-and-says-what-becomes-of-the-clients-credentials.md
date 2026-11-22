@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-18 10:42'
+updated_date: '2026-11-22 15:14'
 labels:
   - zaddy
   - go
@@ -31,3 +32,9 @@ zaddy's enforce_policy verifies the access token and its DPoP proof and then pas
 - [ ] #3 Authorization and DPoP of the client are passed on or removed as the specification says, and the README says which
 - [ ] #4 metsubushi behind zaddy shows user and client of a token
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22, maintainer: later.
+<!-- SECTION:NOTES:END -->
