@@ -57,6 +57,9 @@ func loadProviders(path, publicURL string, client *http.Client, documents oidf.D
 		"idpd": idpd.Kind(func(c *idpd.ClientConfig) {
 			c.AuthenticatorMode = true
 			c.MarkSelfVerifying = egress.SelfVerifying
+			// A mounted trust bundle that fails to replace the one in use, or a failed download, is an error the
+			// operator must see.
+			c.Logger = slog.Default()
 		}),
 		"oidf": oidf.Kind(os.Getenv(oidfDevAPIKeyEnv), documents, loadOIDFKeys, nil),
 	})
@@ -142,6 +145,7 @@ func providersFromEnv(publicURL string, httpClient *http.Client, documents oidf.
 			TrustBundlePath:   os.Getenv("PEP_IDPD_TRUST_BUNDLE_PATH"),
 			TrustFetch:        os.Getenv("PEP_IDPD_TRUST_FETCH") == "true",
 			MarkSelfVerifying: egress.SelfVerifying,
+			Logger:            slog.Default(),
 		}, httpClient)
 		if err != nil {
 			log.Fatalf("create idpd client: %v", err)

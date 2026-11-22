@@ -1,9 +1,10 @@
 ---
 id: TASK-374
 title: 'tipki/fetch: no logging on the default logger'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-17T06:45:00Z'
+updated_date: '2026-11-22 15:07'
 labels:
   - tipki
   - go
@@ -20,5 +21,11 @@ tipki/fetch logs through the global slog (found during TASK-289). go/docs/design
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 tipki/fetch takes a *slog.Logger in its configuration, nil discards, and no call reaches slog.Default
+- [x] #1 tipki/fetch takes a *slog.Logger in its configuration, nil discards, and no call reaches slog.Default
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+tipki/fetch logs to a logger the host hands it with fetch.WithLogger and to nothing without one (go/docs/design.md section 2), never to slog's default. idpd passes its ClientConfig.Logger through idpd.WithTrustLogger, zero-epa its default logger. Test: TestGoDesign2_TheTrustLogsToTheHostsLoggerOnly.
+<!-- SECTION:FINAL_SUMMARY:END -->

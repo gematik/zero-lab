@@ -68,7 +68,8 @@ const (
 type TrustOption func(*trustSettings)
 
 type trustSettings struct {
-	mark func(context.Context) context.Context
+	mark   func(context.Context) context.Context
+	logger *slog.Logger
 }
 
 // WithSelfVerifying marks the fetches of data that proves itself (OCSP answers, and with [NewFetchingTrust] the
@@ -77,6 +78,12 @@ type trustSettings struct {
 // transport; nil leaves the requests as they are.
 func WithSelfVerifying(mark func(context.Context) context.Context) TrustOption {
 	return func(s *trustSettings) { s.mark = mark }
+}
+
+// WithTrustLogger has [NewFetchingTrust]'s background refresh log a failed download to logger; without it nothing
+// is logged (go/docs/design.md section 2).
+func WithTrustLogger(logger *slog.Logger) TrustOption {
+	return func(s *trustSettings) { s.logger = logger }
 }
 
 func trustOptions(opts []TrustOption) trustSettings {

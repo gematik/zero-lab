@@ -386,7 +386,7 @@ func trustFromConfig(config ClientConfig, httpClient *http.Client) (CertificateT
 	}
 	mark := WithSelfVerifying(config.MarkSelfVerifying)
 	if config.TrustFetch {
-		return NewFetchingTrust(config.Environment, httpClient, mark)
+		return NewFetchingTrust(config.Environment, httpClient, mark, WithTrustLogger(config.Logger))
 	}
 	return NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient, config.Logger, mark)
 }

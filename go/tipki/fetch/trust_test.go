@@ -27,6 +27,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -450,5 +451,32 @@ func TestTLSV050AnUnchangedRefreshKeepsTheSnapshot(t *testing.T) {
 	}
 	if trust.fetchedAt != captured.Add(fetchEvery) {
 		t.Errorf("the refresh did not count: fetched at %s", trust.fetchedAt)
+	}
+}
+
+// go/docs/design.md section 2: a library logs to the logger the host hands it and never to the default logger, which
+// is the host's.
+func TestGoDesign2_TheTrustLogsToTheHostsLoggerOnly(t *testing.T) {
+	var defaultLog, hostLog bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&defaultLog, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	pub := newPublisher(t)
+	pub.remove("/list.ocsp")
+	silent := pub.trust(t)
+	if err := silent.refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	logged := pub.trust(t)
+	WithLogger(slog.New(slog.NewTextHandler(&hostLog, nil)))(logged)
+	if err := logged.refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if defaultLog.Len() != 0 {
+		t.Errorf("logged to the default logger: %q", defaultLog.String())
+	}
+	if !strings.Contains(hostLog.String(), "no .ocsp") {
+		t.Errorf("the host's logger got %q", hostLog.String())
 	}
 }
