@@ -68,12 +68,18 @@ type App struct {
 	// AcceptUntypedAccessTokens takes access tokens whose typ is not at+jwt (RFC 9068 Section 4), for an
 	// authorization server known to omit it; without it such a token is refused.
 	AcceptUntypedAccessTokens bool `json:"accept_untyped_access_tokens,omitempty"`
+	// RevocationsDatabaseURL is the Postgres DSN of the kv store zero-pep-proxy keeps its session revocations
+	// in. The SessionCookie enforcer admits zero-pep-proxy's session snapshots only while their session is not
+	// revoked, so a policy using it is refused without this.
+	RevocationsDatabaseURL string `json:"revocations_database_url,omitempty"`
 
-	logger      *slog.Logger
-	nonceKeys   nonce.Keys
-	storage     certmagic.Storage
-	stopReplays context.CancelFunc
-	pep         *pep.PEP
+	logger          *slog.Logger
+	nonceKeys       nonce.Keys
+	storage         certmagic.Storage
+	stopReplays     context.CancelFunc
+	openRevocations openRevocationsFunc
+	stopRevocations func()
+	pep             *pep.PEP
 }
 
 // CaddyModule registers App under the module ID "zero".
@@ -84,12 +90,17 @@ func (App) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
-// Start builds the PEP from the app's configuration; Caddy does not start if that fails.
+// Start follows the session revocations and builds the PEP from the app's configuration; Caddy does not start
+// if either fails (server rule 17): a replica that cannot follow the revocations would admit signed-out sessions.
 func (a *App) Start() error {
 	a.logger.Info("Starting Zero app")
 	nonces, err := a.dpopNonces()
 	if err != nil {
 		return fmt.Errorf("DPoP nonces: %w", err)
+	}
+	revocations, err := a.followRevocations()
+	if err != nil {
+		return fmt.Errorf("session revocations: %w", err)
 	}
 	builder := pep.NewBuilder()
 	if a.AcceptUntypedAccessTokens {
@@ -101,13 +112,12 @@ func (a *App) Start() error {
 		WithJWKSetPath(a.JWKSPath).
 		WithDPoPNonces(nonces).
 		WithDPoPReplays(a.dpopReplays()).
+		WithSessionRevocations(revocations).
 		WithSlogger(a.logger).
 		Build()
 	if err != nil {
 		// Caddy does not stop an app that failed to start.
-		if a.stopReplays != nil {
-			a.stopReplays()
-		}
+		a.stopBackground()
 		return fmt.Errorf("failed to create PEP: %w", err)
 	}
 
@@ -172,13 +182,20 @@ const (
 	dpopNonceTTL = 5 * time.Minute
 )
 
-// Stop closes the PEP.
+// Stop ends the sweep of DPoP replays and the following of revocations, and closes the PEP.
 func (a *App) Stop() error {
 	a.logger.Info("Stopping Zero app")
+	a.stopBackground()
+	return a.pep.Close()
+}
+
+func (a *App) stopBackground() {
 	if a.stopReplays != nil {
 		a.stopReplays()
 	}
-	return a.pep.Close()
+	if a.stopRevocations != nil {
+		a.stopRevocations()
+	}
 }
 
 // Provision takes the app's logger and storage from ctx and reads the DPoP nonce keys.
@@ -252,6 +269,11 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.DPoPReplays = d.Val()
+		case "revocations_database_url":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.RevocationsDatabaseURL = d.Val()
 		case "accept_untyped_access_tokens":
 			if d.NextArg() {
 				return nil, d.ArgErr()

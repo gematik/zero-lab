@@ -190,6 +190,9 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   development only, and production configuration rejects it. The security state uses the
   transactional backend (Postgres): `Take` for single-use values, transactions for
   read-modify-write; `kv` encrypts records in the workload before they reach the store.
+  Revocations several processes must see (sessions signed out at zero-pep-proxy and admitted by
+  zaddy) are `kv/revoked`: stored keys plus the `kv.Bus`, read from a local set, behind the domain
+  interface the library defines (`pep.SessionRevocations`).
 - Nonces, `state`, CSRF tokens and similar short-lived values are sealed (AEAD with a
   shared workload key, issue time and purpose in the associated data) and verified
   without a lookup; access tokens are signed JWTs (RFC 9068), sender-constrained with
