@@ -44,6 +44,9 @@ type Options struct {
 	// CacheSize is how many accepted verdicts are kept for reuse; zero means [DefaultCacheSize], a
 	// negative size keeps none.
 	CacheSize int
+	// Proxy is the forward proxy of the egress client and of the revocation fetches; nil goes direct. The host
+	// fills it from [ProxyFromEnv] and a credentials file.
+	Proxy *Proxy
 }
 
 func (o Options) now() func() time.Time {

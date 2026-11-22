@@ -7,9 +7,7 @@
 
 http://127.0.0.1:8010, http://localhost:8010 {
 	handle /.well-known/oauth-protected-resource {
-		header Content-Type application/json
-		root ./static
-		file_server
+		protected_resource_metadata
 	}
 
 	route / {

@@ -419,7 +419,7 @@ func TestDPoPEnforcer(t *testing.T) {
 		{scenario: "public access is always possible", url: "/public", expectedStatus: http.StatusOK, expectedBody: "public"},
 		// RFC 9449 §7.1, Figure 15: without credentials, 401 with a challenge without error code and no error
 		// body (RFC 6750 §3.1).
-		{scenario: "fail without dpop+authorization", url: "/dpop", expectedStatus: http.StatusUnauthorized, challenge: `DPoP algs="ES256"`, noBody: true},
+		{scenario: "fail without dpop+authorization", url: "/dpop", expectedStatus: http.StatusUnauthorized, challenge: `DPoP algs="ES256", resource_metadata="https://example.com/.well-known/oauth-protected-resource"`, noBody: true},
 		{
 			scenario:       "fail withoit dpop, but with bearer authorization",
 			url:            "/dpop",
@@ -432,7 +432,7 @@ func TestDPoPEnforcer(t *testing.T) {
 			scenario:       "fail with dpop authorization but missing dpop proof",
 			url:            "/dpop",
 			expectedStatus: http.StatusUnauthorized,
-			challenge:      `DPoP error="invalid_dpop_proof", error_description="no DPoP proof", algs="ES256"`,
+			challenge:      `DPoP error="invalid_dpop_proof", error_description="no DPoP proof", algs="ES256", resource_metadata="https://example.com/.well-known/oauth-protected-resource"`,
 			request:        requestWithDPoPAuthMissingProof(t, server.URL+"/dpop", []byte(privateJWK1), []string{"read"}, time.Now().Add(time.Hour)),
 		},
 		{
@@ -510,12 +510,12 @@ func TestAccessToken(t *testing.T) {
 // RFC 6750 section 3.1: an access token that is expired or otherwise invalid is 401 invalid_token, under a challenge of
 // the scheme the client used, and the reason stays with the server (server rule 2).
 func TestRFC6750_3_1_AnInvalidBearerTokenIsRefusedWith401InvalidToken(t *testing.T) {
-	assertInvalidToken(t, &pep.EnforcerAuthorizationBearer{}, createRequestWithAccessToken, `Bearer error="invalid_token", error_description="invalid access token"`)
+	assertInvalidToken(t, &pep.EnforcerAuthorizationBearer{}, createRequestWithAccessToken, `Bearer error="invalid_token", error_description="invalid access token", resource_metadata="https://example.com/.well-known/oauth-protected-resource"`)
 }
 
 // RFC 9449 section 7.1 applies RFC 6750 section 3.1 to the DPoP scheme.
 func TestRFC9449_7_1_AnInvalidDPoPTokenIsRefusedWith401InvalidToken(t *testing.T) {
-	assertInvalidToken(t, &pep.EnforcerAuthorizationDPoP{}, createRequestWithAccessTokenAndDPoP, `DPoP error="invalid_token", error_description="invalid access token", algs="ES256"`)
+	assertInvalidToken(t, &pep.EnforcerAuthorizationDPoP{}, createRequestWithAccessTokenAndDPoP, `DPoP error="invalid_token", error_description="invalid access token", algs="ES256", resource_metadata="https://example.com/.well-known/oauth-protected-resource"`)
 }
 
 func assertInvalidToken(t *testing.T, enforcer pep.Enforcer, request func(*testing.T, string, []byte, []string, time.Time) *http.Request, challenge string) {
@@ -635,7 +635,7 @@ func TestRFC9449_7_2_RFC9700_4_10_1_ABoundTokenIsRefusedUnderTheBearerScheme(t *
 			if resp.StatusCode != http.StatusUnauthorized {
 				t.Errorf("status = %d", resp.StatusCode)
 			}
-			if got, want := resp.Header.Get("WWW-Authenticate"), `Bearer error="invalid_token", error_description="invalid access token"`; got != want {
+			if got, want := resp.Header.Get("WWW-Authenticate"), `Bearer error="invalid_token", error_description="invalid access token", resource_metadata="https://example.com/.well-known/oauth-protected-resource"`; got != want {
 				t.Errorf("WWW-Authenticate = %s", got)
 			}
 		})

@@ -123,3 +123,19 @@ func TestRFC9700_4_10_2_ZaddyRefusesAConfigurationWithoutAResource(t *testing.T)
 		t.Error("accept_untyped_access_tokens took an argument")
 	}
 }
+
+// servers.md rule 30: zaddy's egress client takes the forward proxy of the environment, with the credentials file the
+// pep block names.
+func TestServerRule30_ZaddyTakesTheProxyCredentialsFileFromItsConfiguration(t *testing.T) {
+	value, err := parseCaddyfilePEP(caddyfile.NewTestDispenser("pep {\n resource https://api.example.com\n jwks_path jwks.json\n egress_proxy_credentials_path /run/secrets/proxy\n}"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a App
+	if err := json.Unmarshal(value.(httpcaddyfile.App).Value, &a); err != nil {
+		t.Fatal(err)
+	}
+	if a.EgressProxyCredentialsPath != "/run/secrets/proxy" {
+		t.Errorf("egress_proxy_credentials_path = %q", a.EgressProxyCredentialsPath)
+	}
+}

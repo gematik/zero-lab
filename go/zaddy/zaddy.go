@@ -20,7 +20,7 @@
 // find details in the "Readme" file.
 
 // Package zaddy plugs the policy enforcement point of package pep into Caddy: the app "zero", configured
-// by the global option pep, and the HTTP handler enforce_policy.
+// by the global option pep, and the HTTP handlers enforce_policy and protected_resource_metadata.
 package zaddy
 
 import (
@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -39,6 +40,7 @@ import (
 	"github.com/caddyserver/certmagic"
 
 	"github.com/gematik/zero-lab/go/dpop"
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pep"
 )
@@ -50,9 +52,18 @@ func init() {
 
 // App is the Caddy app "zero". It owns the PEP that every enforce_policy handler evaluates requests with.
 type App struct {
-	Resource            string `json:"resource"`
+	Resource string `json:"resource"`
+	// AuthorizationServer is the issuer identifier of the authorization server (RFC 8414 Section 2), named in the
+	// resource's metadata. Without JWKSPath the verification keys are read from the jwks_uri of its metadata.
 	AuthorizationServer string `json:"authorization_server"`
-	JWKSPath            string `json:"jwks_path"` // if set, it will be used otherwise the JWKS from authorization_server will be used
+	// JWKSPath names a file with the verification keys, read once at start (servers.md rule 8); without it the keys
+	// come from AuthorizationServer.
+	JWKSPath string `json:"jwks_path"`
+	// ScopesSupported are the scopes the resource's metadata lists (RFC 9728 Section 2).
+	ScopesSupported []string `json:"scopes_supported,omitempty"`
+	// MetadataMembers are members the deployment adds to the resource's metadata, by name, each value a JSON text,
+	// such as gematik's zeta_asl_use. A member zaddy sets itself, or another of RFC 9728's typed members, is refused.
+	MetadataMembers map[string]string `json:"metadata_members,omitempty"`
 	// PublicOrigin is the scheme, host and port clients reach this server at; DPoP proofs' htu are checked
 	// against it plus the request path (RFC 9449 Section 4.3). Defaults to the origin of Resource.
 	PublicOrigin string `json:"public_origin"`
@@ -72,6 +83,9 @@ type App struct {
 	// in. The SessionCookie enforcer admits zero-pep-proxy's session snapshots only while their session is not
 	// revoked, so a policy using it is refused without this.
 	RevocationsDatabaseURL string `json:"revocations_database_url,omitempty"`
+	// EgressProxyCredentialsPath names the file with the forward proxy's user:password; the proxy itself comes
+	// from HTTPS_PROXY, HTTP_PROXY and NO_PROXY in the environment, as for every egress client (servers.md rule 30).
+	EgressProxyCredentialsPath string `json:"egress_proxy_credentials_path,omitempty"`
 
 	logger          *slog.Logger
 	nonceKeys       nonce.Keys
@@ -79,7 +93,11 @@ type App struct {
 	stopReplays     context.CancelFunc
 	openRevocations openRevocationsFunc
 	stopRevocations func()
-	pep             *pep.PEP
+	stopKeys        context.CancelFunc
+	// egressClient reaches the authorization server; nil means egress.NewClient, and tests set one that trusts
+	// their server.
+	egressClient *http.Client
+	pep          *pep.PEP
 }
 
 // CaddyModule registers App under the module ID "zero".
@@ -106,10 +124,19 @@ func (a *App) Start() error {
 	if a.AcceptUntypedAccessTokens {
 		builder = builder.AcceptUntypedAccessTokens()
 	}
+	if a.JWKSPath != "" {
+		builder = builder.WithJWKSetPath(a.JWKSPath)
+	} else {
+		keys, err := a.followAuthorizationServerKeys()
+		if err != nil {
+			a.stopBackground()
+			return fmt.Errorf("keys of authorization_server: %w", err)
+		}
+		builder = builder.WithJWKSetFunc(keys.Keys)
+	}
 	a.pep, err = builder.
 		Resource(a.Resource).
 		PublicOrigin(a.PublicOrigin).
-		WithJWKSetPath(a.JWKSPath).
 		WithDPoPNonces(nonces).
 		WithDPoPReplays(a.dpopReplays()).
 		WithSessionRevocations(revocations).
@@ -121,9 +148,79 @@ func (a *App) Start() error {
 		return fmt.Errorf("failed to create PEP: %w", err)
 	}
 
-	a.logger.Info("PEP successfully created", "jwks_path", a.JWKSPath)
+	if a.JWKSPath != "" {
+		a.logger.Info("PEP successfully created", "jwks_path", a.JWKSPath)
+	} else {
+		a.logger.Info("PEP successfully created", "jwks_from", a.AuthorizationServer)
+	}
 
 	return nil
+}
+
+// egressProxyFileOption stands for the egress_proxy_credentials_path option where egress.ProxyFromHost asks for
+// the variable that names the credentials file.
+const egressProxyFileOption = "egress_proxy_credentials_path"
+
+// followAuthorizationServerKeys fetches the authorization server's keys through the egress client (servers.md
+// rule 30) and fetches them again every keysRefreshPeriod until Stop; pep starts no goroutine, so the loop is the
+// app's.
+func (a *App) followAuthorizationServerKeys() (*pep.AuthorizationServerKeys, error) {
+	client := a.egressClient
+	if client == nil {
+		var err error
+		proxy, err := egress.ProxyFromHost(func(name string) string {
+			if name == egressProxyFileOption {
+				return a.EgressProxyCredentialsPath
+			}
+			return os.Getenv(name)
+		}, os.ReadFile, egressProxyFileOption)
+		if err != nil {
+			return nil, err
+		}
+		a.logger.Info("egress forward proxy", "proxy", proxy.String())
+		if client, err = egress.NewClient(keysFetchTimeout, egress.Options{Proxy: proxy}); err != nil {
+			return nil, fmt.Errorf("egress client: %w", err)
+		}
+	}
+	keys, err := pep.NewAuthorizationServerKeys(pep.AuthorizationServerKeysConfig{
+		Issuer:     a.AuthorizationServer,
+		HTTPClient: client,
+		Logger:     a.logger,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := keys.Fetch(context.Background()); err != nil {
+		return nil, err
+	}
+	var ctx context.Context
+	ctx, a.stopKeys = context.WithCancel(context.Background())
+	go refreshKeys(ctx, keys, keysRefreshPeriod, a.logger)
+	return keys, nil
+}
+
+const (
+	// keysFetchTimeout bounds each request of the egress client (servers.md rule 24).
+	keysFetchTimeout = 10 * time.Second
+	// keysRefreshPeriod is how often the set is fetched in the background, outside the request path (servers.md
+	// rule 8), so a key the authorization server withdraws leaves the set without a restart.
+	keysRefreshPeriod = 15 * time.Minute
+)
+
+// refreshKeys fetches the set every period until ctx ends; a failed fetch keeps the set in force and is logged.
+func refreshKeys(ctx context.Context, keys *pep.AuthorizationServerKeys, period time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := keys.Fetch(ctx); err != nil {
+				logger.Error("Keys of the authorization server not refreshed, the set in force is kept", "error", err)
+			}
+		}
+	}
 }
 
 // dpopReplays are the replays DPoPReplays names. Those in storage are swept of expired records until Stop.
@@ -196,6 +293,9 @@ func (a *App) stopBackground() {
 	if a.stopRevocations != nil {
 		a.stopRevocations()
 	}
+	if a.stopKeys != nil {
+		a.stopKeys()
+	}
 }
 
 // Provision takes the app's logger and storage from ctx and reads the DPoP nonce keys.
@@ -209,15 +309,27 @@ func (a *App) Provision(ctx caddy.Context) error {
 	return a.loadNonceKeys()
 }
 
-// Validate rejects a configuration without resource or jwks_path, or with an unknown dpop_replays. Without a
-// resource no token's audience could be checked, so any token of the authorization server would do (RFC 9700
-// Section 4.10.2).
+// Validate rejects a configuration without resource, without both jwks_path and authorization_server, with an
+// authorization_server that is no issuer identifier, with metadata members zaddy cannot serve, or with an unknown
+// dpop_replays. Without a resource no token's audience could be checked, so any token of the authorization server
+// would do (RFC 9700 Section 4.10.2).
 func (a *App) Validate() error {
 	if a.Resource == "" {
 		return errors.New("resource must be set: the URI the access tokens' aud names")
 	}
-	if a.JWKSPath == "" {
-		return errors.New("jwks_path must be set")
+	if _, err := pep.ProtectedResourceMetadataURL(a.Resource); err != nil {
+		return fmt.Errorf("resource: %w", err)
+	}
+	if a.JWKSPath == "" && a.AuthorizationServer == "" {
+		return errors.New("jwks_path or authorization_server must be set: the keys access tokens are verified with")
+	}
+	if a.AuthorizationServer != "" {
+		if err := pep.CheckIssuer(a.AuthorizationServer); err != nil {
+			return fmt.Errorf("authorization_server: %w", err)
+		}
+	}
+	if _, err := pep.NewProtectedResourceMetadataHandler(a.protectedResourceMetadata()); err != nil {
+		return fmt.Errorf("scopes_supported or metadata_member: %w", err)
 	}
 	switch a.DPoPReplays {
 	case "", dpopReplaysMemory, dpopReplaysStorage:
@@ -274,6 +386,29 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.RevocationsDatabaseURL = d.Val()
+		case "egress_proxy_credentials_path":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.EgressProxyCredentialsPath = d.Val()
+		case "scopes_supported":
+			scopes := d.RemainingArgs()
+			if len(scopes) == 0 {
+				return nil, d.ArgErr()
+			}
+			a.ScopesSupported = append(a.ScopesSupported, scopes...)
+		case "metadata_member":
+			args := d.RemainingArgs()
+			if len(args) != 2 {
+				return nil, d.ArgErr()
+			}
+			if _, named := a.MetadataMembers[args[0]]; named {
+				return nil, d.Errf("metadata_member %s named twice", args[0])
+			}
+			if a.MetadataMembers == nil {
+				a.MetadataMembers = map[string]string{}
+			}
+			a.MetadataMembers[args[0]] = args[1]
 		case "accept_untyped_access_tokens":
 			if d.NextArg() {
 				return nil, d.ArgErr()

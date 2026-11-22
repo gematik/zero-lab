@@ -211,11 +211,13 @@ The [server rules](../../docs/design/servers.md), in Go terms:
     rollout (rule 8).
   - The fixed profile: TLS 1.2 and 1.3, the ECDHE AES-GCM suites, P-256 and P-384 as constants in code;
     TLS 1.3's ChaCha20-Poly1305, which crypto/tls always offers, is refused in `VerifyConnection`.
-  - Reported: the mode in the start log line. Unix-socket listeners, peers configured by URL
-    (`PEP_AS_ISSUER`, gateway upstreams) and the admin listener's report are not built in Go yet.
+  - Reported: the mode in the start log line. Peers configured by URL (`PEP_AS_ISSUER`, gateway upstreams) and
+    the admin listener's report are not built in Go yet. A Unix-socket listener is built where a server needs
+    one; the Go servers sit behind an edge over TCP and need none today.
 - Rule 30, egress: one client per command, `egress.NewClient` ([`go/egress`](../egress)), handed to every
   library that fetches from the internet (oidf, openid, idpd, tipki/fetch); libraries take a caller's
-  `*http.Client` and build none.
+  `*http.Client` and build none. zaddy hands it to `pep.AuthorizationServerKeys`, which reads the authorization
+  server's metadata and key set; pep takes the client and imports no egress.
   - https only: the rule sits in the transport's `Proxy` hook, which net/http asks before every request and
     redirect, so the clone a library makes to add a client certificate keeps it; `ErrPlainHTTP` otherwise.
   - Plain http only for self-verifying data: a request whose context carries `egress.SelfVerifying` (OCSP,
@@ -228,8 +230,12 @@ The [server rules](../../docs/design/servers.md), in Go terms:
     library fetches trust material, timeouts are the client's and each library bounds what it reads
     (`io.LimitReader`, the `jsontext` bounds). A check of resolved addresses against private ranges is not
     built.
-  - A forward proxy: the egress transport follows `HTTPS_PROXY`/`NO_PROXY` as net/http does; refusing user
-    information in the proxy URL, credentials from a file and reporting the proxy are TASK-407.
+  - A forward proxy: `egress.Proxy`, which the host builds with `egress.ProxyFromHost(os.Getenv, os.ReadFile,
+    "<PREFIX>_EGRESS_PROXY_CREDENTIALS_PATH")` from `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` and passes in
+    `egress.Options.Proxy`; nil goes direct, and net/http's own reading of the environment is not used. https goes by
+    CONNECT, so TLS ends at the origin under the web profile and no CA of the proxy is taken; a proxy URL with user
+    information is refused, credentials come from the file; `Proxy.String` is the start log's report. The revocation
+    fetches take the same proxy.
 - Caches use one shared pattern (keyed by input hash, configuration and trust-material
   version; bounded TTL; invalidated on trust-material reload; single-flight against
   stampedes), the same rules as `ti-cache` on the Rust side.
