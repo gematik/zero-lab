@@ -143,7 +143,9 @@ type FederationEntityMetadata struct {
 
 // parseEntityStatement reads a verified statement's payload with encoding/json/v2 (servers.md rule 28): bounded, of
 // UTF-8, without a member named twice and by the members' exact names. Members it does not know are ignored, since
-// the federation's formats are open to extension.
+// the federation's formats are open to extension. metadata_policy and metadata_policy_crit are among them on purpose:
+// no document of the TI federation sets a policy (gemSpec_IDP_FedMaster, gemSpec_IDP_Sek, gemSpec_IDP_FD,
+// gemSpec_ZETA), and the trust in a provider is one level, the master's word about its keys.
 func parseEntityStatement(payload []byte) (*EntityStatement, error) {
 	var es EntityStatement
 	if err := openid.UnmarshalObject(payload, openid.PayloadDepth, openid.PayloadMembers, &es); err != nil {
