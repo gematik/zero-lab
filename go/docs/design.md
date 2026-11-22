@@ -197,9 +197,39 @@ The [server rules](../../docs/design/servers.md), in Go terms:
   shared workload key, issue time and purpose in the associated data) and verified
   without a lookup; access tokens are signed JWTs (RFC 9068), sender-constrained with
   DPoP, validated offline by the PEP.
-- Outbound HTTP goes through one constructor that applies the SSRF policy (allowed
-  hosts, no private or link-local addresses after DNS resolution, no cross-host
-  redirects, timeouts, response size limits).
+- Rule 29, listeners and peers:
+  - The URL is the mode: a listener is one `…_LISTEN_URL` that the command parses with
+    `net/url` and binds with `net.Listen` (zero-pep-proxy's `listenFromEnv`, `cmd/zero-pep-proxy/listen.go`);
+    a host name instead of an address, a path, user information and the retired variable stop the start.
+  - Inside the cluster: `http://` on a loopback address (`netip.Addr.IsLoopback`) needs nothing, elsewhere
+    `…_PLAINTEXT_ACCEPTED=true`, read as one exact value; `https://` terminates TLS with
+    `tls.NewListener`.
+  - TLS from files: `tls.LoadX509KeyPair` for the pair (it refuses a key that does not match), a validity
+    check of the leaf at start, `ClientAuth: tls.RequireAndVerifyClientCert` with the `…_TLS_CA_PATH` pool for
+    mutual TLS, and the allowlist of `…_TLS_PEER_NAME` (DNS names and URIs of the leaf, compared exactly) in
+    `tls.Config.VerifyConnection`, which runs on resumed handshakes too. Files are read once; a change is a
+    rollout (rule 8).
+  - The fixed profile: TLS 1.2 and 1.3, the ECDHE AES-GCM suites, P-256 and P-384 as constants in code;
+    TLS 1.3's ChaCha20-Poly1305, which crypto/tls always offers, is refused in `VerifyConnection`.
+  - Reported: the mode in the start log line. Unix-socket listeners, peers configured by URL
+    (`PEP_AS_ISSUER`, gateway upstreams) and the admin listener's report are not built in Go yet.
+- Rule 30, egress: one client per command, `egress.NewClient` ([`go/egress`](../egress)), handed to every
+  library that fetches from the internet (oidf, openid, idpd, tipki/fetch); libraries take a caller's
+  `*http.Client` and build none.
+  - https only: the rule sits in the transport's `Proxy` hook, which net/http asks before every request and
+    redirect, so the clone a library makes to add a client certificate keeps it; `ErrPlainHTTP` otherwise.
+  - Plain http only for self-verifying data: a request whose context carries `egress.SelfVerifying` (OCSP,
+    CRLs, the TSL of A_21175). Libraries take the marker as a function (`fetch.WithSelfVerifying`,
+    `idpd.WithSelfVerifying`), so neither imports the other.
+  - Peers of the deployment (an upstream behind the gateway, the PDP) take `egress.NewTransport`: the same
+    verification, no egress rule and no forward proxy.
+  - Allowlist, limits and response checks: the hosts come from the configuration and the trust chains
+    (oidf's admission by the master's IdP list, tipki/fetch's fixed hosts), redirects are refused where a
+    library fetches trust material, timeouts are the client's and each library bounds what it reads
+    (`io.LimitReader`, the `jsontext` bounds). A check of resolved addresses against private ranges is not
+    built.
+  - A forward proxy: the egress transport follows `HTTPS_PROXY`/`NO_PROXY` as net/http does; refusing user
+    information in the proxy URL, credentials from a file and reporting the proxy are TASK-407.
 - Caches use one shared pattern (keyed by input hash, configuration and trust-material
   version; bounded TTL; invalidated on trust-material reload; single-flight against
   stampedes), the same rules as `ti-cache` on the Rust side.
