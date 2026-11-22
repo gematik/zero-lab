@@ -118,6 +118,14 @@ https://api.example.com {
 For a resource with a path, such as `https://api.example.com/fhir`, the handler belongs at
 `/.well-known/oauth-protected-resource/fhir`.
 
+## Forward proxy
+
+zaddy's requests to the internet (the authorization server's metadata and keys) go through the forward proxy of
+`HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` in its environment, https by CONNECT only, so TLS ends at the
+authorization server and a TLS-intercepting proxy is not supported (servers.md rule 30). A proxy URL with user
+information is refused; credentials come from the file `egress_proxy_credentials_path` names in the global `pep`
+block, one line `user:password`. The proxy in effect is logged at start.
+
 ## DPoP replays
 
 zaddy accepts a DPoP proof once (RFC 9449 Section 11.1). By default it remembers the proofs it

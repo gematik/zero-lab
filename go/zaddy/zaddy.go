@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -82,6 +83,9 @@ type App struct {
 	// in. The SessionCookie enforcer admits zero-pep-proxy's session snapshots only while their session is not
 	// revoked, so a policy using it is refused without this.
 	RevocationsDatabaseURL string `json:"revocations_database_url,omitempty"`
+	// EgressProxyCredentialsPath names the file with the forward proxy's user:password; the proxy itself comes
+	// from HTTPS_PROXY, HTTP_PROXY and NO_PROXY in the environment, as for every egress client (servers.md rule 30).
+	EgressProxyCredentialsPath string `json:"egress_proxy_credentials_path,omitempty"`
 
 	logger          *slog.Logger
 	nonceKeys       nonce.Keys
@@ -153,6 +157,10 @@ func (a *App) Start() error {
 	return nil
 }
 
+// egressProxyCredentialsVar stands for the egress_proxy_credentials_path option where egress.ProxyFromHost asks for
+// the variable that names the credentials file.
+const egressProxyCredentialsVar = "egress_proxy_credentials_path"
+
 // followAuthorizationServerKeys fetches the authorization server's keys through the egress client (servers.md
 // rule 30) and fetches them again every keysRefreshPeriod until Stop; pep starts no goroutine, so the loop is the
 // app's.
@@ -160,7 +168,17 @@ func (a *App) followAuthorizationServerKeys() (*pep.AuthorizationServerKeys, err
 	client := a.egressClient
 	if client == nil {
 		var err error
-		if client, err = egress.NewClient(keysFetchTimeout, egress.Options{}); err != nil {
+		proxy, err := egress.ProxyFromHost(func(name string) string {
+			if name == egressProxyCredentialsVar {
+				return a.EgressProxyCredentialsPath
+			}
+			return os.Getenv(name)
+		}, os.ReadFile, egressProxyCredentialsVar)
+		if err != nil {
+			return nil, err
+		}
+		a.logger.Info("egress forward proxy", "proxy", proxy.String())
+		if client, err = egress.NewClient(keysFetchTimeout, egress.Options{Proxy: proxy}); err != nil {
 			return nil, fmt.Errorf("egress client: %w", err)
 		}
 	}
@@ -368,6 +386,11 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.RevocationsDatabaseURL = d.Val()
+		case "egress_proxy_credentials_path":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.EgressProxyCredentialsPath = d.Val()
 		case "scopes_supported":
 			scopes := d.RemainingArgs()
 			if len(scopes) == 0 {
