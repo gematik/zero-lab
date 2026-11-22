@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-22T09:41:00Z'
+updated_date: '2026-11-22T09:55:00Z'
 labels: []
 dependencies:
   - TASK-360
@@ -22,6 +22,12 @@ Six routes in `epa/proxy.go:322-335` have no method pattern; `{path...}` is used
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 each route accepts its declared methods only; a forwarded path with encoded separators, dot segments or characters outside its grammar, a repeated query key and an insurant ID outside the KVNR grammar get 400; only an allowlist of response headers is relayed.
-- [ ] #2 fuzz targets over the forwarded path/query handling and `providerURL` assert that the target stays on the provider and under its path.
+- [x] #1 each route accepts its declared methods only; a forwarded path with encoded separators, dot segments or characters outside its grammar, a repeated query key and an insurant ID outside the KVNR grammar get 400; only an allowlist of response headers is relayed.
+- [x] #2 fuzz targets over the forwarded path/query handling and `providerURL` assert that the target stays on the provider and under its path.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22, branch fix/epa-rule28 (dc3976f6, 33d80af4). Routes per method (GET POST PUT DELETE on the forwarding routes, GET elsewhere); the mux answers 405 with Allow; method-override headers are dropped. Proxy.ServeHTTP checks the path with httpguard.Path; the forwarded path is the rest of the escaped path (an encoded ? or # stays in the inner path), providerURL refuses a non-canonical path and checks the target stays under the base path. The query is parsed with the new httpguard.Query (repeated, malformed, ; separator, empty name, controls, invalid UTF-8 refused) and forwarded as encoded anew. The insurant VAU route checks the KVNR. Response headers: allowlist Content-Disposition, -Encoding, -Language, -Type, ETag, Last-Modified, Retry-After, X-Request-Id; Location is not relayed. Fuzz: FuzzProviderURL, FuzzForwardedTarget, httpguard FuzzQuery, 1 min each. Caveat: FHIR search uses repeated parameters for AND (date=ge..&date=le..); these now get 400 as the AC says. httpguard needs v0.2.0 tagged before epa's next tag.
+<!-- SECTION:NOTES:END -->
