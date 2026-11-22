@@ -30,6 +30,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	"github.com/gematik/zero-lab/go/httpguard"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -72,15 +73,36 @@ func (m *EnforcePolicyMiddleware) Validate() error {
 	return nil
 }
 
-// ServeHTTP implements caddyhttp.MiddlewareHandler.
+// ServeHTTP implements caddyhttp.MiddlewareHandler. Caddy's matchers compare a decoded, case-folded path, and a
+// rewrite may have changed it since, so the path as the client sent it is the one judged (servers.md rule 28,
+// "Method and path"): a non-canonical one is refused before any enforcer runs, so that a route matched in repaired
+// form cannot be forwarded raw, and the enforcer sees it, so that a DPoP proof's htu is checked against the path
+// the client signed (RFC 9449 Section 4.3). The next handler gets the request as Caddy has it.
 func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	pepCtx := m.app.pep.NewContext(w, r)
+	asReceived := receivedRequest(r)
+	if err := httpguard.CheckPath(asReceived.URL.EscapedPath()); err != nil {
+		return caddyhttp.Error(http.StatusBadRequest, err)
+	}
+	pepCtx := m.app.pep.NewContext(w, asReceived)
 	m.logger.Info("EnforcePolicyMiddleware", "enforcer", m.Enforcer)
 	var nextErr error
 	m.Enforcer.Apply(pepCtx, func(_ pep.Context) {
 		nextErr = next.ServeHTTP(w, r)
 	})
 	return nextErr
+}
+
+// receivedRequest is r with the URL the client sent, which Caddy keeps beside the request it rewrites; r itself
+// when Caddy kept none, as outside a Caddy server.
+func receivedRequest(r *http.Request) *http.Request {
+	original, ok := r.Context().Value(caddyhttp.OriginalRequestCtxKey).(http.Request)
+	if !ok || original.URL == nil {
+		return r
+	}
+	received := r.Clone(r.Context())
+	received.URL = original.URL
+	received.RequestURI = original.RequestURI
+	return received
 }
 
 // Caddyfile parsing

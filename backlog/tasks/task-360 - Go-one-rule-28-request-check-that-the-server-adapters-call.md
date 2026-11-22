@@ -1,10 +1,10 @@
 ---
 id: TASK-360
 title: 'Go: one rule 28 request check that the server adapters call'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-16T22:52:00Z'
-updated_date: '2026-11-19 08:36'
+updated_date: '2026-11-22 14:25'
 labels: []
 dependencies: []
 priority: medium
@@ -20,7 +20,7 @@ go/docs/design.md section 10 names a helper that refuses a repeated `url.Values`
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 one package offers the single-value parameter read, the canonical-path check and the Host check, each with a `Fuzz…` target seeded with the rule's hostile inputs; the profile names it.
-- [ ] #2 tasks 1, 2, 5, 7, 8 and 10 use it.
+- [x] #2 tasks 1, 2, 5, 7, 8 and 10 use it.
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -31,3 +31,9 @@ Branch fix/rule28-gaps, 73c4560f. New stdlib-only module go/httpguard: CheckPath
 
 2026-11-19: pep/proxy's remaining users are in: TASK-351 (httpguard.Single for /oauth2/start, /oauth2/sign_in and the callback) and TASK-354 (httpguard.Host for every request). pep itself cannot import httpguard (mod-check: pep carries only pep and dpop), so TASK-353's checks live in pep and dpop. Still open for criterion 2: epa (TASK-356, TASK-357) and zaddy (TASK-359).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/httpguard offers the single-value parameter read, the canonical-path check and the Host check, each fuzzed, named in go/docs/design.md §10. Its users: pep/proxy (TASK-350, 351, 354), epa (TASK-356, 357) and zaddy (TASK-359); pep itself keeps its own checks, as mod-check allows it only pep and dpop.
+<!-- SECTION:FINAL_SUMMARY:END -->
