@@ -51,8 +51,8 @@
 //	PEP_SESSION_TTL          session lifetime when local validation is on (Go duration, default 8h)
 //	PEP_SESSION_STORE_KEY_PATH  key file (`<id> <base64 of 32 bytes>` per line) → seals everything in the kv store,
 //	                         read at start; a changed file takes effect with a rollout. Required with
-//	                         DATABASE_URL. See docs/at-rest-encryption.md.
-//	DATABASE_URL             Postgres DSN for the session store; durable + shared across replicas. When unset,
+//	                         PEP_DATABASE_URL. See docs/at-rest-encryption.md.
+//	PEP_DATABASE_URL         Postgres DSN for the session store; durable + shared across replicas. When unset,
 //	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
 //
 // Usage: zero-pep-proxy [-w workdir]
@@ -158,12 +158,28 @@ func checkInsecureCookie(publicURL string) error {
 	return fmt.Errorf("PEP_INSECURE_COOKIE=true is for http on localhost or 127.0.0.1, and PEP_PUBLIC_URL is %q: unset PEP_INSECURE_COOKIE", publicURL)
 }
 
+// databaseURLEnv names the Postgres peer of the session store and the revocations; retiredDatabaseURLEnv is the
+// name it had before it carried the component's prefix (naming-and-config.md).
+const (
+	databaseURLEnv        = "PEP_DATABASE_URL"
+	retiredDatabaseURLEnv = "DATABASE_URL"
+)
+
+// databaseURL reads the store's Postgres DSN; the retired DATABASE_URL stops the start with the new name rather
+// than leave a deployment on an in-memory store it did not choose.
+func databaseURL(getenv func(string) string) (string, error) {
+	if getenv(retiredDatabaseURLEnv) != "" {
+		return "", fmt.Errorf("%s is replaced by %s", retiredDatabaseURLEnv, databaseURLEnv)
+	}
+	return getenv(databaseURLEnv), nil
+}
+
 // storeKeys loads the session store's key file. A persistent store without one refuses to start (server rules
 // 5, 17), before any connection, so an unreachable database cannot hide it. Nil means no key and no need for one.
 func storeKeys(dsn, keyPath string) (*kv.Keyring, error) {
 	if keyPath == "" {
 		if dsn != "" {
-			return nil, fmt.Errorf("DATABASE_URL is set but %s is not: a persistent store must hold ciphertext only; make a key file with: printf 'k1 %%s\\n' \"$(openssl rand -base64 32)\"", sessionStoreKeyPathEnv)
+			return nil, fmt.Errorf("PEP_DATABASE_URL is set but %s is not: a persistent store must hold ciphertext only; make a key file with: printf 'k1 %%s\\n' \"$(openssl rand -base64 32)\"", sessionStoreKeyPathEnv)
 		}
 		return nil, nil
 	}
@@ -174,18 +190,21 @@ func storeKeys(dsn, keyPath string) (*kv.Keyring, error) {
 	return ring, nil
 }
 
-// openStore returns the session store. Postgres when DATABASE_URL is set — durable across restarts and shared
+// openStore returns the session store. Postgres when PEP_DATABASE_URL is set — durable across restarts and shared
 // across replicas (required for production / horizontal scale). Otherwise an in-memory store for dev/tests,
 // where sessions are lost on restart and not shared. Sealed whenever a key file is given.
 func openStore() kv.Store {
-	dsn := os.Getenv("DATABASE_URL")
+	dsn, err := databaseURL(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
 	ring, err := storeKeys(dsn, os.Getenv(sessionStoreKeyPathEnv))
 	if err != nil {
 		log.Fatal(err)
 	}
 	var store kv.Store
 	if dsn == "" {
-		slog.Warn("DATABASE_URL not set — using in-memory kv store, for a single replica only (sessions are lost on restart and not shared across replicas)")
+		slog.Warn("PEP_DATABASE_URL not set — using in-memory kv store, for a single replica only (sessions are lost on restart and not shared across replicas)")
 		store = kv.NewMemory()
 	} else {
 		if store, err = postgres.Open(context.Background(), dsn); err != nil {
@@ -201,12 +220,15 @@ func openStore() kv.Store {
 }
 
 // openRevocations returns the session revocations: published over Postgres LISTEN/NOTIFY and stored in the
-// store when DATABASE_URL is set, so logout and lockout hold at every replica; otherwise in memory, for a single
+// store when PEP_DATABASE_URL is set, so logout and lockout hold at every replica; otherwise in memory, for a single
 // replica. ttl is the snapshot lifetime, how long a revocation learned from another replica holds.
 func openRevocations(store kv.Store, ttl time.Duration) proxy.Revocations {
-	dsn := os.Getenv("DATABASE_URL")
+	dsn, err := databaseURL(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if dsn == "" {
-		slog.Warn("DATABASE_URL not set — revocations held in memory, for a single replica only")
+		slog.Warn("PEP_DATABASE_URL not set — revocations held in memory, for a single replica only")
 		return proxy.NewMemoryRevocations(nil)
 	}
 	bus, err := postgres.OpenBus(context.Background(), dsn)

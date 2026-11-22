@@ -276,3 +276,17 @@ func TestServerRule29_MutualTLSAdmitsTheAllowlistAndNobodyElse(t *testing.T) {
 		t.Error("a client without a certificate was admitted")
 	}
 }
+
+// naming-and-config.md: every variable carries the prefix of the component that reads it; the retired DATABASE_URL
+// stops the start with the new name instead of leaving the proxy on an in-memory store.
+func TestNamingAndConfig_TheStorePeerCarriesThePrefix(t *testing.T) {
+	if dsn, err := databaseURL(fromMap(map[string]string{"PEP_DATABASE_URL": "postgres://db/zero"})); err != nil || dsn != "postgres://db/zero" {
+		t.Errorf("PEP_DATABASE_URL: %q, %v", dsn, err)
+	}
+	if _, err := databaseURL(fromMap(map[string]string{"DATABASE_URL": "postgres://db/zero"})); err == nil {
+		t.Error("the retired DATABASE_URL was taken")
+	}
+	if dsn, err := databaseURL(fromMap(nil)); err != nil || dsn != "" {
+		t.Errorf("unset: %q, %v", dsn, err)
+	}
+}

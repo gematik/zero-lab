@@ -227,7 +227,7 @@ worst case is the usual `kv` fallback + re-mint, never a forced re-login.
 ## Rollout (stages, each HITL-gated)
 
 0. **Prerequisite — persistent shared `kv`.** Wire the cmd to a Postgres `kv` (the bff/pdp `openStore()`
-   pattern: persistent when `DATABASE_URL` is set, in-memory only for dev/tests) so sessions survive restarts
+   pattern: persistent when `PEP_DATABASE_URL` is set, in-memory only for dev/tests) so sessions survive restarts
    and replicas. Required regardless of the rest of this design. ✅ done.
 1. Snapshot cookie + `/oauth2/auth` fast path with fallback; in-mem bus; key file (`PEP_SESSION_KEY_PATH`) +
    rotation. Single instance. (No key file → fast path off, current per-request `kv` behavior.) ✅ done.

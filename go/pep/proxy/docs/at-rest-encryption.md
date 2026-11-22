@@ -51,8 +51,8 @@ but nobody reads it. The sid is `hashToken(token)`, not a secret.
 
 **Keys.** Two independent files, so the two domains share no key material:
 - `PEP_SESSION_KEY_PATH` — the snapshot-cookie key (fast-path JWE), one bare base64 256-bit key.
-- `PEP_SESSION_STORE_KEY_PATH` — the store's ring, **required** with `DATABASE_URL`: zero-pep-proxy refuses to
-  start without it, and nothing makes a key at start. Without `DATABASE_URL` it is optional; the in-memory store
+- `PEP_SESSION_STORE_KEY_PATH` — the store's ring, **required** with `PEP_DATABASE_URL`: zero-pep-proxy refuses to
+  start without it, and nothing makes a key at start. Without `PEP_DATABASE_URL` it is optional; the in-memory store
   is then sealed if it is given.
 
 Make a key file, and hand the same file to every replica:

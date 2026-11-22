@@ -7,7 +7,7 @@ pep is configured from two sources:
   single-provider shortcuts (how the gateway runs and where its state lives).
 
 The providers file holds only providers; it does not contain `PEP_PUBLIC_URL`, cookies, the session key,
-`DATABASE_URL`, etc.
+`PEP_DATABASE_URL`, etc.
 
 Every outbound request, to the providers, the federation, the IDP-Dienst's trust material and the PDP
 (`PEP_BACKEND=pdp`), is verified under the `web` profile of
@@ -67,8 +67,8 @@ needs no file). The file and the shortcuts are mutually exclusive (the file wins
 
 | Var | Purpose | Default |
 | --- | --- | --- |
-| `DATABASE_URL` | Postgres DSN for the session store (durable + shared across replicas). Requires `PEP_SESSION_STORE_KEY_PATH`. Unset → in-memory, for a single replica (dev; lost on restart, not shared) | in-memory |
-| `PEP_SESSION_STORE_KEY_PATH` | key file sealing everything in the kv store, the same on all replicas. **Required with `DATABASE_URL`**: pep refuses to start without it, and nothing makes a key at start | — |
+| `PEP_DATABASE_URL` | Postgres DSN for the session store (durable + shared across replicas). Requires `PEP_SESSION_STORE_KEY_PATH`. Unset → in-memory, for a single replica (dev; lost on restart, not shared) | in-memory |
+| `PEP_SESSION_STORE_KEY_PATH` | key file sealing everything in the kv store, the same on all replicas. **Required with `PEP_DATABASE_URL`**: pep refuses to start without it, and nothing makes a key at start | — |
 | `PEP_SESSION_KEY_PATH` | file with a base64 256-bit key → enables the `/oauth2/auth` snapshot fast path (local decrypt, no DB per request). Unset → per-request DB validation | off |
 | `PEP_SESSION_PREVIOUS_KEY_PATH` | optional second key file for rotation overlap | — |
 | `PEP_SESSION_TTL` | session lifetime when the fast path is on (Go duration) | `8h` |
@@ -159,4 +159,4 @@ just docker-push pep     # build + push both tags
 
 `scratch` image, runs as non-root (uid 65532). The version is stamped
 into the binary (`pep.Version`) and logged at startup. Mount secrets (session key, OIDF keys) as files and
-pass `DATABASE_URL` with `PEP_SESSION_STORE_KEY_PATH`; see [`e2e/README.md`](../../e2e/README.md) for a runnable stack.
+pass `PEP_DATABASE_URL` with `PEP_SESSION_STORE_KEY_PATH`; see [`e2e/README.md`](../../e2e/README.md) for a runnable stack.
