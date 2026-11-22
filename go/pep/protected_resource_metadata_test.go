@@ -32,6 +32,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,13 +167,82 @@ func TestRFC9728_2_AddedMembersAreEncodedInOrderAndCannotReplaceTypedOnes(t *tes
 	if out, err := json.Marshal(doc, json.Deterministic(true)); err == nil {
 		t.Errorf("a typed member was replaced: %s", out)
 	}
-	for _, name := range []string{"resource", "authorization_servers", "scopes_supported", "bearer_methods_supported", "jwks_uri"} {
-		if !IsProtectedResourceMetadataMember(name) {
-			t.Errorf("%s is not typed", name)
+}
+
+func serveMetadata(t *testing.T, h http.Handler, method string) *httptest.ResponseRecorder {
+	t.Helper()
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(method, "https://api.example.com/.well-known/oauth-protected-resource", http.NoBody))
+	return w
+}
+
+// RFC 9728 Sections 2 and 3.2: the handler answers GET with the document as application/json, the members added
+// after the typed ones in a fixed order, and HEAD with its headers alone.
+func TestRFC9728_3_2_TheMetadataIsServedAsJSON(t *testing.T) {
+	h, err := NewProtectedResourceMetadataHandler(ProtectedResourceMetadata{
+		Resource:               "https://api.example.com",
+		AuthorizationServers:   []string{"https://as.example.com"},
+		ScopesSupported:        []string{"epa.read", "epa.write"},
+		BearerMethodsSupported: []string{"header"},
+		Extra:                  map[string]jsontext.Value{"zeta_asl_use": jsontext.Value(`"required"`), "x_profile": jsontext.Value(`{"v":1}`)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := serveMetadata(t, h, http.MethodGet)
+	want := `{"resource":"https://api.example.com","authorization_servers":["https://as.example.com"],"scopes_supported":["epa.read","epa.write"],` +
+		`"bearer_methods_supported":["header"],"x_profile":{"v":1},"zeta_asl_use":"required"}`
+	if w.Code != http.StatusOK || w.Body.String() != want || w.Header().Get("Content-Type") != "application/json" {
+		t.Errorf("%d %s %s\nwant %s", w.Code, w.Header().Get("Content-Type"), w.Body, want)
+	}
+	w = serveMetadata(t, h, http.MethodHead)
+	if w.Code != http.StatusOK || w.Body.Len() != 0 || w.Header().Get("Content-Length") != strconv.Itoa(len(want)) {
+		t.Errorf("HEAD: %d, %d bytes, Content-Length %q", w.Code, w.Body.Len(), w.Header().Get("Content-Length"))
+	}
+}
+
+// servers.md rule 28, method and path: the metadata takes GET and HEAD only; another method gets 405 with Allow.
+func TestServerRule28_TheMetadataRefusesOtherMethodsWith405(t *testing.T) {
+	h, err := NewProtectedResourceMetadataHandler(ProtectedResourceMetadata{Resource: "https://api.example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions} {
+		w := serveMetadata(t, h, method)
+		if w.Code != http.StatusMethodNotAllowed || w.Header().Get("Allow") != "GET, HEAD" || w.Body.Len() != 0 {
+			t.Errorf("%s: %d, Allow %q, %d bytes", method, w.Code, w.Header().Get("Allow"), w.Body.Len())
 		}
 	}
-	if IsProtectedResourceMetadataMember("zeta_asl_use") {
-		t.Error("zeta_asl_use is typed")
+}
+
+// RFC 9728 Section 2: an added member cannot replace a typed one, and its value is one JSON text; such a document,
+// one without a resource or with malformed scopes, is refused.
+func TestRFC9728_2_ACollidingOrMalformedMetadataMemberIsRefused(t *testing.T) {
+	for name, extra := range map[string]map[string]jsontext.Value{
+		"resource":                 {"resource": jsontext.Value(`"https://evil.example"`)},
+		"authorization_servers":    {"authorization_servers": jsontext.Value(`["https://evil.example"]`)},
+		"scopes_supported":         {"scopes_supported": jsontext.Value(`["x"]`)},
+		"bearer_methods_supported": {"bearer_methods_supported": jsontext.Value(`["query"]`)},
+		"jwks_uri":                 {"jwks_uri": jsontext.Value(`"https://evil.example/jwks"`)},
+		"unquoted string":          {"zeta_asl_use": jsontext.Value(`required`)},
+		"two texts":                {"zeta_asl_use": jsontext.Value(`"a" "b"`)},
+		"duplicate name in value":  {"x": jsontext.Value(`{"a":1,"a":2}`)},
+		"empty name":               {"": jsontext.Value(`1`)},
+		"too large":                {"x": jsontext.Value(`"` + strings.Repeat("a", MaxMetadataMemberBytes) + `"`)},
+	} {
+		if _, err := NewProtectedResourceMetadataHandler(ProtectedResourceMetadata{Resource: "https://api.example.com", Extra: extra}); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	for name, doc := range map[string]ProtectedResourceMetadata{
+		"no resource":      {},
+		"scope with quote": {Resource: "https://api.example.com", ScopesSupported: []string{`a"b`}},
+		"scope twice":      {Resource: "https://api.example.com", ScopesSupported: []string{"a", "a"}},
+		"empty scope":      {Resource: "https://api.example.com", ScopesSupported: []string{""}},
+	} {
+		if _, err := NewProtectedResourceMetadataHandler(doc); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }
 

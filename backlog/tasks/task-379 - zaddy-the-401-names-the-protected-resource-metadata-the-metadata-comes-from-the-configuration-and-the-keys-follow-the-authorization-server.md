@@ -6,7 +6,7 @@ title: >-
 status: Done
 assignee: []
 created_date: '2026-11-18 10:42'
-updated_date: '2026-11-22 16:29'
+updated_date: '2026-11-22 16:41'
 labels:
   - zaddy
   - go
@@ -43,6 +43,8 @@ Three things a deployment of zaddy has to do by hand today, seen on 2026-11-18 a
 - Deviation to note: the unknown-kid refetch runs on the request path, which servers.md rule 8 reserves for background refreshes; it is rate-bounded and was the decision for this task.
 - zaddy gains requires on go/egress (authorised) and go/openid (for the shared jsontext bounds; only go-jose transitively, already present). Outside the workspace zaddy needs `just sync` for pep's new API.
 - The dev Caddyfile serves the metadata with the new directive; zaddy/static/.well-known/oauth-protected-resource removed.
+
+- Follow-up (maintainer's decision): the reusable code moved into pep for reuse by zero-pep-proxy's gateway. pep.AuthorizationServerKeys (NewAuthorizationServerKeys with AuthorizationServerKeysConfig{Issuer, HTTPClient, Logger, Now, RefetchInterval}; Keys, Fetch, Refresh) does the RFC 8414 fetch with pep's own jsontext bounds and starts no goroutine; pep.NewProtectedResourceMetadataHandler serves the document and validates it (CheckMetadataMember, scopes). zaddy keeps the wiring: config, the directive wrapping pep's handler, egress.NewClient, the fetch at Start and the 15-minute refresh loop. zaddy no longer requires go/openid. The unknown-kid refetch stays on the request path pending the maintainer's decision.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary

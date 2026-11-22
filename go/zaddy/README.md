@@ -67,7 +67,9 @@ metadata from `/.well-known/oauth-authorization-server` inserted after the host 
 from `<authorization_server>/.well-known/openid-configuration` when the first answers 404, checks that it
 names exactly the configured issuer (RFC 8414 Section 3.3) and an https `jwks_uri`, and reads the key set
 from there. All of it goes through the egress client (servers.md rule 30): https only, verified against the
-system's roots, a forward proxy from `HTTPS_PROXY`, no redirects, bounded responses.
+system's roots, a forward proxy from `HTTPS_PROXY`, no redirects, bounded responses. The fetching is
+`pep.AuthorizationServerKeys`, which zero-pep-proxy's gateway can use as well; zaddy hands it the egress
+client and runs the background refresh.
 
 zaddy does not start when it cannot read the keys. It reads them again every 15 minutes, and when a token
 names a `kid` the set does not hold, at most once a minute, since the client picks the `kid`. A set that is
@@ -89,8 +91,8 @@ A 401 of `enforce_policy` names the resource's metadata in the `resource_metadat
 resource learns where to find the authorization server. The URL is the one RFC 9728 Section 3.1 derives
 from `resource`: `/.well-known/oauth-protected-resource` inserted between the host and the resource's path.
 
-The `protected_resource_metadata` handler serves that document (RFC 9728 Section 3) from the global `pep`
-block: `resource`, `authorization_servers` with `authorization_server`, `bearer_methods_supported`
+The `protected_resource_metadata` handler, pep's `NewProtectedResourceMetadataHandler`, serves that
+document (RFC 9728 Section 3) from the global `pep` block: `resource`, `authorization_servers` with `authorization_server`, `bearer_methods_supported`
 `["header"]`, `scopes_supported` from the subdirective of that name, and the members a deployment adds
 with `metadata_member <name> <JSON value>`, such as gematik's `zeta_asl_use`. A value is one JSON text,
 so a string is quoted inside backticks; a name zaddy sets itself, or another typed member of RFC 9728, is

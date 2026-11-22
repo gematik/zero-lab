@@ -25,12 +25,10 @@ package zaddy
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"time"
 
 	"github.com/caddyserver/caddy/v2"
@@ -156,8 +154,9 @@ func (a *App) Start() error {
 }
 
 // followAuthorizationServerKeys fetches the authorization server's keys through the egress client (servers.md
-// rule 30) and keeps fetching them in the background until Stop.
-func (a *App) followAuthorizationServerKeys() (*authorizationServerKeys, error) {
+// rule 30) and fetches them again every keysRefreshPeriod until Stop; pep starts no goroutine, so the loop is the
+// app's.
+func (a *App) followAuthorizationServerKeys() (*pep.AuthorizationServerKeys, error) {
 	client := a.egressClient
 	if client == nil {
 		var err error
@@ -165,14 +164,45 @@ func (a *App) followAuthorizationServerKeys() (*authorizationServerKeys, error) 
 			return nil, fmt.Errorf("egress client: %w", err)
 		}
 	}
-	keys, err := newAuthorizationServerKeys(context.Background(), a.AuthorizationServer, client, time.Now)
+	keys, err := pep.NewAuthorizationServerKeys(pep.AuthorizationServerKeysConfig{
+		Issuer:     a.AuthorizationServer,
+		HTTPClient: client,
+		Logger:     a.logger,
+	})
 	if err != nil {
+		return nil, err
+	}
+	if _, err := keys.Fetch(context.Background()); err != nil {
 		return nil, err
 	}
 	var ctx context.Context
 	ctx, a.stopKeys = context.WithCancel(context.Background())
-	go keys.run(ctx, keysRefreshPeriod, a.logger)
+	go refreshKeys(ctx, keys, keysRefreshPeriod, a.logger)
 	return keys, nil
+}
+
+const (
+	// keysFetchTimeout bounds each request of the egress client (servers.md rule 24).
+	keysFetchTimeout = 10 * time.Second
+	// keysRefreshPeriod is how often the set is fetched in the background, outside the request path (servers.md
+	// rule 8), so a key the authorization server withdraws leaves the set without a restart.
+	keysRefreshPeriod = 15 * time.Minute
+)
+
+// refreshKeys fetches the set every period until ctx ends; a failed fetch keeps the set in force and is logged.
+func refreshKeys(ctx context.Context, keys *pep.AuthorizationServerKeys, period time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if _, err := keys.Fetch(ctx); err != nil {
+				logger.Error("Keys of the authorization server not refreshed, the set in force is kept", "error", err)
+			}
+		}
+	}
 }
 
 // dpopReplays are the replays DPoPReplays names. Those in storage are swept of expired records until Stop.
@@ -276,15 +306,12 @@ func (a *App) Validate() error {
 		return errors.New("jwks_path or authorization_server must be set: the keys access tokens are verified with")
 	}
 	if a.AuthorizationServer != "" {
-		if err := checkIssuer(a.AuthorizationServer); err != nil {
+		if err := pep.CheckIssuer(a.AuthorizationServer); err != nil {
 			return fmt.Errorf("authorization_server: %w", err)
 		}
 	}
-	if err := checkScopes(a.ScopesSupported); err != nil {
-		return fmt.Errorf("scopes_supported: %w", err)
-	}
-	if err := checkMetadataMembers(a.MetadataMembers); err != nil {
-		return fmt.Errorf("metadata_member: %w", err)
+	if _, err := pep.NewProtectedResourceMetadataHandler(a.protectedResourceMetadata()); err != nil {
+		return fmt.Errorf("scopes_supported or metadata_member: %w", err)
 	}
 	switch a.DPoPReplays {
 	case "", dpopReplaysMemory, dpopReplaysStorage:
@@ -373,49 +400,6 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 		Name:  "zero",
 		Value: caddyconfig.JSON(a, nil),
 	}, nil
-}
-
-// maxMetadataMemberBytes bounds the JSON value of one metadata member; the document is served on every request
-// for it.
-const maxMetadataMemberBytes = 4096
-
-// checkScopes takes scope tokens as RFC 6749 Section 3.3 has them, each once.
-func checkScopes(scopes []string) error {
-	for i, scope := range scopes {
-		if scope == "" {
-			return errors.New("an empty scope")
-		}
-		for j := range len(scope) {
-			// NQCHAR: %x21 / %x23-5B / %x5D-7E
-			if c := scope[j]; c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
-				return errors.New("a scope with a character RFC 6749 Section 3.3 does not allow")
-			}
-		}
-		if slices.Contains(scopes[:i], scope) {
-			return errors.New("a scope named twice")
-		}
-	}
-	return nil
-}
-
-// checkMetadataMembers takes members whose names are none of the typed members of the resource's metadata and
-// whose values are each one valid JSON text within maxMetadataMemberBytes.
-func checkMetadataMembers(members map[string]string) error {
-	for name, value := range members {
-		if name == "" {
-			return errors.New("a member without a name")
-		}
-		if pep.IsProtectedResourceMetadataMember(name) {
-			return fmt.Errorf("%s is a member zaddy sets from its configuration", name)
-		}
-		if len(value) > maxMetadataMemberBytes {
-			return fmt.Errorf("%s: value larger than %d bytes", name, maxMetadataMemberBytes)
-		}
-		if !jsontext.Value(value).IsValid() {
-			return fmt.Errorf("%s: value is not one JSON text; quote a string in backticks, as `\"required\"`", name)
-		}
-	}
-	return nil
 }
 
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {

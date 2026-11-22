@@ -23,9 +23,14 @@ package pep
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
+	"fmt"
+	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -46,16 +51,91 @@ type ProtectedResourceMetadata struct {
 	ResourcePolicyURI                    string   `json:"resource_policy_uri,omitempty"`                      // OPTIONAL
 	ResourceTosURI                       string   `json:"resource_tos_uri,omitempty"`                         // OPTIONAL
 	// Extra holds the members a deployment or profile adds (RFC 9728 Section 2 allows them), such as gematik's
-	// zeta_asl_use. A name of a typed member above is refused when the document is encoded, so a deployment
-	// cannot override what the configuration says; json.Deterministic orders them.
+	// zeta_asl_use. A name of a typed member above fails the encoding, so a deployment cannot override what the
+	// configuration says (CheckMetadataMember); json.Deterministic orders them.
 	Extra map[string]jsontext.Value `json:",embed"`
 }
 
-// IsProtectedResourceMetadataMember reports whether name is a typed member of ProtectedResourceMetadata, which
-// Extra must not carry.
-func IsProtectedResourceMetadataMember(name string) bool {
-	_, typed := typedMetadataMembers[name]
-	return typed
+// MaxMetadataMemberBytes bounds the JSON value of one member of Extra; the document is served on every request
+// for it.
+const MaxMetadataMemberBytes = 4096
+
+// CheckMetadataMember takes a member for Extra: a name of none of the typed members, so that an added member cannot
+// replace what the configuration states, and a value that is one valid JSON text within MaxMetadataMemberBytes.
+func CheckMetadataMember(name string, value jsontext.Value) error {
+	if name == "" {
+		return errors.New("a member without a name")
+	}
+	if _, typed := typedMetadataMembers[name]; typed {
+		return fmt.Errorf("%s is a typed member of the metadata, set from the configuration", name)
+	}
+	if len(value) > MaxMetadataMemberBytes {
+		return fmt.Errorf("%s: value larger than %d bytes", name, MaxMetadataMemberBytes)
+	}
+	if !value.IsValid() {
+		return fmt.Errorf("%s: value is not one JSON text", name)
+	}
+	return nil
+}
+
+// checkScopes takes scope tokens as RFC 6749 Section 3.3 has them, each once.
+func checkScopes(scopes []string) error {
+	for i, scope := range scopes {
+		if scope == "" {
+			return errors.New("an empty scope")
+		}
+		for j := range len(scope) {
+			// NQCHAR: %x21 / %x23-5B / %x5D-7E
+			if c := scope[j]; c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
+				return errors.New("a scope with a character RFC 6749 Section 3.3 does not allow")
+			}
+		}
+		if slices.Contains(scopes[:i], scope) {
+			return errors.New("a scope named twice")
+		}
+	}
+	return nil
+}
+
+// NewProtectedResourceMetadataHandler serves doc (RFC 9728 Section 3): GET and HEAD get it as application/json
+// (Section 3.2), any other method 405 with Allow (servers.md rule 28, method and path). doc is checked and encoded
+// once, deterministically, so that every replica serves the same bytes: it needs a resource, its scopes follow RFC
+// 6749 Section 3.3, and every member of Extra passes CheckMetadataMember.
+func NewProtectedResourceMetadataHandler(doc ProtectedResourceMetadata) (http.Handler, error) {
+	if doc.Resource == "" {
+		return nil, errors.New("protected resource metadata: no resource")
+	}
+	if err := checkScopes(doc.ScopesSupported); err != nil {
+		return nil, fmt.Errorf("protected resource metadata: scopes_supported: %w", err)
+	}
+	for name, value := range doc.Extra {
+		if err := CheckMetadataMember(name, value); err != nil {
+			return nil, fmt.Errorf("protected resource metadata: %w", err)
+		}
+	}
+	body, err := json.Marshal(doc, json.Deterministic(true))
+	if err != nil {
+		return nil, fmt.Errorf("protected resource metadata: %w", err)
+	}
+	return metadataHandler(body), nil
+}
+
+// metadataHandler is an encoded metadata document as an http.Handler.
+type metadataHandler []byte
+
+func (h metadataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(h)))
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = w.Write(h)
 }
 
 // typedMetadataMembers are the JSON names of ProtectedResourceMetadata's fields, read from the type itself so that

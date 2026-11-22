@@ -19,18 +19,17 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package zaddy
+package pep
 
 import (
-	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json/v2"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -39,7 +38,6 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/dpop"
-	"github.com/gematik/zero-lab/go/pep"
 )
 
 // fakeAuthorizationServer serves its metadata and key set over TLS; the tests change both while it runs.
@@ -55,7 +53,7 @@ type fakeAuthorizationServer struct {
 
 func newFakeAuthorizationServer(t *testing.T, keys ...*ecdsa.PrivateKey) *fakeAuthorizationServer {
 	t.Helper()
-	as := &fakeAuthorizationServer{metadataPath: authorizationServerMetadataPath, jwksStatus: http.StatusOK}
+	as := &fakeAuthorizationServer{metadataPath: AuthorizationServerMetadataPath, jwksStatus: http.StatusOK}
 	as.metadata = func(issuer string) string {
 		return fmt.Sprintf(`{"issuer":%q,"jwks_uri":%q,"token_endpoint":%q}`, issuer, issuer+"/jwks", issuer+"/token")
 	}
@@ -157,7 +155,7 @@ func TestRFC8414_3_3_AnIssuerMismatchOrANonHTTPSJwksURIRefusesTheKeys(t *testing
 		t.Run(name, func(t *testing.T) {
 			as := newFakeAuthorizationServer(t, generateKey(t))
 			as.metadata = metadata
-			if _, err := newAuthorizationServerKeys(t.Context(), as.URL, as.Client(), time.Now); err == nil {
+			if _, err := fetchedKeys(t, as, time.Now); err == nil {
 				t.Error("keys accepted")
 			}
 			if as.jwksFetches.Load() != 0 {
@@ -171,8 +169,8 @@ func TestRFC8414_3_3_AnIssuerMismatchOrANonHTTPSJwksURIRefusesTheKeys(t *testing
 // answers 404 at RFC 8414's location is asked at /.well-known/openid-configuration, under the same issuer check.
 func TestRFC8414_3_1_TheOpenIDConfigurationIsAskedWhenTheMetadataIsAbsent(t *testing.T) {
 	as := newFakeAuthorizationServer(t, generateKey(t))
-	as.metadataPath = openIDConfigurationPath
-	keys, err := newAuthorizationServerKeys(t.Context(), as.URL, as.Client(), time.Now)
+	as.metadataPath = OpenIDConfigurationPath
+	keys, err := fetchedKeys(t, as, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,12 +186,12 @@ func TestRFC8414_3_1_TheMetadataURLIsDerivedFromTheIssuer(t *testing.T) {
 		"https://as.example/":         "https://as.example/.well-known/oauth-authorization-server",
 		"https://as.example/tenant/1": "https://as.example/.well-known/oauth-authorization-server/tenant/1",
 	} {
-		if got, err := authorizationServerMetadataURL(issuer); err != nil || got != want {
+		if got, err := AuthorizationServerMetadataURL(issuer); err != nil || got != want {
 			t.Errorf("%s: %q, %v", issuer, got, err)
 		}
 	}
 	for _, issuer := range []string{"http://as.example", "https://as.example?x=1", "https://as.example#f", "https://u@as.example", "as.example"} {
-		if got, err := authorizationServerMetadataURL(issuer); err == nil {
+		if got, err := AuthorizationServerMetadataURL(issuer); err == nil {
 			t.Errorf("%s: %q", issuer, got)
 		}
 	}
@@ -213,11 +211,24 @@ func TestServerRule28_AKeySetThatIsNotPublicKeysIsRefused(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			as := newFakeAuthorizationServer(t, generateKey(t))
 			as.set(func() { change(as) })
-			if _, err := newAuthorizationServerKeys(t.Context(), as.URL, as.Client(), time.Now); err == nil {
+			if _, err := fetchedKeys(t, as, time.Now); err == nil {
 				t.Error("keys accepted")
 			}
 		})
 	}
+}
+
+// fetchedKeys are the keys of as after their first fetch, or the fetch's error.
+func fetchedKeys(t *testing.T, as *fakeAuthorizationServer, now func() time.Time) (*AuthorizationServerKeys, error) {
+	t.Helper()
+	keys, err := NewAuthorizationServerKeys(AuthorizationServerKeysConfig{Issuer: as.URL, HTTPClient: as.Client(), Now: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keys.Fetch(t.Context()); err != nil {
+		return nil, err
+	}
+	return keys, nil
 }
 
 // fakeClock is a clock the test moves.
@@ -244,11 +255,11 @@ func TestServerRule8_AnUnknownKidRefetchesTheKeysAtMostOncePerInterval(t *testin
 	oldKey, newKey := generateKey(t), generateKey(t)
 	as := newFakeAuthorizationServer(t, oldKey)
 	clock := newFakeClock()
-	keys, err := newAuthorizationServerKeys(t.Context(), as.URL, as.Client(), clock.Now)
+	keys, err := fetchedKeys(t, as, clock.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := pep.NewBuilder().Resource("https://rs.example").WithKeySource(keys).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).Build()
+	p, err := NewBuilder().Resource("https://rs.example").WithKeySource(keys).WithDPoPReplays(dpop.NewMemoryReplays(16, nil)).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,17 +268,17 @@ func TestServerRule8_AnUnknownKidRefetchesTheKeysAtMostOncePerInterval(t *testin
 	}
 
 	as.setKeys(oldKey, newKey)
-	clock.advance(keysRefetchInterval)
+	clock.advance(DefaultKeysRefetchInterval)
 	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "k1")); err != nil || as.jwksFetches.Load() != 2 {
 		t.Fatalf("rotated key: %v, %d fetches", err, as.jwksFetches.Load())
 	}
 
-	clock.advance(keysRefetchInterval / 2)
+	clock.advance(DefaultKeysRefetchInterval / 2)
 	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "unknown")); err == nil || as.jwksFetches.Load() != 2 {
 		t.Fatalf("second unknown kid within the interval: %v, %d fetches", err, as.jwksFetches.Load())
 	}
 
-	clock.advance(keysRefetchInterval)
+	clock.advance(DefaultKeysRefetchInterval)
 	as.set(func() { as.jwksStatus = http.StatusServiceUnavailable })
 	if _, err := p.VerifyAccessToken(accessToken(t, newKey, "unknown")); err == nil || as.jwksFetches.Load() != 3 {
 		t.Fatalf("failed refetch: %v, %d fetches", err, as.jwksFetches.Load())
@@ -279,87 +290,50 @@ func TestServerRule8_AnUnknownKidRefetchesTheKeysAtMostOncePerInterval(t *testin
 	}
 }
 
-func startableApp(t *testing.T, as *fakeAuthorizationServer) *App {
-	t.Helper()
-	a := &App{Resource: "https://rs.example", AuthorizationServer: as.URL, logger: slog.New(slog.DiscardHandler), egressClient: as.Client()}
-	if err := a.loadNonceKeys(); err != nil {
-		t.Fatal(err)
-	}
-	return a
-}
-
-// servers.md rule 17: without jwks_path zaddy reads the authorization server's keys when it starts, and does not
-// start when they cannot be had; with them, its PEP verifies the server's tokens.
-func TestServerRule17_ZaddyStartsOnlyWithTheAuthorizationServersKeys(t *testing.T) {
-	key := generateKey(t)
-	as := newFakeAuthorizationServer(t, key)
-	a := startableApp(t, as)
-	if err := a.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = a.Stop() })
-	if _, err := a.pep.VerifyAccessToken(accessToken(t, key, "k0")); err != nil {
-		t.Errorf("a token of the authorization server was refused: %v", err)
-	}
-
-	mismatched := newFakeAuthorizationServer(t, key)
-	mismatched.metadata = func(issuer string) string {
-		return fmt.Sprintf(`{"issuer":"https://as.example","jwks_uri":%q}`, issuer+"/jwks")
-	}
-	b := startableApp(t, mismatched)
-	if err := b.Start(); err == nil || b.pep != nil {
-		t.Errorf("started with keys of another issuer: %v", err)
-	}
-}
-
-// Without jwks_path the keys come from authorization_server, so one of the two is required; authorization_server
-// is an issuer identifier, https without query or fragment (RFC 8414 Section 2).
-func TestRFC8414_2_ZaddyRequiresJWKSPathOrAnHTTPSAuthorizationServer(t *testing.T) {
-	for block, ok := range map[string]bool{
-		"pep {\n resource https://api.example.com\n}":                                                      false,
-		"pep {\n resource https://api.example.com\n jwks_path jwks.json\n}":                                true,
-		"pep {\n resource https://api.example.com\n authorization_server https://as.example.com\n}":        true,
-		"pep {\n resource https://api.example.com\n authorization_server http://as.example.com\n}":         false,
-		"pep {\n resource https://api.example.com\n authorization_server https://as.example.com?a=b\n}":    false,
-		"pep {\n resource https://api.example.com\n jwks_path j.json\n authorization_server as.example\n}": false,
+// The configuration takes an issuer identifier and the host's client; before the first fetch there are no keys, so
+// every token is refused.
+func TestRFC8414_2_AuthorizationServerKeysNeedAnIssuerAndAClient(t *testing.T) {
+	for name, config := range map[string]AuthorizationServerKeysConfig{
+		"http issuer":  {Issuer: "http://as.example", HTTPClient: http.DefaultClient},
+		"query":        {Issuer: "https://as.example?a=b", HTTPClient: http.DefaultClient},
+		"no client":    {Issuer: "https://as.example"},
+		"negative gap": {Issuer: "https://as.example", HTTPClient: http.DefaultClient, RefetchInterval: -time.Second},
 	} {
-		a, err := parsePEPBlock(t, block)
-		if err == nil {
-			err = a.Validate()
-		}
-		if (err == nil) != ok {
-			t.Errorf("%q: %v", block, err)
+		if _, err := NewAuthorizationServerKeys(config); err == nil {
+			t.Errorf("%s: accepted", name)
 		}
 	}
-}
-
-// The background refresh ends with the app: Stop cancels it.
-func TestAuthorizationServerKeysRefreshStopsWithTheApp(t *testing.T) {
-	as := newFakeAuthorizationServer(t, generateKey(t))
-	keys, err := newAuthorizationServerKeys(t.Context(), as.URL, as.Client(), time.Now)
+	keys, err := NewAuthorizationServerKeys(AuthorizationServerKeysConfig{Issuer: "https://as.example", HTTPClient: http.DefaultClient})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan struct{})
-	go func() {
-		keys.run(ctx, time.Millisecond, slog.New(slog.DiscardHandler))
-		close(done)
-	}()
-	deadline := time.Now().Add(5 * time.Second)
-	for as.jwksFetches.Load() < 3 && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
+	if set, err := keys.Keys(); err == nil || set != nil {
+		t.Error("keys before the first fetch")
 	}
-	if as.jwksFetches.Load() < 3 {
-		t.Fatal("the set was not fetched in the background")
+}
+
+// servers.md rule 28, limits before work: a fetched document nested too deep, with too many members or a member
+// named twice is refused before it is decoded.
+func TestServerRule28_AFetchedDocumentIsBoundedBeforeItIsDecoded(t *testing.T) {
+	deep := strings.Repeat(`{"a":`, maxFetchedDepth+1) + "1" + strings.Repeat("}", maxFetchedDepth+1)
+	var many strings.Builder
+	many.WriteString("{")
+	for i := range maxFetchedMembers + 1 {
+		if i > 0 {
+			many.WriteString(",")
+		}
+		fmt.Fprintf(&many, `"m%d":1`, i)
 	}
-	cancel()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the background refresh did not stop")
+	many.WriteString("}")
+	for name, doc := range map[string]string{
+		"deep": deep, "many members": many.String(), "duplicate": `{"a":1,"a":2}`, "array": `[1]`,
+		"trailing data": `{"a":1} {}`, "not UTF-8": "{\"a\":\"\xff\"}",
+	} {
+		if err := checkJSONObject([]byte(doc)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := checkJSONObject([]byte(`{"keys":[{"kty":"EC","x5c":["a"]}]}`)); err != nil {
+		t.Error(err)
 	}
 }

@@ -31,6 +31,8 @@ import (
 
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
+
+	"github.com/gematik/zero-lab/go/pep"
 )
 
 func parsePEPBlock(t *testing.T, block string) (App, error) {
@@ -47,8 +49,8 @@ func parsePEPBlock(t *testing.T, block string) (App, error) {
 }
 
 // RFC 9728 Sections 2 and 3.2: protected_resource_metadata answers GET with the document the pep block's
-// configuration states, as application/json: resource, authorization server, header as the bearer method, the
-// scopes and the members the deployment adds, in a fixed order.
+// configuration states: resource, authorization server, header as the bearer method, the scopes and the members
+// the deployment adds, a string among them quoted in backticks.
 func TestRFC9728_3_2_TheMetadataIsServedFromTheConfiguration(t *testing.T) {
 	a, err := parsePEPBlock(t, "pep {\n resource https://api.example.com\n authorization_server https://as.example.com\n"+
 		" scopes_supported epa.read epa.write\n metadata_member zeta_asl_use `\"required\"`\n metadata_member x_profile `{\"v\":1}`\n}")
@@ -58,14 +60,12 @@ func TestRFC9728_3_2_TheMetadataIsServedFromTheConfiguration(t *testing.T) {
 	if err := a.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	document, err := a.protectedResourceMetadata()
+	handler, err := pep.NewProtectedResourceMetadataHandler(a.protectedResourceMetadata())
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := ProtectedResourceMetadataHandler{document: document}
-
 	w := httptest.NewRecorder()
-	if err := h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "https://api.example.com/.well-known/oauth-protected-resource", http.NoBody), nil); err != nil {
+	if err := (ProtectedResourceMetadataHandler{handler: handler}).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "https://api.example.com/.well-known/oauth-protected-resource", http.NoBody), nil); err != nil {
 		t.Fatal(err)
 	}
 	want := `{"resource":"https://api.example.com","authorization_servers":["https://as.example.com"],"scopes_supported":["epa.read","epa.write"],` +
@@ -76,32 +76,10 @@ func TestRFC9728_3_2_TheMetadataIsServedFromTheConfiguration(t *testing.T) {
 	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("Content-Type %q", ct)
 	}
-
-	w = httptest.NewRecorder()
-	if err := h.ServeHTTP(w, httptest.NewRequest(http.MethodHead, "https://api.example.com/.well-known/oauth-protected-resource", http.NoBody), nil); err != nil {
-		t.Fatal(err)
-	}
-	if w.Code != http.StatusOK || w.Body.Len() != 0 || w.Header().Get("Content-Length") == "" {
-		t.Errorf("HEAD: %d, %d bytes, Content-Length %q", w.Code, w.Body.Len(), w.Header().Get("Content-Length"))
-	}
 }
 
-// servers.md rule 28, method and path: the metadata route takes GET and HEAD only; another method gets 405 with Allow.
-func TestServerRule28_TheMetadataRefusesOtherMethodsWith405(t *testing.T) {
-	h := ProtectedResourceMetadataHandler{document: []byte(`{"resource":"https://api.example.com"}`)}
-	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch, http.MethodOptions} {
-		w := httptest.NewRecorder()
-		if err := h.ServeHTTP(w, httptest.NewRequest(method, "https://api.example.com/.well-known/oauth-protected-resource", http.NoBody), nil); err != nil {
-			t.Fatal(err)
-		}
-		if w.Code != http.StatusMethodNotAllowed || w.Header().Get("Allow") != "GET, HEAD" || w.Body.Len() != 0 {
-			t.Errorf("%s: %d, Allow %q, %d bytes", method, w.Code, w.Header().Get("Allow"), w.Body.Len())
-		}
-	}
-}
-
-// RFC 9728 Section 2: a member the deployment adds cannot replace one zaddy states from its configuration, nor
-// another typed member, and its value is one JSON text; such a configuration is refused, as are malformed scopes.
+// RFC 9728 Section 2: a configuration whose added member pep would refuse (a typed name, a value that is not one JSON
+// text) or whose scopes are malformed is refused when Caddy validates it.
 func TestRFC9728_2_ACollidingOrMalformedMetadataMemberIsRefused(t *testing.T) {
 	base := "pep {\n resource https://api.example.com\n authorization_server https://as.example.com\n"
 	for name, line := range map[string]string{

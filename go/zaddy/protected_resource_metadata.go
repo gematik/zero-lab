@@ -23,9 +23,7 @@ package zaddy
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"net/http"
-	"strconv"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
@@ -39,11 +37,11 @@ func init() {
 	httpcaddyfile.RegisterHandlerDirective("protected_resource_metadata", parseCaddyfileProtectedResourceMetadata)
 }
 
-// ProtectedResourceMetadataHandler is the Caddy HTTP handler protected_resource_metadata: it answers with the
+// ProtectedResourceMetadataHandler is the Caddy HTTP handler protected_resource_metadata: pep's handler of the
 // metadata of the resource the app "zero" protects (RFC 9728 Section 3), built from the app's configuration, so
 // that resource and authorization server are stated in one place.
 type ProtectedResourceMetadataHandler struct {
-	document []byte
+	handler http.Handler
 }
 
 // CaddyModule registers the handler under the module ID "http.handlers.protected_resource_metadata".
@@ -54,38 +52,26 @@ func (ProtectedResourceMetadataHandler) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
-// Provision encodes the metadata of the app "zero" once; it fails if that app is not configured.
+// Provision builds the handler from the app "zero"; it fails if that app is not configured.
 func (h *ProtectedResourceMetadataHandler) Provision(ctx caddy.Context) error {
 	app, err := getZeroApp(ctx)
 	if err != nil {
 		return err
 	}
-	h.document, err = app.protectedResourceMetadata()
+	h.handler, err = pep.NewProtectedResourceMetadataHandler(app.protectedResourceMetadata())
 	return err
 }
 
-// ServeHTTP answers GET and HEAD with the metadata as application/json (RFC 9728 Section 3.2), and any other method
-// with 405 and Allow (servers.md rule 28, method and path). It ends the chain: the document is the response.
+// ServeHTTP ends the chain: the document, or the 405 of another method, is the response.
 func (h ProtectedResourceMetadataHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, _ caddyhttp.Handler) error {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return nil
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Length", strconv.Itoa(len(h.document)))
-	w.WriteHeader(http.StatusOK)
-	if r.Method == http.MethodHead {
-		return nil
-	}
-	_, err := w.Write(h.document)
-	return err
+	h.handler.ServeHTTP(w, r)
+	return nil
 }
 
 // protectedResourceMetadata is the resource's metadata document (RFC 9728 Section 2): resource, the authorization
 // server, the header as the one way a token is presented (the enforcers read no other), the scopes and the
-// members the deployment adds, encoded deterministically so that every replica serves the same bytes.
-func (a *App) protectedResourceMetadata() ([]byte, error) {
+// members the deployment adds.
+func (a *App) protectedResourceMetadata() pep.ProtectedResourceMetadata {
 	doc := pep.ProtectedResourceMetadata{
 		Resource:               a.Resource,
 		ScopesSupported:        a.ScopesSupported,
@@ -100,7 +86,7 @@ func (a *App) protectedResourceMetadata() ([]byte, error) {
 			doc.Extra[name] = jsontext.Value(value)
 		}
 	}
-	return json.Marshal(doc, json.Deterministic(true))
+	return doc
 }
 
 func parseCaddyfileProtectedResourceMetadata(h httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
