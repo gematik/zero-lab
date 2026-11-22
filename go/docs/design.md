@@ -15,6 +15,7 @@ Go keeps servers and relying parties, their libraries and the ePA client
  servers    pdp/authzserver  pep/proxy  epa/vau                     (http.Handler)
               │
  libraries  oauth  oidf  idpd  dpop  nonce  kv  tipki  brainpool  pkcs12  (no ambient I/O)
+ test       oidftest  (a test federation: master and IDP; test code only)
 ```
 
 - `main` and `cmd/` own the process: they read flags, environment and files, build the

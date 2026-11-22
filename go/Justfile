@@ -138,7 +138,7 @@ mod-check: (_each_check "go mod tidy -diff && go mod verify")
     done
     found=$(cd pep && GOWORK=off go list -m all | grep 'zero-lab/go/' | grep -vE 'zero-lab/go/(pep|dpop)( |$)')
     if [ -n "$found" ]; then echo "pep, which zaddy takes in, carries: $found"; fail=1; fi
-    for dir in brainpool dpop idpd kv nonce oidf openid pep pkcs12 tipki; do
+    for dir in brainpool dpop idpd kv nonce oidf oidftest openid pep pkcs12 tipki; do
         found=$(cd "$dir" && GOWORK=off go list -deps ./... | grep -E 'yaml')
         if [ -n "$found" ]; then echo "$dir compiles: $found"; fail=1; fi
         if grep -qE 'yaml' "$dir/go.mod"; then echo "$dir/go.mod names yaml"; fail=1; fi
@@ -265,7 +265,7 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
     done
     go work sync
     # It also lifts a yaml module the tests of a dependency use; a base library names none (decision-13).
-    for dir in brainpool dpop idpd kv nonce oidf openid pep pkcs12 tipki; do
+    for dir in brainpool dpop idpd kv nonce oidf oidftest openid pep pkcs12 tipki; do
         ( cd "$dir" && go mod edit -droprequire=go.yaml.in/yaml/v3 -droprequire=gopkg.in/yaml.v3 )
     done
     # go work sync raises versions to what the workspace selects, so tidy again or go.sum

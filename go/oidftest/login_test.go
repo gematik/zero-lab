@@ -19,11 +19,9 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-package oidf_test
+package oidftest_test
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
@@ -37,7 +35,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/gematik/zero-lab/go/oidf/oidftest"
+	"github.com/gematik/zero-lab/go/oidftest"
 	"github.com/gematik/zero-lab/go/openid"
 )
 
@@ -45,15 +43,6 @@ import (
 // list, the IDP's statement and signed JWKS, PAR and the token request over mutual TLS, and the encrypted ID token.
 
 const rpEntity = "https://rp.example"
-
-func newKey(t *testing.T) *ecdsa.PrivateKey {
-	t.Helper()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return key
-}
 
 // clientCertificate is a self-signed certificate for self_signed_tls_client_auth.
 func clientCertificate(t *testing.T) tls.Certificate {

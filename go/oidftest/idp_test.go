@@ -31,7 +31,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gematik/zero-lab/go/oidf/oidftest"
+	"github.com/gematik/zero-lab/go/oidftest"
 	"github.com/gematik/zero-lab/go/openid"
 )
 
