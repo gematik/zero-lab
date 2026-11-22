@@ -4,6 +4,7 @@ title: 'oidf: metadata policy'
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
+updated_date: '2026-11-22 12:04'
 labels: []
 dependencies: []
 ordinal: 308000
@@ -19,3 +20,9 @@ No metadata_policy of a superior statement is applied to a subject's metadata; t
 <!-- AC:BEGIN -->
 - [ ] #1 Policies of the operators OpenID Federation defines are applied; a metadata that violates a policy is refused
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22, checked against the specifications (maintainer's request): gemSpec_IDP_FedMaster 1.4.3, gemSpec_IDP_Sek 3.3.0 and gemSpec_IDP_FD 2.2.0 never mention metadata_policy or metadata_policy_crit (nor any policy). Only gemKPT_TI-Föderation 1.0.0, a non-binding concept, names them, in its validation walkthroughs (chapter 10.3), among the claims its example statements do not contain, so the OpenID Federation 1.1 steps for them do not apply there. So the TI federation sets no metadata policy today and nothing requires oidf to apply one. Proposed instead of implementing OpenID Federation 1.1 §6.1: fail closed, i.e. refuse a subordinate statement of the master that carries metadata_policy or metadata_policy_crit, so that a policy appearing later stops the login instead of being ignored; implement the operators only if the master starts to use them.
+<!-- SECTION:NOTES:END -->
