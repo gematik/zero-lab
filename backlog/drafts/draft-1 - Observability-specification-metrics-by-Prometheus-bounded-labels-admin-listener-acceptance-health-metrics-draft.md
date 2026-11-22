@@ -6,7 +6,7 @@ title: >-
 status: Draft
 assignee: []
 created_date: '2026-11-20 16:59'
-updated_date: '2026-11-22 17:02'
+updated_date: '2026-11-22 17:24'
 labels:
   - servers
   - docs
@@ -62,4 +62,12 @@ Maintainer's direction for the specification (2026-11-22):
 1. Health checks that work alike under Kubernetes, Docker and compose: an exec subcommand of the binary (<binary> health ready|live) serves all three (Kubernetes exec probes, Dockerfile HEALTHCHECK CMD, compose healthcheck test), with no shell in the image; an HTTP probe path on the admin listener where a server has one (rule 31).
 2. Metrics as a Prometheus exposition on the admin listener (as already drafted above); the collector converts them for ZETA.
 3. Telemetry data, above all security events: traces and logs by OTLP push to the collector (the dependency to be decided: OpenTelemetry Go SDK or a small OTLP exporter of our own), security events as their own signal with the attributes of A_28783/A_28795-01/A_28867 and the correlation ID of A_28796, designed so that a Shared Signals (SSF/CAEP) transmitter can be added later without changing the producers.
+
+2026-11-22, design agreed with the maintainer (to become the observability specification):
+1. Health: the binary's subcommand <binary> health ready|live for Kubernetes exec probes, Dockerfile HEALTHCHECK and compose healthcheck alike, no shell in the image; an HTTP probe path on the admin listener where a server has one (rule 31).
+2. Metrics: Prometheus only, a text exposition on the admin listener, bounded labels. A collector that wants OTel metrics scrapes it (ZETA Guard's telemetry gateway does, as for Keycloak, nginx and OPA); no OTLP metrics.
+3. Logs: slog JSON to stdout always, each line with trace_id and span_id when there is a trace context; with OTEL_EXPORTER_OTLP_ENDPOINT set, the same records also go as OTLP log records to the collector (needed for ZETA, whose chart has no log collector). A fan-out handler built in main; a bounded queue sent in batches, records dropped when full and the drops counted as a metric: the request path never waits on telemetry. Libraries log only to the logger the host hands them.
+4. Traces: OTLP over HTTP/JSON (A_27261 allows it) through a small exporter of our own on the standard library, batched and asynchronous, active only with a collector configured; W3C trace context in and out, accepted for correlation only (rule 14). The OpenTelemetry Go SDK is the alternative, to be weighed under the dependency rules.
+5. Security events: a signal of their own with a typed, generic API in our code (kind, outcome, a fixed reason, the request's correlation, the bounded attributes a kind allows), independent of any one consumer. Exporters turn them into what a receiver expects: OTLP log records and span attributes for a collector; a mapping to ZETA's vocabulary (OTel semantic conventions of A_28783, attackDetection.* with CAPEC ids as ngx_pep and keycloak-zeta emit them, the policy decision of A_28867) as one exporter, not the model; later a Shared Signals (SSF/CAEP) transmitter. Producers never change for a new receiver. What never belongs in telemetry (tokens, keys, medical data, input text) is left out at the source (rule 14); what may only not be passed on is the collector's to filter (A_28960).
+6. The collector (ZETA Guard's telemetry gateway, the operator's): receives OTLP, scrapes Prometheus, enriches with resource attributes, redacts and filters, samples if anyone does, and fans out to gematik/TI-SIEM (OTLP/gRPC, persistent queue), the operator's monitoring and the KPI pipeline (A_25484-03 KPIs are counted there from the security events). We do not build it; without one (zerobin, development) Prometheus scrapes directly and logs stay on stdout.
 <!-- SECTION:NOTES:END -->
