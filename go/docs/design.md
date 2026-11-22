@@ -230,8 +230,12 @@ The [server rules](../../docs/design/servers.md), in Go terms:
     library fetches trust material, timeouts are the client's and each library bounds what it reads
     (`io.LimitReader`, the `jsontext` bounds). A check of resolved addresses against private ranges is not
     built.
-  - A forward proxy: the egress transport follows `HTTPS_PROXY`/`NO_PROXY` as net/http does; refusing user
-    information in the proxy URL, credentials from a file and reporting the proxy are TASK-407.
+  - A forward proxy: `egress.Proxy`, which the host builds with `egress.ProxyFromHost(os.Getenv, os.ReadFile,
+    "<PREFIX>_EGRESS_PROXY_CREDENTIALS_PATH")` from `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` and passes in
+    `egress.Options.Proxy`; nil goes direct, and net/http's own reading of the environment is not used. https goes by
+    CONNECT, so TLS ends at the origin under the web profile and no CA of the proxy is taken; a proxy URL with user
+    information is refused, credentials come from the file; `Proxy.String` is the start log's report. The revocation
+    fetches take the same proxy.
 - Caches use one shared pattern (keyed by input hash, configuration and trust-material
   version; bounded TTL; invalidated on trust-material reload; single-flight against
   stampedes), the same rules as `ti-cache` on the Rust side.

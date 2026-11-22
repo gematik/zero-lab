@@ -26,6 +26,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"time"
 
@@ -49,7 +50,12 @@ type tiTrust struct {
 // newTiTrust fetches the TSL of each of envs; a failure fails the start with the reason. The TSL hosts are
 // on the internet and verified under the web profile.
 func newTiTrust(envs ...epa.Env) (*tiTrust, error) {
-	webClient, err := egress.NewClient(tiHTTPTimeout, egress.Options{})
+	proxy, err := egress.ProxyFromHost(os.Getenv, os.ReadFile, "EPA_EGRESS_PROXY_CREDENTIALS_PATH")
+	if err != nil {
+		return nil, err
+	}
+	slog.Info("egress forward proxy", "proxy", proxy.String())
+	webClient, err := egress.NewClient(tiHTTPTimeout, egress.Options{Proxy: proxy})
 	if err != nil {
 		return nil, fmt.Errorf("the TSL hosts' TLS: %w", err)
 	}

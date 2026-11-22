@@ -49,8 +49,8 @@ func SelfVerifying(ctx context.Context) context.Context {
 
 // NewClient is the egress client (servers.md rule 30): an HTTP client for servers on the internet, verified
 // under the web profile against the host system's roots, the client a host gives a library for its internet
-// endpoints (TLSV-001). It goes out over https, and over plain http only for a request marked [SelfVerifying];
-// a forward proxy configured in the environment is used as net/http's default does. It fails when the system's
+// endpoints (TLSV-001). It goes out over https, and over plain http only for a request marked [SelfVerifying],
+// through opts' forward proxy when the host gave one (https by CONNECT only). It fails when the system's
 // roots cannot be read. timeout bounds each request; opts are the verifier's, its RevocationTimeout bounding
 // the revocation fetches.
 func NewClient(timeout time.Duration, opts Options) (*http.Client, error) {
@@ -58,7 +58,12 @@ func NewClient(timeout time.Duration, opts Options) (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	transport.Proxy = egressProxy
+	transport.Proxy = func(r *http.Request) (*url.URL, error) {
+		if err := egressRule(r); err != nil {
+			return nil, err
+		}
+		return opts.Proxy.choose(r)
+	}
 	return &http.Client{Transport: transport, Timeout: timeout}, nil
 }
 
@@ -72,30 +77,34 @@ func NewTransport(opts Options) (*http.Transport, error) {
 	}
 	// OCSP responses and CRLs prove themselves by their signatures, so their own transport needs no
 	// profile of its own; verifying it under the web profile would ask for the responder's status in turn.
-	fetch := NewHTTPFetcher(&http.Client{Timeout: opts.timeout()})
 	base, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
 		return nil, fmt.Errorf("egress: http.DefaultTransport is a %T, not an *http.Transport", http.DefaultTransport)
 	}
+	// The responders and CRL hosts are on the internet, so their fetches take the forward proxy, and only it:
+	// net/http's default would read the environment on its own.
+	fetchTransport := base.Clone()
+	fetchTransport.Proxy = opts.Proxy.choose
+	fetch := NewHTTPFetcher(&http.Client{Transport: fetchTransport, Timeout: opts.timeout()})
 	transport := base.Clone()
 	transport.Proxy = nil
 	transport.TLSClientConfig = NewWebVerifier(check, fetch, opts).ClientConfig()
 	return transport, nil
 }
 
-// egressProxy is the Proxy of the egress transport, which net/http asks before every request, a redirected one
-// included: https goes out, http only for a request marked [SelfVerifying], and nothing else. It lives in the Proxy
-// hook rather than in a wrapping RoundTripper so that the transport stays an *http.Transport whose clones (a
-// library adding a client certificate) keep the rule.
-func egressProxy(r *http.Request) (*url.URL, error) {
+// egressRule is checked in the Proxy hook of the egress transport, which net/http asks before every request, a
+// redirected one included: https goes out, http only for a request marked [SelfVerifying], and nothing else. It
+// lives in the Proxy hook rather than in a wrapping RoundTripper so that the transport stays an *http.Transport
+// whose clones (a library adding a client certificate) keep the rule.
+func egressRule(r *http.Request) error {
 	switch r.URL.Scheme {
 	case "https":
 	case "http":
 		if marked, _ := r.Context().Value(selfVerifying{}).(bool); !marked {
-			return nil, fmt.Errorf("%w: %s", ErrPlainHTTP, r.URL.Redacted())
+			return fmt.Errorf("%w: %s", ErrPlainHTTP, r.URL.Redacted())
 		}
 	default:
-		return nil, fmt.Errorf("egress: %q is no scheme of an outbound request", r.URL.Scheme)
+		return fmt.Errorf("egress: %q is no scheme of an outbound request", r.URL.Scheme)
 	}
-	return http.ProxyFromEnvironment(r)
+	return nil
 }

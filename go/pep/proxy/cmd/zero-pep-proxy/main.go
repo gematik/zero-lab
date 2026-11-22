@@ -297,13 +297,20 @@ func main() {
 	// The OpenID providers, the IDP-Dienst and the federation master among them, are on the internet: their
 	// requests go through the egress client, under the web profile of spec/pki-validation and over https, plain http
 	// only for OCSP, CRLs and the TSL (servers.md rule 30).
-	webClient, err := egress.NewClient(outboundHTTPTimeout, egress.Options{})
+	// A forward proxy, when the operator sets one, carries the egress client's requests and the revocation fetches
+	// (servers.md rule 30); it is reported at start.
+	forwardProxy, err := egress.ProxyFromHost(os.Getenv, os.ReadFile, "PEP_EGRESS_PROXY_CREDENTIALS_PATH")
+	if err != nil {
+		log.Fatal(err)
+	}
+	slog.Info("egress forward proxy", "proxy", forwardProxy.String())
+	webClient, err := egress.NewClient(outboundHTTPTimeout, egress.Options{Proxy: forwardProxy})
 	if err != nil {
 		log.Fatalf("outbound TLS: %v", err)
 	}
 	// An upstream behind the gateway and the PDP are peers the deployment configured, which may be plain http; an
 	// https one gets the web profile too.
-	upstreamTransport, err := egress.NewTransport(egress.Options{})
+	upstreamTransport, err := egress.NewTransport(egress.Options{Proxy: forwardProxy})
 	if err != nil {
 		log.Fatalf("upstream TLS: %v", err)
 	}
