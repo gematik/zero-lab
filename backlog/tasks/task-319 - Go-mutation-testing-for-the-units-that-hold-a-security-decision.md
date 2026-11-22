@@ -4,7 +4,7 @@ title: 'Go: mutation testing for the units that hold a security decision'
 status: To Do
 assignee: []
 created_date: '2026-11-14T20:52:00Z'
-updated_date: '2026-11-17T06:35:00Z'
+updated_date: '2026-11-22 12:03'
 labels:
   - go
   - release
@@ -28,4 +28,6 @@ docs/design/testing.md asks a unit that holds a security decision for a mutation
 
 <!-- SECTION:NOTES:BEGIN -->
 Postponed (maintainer, 2026-11-17): the maintainer builds CI runner Docker images per language (Rust, Go, …) separately; the Go mutation tool comes with them.
+
+2026-11-22, maintainer: later, for all Go units at once.
 <!-- SECTION:NOTES:END -->
