@@ -42,7 +42,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/gematik/zero-lab/go/oidf/oidftest"
+	"github.com/gematik/zero-lab/go/oidftest"
 	"github.com/gematik/zero-lab/go/openid/providers"
 )
 

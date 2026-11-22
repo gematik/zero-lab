@@ -38,7 +38,7 @@ import (
 	"time"
 
 	"github.com/gematik/zero-lab/go/oidf"
-	"github.com/gematik/zero-lab/go/oidf/oidftest"
+	"github.com/gematik/zero-lab/go/oidftest"
 )
 
 func TestLoadConfigFileMergesProviders(t *testing.T) {

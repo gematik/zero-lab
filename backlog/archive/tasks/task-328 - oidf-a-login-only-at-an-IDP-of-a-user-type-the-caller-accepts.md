@@ -4,6 +4,7 @@ title: 'oidf: a login only at an IDP of a user type the caller accepts'
 status: To Do
 assignee: []
 created_date: '2026-11-15T09:05:00Z'
+updated_date: '2026-11-22 12:03'
 labels:
   - oidf
   - go
@@ -21,3 +22,9 @@ Since TASK-315 an IDP is admitted only if it is on the master's signed IdP list 
 <!-- AC:BEGIN -->
 - [ ] #1 A caller can name the user types it accepts; a login at an IDP of another user type is refused before any request to the IDP
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22: archived by the maintainer's decision; to be built only when a caller asks for it.
+<!-- SECTION:NOTES:END -->
