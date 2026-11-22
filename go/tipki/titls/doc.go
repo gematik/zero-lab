@@ -19,26 +19,15 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package titls verifies TLS servers under the two profiles of spec/pki-validation, ti and web, for
-// crypto/tls clients. It follows Rust's ti-tls rule for rule, and the shared corpus holds the two together.
+// Package titls verifies TLS servers under the ti profile of spec/pki-validation, for crypto/tls clients. It
+// follows Rust's ti-tls rule for rule, and the shared corpus holds the two together. The web profile, for
+// servers on the internet, is go/egress's.
 //
 // The host owns the transport and this package owns trust: the host dials, chooses the profile of each
 // endpoint (TLSV-001) and supplies an *http.Client for revocation through a [Fetcher]; the package builds
-// the tls.Config whose VerifyConnection decides, and opens no connection itself.
-//
-//   - ti: [TiVerifier] runs tipki's [tipki.ServerCheck] over the current snapshot of a [TrustSource]. Its
-//     configuration verifies everything in VerifyConnection, since crypto/x509 cannot verify the TI's
-//     brainpool CAs.
-//   - web: [WebVerifier] runs [WebCheck] over the system's roots ([SystemWebCheck]); crypto/tls verifies
-//     the path as well, and VerifyConnection adds the profile's keys, name, validity period and
-//     revocation (stapled OCSP, the OCSP responder, the CRL).
-//
-// Two web rules deviate from gemSpec_Krypt, as spec/pki-validation's Deviations record: an end entity with
-// RSA 2048 to 2999 bits is accepted with the warning [WarningKeyPhasedOut] (A_28976 asks for 3000), and a
-// server whose revocation status no source gives is accepted with [WarningRevocationUnavailable]
-// (A_27857-02 requires one); a revoked status still refuses. [Verdict.Warnings] carries them. The
-// configurations accept such a server; a host that needs the strict rules calls [WebVerifier.Verify] from
-// its own VerifyConnection and refuses a verdict with either warning.
+// the tls.Config whose VerifyConnection decides, and opens no connection itself. [TiVerifier] runs tipki's
+// [tipki.ServerCheck] over the current snapshot of a [TrustSource]. Its configuration verifies everything in
+// VerifyConnection, since crypto/x509 cannot verify the TI's brainpool CAs.
 //
 // A ti host:
 //
@@ -46,17 +35,9 @@
 //	responder := tipki.NewOCSPChecker(titls.OCSPTransport(titls.NewHTTPFetcher(client)))
 //	config := titls.NewTiVerifier(source, responder, titls.Options{}).ClientConfig()
 //
-// A web host:
-//
-//	check, err := titls.SystemWebCheck()
-//	config := titls.NewWebVerifier(check, titls.NewHTTPFetcher(client), titls.Options{}).ClientConfig()
-//
-// or, where a library takes an *http.Client, [NewWebHTTPClient] builds both and the transport around them.
-//
-// Accepted verdicts are reused for the same chain, host and profile, under ti also the same trust snapshot,
-// until the earliest of notAfter, the status's nextUpdate and the profile's window (TLSV-050, TLSV-051): at
-// most [DefaultCacheSize] of them unless configured, with their warnings; refusals never, nor a web verdict
-// that rests on no revocation status.
+// Accepted verdicts are reused for the same chain and host under the same trust snapshot, until the earliest
+// of notAfter, the status's nextUpdate and OCSP-005's hour (TLSV-050, TLSV-051): at most [DefaultCacheSize] of
+// them unless configured, with their warnings; refusals never.
 //
 // Where crypto/tls cannot do what spec/pki-validation/testdata/handshake.json lists:
 //
@@ -65,7 +46,7 @@
 //     (TLSV-011).
 //   - The client's signature_algorithms are not configurable. crypto/tls also offers Ed25519, ML-DSA and
 //     ecdsa_secp521r1_sha512, and the SHA-1 schemes when the process runs with GODEBUG=tlssha1=1. The
-//     server signs with its certificate's key, which both profiles admit only on P-256, P-384 or RSA, so
+//     server signs with its certificate's key, which the profile admits only on P-256, P-384 or RSA, so
 //     Ed25519, ML-DSA and P-521 signatures cannot be accepted; in TLS 1.2 a P-256 key may sign with
 //     SHA-384 or SHA-512, a pairing TLSV-013 does not list but whose hashes it allows (TLSV-013).
 //   - crypto/tls has no brainpool groups or brainpool signature schemes (TLSV-012, TLSV-013), and it parses
@@ -75,8 +56,8 @@
 //   - An IP-address host is refused: crypto/tls sends no SNI for it and reports no server name to
 //     VerifyConnection, so there is no reference identity to check (TLSV-024).
 //
-// The configurations set no ClientSessionCache, so the client never resumes (TLSV-014). A host that adds
+// The configuration sets no ClientSessionCache, so the client never resumes (TLSV-014). A host that adds
 // one still has every resumed handshake checked, as crypto/tls calls VerifyConnection on resumption too.
 // Go cannot make a tls.Config immutable: no option of this package turns a rule off, but a host that
-// clears VerifyConnection or RootCAs on the returned configuration does.
+// clears VerifyConnection on the returned configuration does.
 package titls

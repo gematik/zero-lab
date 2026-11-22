@@ -46,12 +46,13 @@ type FetchingTrust struct {
 
 // NewFetchingTrust fetches once, so a deployment without a route to the material does not start, and keeps
 // refreshing until [FetchingTrust.Close]. httpClient carries the downloads and OCSP.
-func NewFetchingTrust(env Environment, httpClient *http.Client) (*FetchingTrust, error) {
-	base, err := newVerifier(env, httpClient)
+func NewFetchingTrust(env Environment, httpClient *http.Client, opts ...TrustOption) (*FetchingTrust, error) {
+	options := trustOptions(opts)
+	base, err := newVerifier(env, httpClient, options.mark)
 	if err != nil {
 		return nil, err
 	}
-	trust, err := fetch.New(fetchEnvironment(env), httpClient)
+	trust, err := fetch.New(fetchEnvironment(env), httpClient, fetch.WithSelfVerifying(options.mark))
 	if err != nil {
 		return nil, err
 	}

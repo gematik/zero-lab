@@ -64,6 +64,29 @@ const (
 	maxOCSPBytes = 1 << 20
 )
 
+// TrustOption adjusts [NewFetchingTrust] and [NewBundleTrust].
+type TrustOption func(*trustSettings)
+
+type trustSettings struct {
+	mark func(context.Context) context.Context
+}
+
+// WithSelfVerifying marks the fetches of data that proves itself (OCSP answers, and with [NewFetchingTrust] the
+// TSL, which A_21175 publishes over plain http) with mark, so that an HTTP client which refuses plain http
+// otherwise lets them through: go/egress's SelfVerifying fits. A function, so that this package imports no
+// transport; nil leaves the requests as they are.
+func WithSelfVerifying(mark func(context.Context) context.Context) TrustOption {
+	return func(s *trustSettings) { s.mark = mark }
+}
+
+func trustOptions(opts []TrustOption) trustSettings {
+	var settings trustSettings
+	for _, opt := range opts {
+		opt(&settings)
+	}
+	return settings
+}
+
 // verifier is what both sources of trust material share: the anchors the environment picked, and the checks.
 type verifier struct {
 	anchor        []byte
@@ -72,7 +95,7 @@ type verifier struct {
 	now           func() time.Time
 }
 
-func newVerifier(env Environment, httpClient *http.Client) (verifier, error) {
+func newVerifier(env Environment, httpClient *http.Client, mark func(context.Context) context.Context) (verifier, error) {
 	anchor, signerAnchors, err := anchorsFor(env)
 	if err != nil {
 		return verifier{}, err
@@ -80,7 +103,7 @@ func newVerifier(env Environment, httpClient *http.Client) (verifier, error) {
 	return verifier{
 		anchor:        anchor,
 		signerAnchors: signerAnchors,
-		checker:       tipki.NewOCSPChecker(ocspTransport{httpClient}),
+		checker:       tipki.NewOCSPChecker(ocspTransport{client: httpClient, mark: mark}),
 		now:           time.Now,
 	}, nil
 }
@@ -114,8 +137,8 @@ type BundleTrust struct {
 // bundlePath is the mounted file `ti pki trust export` writes, plain or gzipped, read again every minute until
 // [BundleTrust.Close]. httpClient carries the OCSP requests; logger receives the bundles that were loaded and
 // those that were not, and may be nil.
-func NewBundleTrust(env Environment, bundlePath string, httpClient *http.Client, logger *slog.Logger) (*BundleTrust, error) {
-	base, err := newVerifier(env, httpClient)
+func NewBundleTrust(env Environment, bundlePath string, httpClient *http.Client, logger *slog.Logger, opts ...TrustOption) (*BundleTrust, error) {
+	base, err := newVerifier(env, httpClient, trustOptions(opts).mark)
 	if err != nil {
 		return nil, err
 	}
@@ -173,10 +196,17 @@ func (t *BundleTrust) Check(ctx context.Context, which IDPCertificate, certs []*
 	return t.check(ctx, store, which, certs)
 }
 
-// ocspTransport carries OCSP over the client's HTTP. The answer proves itself, so plain HTTP is enough.
-type ocspTransport struct{ client *http.Client }
+// ocspTransport carries OCSP over the client's HTTP. The answer proves itself, so plain HTTP is enough, and mark,
+// when the host gave one, says so to its client.
+type ocspTransport struct {
+	client *http.Client
+	mark   func(context.Context) context.Context
+}
 
 func (o ocspTransport) Post(ctx context.Context, url, contentType, accept string, body []byte) ([]byte, error) {
+	if o.mark != nil {
+		ctx = o.mark(ctx)
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return nil, err

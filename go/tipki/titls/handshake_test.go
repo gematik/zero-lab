@@ -90,63 +90,6 @@ func get(t *testing.T, c *http.Client, url string) error {
 	return nil
 }
 
-// TLSV-040 to 044 over a real handshake: a server with a P-256 chain under the test's root and a stapled
-// OCSP response is accepted by the web configuration, as net/http uses it.
-func TestTLSV040AWebServerIsAcceptedOverAHandshake(t *testing.T) {
-	now := time.Now()
-	root := issue(t, caTemplate("TLSV Web Root TEST-ONLY", now.Add(-time.Hour)), nil)
-	ca := issue(t, caTemplate("TLSV Web CA TEST-ONLY", now.Add(-time.Hour)), root)
-	leaf := issue(t, serverTemplate("www.web.test", now.Add(-time.Hour)), ca)
-	server, _ := serve(t, []*issued{leaf, ca}, goodOCSP(t, leaf.cert, ca, now.Add(-time.Minute), false))
-
-	verifier := NewWebVerifier(NewWebCheck([]*x509.Certificate{root.cert}), Offline{}, Options{})
-	if err := get(t, client(server, verifier.ClientConfig()), "https://www.web.test/"); err != nil {
-		t.Fatal(err)
-	}
-	if verifier.verdicts.size() != 1 {
-		t.Fatalf("%d verdicts kept", verifier.verdicts.size())
-	}
-	err := get(t, client(server, verifier.ClientConfig()), "https://other.web.test/")
-	if err == nil {
-		t.Fatal("a host the certificate does not name is accepted")
-	}
-
-	// Without the staple, and with every revocation source down, the same server is accepted with a warning
-	// and its verdict not kept (TLSV-044, TLSV-050).
-	bare, _ := serve(t, []*issued{leaf, ca}, nil)
-	offline := NewWebVerifier(NewWebCheck([]*x509.Certificate{root.cert}), Offline{}, Options{})
-	if err := get(t, client(bare, offline.ClientConfig()), "https://www.web.test/"); err != nil {
-		t.Fatalf("without a status: %v", err)
-	}
-	if offline.verdicts.size() != 0 {
-		t.Fatalf("without a status, %d verdicts kept", offline.verdicts.size())
-	}
-}
-
-// TLSV-040 and TLSV-045: httptest's default certificate is refused, by crypto/tls under roots that do not
-// hold it, and by the profile's rules under roots that do: it is valid for decades. Its RSA 2048 key alone
-// would be accepted with a warning (TLSV-041).
-func TestTLSV045HttptestsDefaultCertificateIsRefused(t *testing.T) {
-	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
-	server.Config.ErrorLog = log.New(io.Discard, "", 0)
-	server.StartTLS()
-	t.Cleanup(server.Close)
-
-	if err := get(t, client(server, webCorpusVerifierConfig(t)), "https://example.com/"); err == nil {
-		t.Fatal("accepted under roots that do not hold it")
-	}
-	own := NewWebVerifier(NewWebCheck([]*x509.Certificate{server.Certificate()}), Offline{}, Options{}).ClientConfig()
-	err := get(t, client(server, own), "https://example.com/")
-	if refused, ok := errors.AsType[*RefusedError](err); !ok || refused.Verdict.Code != ValidityTooLong {
-		t.Fatalf("under its own root: %v", err)
-	}
-}
-
-func webCorpusVerifierConfig(t *testing.T) *tls.Config {
-	t.Helper()
-	return NewWebVerifier(webCorpusCheck(t), Offline{}, Options{}).ClientConfig()
-}
-
 // tiServer is a TI server as the TSL would back it: a root, a CA listed for C.FD.TLS-S, and a C.FD.TLS-S
 // end entity on P-256, as ePA's are, stapling a response with the TI's certHash.
 func tiServer(t *testing.T) (*httptest.Server, *atomic.Int64, *tipki.TrustStore) {

@@ -79,12 +79,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/openid/providers"
 	"github.com/gematik/zero-lab/go/pep"
 	"github.com/gematik/zero-lab/go/pep/proxy"
-	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 func env(key, def string) string {
@@ -264,10 +264,17 @@ func main() {
 	}
 
 	// The PDP and the OpenID providers, the IDP-Dienst and the federation master among them, are on the
-	// internet: every outbound request goes under the web profile of spec/pki-validation.
-	webClient, err := titls.NewWebHTTPClient(outboundHTTPTimeout, titls.Options{})
+	// internet: every outbound request goes through the egress client, under the web profile of
+	// spec/pki-validation and over https, plain http only for OCSP, CRLs and the TSL (servers.md rule 30).
+	webClient, err := egress.NewClient(outboundHTTPTimeout, egress.Options{})
 	if err != nil {
 		log.Fatalf("outbound TLS: %v", err)
+	}
+	// An upstream behind the gateway is a peer the deployment configured, which may be plain http; an https one
+	// gets the web profile too.
+	upstreamTransport, err := egress.NewTransport(egress.Options{})
+	if err != nil {
+		log.Fatalf("upstream TLS: %v", err)
 	}
 
 	// One store for the sessions, the revocations and oidf's federation documents. The documents are public
@@ -333,9 +340,8 @@ func main() {
 		SnapshotTTL:             snapshotTTL,
 		Routes:                  routes,
 		Hosts:                   hosts,
-		// An https upstream is on the internet as far as pep can tell, so it gets the web profile too; the
-		// transport alone, as the client's timeout would cut off long uploads and downloads.
-		UpstreamTransport: webClient.Transport,
+		// The transport alone, as a client's timeout would cut off long uploads and downloads.
+		UpstreamTransport: upstreamTransport,
 		Logger:            slog.Default(),
 	})
 	if err != nil {

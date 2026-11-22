@@ -34,12 +34,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/nonce"
 	"github.com/gematik/zero-lab/go/pdp"
 	"github.com/gematik/zero-lab/go/pdp/authzserver"
-	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 const (
@@ -128,7 +128,7 @@ func createPdp(opts *options) (*pdp.PDP, kv.Store, error) {
 	config.OIDFAPIKey = os.Getenv(oidfDevAPIKeyEnv)
 	config.OIDFKeys = loadOIDFKeys
 	// The OpenID providers, the IDP-Dienst and the federation master are on the internet: the web profile.
-	if config.HTTPClient, err = titls.NewWebHTTPClient(providerHTTPTimeout, titls.Options{}); err != nil {
+	if config.HTTPClient, err = egress.NewClient(providerHTTPTimeout, egress.Options{}); err != nil {
 		return nil, nil, err
 	}
 	slog.Debug("Loaded config file", "config_file", configFile)

@@ -61,7 +61,9 @@ type Trust struct {
 	anchor        []byte
 	signerAnchors [][]byte
 	// checker asks for the TSL signer's status when the published .ocsp does not answer it.
-	checker  tipki.RevocationChecker
+	checker tipki.RevocationChecker
+	// mark marks the fetches of data that proves itself; nil leaves them as they are.
+	mark     func(context.Context) context.Context
 	client   *http.Client
 	now      func() time.Time
 	interval func(failed bool) time.Duration
@@ -84,9 +86,19 @@ type Trust struct {
 	once    sync.Once
 }
 
+// Option adjusts a [Trust] made by [New].
+type Option func(*Trust)
+
+// WithSelfVerifying marks the fetches of data that proves itself (the list, its signature and the signer's OCSP
+// status, which A_21175 publishes over plain http) with mark, so that a client which refuses plain http otherwise
+// lets them through: go/egress's SelfVerifying fits. A function, so that neither module imports the other.
+func WithSelfVerifying(mark func(context.Context) context.Context) Option {
+	return func(t *Trust) { t.mark = mark }
+}
+
 // New fetches once, so a host without a route to the material does not start, and keeps refreshing until
 // [Trust.Close]. client carries the downloads and the TSL signer's OCSP; redirects are not followed.
-func New(env Environment, client *http.Client) (*Trust, error) {
+func New(env Environment, client *http.Client, opts ...Option) (*Trust, error) {
 	if client == nil {
 		return nil, errors.New("no HTTP client for the trust material")
 	}
@@ -98,8 +110,11 @@ func New(env Environment, client *http.Client) (*Trust, error) {
 	if err != nil {
 		return nil, err
 	}
-	checker := tipki.NewOCSPChecker(titls.OCSPTransport(titls.NewHTTPFetcher(client)))
-	trust := newTrust(urls, anchor, signerAnchors, checker, client, time.Now, nextFetch)
+	trust := newTrust(urls, anchor, signerAnchors, nil, client, time.Now, nextFetch)
+	for _, opt := range opts {
+		opt(trust)
+	}
+	trust.checker = tipki.NewOCSPChecker(titls.OCSPTransport(&titls.HTTPFetcher{Client: client, Mark: trust.mark}))
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
 	if err := trust.refresh(ctx); err != nil {
@@ -263,7 +278,7 @@ func (t *Trust) fetch(ctx context.Context) error {
 	t.mu.RUnlock()
 	if hash != listHash {
 		// A_30044: the list is downloaded only when the hash says it changed.
-		if list, err = t.get(ctx, t.urls.list+".xml"); err != nil {
+		if list, err = t.get(t.selfVerifying(ctx), t.urls.list+".xml"); err != nil {
 			return err
 		}
 		digest := sha256.Sum256(list)
@@ -271,12 +286,14 @@ func (t *Trust) fetch(ctx context.Context) error {
 			return fmt.Errorf("the list hashes to %s, %s names %s", got, t.urls.hash, hash)
 		}
 	}
-	signature, err := t.get(ctx, t.urls.list+".sig")
+	// The list, its signature and its signer's status come over plain http (A_21175); the hash of the list, fetched
+	// over https above, and the signature make them safe, so they are marked for an egress client.
+	signature, err := t.get(t.selfVerifying(ctx), t.urls.list+".sig")
 	if err != nil {
 		return err
 	}
 	// Without a current .ocsp the signer's status is asked online, so its absence is not a failure.
-	signerStatus, err := t.get(ctx, t.urls.list+".ocsp")
+	signerStatus, err := t.get(t.selfVerifying(ctx), t.urls.list+".ocsp")
 	if err != nil {
 		slog.Warn("no .ocsp for the list's signer, asking its responder", "error", err)
 		signerStatus = nil
@@ -348,6 +365,14 @@ func (t *Trust) publishedHash(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("%s: not a SHA-256", t.urls.hash)
 	}
 	return hash, nil
+}
+
+// selfVerifying is ctx marked by the host's mark, if it gave one.
+func (t *Trust) selfVerifying(ctx context.Context) context.Context {
+	if t.mark == nil {
+		return ctx
+	}
+	return t.mark(ctx)
 }
 
 func (t *Trust) get(ctx context.Context, url string) ([]byte, error) {

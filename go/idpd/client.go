@@ -98,6 +98,11 @@ type ClientConfig struct {
 	// Logger receives what happens to a mounted trust bundle, a bundle that was not loaded at error level. Not
 	// serialized; supplied programmatically. When nil, nothing is logged.
 	Logger *slog.Logger `yaml:"-"`
+
+	// MarkSelfVerifying marks the fetches of data that proves itself (OCSP, the TSL), so that an HTTP client which
+	// refuses plain http otherwise lets them through; see [WithSelfVerifying]. Not serialized; supplied
+	// programmatically.
+	MarkSelfVerifying func(context.Context) context.Context `yaml:"-"`
 }
 
 // Client is a relying party of the gematik IDP-Dienst.
@@ -126,7 +131,7 @@ func (c *Client) now() time.Time {
 //
 // httpClient carries the metadata, key and token requests, and the trust material's downloads and OCSP;
 // the configured User-Agent is layered onto a copy of it. It is the host's, as is its TLS: for the
-// IDP-Dienst the web profile of spec/pki-validation (titls.NewWebHTTPClient). It is a parameter so that
+// IDP-Dienst the web profile of spec/pki-validation (egress.NewClient). It is a parameter so that
 // no caller can leave it out; nil is refused.
 func NewClientFromConfig(config ClientConfig, httpClient *http.Client) (*Client, error) {
 	if config.Environment == EnvironmentUnset {
@@ -379,8 +384,9 @@ func trustFromConfig(config ClientConfig, httpClient *http.Client) (CertificateT
 	if config.TrustFetch && config.TrustBundlePath != "" {
 		return nil, errors.New("trust_fetch and trust_bundle_path exclude each other")
 	}
+	mark := WithSelfVerifying(config.MarkSelfVerifying)
 	if config.TrustFetch {
-		return NewFetchingTrust(config.Environment, httpClient)
+		return NewFetchingTrust(config.Environment, httpClient, mark)
 	}
-	return NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient, config.Logger)
+	return NewBundleTrust(config.Environment, config.TrustBundlePath, httpClient, config.Logger, mark)
 }

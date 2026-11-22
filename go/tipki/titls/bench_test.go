@@ -22,11 +22,10 @@
 package titls
 
 import (
-	"crypto/x509"
 	"testing"
 )
 
-// The benchmarks `just tls-bench` holds to their budgets: a verification under each profile on the
+// The benchmarks `just tls-bench` holds to their budgets: a verification under the ti profile on the
 // corpus's chains with their OCSP answers stapled, so no network takes part. Cold is a fresh verifier per
 // handshake; cached is the same chain and host again.
 
@@ -36,13 +35,6 @@ func benchTi(b *testing.B) (func(Options) *TiVerifier, [][]byte, []byte) {
 	source := NewTrustSource(corpusStore(b, m, "ti"))
 	verifier := func(opts Options) *TiVerifier { return NewTiVerifier(source, nil, opts) }
 	return verifier, [][]byte{corpusDER(b, "ti-good.pem"), corpusDER(b, "ti-ca.pem")}, corpusFile(b, "ocsp/ti-good-good.der")
-}
-
-func benchWeb(b *testing.B) (func(Options) *WebVerifier, [][]byte, []byte) {
-	b.Helper()
-	check := NewWebCheck([]*x509.Certificate{corpusCert(b, "web-root.pem")})
-	verifier := func(opts Options) *WebVerifier { return NewWebVerifier(check, Offline{}, opts) }
-	return verifier, [][]byte{corpusDER(b, "web-p256.pem"), corpusDER(b, "web-ca.pem")}, corpusFile(b, "ocsp/web-p256-good.der")
 }
 
 func BenchmarkTiCold(b *testing.B) {
@@ -61,27 +53,6 @@ func BenchmarkTiCached(b *testing.B) {
 	v.Verify(b.Context(), chain, "svc.ti.test", stapled, at)
 	for b.Loop() {
 		if verdict := v.Verify(b.Context(), chain, "svc.ti.test", stapled, at); verdict.Detail != "reused" {
-			b.Fatal(verdict.Code, verdict.Detail)
-		}
-	}
-}
-
-func BenchmarkWebCold(b *testing.B) {
-	verifier, chain, stapled := benchWeb(b)
-	v := verifier(Options{CacheSize: -1})
-	for b.Loop() {
-		if verdict := v.Verify(b.Context(), chain, "www.web.test", stapled, at); !verdict.Valid() {
-			b.Fatal(verdict.Code, verdict.Detail)
-		}
-	}
-}
-
-func BenchmarkWebCached(b *testing.B) {
-	verifier, chain, stapled := benchWeb(b)
-	v := verifier(Options{})
-	v.Verify(b.Context(), chain, "www.web.test", stapled, at)
-	for b.Loop() {
-		if verdict := v.Verify(b.Context(), chain, "www.web.test", stapled, at); verdict.Detail != "reused" {
 			b.Fatal(verdict.Code, verdict.Detail)
 		}
 	}

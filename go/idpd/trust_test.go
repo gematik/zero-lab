@@ -45,8 +45,8 @@ import (
 
 	"github.com/gematik/zero-lab/go/brainpool"
 	"github.com/gematik/zero-lab/go/brainpool/josebp"
+	"github.com/gematik/zero-lab/go/egress"
 	"github.com/gematik/zero-lab/go/tipki"
-	"github.com/gematik/zero-lab/go/tipki/titls"
 )
 
 // A brainpool certificate and its key, which the fake IDP signs with: no CA here vouches for it, which is
@@ -358,7 +358,7 @@ func bundleTrust(t *testing.T) (*BundleTrust, string, *testClock) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "bundle.json")
 	writeBundle(t, path, captured)
-	base, err := newVerifier(EnvironmentReference, http.DefaultClient)
+	base, err := newVerifier(EnvironmentReference, http.DefaultClient, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +475,7 @@ func TestIDPV005AGzippedBundleIsRead(t *testing.T) {
 	if err := os.WriteFile(path, compressed.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	base, err := newVerifier(EnvironmentReference, http.DefaultClient)
+	base, err := newVerifier(EnvironmentReference, http.DefaultClient, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -550,11 +550,11 @@ func TestIDPV005TheLiveReferenceIDP(t *testing.T) {
 	if bundle == "" {
 		t.Skip("IDPD_TRUST_BUNDLE_PATH not set: needs `ti pki trust export --env ref` and a route to the IDP; proves both IDP certificates live")
 	}
-	web, err := titls.NewWebHTTPClient(30*time.Second, titls.Options{})
+	web, err := egress.NewClient(30*time.Second, egress.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	trust, err := NewBundleTrust(EnvironmentReference, bundle, web, nil)
+	trust, err := NewBundleTrust(EnvironmentReference, bundle, web, nil, WithSelfVerifying(egress.SelfVerifying))
 	if err != nil {
 		t.Fatal(err)
 	}

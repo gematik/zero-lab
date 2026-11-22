@@ -54,22 +54,20 @@ func sortedSuiteNames(ids []uint16) []string {
 func configs(t *testing.T) map[string]*tls.Config {
 	t.Helper()
 	ti := NewTiVerifier(NewTrustSource(nil), nil, Options{})
-	web := NewWebVerifier(webCorpusCheck(t), Offline{}, Options{})
-	return map[string]*tls.Config{"ti": ti.ClientConfig(), "web": web.ClientConfig()}
+	return map[string]*tls.Config{"ti": ti.ClientConfig()}
 }
 
-// TLSV-010, TLSV-011 and TLSV-012: each profile's configuration offers the versions, TLS 1.2 suites and groups
+// TLSV-010, TLSV-011 and TLSV-012: the ti configuration offers the versions, TLS 1.2 suites and groups
 // of handshake.json; TLS 1.3's suites, which crypto/tls fixes, include those it lists, and the one it does
 // not list is refused once negotiated.
 func TestTLSV011TheConfigurationOffersWhatHandshakeJSONLists(t *testing.T) {
 	var file struct {
-		TI  handshakeProfile `json:"ti"`
-		Web handshakeProfile `json:"web"`
+		TI handshakeProfile `json:"ti"`
 	}
 	if err := json.Unmarshal(corpusFile(t, "handshake.json"), &file); err != nil {
 		t.Fatal(err)
 	}
-	handshake := map[string]handshakeProfile{"ti": file.TI, "web": file.Web}
+	handshake := map[string]handshakeProfile{"ti": file.TI}
 	groupIDs := map[string]tls.CurveID{"secp256r1": tls.CurveP256, "secp384r1": tls.CurveP384}
 	for profile, config := range configs(t) {
 		spec := handshake[profile]
@@ -134,13 +132,10 @@ func TestTLSV011WhatTheSpecDoesNotListIsRefusedWhenNegotiated(t *testing.T) {
 	}
 }
 
-// TLSV-002: the web configuration keeps crypto/tls's verification and adds its own; the ti configuration
-// verifies everything itself; every refusal ends the handshake with an error carrying the spec's code.
+// TLSV-002: the ti configuration verifies everything itself; every refusal ends the handshake with an error
+// carrying the spec's code.
 func TestTLSV002EveryConfigurationVerifies(t *testing.T) {
 	all := configs(t)
-	if web := all["web"]; web.InsecureSkipVerify || web.RootCAs == nil || web.VerifyConnection == nil {
-		t.Error("the web configuration does not verify")
-	}
 	if ti := all["ti"]; ti.VerifyConnection == nil {
 		t.Error("the ti configuration does not verify")
 	}
