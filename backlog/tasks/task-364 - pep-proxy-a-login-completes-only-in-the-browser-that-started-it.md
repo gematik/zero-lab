@@ -4,7 +4,7 @@ title: 'pep/proxy: a login completes only in the browser that started it'
 status: In Progress
 assignee: []
 created_date: '2026-11-17T06:44:00Z'
-updated_date: '2026-11-18T06:12:00Z'
+updated_date: '2026-11-22 11:21'
 labels:
   - pep-proxy
   - security
@@ -31,4 +31,6 @@ ordinal: 379000
 
 <!-- SECTION:NOTES:BEGIN -->
 Branch fix/rfc9700-gaps, commit 944a3110. Session.LoginMode (login_mode) is set from LoginStart.Mode at /oauth2/start. handleCallback: when the request does not own the session and the mode is not decoupled/authenticator, the session and its state are removed before Complete, and invalid_state is rendered; an empty mode (sessions stored before) gets the redirect rule. Tests: TestRFC9700_2_1_1_ARedirectLoginCompletesOnlyInTheBrowserThatStartedIt (no cookie, another cookie, then the starter is refused too; fails without the check), TestRFC9700_2_1_1_ACrossDeviceLoginCompletesWithoutTheCookie (decoupled, authenticator: callback 200 and poll 200). docs/DESIGN.md §3: who may complete a login, and the cross-device risk that remains with the mitigations in force. AC #2: unit-tested; the e2e of the OIDF QR and idpd logins is the maintainer's HITL. Rollout: zero-pep-proxy refuses unknown session members, so an older instance cannot read a session a newer one wrote; mixed versions only during a rolling update.
+
+2026-11-22: e2e decoupled passed on zerobin with spilikin/zero-pep-proxy:0.5.1-dev.aa2d9929 (main aa2d9929, fix included): Techniker Krankenkasse RU2 (https://idbroker.tk.ru2.nonprod-ehealth-id.de), login start mode=decoupled at 11:20:16, login complete decoupled=true at 11:21:01, the starting browser signed in (maintainer). Authenticator mode (idpd) not yet run e2e.
 <!-- SECTION:NOTES:END -->
