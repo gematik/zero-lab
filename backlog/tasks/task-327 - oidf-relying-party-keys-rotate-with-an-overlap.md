@@ -4,6 +4,7 @@ title: 'oidf: relying party keys rotate with an overlap'
 status: To Do
 assignee: []
 created_date: '2026-11-15T09:05:00Z'
+updated_date: '2026-11-22 11:54'
 labels:
   - oidf
   - go
@@ -23,3 +24,9 @@ Since TASK-315 the relying party takes its keys as functions (oidf.Keys: crypto.
 - [ ] #1 The entity statement can publish the next signing key ahead of its use, and the relying party switches to it without a restart
 - [ ] #2 An ID token encrypted to the previous encryption key decrypts until the exp of the last document that published that key
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22, maintainer: key change looks like a configuration matter. Checked against the code: a new key is configuration and takes effect with a rollout (servers.md rule 8), but oidf.Keys holds exactly one key of each kind and statement_check.go refuses a jwks with any key but the signing key. So a rollout swaps keys without overlap: (1) a new signing key appears in the entity statement only when it is already in use, where A_28859 asks for it 24 hours ahead; (2) an IDP keeps encrypting ID tokens to the old key as long as it holds the old statement (up to its exp), and those logins fail after the swap. The code left is small: Keys takes an optional next signing key (published, not used) and an optional previous decryption key (used for a kid that is not the current one); the host reads both from configuration like the current ones. Awaiting the maintainer's decision whether that is worth it or the overlap is left to operations (swap only after the old statement expired).
+<!-- SECTION:NOTES:END -->

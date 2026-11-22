@@ -4,6 +4,7 @@ title: 'oidf: trust chain resolution beyond one hop'
 status: To Do
 assignee: []
 created_date: '2026-11-12T21:08:00Z'
+updated_date: '2026-11-22 11:54'
 labels: []
 dependencies: []
 ordinal: 307000
@@ -19,3 +20,9 @@ FetchEntityStatement (go/oidf/oidf.go) verifies a fixed chain: the federation ma
 <!-- AC:BEGIN -->
 - [ ] #1 A chain through an intermediate resolves and is refused when any statement is invalid or expired; the chain reports when it expires
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22: archived by the maintainer's decision: oidf supports one level only for now (the federation master and its direct subordinates), no intermediates.
+<!-- SECTION:NOTES:END -->

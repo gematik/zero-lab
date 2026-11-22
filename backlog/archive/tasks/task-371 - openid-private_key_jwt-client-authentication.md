@@ -4,6 +4,7 @@ title: 'openid: private_key_jwt client authentication'
 status: To Do
 assignee: []
 created_date: '2026-11-17T06:45:00Z'
+updated_date: '2026-11-22 11:54'
 labels:
   - openid
   - oauth
@@ -23,3 +24,9 @@ ordinal: 386000
 <!-- AC:BEGIN -->
 - [ ] #1 go/openid supports `private_key_jwt` with a key given as a signing function (keys.md). It is chosen when the provider's metadata lists it and a key is configured. Tests named after RFC 7523 §2.2 and RFC 9700 §2.5.
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-22: archived by the maintainer's decision: no private_key_jwt; the relying party authenticates at the IDP with self_signed_tls_client_auth only.
+<!-- SECTION:NOTES:END -->
