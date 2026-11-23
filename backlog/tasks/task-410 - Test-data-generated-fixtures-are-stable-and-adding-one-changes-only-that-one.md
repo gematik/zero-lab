@@ -1,10 +1,10 @@
 ---
 id: TASK-410
 title: 'Test data: generated fixtures are stable, and adding one changes only that one'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-23T20:21:00Z'
-updated_date: '2026-11-23T20:41:00Z'
+updated_date: '2026-11-23T20:49:00Z'
 labels:
   - testing
   - rust
@@ -45,3 +45,9 @@ rust/ti-pki/tests/pki/generate.sh rebuilds the whole test PKI with fresh keys on
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-23, branch feat/ti-pki-oid-3.27, d42cd212. rust/ti-pki/tests/pki/lib.sh: keys committed in keys/ (77) and tsl-signer/keys/ (13), made only when missing; wanted() writes an output only when missing or FORCE=1; serial_of(name) = 0x1 + 15 hex of SHA-256(name); sign_options() adds -sigopt nonce-type:1 for EC keys (OpenSSL >= 3.2; 4.1 here). Proof: a second just test-pki changes no file; FORCE=1 reproduces every byte except ee-rsa-pss.pem (random PSS salt, named in lib.sh). ocsp_002 now derives its byte positions from the DER (first/last ecdsa-with-SHA256 AlgorithmIdentifier), checked against the old fixture (311, 325, 782). Rule in docs/design/testing.md 'Generated fixtures are stable'. Follow-ups TASK-411 to 417, one per other generator. Rust workspace 943 tests and Go tipki green on the switch.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged in this merge of feat/ti-pki-oid-3.27. The test PKI of rust/ti-pki is stable: TEST-ONLY keys committed, serials derived from the name, ECDSA deterministic (RFC 6979), a run writes only what is missing and FORCE=1 rebuilds every byte except the RSA-PSS fixture. The rule is in docs/design/testing.md; TASK-411 to 417 bring the other generators to it.
+<!-- SECTION:FINAL_SUMMARY:END -->

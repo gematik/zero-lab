@@ -3,10 +3,10 @@ id: TASK-409
 title: >-
   ti-pki: gemSpec_OID V3.27.0, ZETA Guard on C.FD.TLS-C and a profile for the
   Notification Service's client certificate
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-23T20:13:00Z'
-updated_date: '2026-11-23T20:41:00Z'
+updated_date: '2026-11-23T20:49:00Z'
 labels:
   - rust
   - ti-pki
@@ -51,3 +51,9 @@ gemSpec_OID V3.27.0 (13.11.2026, CI_26_4-1) changes one requirement against V3.2
 
 2026-11-23, branch feat/ti-pki-oid-3.27, on top of TASK-410. Rust and Go: oid_zeta-guard admitted on C.FD.AUT and C.FD.TLS-C (GS-A_4446-21), tables cite V3.27.0; profile zeta-guard-tls-c (C.FD.TLS-C, role oid_zeta-guard, hard-fail) in ti-pki and go/tipki. Tests: gs_a_4446_21_zeta_guard_is_admitted_on_fd_aut_and_fd_tls_c, gs_a_4446_21_zeta_guard_tls_c_takes_the_notification_services_client_certificate (accepts the role on TLS-C, refuses TLS-C without it and FD.AUT with it), prof_003 selection; corpus and traceability re-blessed. The new fixture is one certificate and one key. Gateway check: gemF_PushNotification V1.4.0 A_28981 (C.FD.TLS-C of the component PKI with the client's role; V1.4.0 names oid_epa_mgmt and oid_erezept, not yet oid_zeta-guard) and A_28982 (method 1 pinning, method 2 TI PKI + validity + role, no revocation); the profile also checks revocation hard-fail, cited in both profiles.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Merged with feat/ti-pki-oid-3.27. ti-pki and go/tipki follow gemSpec_OID V3.27.0 (GS-A_4446-21: oid_zeta-guard on C.FD.AUT and C.FD.TLS-C), and the profile zeta-guard-tls-c checks the ZETA Guard Notification Service's client certificate (gemF_PushNotification A_28981, A_28982; revocation hard-fail on top). The new fixture is one certificate and one key.
+<!-- SECTION:FINAL_SUMMARY:END -->
