@@ -32,6 +32,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -46,10 +47,27 @@ import (
 	"time"
 )
 
-// material is the key and certificate set of one generator run. Keys exist
-// only for the run; nothing is committed (see CONFORMANCE.md, Corpus).
+// The corpus is TEST-ONLY data, written again from the keys committed in
+// testdata/keys: the certificates (fixed instants, serial numbers from their
+// names, RFC 6979 ECDSA), the passwords, the expectations and the cases that
+// OpenSSL does not write (the random one included) come out the same on every
+// run. A run writes only what is missing in -out; FORCE=1 writes everything
+// (spec/fixtures.sh, and the test data rule of docs/design/testing.md).
+//
+// Randomised on every run that writes them: the files of the cases with an
+// "openssl" source, in every encoding, because `openssl pkcs12 -export` draws
+// salts and IVs that the command cannot fix. The expectations do not depend on
+// them.
+
+// The validity of every certificate; the corpus is not validated against a
+// time, so these only keep the certificates the same.
+var (
+	notBefore = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	notAfter  = time.Date(2036, 1, 1, 0, 0, 0, 0, time.UTC)
+)
+
+// material is the key and certificate set of the corpus.
 type material struct {
-	dir   string
 	ca    entity
 	leafs map[string]entity // by key type
 }
@@ -73,15 +91,15 @@ func generate(manifestPath, out, openssl string) error {
 	if err := os.MkdirAll(filepath.Join(out, "material"), 0o700); err != nil {
 		return err
 	}
-	mat, err := newMaterial(filepath.Join(out, "material"))
+	testdata := filepath.Dir(manifestPath)
+	mat, err := newMaterial(filepath.Join(testdata, "keys"), filepath.Join(out, "material"))
 	if err != nil {
 		return err
 	}
-	testdata := filepath.Dir(manifestPath)
 
 	var expected []Expected
 	for _, c := range m.Cases {
-		base, password, err := produce(c, mat, testdata, out, openssl)
+		password, err := casePassword(c, testdata)
 		if err != nil {
 			return fmt.Errorf("case %s: %w", c.ID, err)
 		}
@@ -90,35 +108,18 @@ func generate(manifestPath, out, openssl string) error {
 			decodePassword = []byte(*c.DecodePassword)
 		}
 		passwordFile := c.ID + ".password"
-		if err := os.WriteFile(filepath.Join(out, passwordFile), decodePassword, 0o600); err != nil {
+		if err := write(filepath.Join(out, passwordFile), decodePassword); err != nil {
 			return err
 		}
 		want, err := expectation(c, mat)
 		if err != nil {
 			return fmt.Errorf("case %s: %w", c.ID, err)
 		}
-		// A mutation alters the file as produced, so a case can carry it into
-		// every encoding: a BER encoding of a patched file is still patched.
-		if c.Mutation != nil {
-			if base, err = mutate(base, *c.Mutation); err != nil {
-				return fmt.Errorf("case %s: %w", c.ID, err)
-			}
+		if err := writeEncodings(c, mat, testdata, out, openssl, password); err != nil {
+			return fmt.Errorf("case %s: %w", c.ID, err)
 		}
 		for _, encoding := range c.Encodings {
-			data := base
-			switch encoding {
-			case "der", "as-is":
-			case "ber":
-				if data, err = toBER(base, 512); err != nil {
-					return fmt.Errorf("case %s: %w", c.ID, err)
-				}
-			default:
-				return fmt.Errorf("case %s: unknown encoding %q", c.ID, encoding)
-			}
 			file := c.ID + "." + encoding + ".p12"
-			if err := os.WriteFile(filepath.Join(out, file), data, 0o600); err != nil {
-				return err
-			}
 			codes := c.Expect.Codes
 			if c.Expect.Code != "" {
 				codes = []string{c.Expect.Code}
@@ -137,37 +138,104 @@ func generate(manifestPath, out, openssl string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(out, "expected.json"), append(data, '\n'), 0o600)
+	// The index of every case, so it follows the manifest even when the
+	// files it lists are already there.
+	data = append(data, '\n')
+	file := filepath.Join(out, "expected.json")
+	if old, err := os.ReadFile(file); err == nil && bytes.Equal(old, data) {
+		return nil
+	}
+	return os.WriteFile(file, data, 0o600)
 }
 
-// produce returns the case's file as produced (before encoding and mutation)
-// and the password it was produced with.
-func produce(c Case, mat *material, testdata, out, openssl string) ([]byte, []byte, error) {
-	password := []byte(c.Password)
-	if c.PasswordFile != "" {
-		b, err := os.ReadFile(filepath.Join(testdata, c.PasswordFile))
-		if err != nil {
-			return nil, nil, err
+// force is FORCE=1: write every output again, not only the missing ones.
+var force = os.Getenv("FORCE") != ""
+
+// write writes an output that is missing, or every output under FORCE.
+func write(file string, data []byte) error {
+	if !force {
+		if _, err := os.Stat(file); err == nil {
+			return nil
 		}
-		password = bytes.TrimRight(b, "\r\n")
 	}
+	return os.WriteFile(file, data, 0o600)
+}
+
+// writeEncodings writes the case's files that are missing. It produces the
+// case only then, so a run does not call openssl for files that exist.
+func writeEncodings(c Case, mat *material, testdata, out, openssl string, password []byte) error {
+	missing := force
+	for _, encoding := range c.Encodings {
+		if _, err := os.Stat(filepath.Join(out, c.ID+"."+encoding+".p12")); err != nil {
+			missing = true
+		}
+	}
+	if !missing {
+		return nil
+	}
+	base, err := produce(c, mat, testdata, openssl, password)
+	if err != nil {
+		return err
+	}
+	// A mutation alters the file as produced, so a case can carry it into
+	// every encoding: a BER encoding of a patched file is still patched.
+	if c.Mutation != nil {
+		if base, err = mutate(base, *c.Mutation); err != nil {
+			return err
+		}
+	}
+	for _, encoding := range c.Encodings {
+		data := base
+		switch encoding {
+		case "der", "as-is":
+		case "ber":
+			if data, err = toBER(base, 512); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown encoding %q", encoding)
+		}
+		if err := write(filepath.Join(out, c.ID+"."+encoding+".p12"), data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// casePassword returns the password the case's file is written with.
+func casePassword(c Case, testdata string) ([]byte, error) {
+	if c.PasswordFile == "" {
+		return []byte(c.Password), nil
+	}
+	b, err := os.ReadFile(filepath.Join(testdata, c.PasswordFile))
+	if err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(b, "\r\n"), nil
+}
+
+// produce returns the case's file as produced, before encoding and mutation.
+func produce(c Case, mat *material, testdata, openssl string, password []byte) ([]byte, error) {
 	switch {
 	case c.File != "":
-		data, err := os.ReadFile(filepath.Join(testdata, c.File))
-		return data, password, err
+		return os.ReadFile(filepath.Join(testdata, c.File))
 	case c.Raw == "random":
-		data := make([]byte, 1024)
-		_, err := rand.Read(data)
+		data := stream("random "+c.ID, 1024)
 		data[0] = 0x30 // looks like a SEQUENCE, so decoders get past the first byte
-		return data, password, err
+		return data, nil
 	case c.Raw == "pem":
-		return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: mat.ca.certDER}), password, nil
+		return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: mat.ca.certDER}), nil
 	case c.OpenSSL != nil:
 		leaf, ok := mat.leafs[c.Key]
 		if !ok {
-			return nil, nil, fmt.Errorf("unknown key type %q", c.Key)
+			return nil, fmt.Errorf("unknown key type %q", c.Key)
 		}
-		file := filepath.Join(out, "material", c.ID+".openssl.p12")
+		tmp, err := os.MkdirTemp("", "p12conformance")
+		if err != nil {
+			return nil, err
+		}
+		defer os.RemoveAll(tmp)
+		file := filepath.Join(tmp, c.ID+".p12")
 		args := []string{
 			"pkcs12", "-export", "-in", leaf.certPEM, "-inkey", leaf.keyPEM, "-out", file,
 			"-passout", "env:P12_PASSWORD",
@@ -179,12 +247,22 @@ func produce(c Case, mat *material, testdata, out, openssl string) ([]byte, []by
 		cmd := exec.Command(openssl, args...)
 		cmd.Env = append(os.Environ(), "P12_PASSWORD="+string(password))
 		if msg, err := cmd.CombinedOutput(); err != nil {
-			return nil, nil, fmt.Errorf("openssl %s: %w\n%s", strings.Join(c.OpenSSL, " "), err, msg)
+			return nil, fmt.Errorf("openssl %s: %w\n%s", strings.Join(c.OpenSSL, " "), err, msg)
 		}
-		data, err := os.ReadFile(file)
-		return data, password, err
+		return os.ReadFile(file)
 	}
-	return nil, nil, errors.New("no source")
+	return nil, errors.New("no source")
+}
+
+// stream returns n bytes of SHA-256 in counter mode over label: data that
+// looks random and is the same on every run.
+func stream(label string, n int) []byte {
+	var out []byte
+	for i := uint32(0); len(out) < n; i++ {
+		sum := sha256.Sum256(binary.BigEndian.AppendUint32([]byte(label), i))
+		out = append(out, sum[:]...)
+	}
+	return out[:n]
 }
 
 // expectation resolves the symbolic contents of a case into the Result a
@@ -241,23 +319,22 @@ func (m *material) entity(symbol, key string) (entity, error) {
 	return entity{}, fmt.Errorf("unknown entity %q", symbol)
 }
 
-func newMaterial(dir string) (*material, error) {
-	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+func newMaterial(keys, dir string) (*material, error) {
+	caKey, err := loadKey(keys, "ca", func() (crypto.Signer, error) { return ecdsa.GenerateKey(elliptic.P256(), rand.Reader) })
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
 	caTemplate := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
+		SerialNumber:          serialOf("ca"),
 		Subject:               pkix.Name{CommonName: "PKCS#12 conformance CA TEST-ONLY"},
-		NotBefore:             now.Add(-time.Hour),
-		NotAfter:              now.Add(24 * time.Hour),
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
 		IsCA:                  true,
 		BasicConstraintsValid: true,
 		KeyUsage:              x509.KeyUsageCertSign,
 	}
-	m := &material{dir: dir, leafs: map[string]entity{}}
-	if m.ca, err = newEntity(dir, "ca", caKey, caTemplate, caTemplate, caKey); err != nil {
+	m := &material{leafs: map[string]entity{}}
+	if m.ca, err = newEntity(dir, keys, "ca", caKey, caTemplate, caTemplate, caKey); err != nil {
 		return nil, err
 	}
 	caCert, err := x509.ParseCertificate(m.ca.certDER)
@@ -265,36 +342,84 @@ func newMaterial(dir string) (*material, error) {
 		return nil, err
 	}
 
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, err
-	}
-	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	for i, k := range []struct {
-		name string
-		key  crypto.Signer
-	}{{"rsa", rsaKey}, {"ec", ecKey}} {
+	for _, k := range []struct {
+		name     string
+		generate func() (crypto.Signer, error)
+	}{
+		{"rsa", func() (crypto.Signer, error) { return rsa.GenerateKey(rand.Reader, 2048) }},
+		{"ec", func() (crypto.Signer, error) { return ecdsa.GenerateKey(elliptic.P256(), rand.Reader) }},
+	} {
+		key, err := loadKey(keys, k.name, k.generate)
+		if err != nil {
+			return nil, err
+		}
 		leaf := &x509.Certificate{
-			SerialNumber: big.NewInt(int64(i + 2)),
+			SerialNumber: serialOf(k.name),
 			Subject:      pkix.Name{CommonName: "PKCS#12 conformance " + k.name + " TEST-ONLY"},
-			NotBefore:    now.Add(-time.Hour),
-			NotAfter:     now.Add(24 * time.Hour),
+			NotBefore:    notBefore,
+			NotAfter:     notAfter,
 			KeyUsage:     x509.KeyUsageDigitalSignature,
 		}
-		if m.leafs[k.name], err = newEntity(dir, k.name, k.key, leaf, caCert, caKey); err != nil {
+		if m.leafs[k.name], err = newEntity(dir, keys, k.name, key, leaf, caCert, caKey); err != nil {
 			return nil, err
 		}
 	}
 	return m, nil
 }
 
-func newEntity(dir, name string, key crypto.Signer, template, parent *x509.Certificate, parentKey crypto.Signer) (entity, error) {
+// loadKey reads keys/name.key, a PKCS#8 PEM. A missing key is generated and
+// written once, never again, also not under FORCE: the corpus stays the same
+// only as long as its keys do.
+func loadKey(keys, name string, generate func() (crypto.Signer, error)) (crypto.Signer, error) {
+	file := filepath.Join(keys, name+".key")
+	data, err := os.ReadFile(file)
+	if errors.Is(err, os.ErrNotExist) {
+		key, err := generate()
+		if err != nil {
+			return nil, err
+		}
+		der, err := x509.MarshalPKCS8PrivateKey(key)
+		if err != nil {
+			return nil, err
+		}
+		if err := os.MkdirAll(keys, 0o700); err != nil {
+			return nil, err
+		}
+		return key, os.WriteFile(file, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600)
+	}
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "PRIVATE KEY" {
+		return nil, fmt.Errorf("%s: no PKCS#8 PEM", file)
+	}
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	signer, ok := key.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("%s: not a signing key", file)
+	}
+	return signer, nil
+}
+
+// serialOf derives a positive 64-bit serial number from a name, as serial_of
+// of spec/fixtures.sh does, so an added certificate takes no other's number.
+func serialOf(name string) *big.Int {
+	sum := sha256.Sum256([]byte(name))
+	serial, _ := new(big.Int).SetString("1"+hex.EncodeToString(sum[:])[:15], 16)
+	return serial
+}
+
+// newEntity signs the certificate with a nil random source: ECDSA then signs
+// per RFC 6979 and RSA PKCS #1 v1.5 is deterministic anyway, so the
+// certificate is the same on every run. openssl reads the key from keys/.
+func newEntity(dir, keys, name string, key crypto.Signer, template, parent *x509.Certificate, parentKey crypto.Signer) (entity, error) {
 	var e entity
 	var err error
-	if e.certDER, err = x509.CreateCertificate(rand.Reader, template, parent, key.Public(), parentKey); err != nil {
+	if e.certDER, err = x509.CreateCertificate(nil, template, parent, key.Public(), parentKey); err != nil {
 		return e, err
 	}
 	if e.keyDER, err = x509.MarshalPKCS8PrivateKey(key); err != nil {
@@ -306,11 +431,8 @@ func newEntity(dir, name string, key crypto.Signer, template, parent *x509.Certi
 	}
 	e.certSHA, e.keySHA, e.publicKeySHA = digest(e.certDER), digest(e.keyDER), digest(spki)
 	e.certPEM = filepath.Join(dir, name+".crt.pem")
-	e.keyPEM = filepath.Join(dir, name+".key.pem")
-	if err := os.WriteFile(e.certPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: e.certDER}), 0o600); err != nil {
-		return e, err
-	}
-	return e, os.WriteFile(e.keyPEM, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: e.keyDER}), 0o600)
+	e.keyPEM = filepath.Join(keys, name+".key")
+	return e, write(e.certPEM, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: e.certDER}))
 }
 
 func digest(b []byte) string {

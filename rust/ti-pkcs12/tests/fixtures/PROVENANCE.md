@@ -7,12 +7,19 @@ All keys here are test keys; none protects anything.
 - **Source:** `go/pkcs12/testdata` and `go/pkcs12/legacy/testdata` of this repository, copied
   unchanged in 153a69a0 (2026-09-27). Go's copies were created in 43e97a55 (2026-02-05) and
   deafd001 (2026-02-06) and removed from `go/pkcs12` in 06cfb300 (2026-10-13), so these files are
-  now the only copy of the OpenSSL-generated set. `README.md` and `generate_test_data.sh` are Go's
-  and describe Go's tests; they are kept unchanged because `tests/decode.rs` pins every copied
-  file by SHA-256 (`fixtures_are_the_go_ones`).
-- **The OpenSSL-generated files** (`*.p12` and `*.pem` here): written by `generate_test_data.sh`
-  with the OpenSSL of 2026-02-05; the exact OpenSSL version is unknown. Private keys and CSRs
-  were not copied.
+  now the only copy of the OpenSSL-generated set. `README.md` is Go's and describes Go's tests;
+  it is kept unchanged because `tests/decode.rs` pins every copied file by SHA-256
+  (`fixtures_are_the_go_ones`).
+- **The OpenSSL-generated files** (`*.p12` and `*.pem` here): written in 43e97a55 with the
+  OpenSSL of 2026-02-05 (version unknown), by commands the script committed then did not match
+  (another password, friendly names, iteration counts). `generate_test_data.sh` was rewritten
+  in TASK-412 to write each of them as it is.
+- **`keys/`:** the TEST-ONLY CA, server and EC keys of those files, as `go/pkcs12/testdata` held
+  them in 43e97a55 (the EC key converted from SEC1 to PKCS#8, the same key). A plain run of
+  `generate_test_data.sh` writes only what is missing; `FORCE=1` writes the certificates and
+  `truncated.p12` byte for byte again, the `.p12` files with new salts and IVs and
+  `random.p12` with new data (the script names them), so their digests in `tests/decode.rs`
+  follow while `go-baseline.json` holds.
 - **`legacy/cgm.p12`, `legacy/secunet.p12`** and their password files: two connector client
   identities as the vendors (CGM KoCoBox, secunet) deliver them, BER-encoded, RC2-40 and 3DES,
   HMAC-SHA-1 MAC. No tool regenerates them. The same files, byte for byte, are
@@ -22,11 +29,11 @@ All keys here are test keys; none protects anything.
   committed; for the two BER files Go read an `openssl pkcs12 -legacy` re-export, which is why
   `tests/decode.rs` compares their attributes against `openssl pkcs12 -info` instead.
 
-**Refresh:** none is planned: the files are pinned, and regenerating them changes every digest
-and the baseline. To replace them, run `generate_test_data.sh` in an empty directory, copy the
-`.p12` and certificate files here, update the digests in `tests/decode.rs` and rewrite
-`go-baseline.json` from `go/pkcs12`'s decoder (`go/pkcs12` itself now tests against the
-generated corpus of `spec/pkcs12`).
+**Refresh:** none is planned: the files are pinned. To add a file, add it to
+`generate_test_data.sh` and run it; it writes only that file, whose digest goes into
+`tests/decode.rs` and whose decoding by `go/pkcs12` goes into `go-baseline.json`. A `FORCE=1`
+rebuild changes the digests of the randomised files only (`go/pkcs12` itself now tests against
+the generated corpus of `spec/pkcs12`).
 
 ## `truststore/`
 
