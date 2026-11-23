@@ -1,4 +1,0 @@
-./go/brainpool/internal/bp256/fiat/*
-./go/epa/portal/templates/static/vendor/*
-./rust/ti-connector-client/src/api/*
-./spec/*
