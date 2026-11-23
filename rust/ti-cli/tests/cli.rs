@@ -343,6 +343,7 @@ fn profiles() {
         "idpd-sig",
         "hci-aut",
         "zeta-guard-aut",
+        "zeta-guard-tls-c",
     ] {
         assert!(list.contains(name), "{list}");
     }

@@ -21,7 +21,7 @@
 
 // Package oid holds the object identifiers gemSpec_OID defines for the TI, each with the
 // specification's reference name and description. The tables are those of Rust's ti-pki, as of
-// gemSpec_OID V3.26.0, and spec/pki-profiles holds the two to the same values. Identifiers are
+// gemSpec_OID V3.27.0, and spec/pki-profiles holds the two to the same values. Identifiers are
 // binary, as crypto/x509 reads them from a certificate; the dotted form is for reading.
 package oid
 
@@ -468,7 +468,7 @@ var table = []Info{
 	{OID: TechRolePoPPToken, Reference: "oid_popp-token", Description: "Token-Signatur-Identität für Proof of Patient Presence", CertificateTypes: []string{"C.ZD.SIG"}},
 	{OID: TechRolePKIVer, Reference: "oid_pki-ver", Description: "PKI Change Verifikation", CertificateTypes: []string{"C.GEM.VER"}}, //nolint:misspell // German, as gemSpec_OID writes it
 	{OID: TechRoleDipagVAU, Reference: "oid_dipag-vau", Description: "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung", CertificateTypes: []string{"C.FD.AUT"}},
-	{OID: TechRoleZETAGuard, Reference: "oid_zeta-guard", Description: "ZETA Guard", CertificateTypes: []string{"C.FD.AUT"}},
+	{OID: TechRoleZETAGuard, Reference: "oid_zeta-guard", Description: "ZETA Guard", CertificateTypes: []string{"C.FD.AUT", "C.FD.TLS-C"}},
 	{OID: TechRoleZETAPolicies, Reference: "oid_zeta-policies", Description: "ZETA PIP/PAP Policies", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleZETAOCI, Reference: "oid_zeta-oci", Description: "OCI container image für ZETA", CertificateTypes: []string{"C.FD.SIG"}},
 	{OID: TechRoleZETAPolAuthor, Reference: "oid_zeta-pol-author", Description: "ZETA Policy Autor", CertificateTypes: []string{"C.FD.SIG"}}, //nolint:misspell // German, as gemSpec_OID writes it

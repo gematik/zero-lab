@@ -109,13 +109,24 @@ var (
 		RequiredRoleOIDs: []x509.OID{oid.TechRoleZETAGuard},
 		AcceptsTypes:     []CertificateType{CertFdAut},
 	}
+	// ProfileZetaGuardTLSC is the C.FD.TLS-C a ZETA Guard's Notification Service presents as a TLS client to
+	// the app vendors' push gateways (gemSpec_ZETA A_25652), identified by oid_zeta-guard, which gemSpec_OID
+	// GS-A_4446-21 admits on C.FD.TLS-C. gemF_PushNotification V1.4.0 A_28981 and A_28982 (method 2) are the
+	// gateway's check; revocation is checked hard-fail on top, as by every profile.
+	ProfileZetaGuardTLSC = &Profile{
+		Name:             "zeta-guard-tls-c",
+		Description:      "ZETA Guard Notification Service TLS client",
+		Revocation:       RevocationHardFail,
+		RequiredRoleOIDs: []x509.OID{oid.TechRoleZETAGuard},
+		AcceptsTypes:     []CertificateType{CertFdTLSC},
+	}
 )
 
 // Profiles returns every profile, sorted by name.
 func Profiles() []*Profile {
 	return []*Profile{
 		ProfileDipagVauAut, ProfileEpaVauAut, ProfileFdTLSS, ProfileHciAut, ProfileIdpdSig, ProfileTslSig,
-		ProfileZetaGuardAut,
+		ProfileZetaGuardAut, ProfileZetaGuardTLSC,
 	}
 }
 

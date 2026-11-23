@@ -53,6 +53,7 @@ it treats revocation.
 | `idpd-sig` | IDP discovery document and token signing | `C.FD.SIG` | `oid_idpd` | hard-fail |
 | `tsl-sig` | TSL signer | `C.TSL.SIG` | none | hard-fail |
 | `zeta-guard-aut` | ZETA Guard | `C.FD.AUT` | `oid_zeta-guard` | hard-fail |
+| `zeta-guard-tls-c` | ZETA Guard Notification Service (GS-A_4446-21) | `C.FD.TLS-C` | `oid_zeta-guard` | hard-fail |
 
 Two rules keep a profile from widening what is accepted:
 
@@ -200,7 +201,7 @@ This library has **not** undergone an independent third-party audit.
 
 ## References
 
-- **gemSpec_PKI** V2.28.0, **gemSpec_TSL** V1.25.0, **gemSpec_Krypt** V2.51.0, **gemSpec_OID** V3.26.0,
+- **gemSpec_PKI** V2.28.0, **gemSpec_TSL** V1.25.0, **gemSpec_Krypt** V2.51.0, **gemSpec_OID** V3.27.0,
   **gemKPT_PKI_TIP** V2.14.0 ([gematik](https://gemspec.gematik.de/)).
 - **RFC 5280**: Internet X.509 Public Key Infrastructure Certificate and CRL Profile.
 - **RFC 6960**: Online Certificate Status Protocol (OCSP).

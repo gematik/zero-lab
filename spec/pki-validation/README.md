@@ -24,7 +24,7 @@ the inner channels of the VAU and ZETA/ASL, Certificate Transparency, and the se
 - gemSpec_Krypt V2.51.0: GS-A_4384-03, GS-A_4385, A_18467, A_18464, GS-A_4387, GS-A_5035, A_21275-01,
   GS-A_5542, GS-A_5322, A_24913, A_28976, A_16176-01, A_27855-03, A_27856-02, A_27857-02, A_29774, A_29775,
   A_29776
-- gemSpec_OID V3.26.0: Tab_PKI_405
+- gemSpec_OID V3.27.0: Tab_PKI_405
 - RFC 5280 (paths, CRLs), RFC 6960 (OCSP), RFC 6066 §8 (stapling), RFC 8446 (TLS 1.3), RFC 5246 (TLS 1.2),
   RFC 5746 (renegotiation), RFC 8734 (brainpool in TLS 1.3), RFC 9525 (service identity)
 - BSI TR-02102-2, the 120-bit level of gemSpec_Krypt §4

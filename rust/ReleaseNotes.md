@@ -425,6 +425,17 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 
 ### ti-pki
 
+#### added
+- The OID tables follow gemSpec_OID V3.27.0 (TASK-409): GS-A_4446-21 admits `oid_zeta-guard` on
+  `C.FD.TLS-C` besides `C.FD.AUT`. The new profile `zeta-guard-tls-c` checks the C.FD.TLS-C a
+  ZETA Guard's Notification Service presents to the app vendors' push gateways (gemSpec_ZETA
+  A_25652): type C.FD.TLS-C, clientAuth, role `oid_zeta-guard`, revocation hard-fail.
+  `select_for_cert` picks it for such a certificate; `zeta-guard-aut` stays C.FD.AUT only.
+- The test PKI is stable (TASK-410): its TEST-ONLY keys are committed, serial numbers come from
+  the certificate's name, ECDSA signs deterministically, and `just test-pki` writes only what is
+  missing (`FORCE=1` rebuilds everything from the same keys). Adding a certificate changes that
+  certificate and its corpus entries only.
+
 #### security
 - `rsa` 0.10.0, the release, instead of the release candidate 0.10.0-rc.19, with `pkcs1` 0.8.0
   (TASK-12). 0.10.0 fixes RUSTSEC-2023-0071 (the Marvin timing attack on private-key

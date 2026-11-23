@@ -350,6 +350,8 @@ typed role-fd-aut-zeta-guard $ds "" "$GEM_OR_CP, $ARC.155" $ARC.328
 typed role-fd-aut-epa-vau    $ds "" "$GEM_OR_CP, $ARC.155" $ARC.209
 typed role-fd-aut-dipag-vau  $ds "" "$GEM_OR_CP, $ARC.155" $ARC.323
 typed role-fd-sig-idpd       $ds "" "$GEM_OR_CP, $ARC.203" $ARC.260
+# GS-A_4446-21: ZETA Guard's Notification Service on C.FD.TLS-C.
+typed role-fd-tls-c-zeta-guard $ds clientAuth "$GEM_OR_CP, $ARC.168" $ARC.328
 
 # Admission fallback: no policies, the type follows from role family and key usage.
 typed fallback-hci-aut-krankenhaus  $ds "" "" $ARC.53
