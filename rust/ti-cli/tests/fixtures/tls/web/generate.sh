@@ -9,15 +9,20 @@
 #     └─ ti-type    C.FD.TLS-S's policies, DNS svc.ti.test: a TI certificate type, which
 #                   --validation-profile auto takes to the TI's validation
 #
-# The servers' keys are written next to their certificates; the CAs' live only while this runs.
-# Keys are random: running it again changes every file.
+# The TEST-ONLY keys of the servers and of the CAs (root.key, ca.key) are committed next to the
+# certificates; a run writes only what is missing, FORCE=1 writes everything again from the same
+# keys (spec/fixtures.sh, and the test data rule of docs/design/testing.md). Serial numbers come
+# from the name, ECDSA signatures are deterministic, RSA PKCS#1 v1.5 (rsa2048) always is.
+# Nothing here is randomised.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 out=$here
+keys=$here
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$out/ocsp"
+. "$here/../../../../../../spec/fixtures.sh"
 
 NOW=20260101000000Z
 NINETY_DAYS=20260401000000Z
@@ -55,31 +60,36 @@ subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 CNF
 
-serial=3000
-# cert name cn issuer(name|self) to section keydir
+# cert name cn issuer(name|self) to section
 cert() {
-    local name=$1 cn=$2 issuer=$3 to=$4 section=$5 keys=$6
-    serial=$((serial + 1))
+    local name=$1 cn=$2 issuer=$3 to=$4 section=$5
+    wanted "$out/$name.pem" || return 0
     openssl req -new -key "$keys/$name.key" -subj "/C=DE/O=TEST-ONLY/CN=$cn" -out "$work/$name.csr"
-    local signer=(-key "$keys/$name.key")
+    local signer=(-key "$keys/$name.key") signkey=$keys/$name.key
     if [ "$issuer" != self ]; then
-        signer=(-CA "$out/$issuer.pem" -CAkey "$work/$issuer.key")
+        signer=(-CA "$out/$issuer.pem" -CAkey "$keys/$issuer.key") signkey=$keys/$issuer.key
     fi
-    openssl x509 -req -in "$work/$name.csr" "${signer[@]}" -set_serial "$serial" -sha256 \
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl x509 -req -in "$work/$name.csr" "${signer[@]}" -set_serial "$(serial_of "$name")" -sha256 \
         -not_before "$NOW" -not_after "$to" -extfile "$work/ext.cnf" -extensions "$section" \
-        -out "$out/$name.pem" 2>/dev/null
+        $(sign_options "$signkey") -out "$out/$name.pem" 2>/dev/null
 }
-ec() { openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -pkeyopt ec_param_enc:named_curve -out "$1" 2>/dev/null; }
 
-ec "$work/root.key"; cert root "TLSV Web Root TEST-ONLY" self "$TEN_YEARS" ca "$work"
-ec "$work/ca.key";   cert ca "TLSV Web CA TEST-ONLY" root "$TEN_YEARS" ca "$work"
-ec "$out/p256.key";  cert p256 www.web.test ca "$NINETY_DAYS" web "$out"
-openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$out/rsa2048.key" 2>/dev/null
-cert rsa2048 www.web.test ca "$NINETY_DAYS" web "$out"
-ec "$out/no-status.key"; cert no-status www.web.test ca "$NINETY_DAYS" web_no_status "$out"
-ec "$out/ti-type.key"; cert ti-type svc.ti.test ca "$NINETY_DAYS" ti_type "$out"
+key root p256
+key ca p256
+key p256 p256
+key rsa2048 rsa2048
+key no-status p256
+key ti-type p256
 
-# ocsp.sh reads the subjects' certificates from $out and the signer's key from $work.
+cert root "TLSV Web Root TEST-ONLY" self "$TEN_YEARS" ca
+cert ca "TLSV Web CA TEST-ONLY" root "$TEN_YEARS" ca
+cert p256 www.web.test ca "$NINETY_DAYS" web
+cert rsa2048 www.web.test ca "$NINETY_DAYS" web
+cert no-status www.web.test ca "$NINETY_DAYS" web_no_status
+cert ti-type svc.ti.test ca "$NINETY_DAYS" ti_type
+
+# ocsp.sh reads the subjects' certificates from $out and the signer's key from $keys.
 . "$here/../../../../../ti-pki/tests/pki/ocsp.sh"
 ocsp_response p256-good p256 ca ca good - "$NINETY_DAYS" -
 ocsp_response rsa2048-good rsa2048 ca ca good - "$NINETY_DAYS" -
