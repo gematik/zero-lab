@@ -57,6 +57,6 @@ listed here. Go's `crypto/tls` (`go/tipki/titls`):
 
 ## Regenerating
 
-From this directory: `bash testdata/generate.sh` makes the certificates, OCSP responses and CRLs (every
-certificate gets a new key), and `python3 -I testdata/manifest.py` writes the manifest and checks that each
-file it names exists. Both implementations' corpus tests must then pass before the files are committed.
+From this directory: `bash testdata/generate.sh` makes the certificates, OCSP responses and CRLs that are
+missing, from the keys in `testdata/keys/` (`FORCE=1` makes all of them again, the same bytes), and
+`python3 -I testdata/manifest.py` writes the manifest and checks that each file it names exists. Both implementations' corpus tests must then pass before the files are committed.
