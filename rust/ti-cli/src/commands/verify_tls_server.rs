@@ -57,6 +57,9 @@ struct Report {
     revocation: Revocation,
     trust: Trust,
     chain: Vec<ChainEntry>,
+    /// The path the verdict was judged on, end entity first, ending at its trust anchor (RFC
+    /// 5280 6.1); empty when none was built.
+    path: Vec<ChainEntry>,
     /// The TLSV result code that refused the server, none when it was accepted.
     errors: Vec<Finding>,
     warnings: Vec<Finding>,
@@ -64,6 +67,8 @@ struct Report {
     at_ts: Timestamp,
     #[serde(skip)]
     certificates: Vec<Certificate>,
+    #[serde(skip)]
+    path_certificates: Vec<Certificate>,
 }
 
 #[derive(Serialize)]
@@ -166,16 +171,36 @@ fn report(v: TlsServerVerdict, profile_reason: String) -> Result<Report, CliErro
     let chain = certificates
         .iter()
         .enumerate()
-        .map(|(i, cert)| ChainEntry {
-            position: match i {
+        .map(|(i, cert)| {
+            let position = match i {
                 0 => "end_entity",
                 _ if cert.subject_der() == cert.issuer_der() => "root",
                 _ => "sub_ca",
-            },
-            subject: cert.subject().to_string(),
-            common_name: cert.subject_cn().to_owned(),
-            not_after: cert.not_after().to_string(),
-            pem: cert.to_pem(),
+            };
+            chain_entry(position, cert)
+        })
+        .collect();
+    let path_certificates = v
+        .verdict
+        .path
+        .iter()
+        .map(|der| Certificate::from_der(der))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|source| CliError::Certificate {
+            source_name: v.server.clone(),
+            source,
+        })?;
+    let last = path_certificates.len().saturating_sub(1);
+    let path = path_certificates
+        .iter()
+        .enumerate()
+        .map(|(i, cert)| {
+            let position = match i {
+                0 => "end_entity",
+                i if i == last => "trust_anchor",
+                _ => "sub_ca",
+            };
+            chain_entry(position, cert)
         })
         .collect();
     let verdict = v.verdict;
@@ -204,6 +229,7 @@ fn report(v: TlsServerVerdict, profile_reason: String) -> Result<Report, CliErro
             source: if v.system_roots { "system" } else { "cacert" },
         },
         chain,
+        path,
         errors,
         warnings: verdict
             .warnings
@@ -215,7 +241,18 @@ fn report(v: TlsServerVerdict, profile_reason: String) -> Result<Report, CliErro
             .collect(),
         at_ts: v.at,
         certificates,
+        path_certificates,
     })
+}
+
+fn chain_entry(position: &'static str, cert: &Certificate) -> ChainEntry {
+    ChainEntry {
+        position,
+        subject: cert.subject().to_string(),
+        common_name: cert.subject_cn().to_owned(),
+        not_after: cert.not_after().to_string(),
+        pem: cert.to_pem(),
+    }
 }
 
 impl Report {
@@ -289,19 +326,78 @@ fn trust_line(report: &Report) -> Line {
     }
 }
 
-/// The chain as the server sent it, the end entity marked by the verdict and its revocation
-/// beside it, then the root it reached in the trust store, or the issuer none was found for.
+/// The end entity's mark: the verdict, and whether it carries warnings.
+fn mark(report: &Report, i: usize) -> Line {
+    match (i, report.valid, report.warnings.is_empty()) {
+        (0, false, _) => Line::status(Tone::Bad, "✗ "),
+        (0, true, false) => Line::status(Tone::Warn, "! "),
+        (_, true, _) => Line::status(Tone::Good, "✓ "),
+        _ => Line::dim("· "),
+    }
+}
+
+/// The path the verdict was judged on, ending at its trust anchor (RFC 5280 6.1): what the
+/// server sent beyond it is no part of the descent, though a cross-certificate of the anchor
+/// carries its name and key. Without a path, the chain as sent.
 fn tree(report: &Report) -> Vec<TreeRow> {
+    if report.path_certificates.is_empty() {
+        return sent_tree(report);
+    }
+    let anchor = report.path_certificates.len() - 1;
+    super::chain_tree(
+        &report.path_certificates,
+        true,
+        report.at_ts,
+        |i| mark(report, i),
+        |i| match i {
+            0 => Line::text(" · ").and_line(revocation_line(report)),
+            i if i == anchor => Line::dim(" · trust anchor, in the trust store"),
+            _ => Line::default(),
+        },
+    )
+}
+
+/// The certificates the server sent that the path does not contain, as sent.
+fn outside_path(report: &Report) -> Vec<&Certificate> {
+    if report.path_certificates.is_empty() {
+        return Vec::new();
+    }
+    report
+        .certificates
+        .iter()
+        .filter(|sent| {
+            !report
+                .path_certificates
+                .iter()
+                .any(|on| on.fingerprint_sha256() == sent.fingerprint_sha256())
+        })
+        .collect()
+}
+
+/// One certificate sent outside the path: its name, and who issued it, which tells a
+/// cross-certificate from the self-signed root of the same name.
+fn outside_line(cert: &Certificate, at: Timestamp) -> Line {
+    let issuer = if cert.subject_der() == cert.issuer_der() {
+        "self-signed".to_owned()
+    } else {
+        let name = cert.issuer().to_string();
+        let (cn, _) = super::inspect::split_name(&name);
+        format!("issued by {}", cn.unwrap_or(name))
+    };
+    let place = if cert.is_ca() { "CA" } else { "end entity" };
+    Line::text(cert.subject_cn())
+        .and_dim(format!(" · {place} · {issuer}"))
+        .and_line(super::expiry(cert.not_after(), super::validity(cert, at)))
+}
+
+/// The chain as the server sent it, when no path was built: the end entity marked by the
+/// verdict, then the root it reached in the trust store, or the issuer none was found for.
+fn sent_tree(report: &Report) -> Vec<TreeRow> {
     let mut rows = super::chain_tree(
         &report.certificates,
         false,
         report.at_ts,
-        |i| match (i, report.valid, report.warnings.is_empty()) {
-            (0, false, _) => Line::status(Tone::Bad, "✗ "),
-            (0, true, false) => Line::status(Tone::Warn, "! "),
-            (_, true, _) => Line::status(Tone::Good, "✓ "),
-            _ => Line::dim("· "),
-        },
+        |i| mark(report, i),
         |i| {
             if i == 0 {
                 Line::text(" · ").and_line(revocation_line(report))
@@ -382,6 +478,11 @@ fn sections(report: &Report) -> Document {
     doc.field("trust", trust_line(report));
     doc.section("Chain");
     doc.tree(tree(report));
+    let outside = outside_path(report);
+    if !outside.is_empty() {
+        doc.section("Sent, outside the path");
+        doc.items("", outside.iter().map(|c| outside_line(c, report.at_ts)));
+    }
     let findings = findings(report);
     if !findings.is_empty() {
         doc.section("Findings");
@@ -409,6 +510,11 @@ fn summary(report: &Report) -> Document {
     doc.paragraph(Line::dim("revocation ").and_line(revocation_line(report)));
     doc.paragraph(Line::dim("trust ").and_line(trust_line(report)));
     doc.tree(tree(report));
+    let outside = outside_path(report);
+    if !outside.is_empty() {
+        doc.section("Sent, outside the path")
+            .items("", outside.iter().map(|c| outside_line(c, report.at_ts)));
+    }
     let findings = findings(report);
     if !findings.is_empty() {
         doc.section("Findings").items("", findings);

@@ -361,6 +361,7 @@ impl<R: RevocationChecker> TiVerifier<R> {
             warnings: ti.warnings,
             status_source: None,
             reusable_until,
+            path: Vec::new(),
         }
     }
 }

@@ -61,6 +61,20 @@ fn serve(leaf: &str, ocsp: Option<&str>) -> u16 {
         CertificateDer::from(pem("ca.pem")),
     ];
     let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(pem(&format!("{leaf}.key"))));
+    serve_chain(
+        chain,
+        key,
+        ocsp.map(|name| std::fs::read(fixture(name)).unwrap()),
+    )
+}
+
+/// A TLS server presenting `chain` with `key`, stapling `ocsp` if given, on a port of its
+/// own; it completes handshakes until the test ends.
+fn serve_chain(
+    chain: Vec<CertificateDer<'static>>,
+    key: PrivateKeyDer<'static>,
+    ocsp: Option<Vec<u8>>,
+) -> u16 {
     let builder = rustls::ServerConfig::builder_with_provider(Arc::new(
         rustls::crypto::ring::default_provider(),
     ))
@@ -68,8 +82,8 @@ fn serve(leaf: &str, ocsp: Option<&str>) -> u16 {
     .unwrap()
     .with_no_client_auth();
     let config = Arc::new(match ocsp {
-        Some(name) => builder
-            .with_single_cert_with_ocsp(chain, key, std::fs::read(fixture(name)).unwrap())
+        Some(response) => builder
+            .with_single_cert_with_ocsp(chain, key, response)
             .unwrap(),
         None => builder.with_single_cert(chain, key).unwrap(),
     });
@@ -272,4 +286,221 @@ fn the_schema_follows_the_output() {
         "pki verify tls-server"
     );
     assert_eq!(verify_schema(br#"{"environment": {}}"#), "pki verify");
+}
+
+/// Certificates and keys made in the test, ECDSA P-256 throughout: no private key stands in
+/// a fixture.
+mod made {
+    use std::str::FromStr as _;
+    use std::time::{Duration, SystemTime};
+
+    use der::Encode as _;
+    use der::asn1::Ia5String;
+    use p256::ecdsa::{DerSignature, SigningKey};
+    use p256::pkcs8::EncodePrivateKey as _;
+    use x509_cert::TbsCertificate;
+    use x509_cert::builder::profile::BuilderProfile;
+    use x509_cert::builder::{Builder as _, CertificateBuilder};
+    use x509_cert::ext::pkix::name::GeneralName;
+    use x509_cert::ext::pkix::{BasicConstraints, KeyUsage, KeyUsages, SubjectAltName};
+    use x509_cert::ext::{Extension, ToExtension as _};
+    use x509_cert::name::Name;
+    use x509_cert::serial_number::SerialNumber;
+    use x509_cert::spki::{SubjectPublicKeyInfoOwned, SubjectPublicKeyInfoRef};
+    use x509_cert::time::{Time, Validity};
+
+    /// A key and the name it is certified under.
+    pub struct Party {
+        pub key: SigningKey,
+        pub name: Name,
+    }
+
+    impl Party {
+        pub fn new(cn: &str) -> Party {
+            let key = loop {
+                let mut bytes = [0u8; 32];
+                getrandom::fill(&mut bytes).unwrap();
+                if let Ok(key) = SigningKey::from_slice(&bytes) {
+                    break key;
+                }
+            };
+            Party {
+                key,
+                name: Name::from_str(&format!("CN={cn}")).unwrap(),
+            }
+        }
+
+        /// The key as PKCS#8 DER, for the server.
+        pub fn pkcs8(&self) -> Vec<u8> {
+            self.key.to_pkcs8_der().unwrap().as_bytes().to_vec()
+        }
+    }
+
+    struct Profile {
+        issuer: Name,
+        subject: Name,
+        dns: Option<String>,
+    }
+
+    impl BuilderProfile for Profile {
+        fn get_issuer(&self, _: &Name) -> Name {
+            self.issuer.clone()
+        }
+
+        fn get_subject(&self) -> Name {
+            self.subject.clone()
+        }
+
+        fn build_extensions(
+            &self,
+            _: SubjectPublicKeyInfoRef<'_>,
+            _: SubjectPublicKeyInfoRef<'_>,
+            tbs: &TbsCertificate,
+        ) -> x509_cert::builder::Result<Vec<Extension>> {
+            let subject = tbs.subject();
+            let ca = self.dns.is_none();
+            let mut extensions = vec![
+                BasicConstraints {
+                    ca,
+                    path_len_constraint: None,
+                }
+                .to_extension(subject, &[])?,
+            ];
+            if let Some(dns) = &self.dns {
+                extensions
+                    .push(KeyUsage(KeyUsages::DigitalSignature.into()).to_extension(subject, &[])?);
+                let name = GeneralName::DnsName(Ia5String::new(dns).unwrap());
+                extensions.push(SubjectAltName(vec![name]).to_extension(subject, &[])?);
+            } else {
+                extensions.push(
+                    KeyUsage(KeyUsages::KeyCertSign | KeyUsages::CRLSign)
+                        .to_extension(subject, &[])?,
+                );
+            }
+            Ok(extensions)
+        }
+    }
+
+    /// `subject`'s key certified by `issuer` for `days`, as a CA, or as a server for `dns`.
+    pub fn certify(subject: &Party, issuer: &Party, days: u64, dns: Option<&str>) -> Vec<u8> {
+        let now = SystemTime::now();
+        let validity = Validity::new(
+            Time::try_from(now - Duration::from_hours(1)).unwrap(),
+            Time::try_from(now + Duration::from_hours(days * 24)).unwrap(),
+        );
+        let mut serial = [0u8; 16];
+        getrandom::fill(&mut serial).unwrap();
+        serial[0] &= 0x7f;
+        let profile = Profile {
+            issuer: issuer.name.clone(),
+            subject: subject.name.clone(),
+            dns: dns.map(str::to_owned),
+        };
+        let spki = SubjectPublicKeyInfoOwned::from_key(subject.key.verifying_key()).unwrap();
+        CertificateBuilder::new(profile, SerialNumber::new(&serial).unwrap(), validity, spki)
+            .unwrap()
+            .build::<_, DerSignature>(&issuer.key)
+            .unwrap()
+            .to_der()
+            .unwrap()
+    }
+}
+
+/// RFC 5280 6.1: a path ends at its trust anchor. A server sends its leaf, the intermediate,
+/// the self-signed root R1, R1's cross-certificate from R2 (same name and key as R1) and the
+/// self-signed R2; with R1 the anchor, the verdict's path and the chain view end at R1, and
+/// the cross-certificate and R2 are listed apart as sent outside the path, not drawn as R1's
+/// issuers.
+#[test]
+fn rfc_5280_6_1_the_chain_view_ends_at_the_trust_anchor() {
+    let leaf = made::Party::new("www.web.test");
+    let intermediate = made::Party::new("Intermediate");
+    let r1 = made::Party::new("Root R1");
+    let r2 = made::Party::new("Root R2");
+    let r1_self = made::certify(&r1, &r1, 3650, None);
+    let chain = vec![
+        CertificateDer::from(made::certify(
+            &leaf,
+            &intermediate,
+            90,
+            Some("www.web.test"),
+        )),
+        CertificateDer::from(made::certify(&intermediate, &r1, 1825, None)),
+        CertificateDer::from(r1_self.clone()),
+        CertificateDer::from(made::certify(&r1, &r2, 1825, None)),
+        CertificateDer::from(made::certify(&r2, &r2, 3650, None)),
+    ];
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(leaf.pkcs8()));
+    let port = serve_chain(chain, key, None);
+    let home = std::env::temp_dir().join(format!("ti-verify-path-{}", std::process::id()));
+    std::fs::create_dir_all(&home).unwrap();
+    let anchor = home.join("r1.pem");
+    let pem = pem_rfc7468::encode_string("CERTIFICATE", pem_rfc7468::LineEnding::LF, &r1_self);
+    std::fs::write(&anchor, pem.unwrap()).unwrap();
+    let target = format!("127.0.0.1:{port}");
+    let run = |format: &str| {
+        let out = Command::new(env!("CARGO_BIN_EXE_ti"))
+            .args(["--format", format, "--cacert", anchor.to_str().unwrap()])
+            .args(["pki", "verify", "--connect", &target])
+            .args(["--validation-profile", "web", "--fqdn", "www.web.test"])
+            .env_remove("TI_FORMAT")
+            .env_remove("HTTPS_PROXY")
+            .env_remove("https_proxy")
+            .env_remove("HTTP_PROXY")
+            .env_remove("http_proxy")
+            .env_remove("ALL_PROXY")
+            .env_remove("all_proxy")
+            .env("TI_CACHE_DIR", home.join("cache"))
+            .env("XDG_STATE_HOME", home.join("state"))
+            .env("XDG_CONFIG_HOME", home.join("config"))
+            .output()
+            .unwrap();
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        out.stdout
+    };
+
+    let json = run("json");
+    assert_verify_conforms(&json);
+    let report: Value = serde_json::from_slice(&json).unwrap();
+    let names = |key: &str| -> Vec<(String, String)> {
+        report[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                let name = c["common_name"].as_str().unwrap().to_owned();
+                (name, c["position"].as_str().unwrap().to_owned())
+            })
+            .collect()
+    };
+    let at = |name: &str, position: &str| (name.to_owned(), position.to_owned());
+    assert_eq!(
+        names("path"),
+        [
+            at("www.web.test", "end_entity"),
+            at("Intermediate", "sub_ca"),
+            at("Root R1", "trust_anchor"),
+        ],
+        "{report}"
+    );
+    assert_eq!(names("chain").len(), 5, "{report}");
+
+    let view = String::from_utf8(run("markdown")).unwrap();
+    let (path, outside) = view
+        .split_once("Sent, outside the path")
+        .unwrap_or_else(|| panic!("no list of the certificates outside the path:\n{view}"));
+    let (outside, _) = outside.split_once("-----BEGIN").unwrap_or((outside, ""));
+    assert!(path.contains("Root R1"), "{view}");
+    assert!(!path.contains("Root R2"), "{view}");
+    assert!(
+        outside.contains("Root R1 · CA · issued by Root R2"),
+        "{view}"
+    );
+    assert!(outside.contains("Root R2 · CA · self-signed"), "{view}");
+    assert!(!outside.contains("Intermediate"), "{view}");
 }

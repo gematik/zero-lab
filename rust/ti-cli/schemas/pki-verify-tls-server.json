@@ -118,6 +118,45 @@
         "additionalProperties": false
       }
     },
+    "path": {
+      "type": "array",
+      "description": "The path the verdict was judged on, end entity first, ending at the trust anchor it reached (RFC 5280 6.1); empty when no path was built. Certificates the server sent outside it are in chain only",
+      "items": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "enum": [
+              "end_entity",
+              "sub_ca",
+              "trust_anchor"
+            ]
+          },
+          "subject": {
+            "type": "string"
+          },
+          "common_name": {
+            "type": "string"
+          },
+          "not_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "RFC 3339, UTC"
+          },
+          "pem": {
+            "type": "string",
+            "description": "The certificate as PEM"
+          }
+        },
+        "required": [
+          "position",
+          "subject",
+          "common_name",
+          "not_after",
+          "pem"
+        ],
+        "additionalProperties": false
+      }
+    },
     "errors": {
       "type": "array",
       "description": "The result code of spec/pki-validation that refused the server; empty when valid",
@@ -187,6 +226,7 @@
     "revocation",
     "trust",
     "chain",
+    "path",
     "errors",
     "warnings"
   ],

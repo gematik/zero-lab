@@ -1098,6 +1098,7 @@ mod tests {
             warnings: Vec::new(),
             status_source: None,
             reusable_until: None,
+            path: Vec::new(),
         };
         let other = rustls::OtherError(Arc::new(ti_tls::verifier::Refused(verdict)));
         assert_eq!(

@@ -25,6 +25,8 @@
 
 use core::fmt;
 
+use rustls_pki_types::CertificateDer;
+
 /// A result code of `spec/pki-validation`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -195,6 +197,10 @@ pub struct Verdict {
     /// Until when, in seconds since the epoch, an accepted verdict may be reused
     /// (TLSV-050, TLSV-051); `None` for a refusal, which is never reused.
     pub reusable_until: Option<u64>,
+    /// Under `web`, the path the verdict was judged on: the end entity, the CAs it went
+    /// through and the trust anchor it ended at (RFC 5280 6.1), DER. The server may have
+    /// sent more, or other, certificates; empty when no path was built, and under `ti`.
+    pub path: Vec<CertificateDer<'static>>,
 }
 
 impl Verdict {
@@ -210,6 +216,7 @@ impl Verdict {
             warnings: Vec::new(),
             status_source: None,
             reusable_until: None,
+            path: Vec::new(),
         }
     }
 }

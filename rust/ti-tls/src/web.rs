@@ -55,6 +55,8 @@ pub const MAX_STATUS_REUSE: Duration = Duration::from_hours(24);
 pub struct WebCheck {
     roots: Vec<CertificateDer<'static>>,
     anchors: Vec<TrustAnchor<'static>>,
+    /// The root each of `anchors` was made from, at the same index.
+    anchor_roots: Vec<CertificateDer<'static>>,
 }
 
 impl WebCheck {
@@ -62,12 +64,18 @@ impl WebCheck {
     /// not parse is left out.
     pub fn new(roots: impl IntoIterator<Item = CertificateDer<'static>>) -> WebCheck {
         let roots: Vec<CertificateDer<'static>> = roots.into_iter().collect();
-        let anchors = roots
+        let (anchors, anchor_roots) = roots
             .iter()
-            .filter_map(|root| webpki::anchor_from_trusted_cert(root).ok())
-            .map(|anchor| anchor.to_owned())
-            .collect();
-        WebCheck { roots, anchors }
+            .filter_map(|root| {
+                let anchor = webpki::anchor_from_trusted_cert(root).ok()?;
+                Some((anchor.to_owned(), root.clone()))
+            })
+            .unzip();
+        WebCheck {
+            roots,
+            anchors,
+            anchor_roots,
+        }
     }
 
     /// The check over the host system's default roots, as its TLS stack and Go's standard
@@ -83,7 +91,8 @@ impl WebCheck {
 
     /// Judges the server that presented `chain` (end entity first) for a connection to
     /// `host`, at `now`, with the OCSP response it stapled; `fetch` reaches its responder
-    /// and CRL host, asked only about a server that passed everything else.
+    /// and CRL host, asked only about a server that passed everything else. The verdict
+    /// carries the path it was judged on, when one was built ([`Verdict::path`]).
     pub async fn verify(
         &self,
         chain: &[CertificateDer<'_>],
@@ -91,6 +100,24 @@ impl WebCheck {
         stapled: Option<&[u8]>,
         now: Timestamp,
         fetch: &impl Fetch,
+    ) -> Verdict {
+        let mut path = Vec::new();
+        let mut verdict = self
+            .judge(chain, host, stapled, now, fetch, &mut path)
+            .await;
+        verdict.path = path;
+        verdict
+    }
+
+    /// [`WebCheck::verify`], the path it built, if any, left in `verified`.
+    async fn judge(
+        &self,
+        chain: &[CertificateDer<'_>],
+        host: &str,
+        stapled: Option<&[u8]>,
+        now: Timestamp,
+        fetch: &impl Fetch,
+        verified: &mut Vec<CertificateDer<'static>>,
     ) -> Verdict {
         let Some((leaf_der, sent)) = chain.split_first() else {
             return Verdict::refuse(Code::ChainIncomplete, "the server sent no certificate");
@@ -111,6 +138,12 @@ impl WebCheck {
             Ok(path) => path,
             Err(e) => return path_refusal(&e, sent),
         };
+        verified.push(leaf_der.clone().into_owned());
+        verified.extend(
+            path.intermediate_certificates()
+                .map(|ca| ca.der().clone().into_owned()),
+        );
+        verified.extend(self.anchor_certificate(path.anchor()));
         let Ok(leaf_info) = Info::parse(leaf_der) else {
             return Verdict::refuse(Code::Invalid, "the end entity does not parse");
         };
@@ -158,6 +191,16 @@ impl WebCheck {
         warnings.append(&mut verdict.warnings);
         verdict.warnings = warnings;
         verdict
+    }
+
+    /// The root `anchor` was made from. A path ends at its trust anchor (RFC 5280 6.1), and
+    /// webpki names the anchor, not the certificate; the root of the same name and key is it.
+    fn anchor_certificate(&self, anchor: &TrustAnchor<'_>) -> Option<CertificateDer<'static>> {
+        let index = self.anchors.iter().position(|a| {
+            a.subject.as_ref() == anchor.subject.as_ref()
+                && a.subject_public_key_info.as_ref() == anchor.subject_public_key_info.as_ref()
+        })?;
+        self.anchor_roots.get(index).cloned()
     }
 
     /// The root that issued `leaf` directly, for its OCSP CertID.
@@ -290,6 +333,7 @@ fn accepted(
         warnings: Vec::new(),
         status_source: Some(source),
         reusable_until: until,
+        path: Vec::new(),
     }
 }
 
@@ -302,6 +346,7 @@ fn unavailable() -> Verdict {
         warnings: vec![REVOCATION_UNAVAILABLE],
         status_source: None,
         reusable_until: None,
+        path: Vec::new(),
     }
 }
 

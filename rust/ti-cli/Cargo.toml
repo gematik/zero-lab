@@ -54,6 +54,11 @@ sha2.workspace = true
 # The fakes' certificates and keys, read from PEM.
 pem-rfc7468 = { workspace = true, features = ["alloc"] }
 sec1.workspace = true
+# Certificates and keys made in the test, for a server whose chain carries a cross-certificate.
+x509-cert = { workspace = true, features = ["builder"] }
+der.workspace = true
+p256 = { workspace = true, features = ["pkcs8", "alloc"] }
+getrandom = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true

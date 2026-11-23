@@ -1997,8 +1997,11 @@ dependencies = [
  "base64ct",
  "clap",
  "clap_complete",
+ "der",
+ "getrandom 0.4.3",
  "jiff",
  "jwz",
+ "p256",
  "pem-rfc7468",
  "rpassword",
  "rustls",
@@ -2016,6 +2019,7 @@ dependencies = [
  "ti-pki",
  "ti-types",
  "traceability",
+ "x509-cert",
 ]
 
 [[package]]
