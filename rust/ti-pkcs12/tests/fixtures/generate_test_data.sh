@@ -1,100 +1,108 @@
-#!/bin/bash
-# generate_test_data.sh - Generate PKCS#12 test files using OpenSSL
-# Run this from the testdata directory: cd testdata && ./generate_test_data.sh
+#!/usr/bin/env bash
+# Generates the OpenSSL-written PKCS#12 fixtures of tests/decode.rs. The TEST-ONLY keys in keys/
+# and the outputs are committed; a run writes only what is missing, FORCE=1 writes everything
+# again from the same keys (spec/fixtures.sh, and the test data rule of docs/design/testing.md).
+#
+#   ./generate_test_data.sh [OUT]     OUT defaults to this directory
+#
+# The keys are the ones go/pkcs12/testdata held in 43e97a55, where these files were first
+# written. The three certificates keep the serial numbers and the instants they were issued with
+# then, not serial_of ones: tests/decode.rs pins every file and go-baseline.json pins the
+# certificates Go decoded, so new serials would change every fixture. With them, a FORCE rebuild
+# writes the certificates byte for byte again (RSA PKCS#1 v1.5 signatures are deterministic).
+#
+# Randomised on every FORCE rebuild, so their digests in tests/decode.rs follow:
+#   *.p12 written by `openssl pkcs12 -export`  salts and IVs, which the command cannot fix
+#   random.p12                                 deliberately random data
+# go-baseline.json describes certificates, keys and attributes, not these bytes, so it holds.
+# truncated.p12, the first 50 bytes of modern.p12, holds only lengths and OIDs and stays the same.
+#
+# legacy/ and truststore/ are not written here (PROVENANCE.md).
+set -euo pipefail
 
-set -e
+out="${1:-$(cd "$(dirname "$0")" && pwd)}"
+keys="$out/keys"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+. "$(dirname "$0")/../../../../spec/fixtures.sh"
 
-echo "==> Generating CA certificate..."
-openssl req -x509 -newkey rsa:2048 -keyout ca-key.pem -out ca-cert.pem -days 3650 -nodes \
-    -subj "/C=DE/ST=Berlin/L=Berlin/O=Gematik/OU=Test CA/CN=Test CA"
+ISSUED=20260203190756Z
+ONE_YEAR=20270203190756Z
+TEN_YEARS=20360201190756Z
+PASSWORD=test1234
 
-# Generate server private key
-echo "==> Generating server key and CSR..."
-openssl genrsa -out server-key.pem 2048
-openssl req -new -key server-key.pem -out server-csr.pem \
-    -subj "/C=DE/ST=Berlin/L=Berlin/O=Gematik/OU=Test/CN=test.example.com"
+# An explicit configuration, so the host's openssl.cnf adds no extension.
+cat > "$work/openssl.cnf" <<'CNF'
+[req]
+distinguished_name = dn
+x509_extensions = ca
 
-# Sign server certificate
-echo "==> Signing server certificate..."
-openssl x509 -req -in server-csr.pem -CA ca-cert.pem -CAkey ca-key.pem \
-    -CAcreateserial -out server-cert.pem -days 365
+[dn]
 
-# Generate EC private key and certificate
-echo "==> Generating EC key and certificate..."
-openssl ecparam -name prime256v1 -genkey -noout -out ec-key.pem
-openssl req -new -key ec-key.pem -out ec-csr.pem \
-    -subj "/C=DE/ST=Berlin/L=Berlin/O=Gematik/OU=Test/CN=ec.example.com"
-openssl x509 -req -in ec-csr.pem -CA ca-cert.pem -CAkey ca-key.pem \
-    -CAcreateserial -out ec-cert.pem -days 365
+[ca]
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+basicConstraints = critical, CA:true
 
-# Create certificate chain
-cat server-cert.pem ca-cert.pem > chain.pem
+[ee]
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid
+CNF
 
-echo ""
-echo "==> Creating PKCS#12 files..."
+key ca rsa2048
+key server rsa2048
+key ec p256
 
-# 1. Modern PKCS#12 with AES-256 (PBES2)
-echo "  • modern.p12 (AES-256-CBC, SHA-256 MAC)"
-openssl pkcs12 -export -out modern.p12 \
-    -inkey server-key.pem -in server-cert.pem \
-    -certfile ca-cert.pem -passout pass:test123 \
-    -keypbe AES-256-CBC -certpbe AES-256-CBC -macalg SHA256
+# leaf name subject serial: a certificate for keys/name.key, signed by the CA.
+leaf() {
+    local file="$out/$1-cert.pem"
+    wanted "$file" || return 0
+    openssl req -new -config "$work/openssl.cnf" -key "$keys/$1.key" -subj "$2" -out "$work/$1.csr"
+    # shellcheck disable=SC2046
+    openssl x509 -req -in "$work/$1.csr" -CA "$out/ca-cert.pem" -CAkey "$keys/ca.key" \
+        $(sign_options "$keys/ca.key") -extfile "$work/openssl.cnf" -extensions ee \
+        -set_serial "$3" -not_before "$ISSUED" -not_after "$ONE_YEAR" -out "$file" 2>/dev/null
+}
 
-# 2. Legacy 3DES
-echo "  • legacy.p12 (3DES, SHA-1 MAC)"
-openssl pkcs12 -export -out legacy.p12 \
-    -inkey server-key.pem -in server-cert.pem \
-    -passout pass:test123 -legacy
+# p12 file key cert password [openssl pkcs12 options...]
+p12() {
+    local name=$1 key=$2 cert=$3 password=$4 file="$out/$1"
+    shift 4
+    wanted "$file" || return 0
+    echo "  $name"
+    if [ -n "$key" ]; then set -- -inkey "$keys/$key.key" "$@"; fi
+    P12_PASSWORD=$password openssl pkcs12 -export -in "$out/$cert" -passout env:P12_PASSWORD \
+        -out "$file" "$@"
+}
 
-# 3. AES-128
-echo "  • aes128.p12 (AES-128-CBC)"
-openssl pkcs12 -export -out aes128.p12 \
-    -inkey server-key.pem -in server-cert.pem \
-    -passout pass:test123 -keypbe AES-128-CBC -certpbe AES-128-CBC
+if wanted "$out/ca-cert.pem"; then
+    openssl req -x509 -config "$work/openssl.cnf" -key "$keys/ca.key" \
+        -subj "/C=DE/ST=Berlin/L=Berlin/O=Gematik/OU=Test CA/CN=Test CA" \
+        -set_serial 0x32BE3D5FAACDB9A42E441DFF6DCDBEA5023ABE9E \
+        -not_before "$ISSUED" -not_after "$TEN_YEARS" -out "$out/ca-cert.pem"
+fi
+leaf server "/C=DE/ST=Berlin/L=Berlin/O=Gematik/OU=Test/CN=test.example.com" \
+    0x1C7D7D104F374E8FF90676F89B1F39A43BD0ACF9
+leaf ec "/C=DE/ST=Berlin/L=Berlin/O=Gematik/OU=Test/CN=ec.example.com" \
+    0x1C7D7D104F374E8FF90676F89B1F39A43BD0ACFA
+if wanted "$out/chain.pem"; then cat "$out/server-cert.pem" "$out/ca-cert.pem" > "$out/chain.pem"; fi
 
-# 4. EC key
-echo "  • ec.p12 (EC key with AES-256)"
-openssl pkcs12 -export -out ec.p12 \
-    -inkey ec-key.pem -in ec-cert.pem \
-    -passout pass:test123 -keypbe AES-256-CBC -certpbe AES-256-CBC
+# Each file as tests/decode.rs and go-baseline.json describe it: high-iter.p12 has the default
+# 2048 iterations like the others, cert-only.p12 a MAC and an encrypted certificate.
+p12 modern.p12 server server-cert.pem "$PASSWORD" -certfile "$out/ca-cert.pem" \
+    -name "Modern Test Certificate"
+p12 legacy.p12 server server-cert.pem "$PASSWORD" -legacy \
+    -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1
+p12 aes128.p12 server server-cert.pem "$PASSWORD" -keypbe AES-128-CBC -certpbe AES-128-CBC
+p12 ec.p12 ec ec-cert.pem "$PASSWORD" -name "EC Test Certificate"
+p12 multi-cert.p12 server chain.pem "$PASSWORD" -name "Multi-Cert Test"
+p12 cert-only.p12 "" server-cert.pem "$PASSWORD" -nokeys
+p12 empty-pass.p12 server server-cert.pem ""
+p12 no-mac.p12 server server-cert.pem "$PASSWORD" -certpbe NONE -nomac
+p12 high-iter.p12 server server-cert.pem "$PASSWORD"
 
-# 5. Multiple certificates (chain)
-echo "  • multi-cert.p12 (certificate chain)"
-openssl pkcs12 -export -out multi-cert.p12 \
-    -inkey server-key.pem -in chain.pem \
-    -passout pass:test123 -keypbe AES-256-CBC -certpbe AES-256-CBC
-
-# 6. Certificate only (no private key)
-echo "  • cert-only.p12 (no private key)"
-openssl pkcs12 -export -out cert-only.p12 \
-    -nokeys -in server-cert.pem \
-    -passout pass:test123
-
-# 7. Empty password
-echo "  • empty-pass.p12 (empty password)"
-openssl pkcs12 -export -out empty-pass.p12 \
-    -inkey server-key.pem -in server-cert.pem \
-    -passout pass: -keypbe AES-256-CBC -certpbe AES-256-CBC
-
-# 8. No MAC
-echo "  • no-mac.p12 (no MAC)"
-openssl pkcs12 -export -out no-mac.p12 \
-    -inkey server-key.pem -in server-cert.pem \
-    -passout pass:test123 -keypbe AES-256-CBC -certpbe AES-256-CBC -nomac
-
-# 9. High iteration count
-echo "  • high-iter.p12 (10000 iterations)"
-openssl pkcs12 -export -out high-iter.p12 \
-    -inkey server-key.pem -in server-cert.pem \
-    -passout pass:test123 -keypbe AES-256-CBC -certpbe AES-256-CBC -iter 10000
-
-# 10. Invalid files for negative testing
-echo "  • not-pkcs12.p12 (invalid: just a cert)"
-cp server-cert.pem not-pkcs12.p12
-
-echo "  • random.p12 (invalid: random data)"
-dd if=/dev/urandom of=random.p12 bs=1024 count=1 2>/dev/null
-
-echo ""
-echo "==> Test data generation complete!"
-echo "Generated $(ls -1 *.p12 | wc -l) PKCS#12 files in testdata/"
+if wanted "$out/not-pkcs12.p12"; then cp "$out/server-cert.pem" "$out/not-pkcs12.p12"; fi
+if wanted "$out/truncated.p12"; then head -c 50 "$out/modern.p12" > "$out/truncated.p12"; fi
+if wanted "$out/random.p12"; then
+    dd if=/dev/urandom of="$out/random.p12" bs=1024 count=1 2>/dev/null
+fi
