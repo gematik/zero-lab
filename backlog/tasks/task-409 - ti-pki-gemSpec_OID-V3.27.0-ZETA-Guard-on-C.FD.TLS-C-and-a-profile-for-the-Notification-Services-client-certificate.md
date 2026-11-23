@@ -3,9 +3,10 @@ id: TASK-409
 title: >-
   ti-pki: gemSpec_OID V3.27.0, ZETA Guard on C.FD.TLS-C and a profile for the
   Notification Service's client certificate
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-23T20:13:00Z'
+updated_date: '2026-11-23T20:14:00Z'
 labels:
   - rust
   - ti-pki
