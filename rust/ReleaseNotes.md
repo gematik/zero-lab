@@ -13,6 +13,35 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   directory and nothing is written to disk; OCSP goes only to the responders of a chain that
   has verified. The production build holds no TEST-ONLY anchors.
 
+### ti-cli
+
+#### added
+- `pki verify --validation-profile zeta-guard-tls-c`, chosen by `auto` too: the C.FD.TLS-C a
+  ZETA Guard's Notification Service presents to the app vendors' push gateways, with the role
+  `oid_zeta-guard` that gemSpec_OID V3.27.0 (GS-A_4446-21) admits on that type; the OID tables
+  follow V3.27.0 (TASK-409).
+
+#### changed
+- `pki verify` and `pki inspect`: the key line names the rule it applied, the web rule
+  (TLSV-041, TLSV-042) for a certificate outside the TI, VALID-002 for a TI certificate, so it
+  agrees with the verdict; JSON `key.rule` (TASK-391).
+- `pki verify --connect` draws the verified path ending at its trust anchor and lists what the
+  server sent outside it under "Sent, outside the path"; JSON `path` (TASK-392).
+- Every `Cache-Control` field line of a web or Konnektor answer counts, joined as RFC 9110
+  §5.3 says (TASK-274).
+- PKCS#12 identities are read by ti-pkcs12's stricter decoder: a key must be one DER
+  PrivateKeyInfo, iteration counts share one budget (TASK-329, TASK-333 to TASK-335).
+- Built with `rsa` 0.10.0 instead of a release candidate (RUSTSEC-2023-0071 no longer
+  ignored, TASK-12), and every target with the host's compiler (TASK-314).
+
+#### verified
+- `just check` (Rust and Go) passed on the branch merged with main (b6a93d62); the release
+  runs the gates again.
+- `ti-pki` real world (`just real-world`) passed on ec1084e2.
+- Konnektor end to end (`just konnektor-e2e`) passed on ec1084e2 against an EHEXP Konnektor
+  6.0.2 (FW 2.0.1) with an SMC-B, an HBA, two eGK and two SMC-KT (infinity-ru.kon).
+- `probe` through the TI VPN was waived by the maintainer: no probe code changed since 0.6.2.
+
 ### ti-hsm-proxy
 
 #### added
