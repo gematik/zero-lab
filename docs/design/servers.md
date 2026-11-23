@@ -469,6 +469,16 @@ everything outside the workload untrusted.
         runs (maintainer, 2026-11-19). The target is the protecting proxy inside the
         enclave, in the pod and measured with it (rule 7), so that the channel still ends
         inside the TCB as rule 5 has it.
+        - A proxy on the node never meets it: Istio's ambient ztunnel and Cilium's
+          WireGuard or IPsec end the channel on the host and hold the keys of every pod
+          there. A sidecar in the confidential pod meets it when the pod policy that
+          attestation measures names its image and the traffic is redirected inside the
+          guest; Contrast's mesh does both, an injected Istio or Linkerd sidecar needs
+          its injection in the measured policy and redirection in the guest (Kata issue
+          14137 for Istio's CNI).
+        - The allowance stays while no deployment runs confidential (2026-11-23: none
+          here does; gematik's ZETA Guard charts leave the mesh and its mode open). It
+          goes when the first one does.
     - **TLS from files.**
       - Per listener and per peer: certificate, key and CA bundle, each a `*_PATH`. Who
         wrote the file is the deployment's assurance, not the server's concern (rule 6).
