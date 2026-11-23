@@ -129,11 +129,14 @@ fn probes_protocols_catalog_instances_and_timeouts() {
 
     assert_conforms("probe", &out.stdout);
     assert_eq!(out.status.code(), Some(1), "one probe failed");
-    assert!(
-        elapsed < Duration::from_millis(4500),
-        "3 s per request: {elapsed:?}"
-    );
     let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    // The run's own clock, not the test's: starting the binary is no part of the 3 s per request,
+    // and under a loaded parallel test run it is what overran a wall-clock bound.
+    let run_ms = report["duration_ms"].as_u64().unwrap();
+    assert!(
+        run_ms < 4500,
+        "3 s per request: the run took {run_ms} ms ({elapsed:?} with the start)"
+    );
     let probe = |name: &str| {
         report["probes"]
             .as_array()
@@ -152,6 +155,11 @@ fn probes_protocols_catalog_instances_and_timeouts() {
             probe("stall")["detail"].as_str()
         ),
         (Some("fail"), Some("timeout"))
+    );
+    let stall_ms = probe("stall")["duration_ms"].as_u64().unwrap();
+    assert!(
+        (2900..4500).contains(&stall_ms),
+        "the stalled request is cut at 3 s: {stall_ms} ms"
     );
     let vsdm = probe("vsdm-9");
     assert_eq!(
