@@ -74,6 +74,10 @@
         "zeta-guard-aut": [
           "policy_mismatch",
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "policy_mismatch",
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -123,6 +127,11 @@
           "key_usage_mismatch"
         ],
         "zeta-guard-aut": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "policy_mismatch",
           "key_usage_mismatch",
           "role_oid_missing"
@@ -178,6 +187,11 @@
           "policy_mismatch",
           "key_usage_mismatch",
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -221,6 +235,10 @@
           "policy_mismatch"
         ],
         "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "policy_mismatch",
           "role_oid_missing"
         ]
@@ -282,6 +300,12 @@
           "key_usage_mismatch",
           "key_usage_mismatch",
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -334,6 +358,11 @@
           "policy_mismatch",
           "key_usage_mismatch",
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "policy_mismatch",
+          "key_usage_mismatch",
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -377,6 +406,10 @@
           "policy_mismatch"
         ],
         "zeta-guard-aut": [
+          "policy_mismatch",
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "policy_mismatch",
           "role_oid_missing"
         ]
@@ -442,6 +475,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -474,6 +510,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -508,7 +547,8 @@
           "role_oid_missing"
         ],
         "tsl-sig": [],
-        "zeta-guard-aut": []
+        "zeta-guard-aut": [],
+        "zeta-guard-tls-c": []
       },
       "selection": {
         "candidates": [],
@@ -541,6 +581,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -549,6 +592,40 @@
         "reason": "cert"
       },
       "type": "C.FD.SIG"
+    },
+    {
+      "admission": {
+        "items": [
+          "TEST-ROLE"
+        ],
+        "oids": [
+          "1.2.276.0.76.4.328"
+        ],
+        "registration_number": null
+      },
+      "file": "role-fd-tls-c-zeta-guard.pem",
+      "findings": {
+        "dipag-vau-aut": [
+          "role_oid_missing"
+        ],
+        "epa-vau-aut": [
+          "role_oid_missing"
+        ],
+        "fd-tls-s": [],
+        "hci-aut": [],
+        "idpd-sig": [
+          "role_oid_missing"
+        ],
+        "tsl-sig": [],
+        "zeta-guard-aut": [],
+        "zeta-guard-tls-c": []
+      },
+      "selection": {
+        "candidates": [],
+        "profile": "zeta-guard-tls-c",
+        "reason": "cert"
+      },
+      "type": "C.FD.TLS-C"
     },
     {
       "admission": {
@@ -575,6 +652,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -611,6 +691,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -645,6 +728,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -681,6 +767,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -715,6 +804,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -751,6 +843,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -785,6 +880,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -821,6 +919,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -855,6 +956,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -891,6 +995,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -917,6 +1024,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -949,6 +1059,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -976,6 +1089,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -1002,6 +1118,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -1032,10 +1151,15 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
-        "candidates": [],
+        "candidates": [
+          "zeta-guard-tls-c"
+        ],
         "profile": null,
         "reason": "none"
       },
@@ -1058,6 +1182,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -1085,6 +1212,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -1121,6 +1251,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -1155,6 +1288,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -1191,6 +1327,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -1225,6 +1364,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -1261,6 +1403,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -1295,6 +1440,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -1331,6 +1479,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -1366,6 +1517,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -1393,6 +1547,9 @@
         "tsl-sig": [],
         "zeta-guard-aut": [
           "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
+          "role_oid_missing"
         ]
       },
       "selection": {
@@ -1419,6 +1576,9 @@
         ],
         "tsl-sig": [],
         "zeta-guard-aut": [
+          "role_oid_missing"
+        ],
+        "zeta-guard-tls-c": [
           "role_oid_missing"
         ]
       },
@@ -3051,7 +3211,8 @@
       },
       {
         "certificate_types": [
-          "C.FD.AUT"
+          "C.FD.AUT",
+          "C.FD.TLS-C"
         ],
         "description": "ZETA Guard",
         "document": "",
@@ -3256,6 +3417,18 @@
         "default_for": [],
         "description": "ZETA Guard access service layer authenticity",
         "name": "zeta-guard-aut",
+        "required_role_oids": [
+          "1.2.276.0.76.4.328"
+        ],
+        "revocation": "hard-fail"
+      },
+      {
+        "accepts_types": [
+          "C.FD.TLS-C"
+        ],
+        "default_for": [],
+        "description": "ZETA Guard Notification Service TLS client",
+        "name": "zeta-guard-tls-c",
         "required_role_oids": [
           "1.2.276.0.76.4.328"
         ],

@@ -22,7 +22,7 @@
  */
 
 //! Named validation profiles for the common TI use cases (hci-aut, idpd-sig,
-//! epa-vau-aut, dipag-vau-aut, zeta-guard-aut, tsl-sig) and their selection. A profile states the
+//! epa-vau-aut, dipag-vau-aut, zeta-guard-aut, zeta-guard-tls-c, tsl-sig) and their selection. A profile states the
 //! certificate types it accepts, its revocation strictness and optionally the
 //! admission role that identifies it. Automatic selection prefers a profile
 //! matched on its role over one that merely owns the type, and reports an
@@ -148,6 +148,24 @@ pub static ZETA_GUARD_AUT: Profile = Profile {
     default_for: &[],
 };
 
+/// The C.FD.TLS-C certificate a ZETA Guard's Notification Service presents as a TLS client
+/// to the app vendors' push gateways (gemSpec_ZETA A_25652), identified by oid_zeta-guard,
+/// which gemSpec_OID GS-A_4446-21 admits on C.FD.TLS-C. One profile for every Fachdienst
+/// that sends push notifications through ZETA, so the gateways check it alike.
+/// gemF_PushNotification V1.4.0 A_28981 asks the client for a C.FD.TLS-C of the component
+/// PKI with its technical role; A_28982 method 2 has the gateway check that it chains to the
+/// TI PKI, is within its validity and carries the role. The profile checks revocation too,
+/// hard-fail like every profile, which is more than method 2 asks.
+pub static ZETA_GUARD_TLS_C: Profile = Profile {
+    name: "zeta-guard-tls-c",
+    description: "ZETA Guard Notification Service TLS client",
+    revocation: RevocationMode::HardFail,
+    extra_policies: &[],
+    required_role_oids: &[oid::TECH_ROLE_ZETA_GUARD],
+    accepts_types: &[CertificateType::FdTlsC],
+    default_for: &[],
+};
+
 /// The C.TSL.SIG certificate a TSL is signed with. As a certificate, it chains to a GEM
 /// root like any other; a TSL itself is verified against the configured TSL signer CA
 /// instead ([`crate::tsl_signature`], feature `brainpool`), which also checks the key
@@ -171,6 +189,7 @@ pub static PROFILES: &[&Profile] = &[
     &IDPD_SIG,
     &TSL_SIG,
     &ZETA_GUARD_AUT,
+    &ZETA_GUARD_TLS_C,
 ];
 
 /// Selector value for automatic selection ([`select_for_cert`]).
@@ -515,7 +534,8 @@ mod tests {
                 "hci-aut",
                 "idpd-sig",
                 "tsl-sig",
-                "zeta-guard-aut"
+                "zeta-guard-aut",
+                "zeta-guard-tls-c"
             ]
         );
         assert_eq!(lookup("C.Hci.Aut").map(|p| p.name), Some("hci-aut"));
@@ -604,6 +624,26 @@ mod tests {
             )
         );
         assert_eq!(select("role-fd-sig-idpd").0, Some("idpd-sig"));
+        assert_eq!(
+            select("role-fd-tls-c-zeta-guard"),
+            (
+                Some("zeta-guard-tls-c"),
+                SelectReason::ByCert,
+                vec![],
+                "asserts role 1.2.276.0.76.4.328 (ZETA Guard)".into()
+            )
+        );
+        assert_eq!(
+            select("type-fd-tls-c"),
+            (
+                None,
+                SelectReason::Unclaimed,
+                vec!["zeta-guard-tls-c"],
+                "type C.FD.TLS-C is accepted by zeta-guard-tls-c, but the certificate asserts \
+                 none of their roles"
+                    .into()
+            )
+        );
         assert_eq!(
             select("type-fd-aut"),
             (
@@ -717,6 +757,40 @@ mod tests {
             HCI_AUT.effective_role_oids(CertificateType::HciAut),
             CertificateType::HciAut.spec().role_oids
         );
+    }
+
+    /// GS-A_4446-21: zeta-guard-tls-c takes the Notification Service's C.FD.TLS-C with
+    /// oid_zeta-guard, refuses one without the role, and refuses ZETA Guard's C.FD.AUT,
+    /// which stays zeta-guard-aut's.
+    #[test]
+    fn gs_a_4446_21_zeta_guard_tls_c_takes_the_notification_services_client_certificate() {
+        let pki = TestPki::new();
+        let config = TrustConfig {
+            revocation: RevocationMode::Disabled,
+            ..TrustConfig::for_anchor(pki.rca7.der().to_vec())
+        };
+        let store = Arc::new(TrustStore::new([pki.rca7.clone()]));
+        let run = |name: &str, t: CertificateType| {
+            let v = ZETA_GUARD_TLS_C.validator(&config, store.clone(), t);
+            let certs = [typed(name), pki.sub_ca_komp.clone()];
+            futures_lite::future::block_on(v.validate(
+                &certs,
+                TestPki::NOW,
+                &crate::revocation::Unchecked,
+            ))
+            .unwrap()
+        };
+        let tls_c = CertificateType::FdTlsC;
+        let notification = run("role-fd-tls-c-zeta-guard", tls_c);
+        assert!(notification.valid, "{:?}", notification.errors);
+        assert!(run("type-fd-tls-c", tls_c).has_error(crate::ErrorCode::RoleOidMissing));
+        let aut = run("role-fd-aut-zeta-guard", CertificateType::FdAut);
+        assert!(
+            aut.has_error(crate::ErrorCode::ProfileTypeMismatch),
+            "{:?}",
+            aut.errors
+        );
+        assert_eq!(ZETA_GUARD_AUT.accepts_types, [CertificateType::FdAut]);
     }
 
     #[test]

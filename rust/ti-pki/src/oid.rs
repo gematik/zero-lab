@@ -23,7 +23,7 @@
 
 //! The object identifiers gemSpec_OID defines for the TI, each declared together with
 //! the spec's reference name and description so the two can never drift (PROF-031);
-//! [`lookup`] and [`format()`] give them back. The tables are complete as of gemSpec_OID V3.26.0
+//! [`lookup`] and [`format()`] give them back. The tables are complete as of gemSpec_OID V3.27.0
 //! (<https://gemspec.gematik.de/docs/gemSpec/gemSpec_OID/latest/>).
 //! Constant names are the gemSpec_OID reference name without `oid_`, uppercased, `-` as
 //! `_` (decision-5), under a family prefix:
@@ -328,7 +328,7 @@ oids! {
     TECH_ROLE_POPP_TOKEN = "1.2.276.0.76.4.320", "oid_popp-token", "Token-Signatur-Identität für Proof of Patient Presence", "", ["C.ZD.SIG"];
     TECH_ROLE_PKI_VER = "1.2.276.0.76.4.322", "oid_pki-ver", "PKI Change Verifikation", "", ["C.GEM.VER"];
     TECH_ROLE_DIPAG_VAU = "1.2.276.0.76.4.323", "oid_dipag-vau", "Digitale Patientenrechnung vertrauenswürdige Ausführungsumgebung", "", ["C.FD.AUT"];
-    TECH_ROLE_ZETA_GUARD = "1.2.276.0.76.4.328", "oid_zeta-guard", "ZETA Guard", "", ["C.FD.AUT"];
+    TECH_ROLE_ZETA_GUARD = "1.2.276.0.76.4.328", "oid_zeta-guard", "ZETA Guard", "", ["C.FD.AUT", "C.FD.TLS-C"];
     TECH_ROLE_ZETA_POLICIES = "1.2.276.0.76.4.324", "oid_zeta-policies", "ZETA PIP/PAP Policies", "", ["C.FD.SIG"];
     TECH_ROLE_ZETA_OCI = "1.2.276.0.76.4.326", "oid_zeta-oci", "OCI container image für ZETA", "", ["C.FD.SIG"];
     TECH_ROLE_ZETA_POL_AUTHOR = "1.2.276.0.76.4.329", "oid_zeta-pol-author", "ZETA Policy Autor", "", ["C.FD.SIG"];
@@ -518,6 +518,16 @@ mod tests {
         }
     }
 
+    /// GS-A_4446-21 (gemSpec_OID V3.27.0): ZETA Guard's role is admitted on C.FD.AUT and,
+    /// for the Notification Service's client certificate, on C.FD.TLS-C.
+    #[test]
+    fn gs_a_4446_21_zeta_guard_is_admitted_on_fd_aut_and_fd_tls_c() {
+        assert_eq!(
+            lookup(&TECH_ROLE_ZETA_GUARD).unwrap().certificate_types,
+            ["C.FD.AUT", "C.FD.TLS-C"]
+        );
+    }
+
     #[test]
     fn format_and_lookup() {
         assert_eq!(
@@ -530,10 +540,6 @@ mod tests {
         let info = lookup(&POLICY_GEM_TSL_SIGNER).unwrap();
         assert_eq!(info.reference, "oid_policy_gem_tsl_signer");
         assert_eq!(info.document, "[gemSpec_TSL]");
-        assert_eq!(
-            lookup(&TECH_ROLE_ZETA_GUARD).unwrap().certificate_types,
-            ["C.FD.AUT"]
-        );
         let approver = lookup(&TECH_ROLE_ZETA_PRV_APPROV).unwrap();
         assert_eq!(approver.reference, "oid_zeta-prv-approv");
         assert_eq!(approver.certificate_types, ["C.FD.SIG"]);

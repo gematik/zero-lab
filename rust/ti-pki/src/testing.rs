@@ -146,6 +146,7 @@ pub(crate) fn typed(name: &str) -> Certificate {
         "role-fd-aut-dipag-vau" => fixture!("types/role-fd-aut-dipag-vau"),
         "role-fd-aut-epa-vau" => fixture!("types/role-fd-aut-epa-vau"),
         "role-fd-aut-zeta-guard" => fixture!("types/role-fd-aut-zeta-guard"),
+        "role-fd-tls-c-zeta-guard" => fixture!("types/role-fd-tls-c-zeta-guard"),
         "role-fd-sig-idpd" => fixture!("types/role-fd-sig-idpd"),
         "role-hci-aut-kim-anbieter" => fixture!("types/role-hci-aut-kim-anbieter"),
         "role-hci-aut-kostentraeger" => fixture!("types/role-hci-aut-kostentraeger"),
