@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Generates the test PKI with OpenSSL: an implementation independent of ti-pki produces
-# every certificate the tests validate. Run with `just test-pki` from rust/; the output
-# (PEM certificates, no keys) is committed, keys live only in a temporary directory.
+# every certificate the tests validate. Run with `just test-pki` from rust/. The TEST-ONLY keys
+# in keys/ and the output are committed; a run writes only what is missing, FORCE=1 writes
+# everything again from the same keys (lib.sh, and the test data rule of docs/design/testing.md).
 #
 # The topology mirrors go/gempki/internal/testca (archived at go/gempki/v0.23.1), validated at a fixed instant
 # (TestPki::NOW, 2026-01-01T00:00:00Z) so the files never go stale:
@@ -51,8 +52,10 @@
 set -euo pipefail
 
 out="${1:-$(cd "$(dirname "$0")" && pwd)}"
+keys="$out/keys"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+. "$(dirname "$0")/lib.sh"
 
 NOW=20260101000000Z
 TEN_YEARS=20360101000000Z
@@ -167,33 +170,22 @@ item = UTF8String:Arzt
 oid = OID:1.2.276.0.76.4.30
 CNF
 
-serial=1000
-key() { # name kind
-    case "$2" in
-        bp256) openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:brainpoolP256r1 \
-                   -pkeyopt ec_param_enc:named_curve -out "$work/$1.key" 2>/dev/null ;;
-        p256)  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 \
-                   -pkeyopt ec_param_enc:named_curve -out "$work/$1.key" 2>/dev/null ;;
-        p521)  openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-521 \
-                   -pkeyopt ec_param_enc:named_curve -out "$work/$1.key" 2>/dev/null ;;
-        rsa*)  openssl genpkey -algorithm RSA -pkeyopt "rsa_keygen_bits:${2#rsa}" \
-                   -out "$work/$1.key" 2>/dev/null ;;
-    esac
-}
-
 # cert name key-of-subject cn issuer(name|self) from to section [extra x509 options...]
 cert() {
     local name=$1 subject_key=$2 cn=$3 issuer=$4 from=$5 to=$6 section=$7
     shift 7
-    serial=$((serial + 1))
-    openssl req -new -key "$work/$subject_key.key" -subj "/C=DE/CN=$cn" -out "$work/$name.csr"
-    local signer=(-key "$work/$subject_key.key")
+    wanted "$out/$name.pem" || return 0
+    openssl req -new -key "$keys/$subject_key.key" -subj "/C=DE/CN=$cn" -out "$work/$name.csr"
+    local signer_key="$keys/$subject_key.key"
+    local signer=(-key "$signer_key")
     if [ "$issuer" != self ]; then
-        signer=(-CA "$out/$issuer.pem" -CAkey "$work/$issuer.key")
+        signer_key="$keys/$issuer.key"
+        signer=(-CA "$out/$issuer.pem" -CAkey "$signer_key")
     fi
-    openssl x509 -req -in "$work/$name.csr" "${signer[@]}" -set_serial "$serial" \
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl x509 -req -in "$work/$name.csr" "${signer[@]}" -set_serial "$(serial_of "$name")" \
         -not_before "$from" -not_after "$to" -extfile "$work/ext.cnf" -extensions "$section" \
-        "$@" -out "$out/$name.pem" 2>/dev/null
+        $(sign_options "$signer_key") "$@" -out "$out/$name.pem" 2>/dev/null
 }
 
 key rca1 bp256;          cert rca1 rca1 "GEM.RCA1 TEST-ONLY" self "$NOW" "$TEN_YEARS" ca
@@ -286,6 +278,7 @@ HBA_CP=$ARC.145
 # typed name "key usage" "ext key usage" "policies" "admission role OID"
 typed() {
     local name=$1 ku=$2 eku=$3 policies=$4 role=$5 ext="$work/types-$1.cnf"
+    wanted "$out/types/$name.pem" || return 0
     {
         echo "[ext]"
         [ -n "$ku" ] && echo "keyUsage = critical, $ku"
@@ -313,11 +306,11 @@ typed() {
         fi
     } > "$ext"
     key "types-$name" p256
-    openssl req -new -key "$work/types-$name.key" -subj "/C=DE/CN=$name TEST-ONLY" -out "$work/types-$name.csr"
-    serial=$((serial + 1))
-    openssl x509 -req -in "$work/types-$name.csr" -CA "$out/sub-ca-komp.pem" -CAkey "$work/sub-ca-komp.key" \
-        -set_serial "$serial" -not_before "$NOW" -not_after "$FIVE_YEARS" \
-        -extfile "$ext" -extensions ext -out "$out/types/$name.pem" 2>/dev/null
+    openssl req -new -key "$keys/types-$name.key" -subj "/C=DE/CN=$name TEST-ONLY" -out "$work/types-$name.csr"
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl x509 -req -in "$work/types-$name.csr" -CA "$out/sub-ca-komp.pem" -CAkey "$keys/sub-ca-komp.key" \
+        -set_serial "$(serial_of "types/$name")" -not_before "$NOW" -not_after "$FIVE_YEARS" \
+        $(sign_options "$keys/sub-ca-komp.key") -extfile "$ext" -extensions ext -out "$out/types/$name.pem" 2>/dev/null
 }
 
 # Tab_PKI_405 baselines (gemSpec_PKI Tab_PKI_232-300, ECDSA branch).

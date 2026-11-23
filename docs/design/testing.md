@@ -17,6 +17,13 @@ Sans I/O is what makes the logic testable, and the tests are designed in, not ad
 - **Specs drive tests.** Rules carry IDs in `spec/<topic>` with a corpus and a
   `CONFORMANCE.md`; fixtures are canonical in `spec/`, copies are hash-pinned, and every
   implementation runs the same corpus ([interop](../interop.md)).
+- **Generated fixtures are stable.** A fixture a script generates is reproducible from
+  committed inputs: TEST-ONLY keys next to the fixtures, fixed instants, serial numbers
+  derived from the fixture's name, deterministic signatures (RFC 6979 for ECDSA; a
+  randomised scheme such as RSA-PSS is named in the generator as the exception). A
+  generator writes only what is missing, and rebuilds everything only when asked (`FORCE=1`),
+  from the same keys. So adding a fixture changes that fixture and the corpus entries that
+  describe it, nothing else, and a review sees what was added.
 - **Test vectors from outside.** Wycheproof for every primitive, the W3C C14N suites,
   gematik's reference data (ref-GemLibPki), and interop fixtures cross-checked against
   independent implementations (Go, Rust, Python, OpenSSL, the JDK).

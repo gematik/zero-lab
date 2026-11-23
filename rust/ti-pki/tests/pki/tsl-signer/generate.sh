@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Generates TSL signer certificates for the part B checks of spec/tsl-xmldsig
 # (TSLSIG-031 – 035) with OpenSSL: a TSL signer CA in the Tab_PKI_212 profile and
-# C.TSL.SIG signers under it, each breaking one rule. Run with `just test-pki` from rust/;
-# the PEM certificates are committed, keys live only in a temporary directory.
+# C.TSL.SIG signers under it, each breaking one rule. Run with `just test-pki` from rust/. The
+# TEST-ONLY keys in keys/ and the certificates are committed; a run writes only what is
+# missing, FORCE=1 everything again from the same keys (../lib.sh).
 #
 #   ca.pem                 GEM.TSL-CA99 TEST-ONLY (brainpoolP256r1, CA, pathLen 0)
 #   ca-same-name.pem       the same name with another key: the AKI check
@@ -28,8 +29,10 @@
 set -euo pipefail
 
 out="${1:-$(cd "$(dirname "$0")" && pwd)}"
+keys="$out/keys"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+. "$(dirname "$0")/../lib.sh"
 
 NOW=20260101000000Z
 TEN_YEARS=20360101000000Z
@@ -37,15 +40,10 @@ FIVE_YEARS=20310101000000Z
 TSL_SIGNER=1.2.276.0.76.4.176
 GEM_OR_CP=1.2.276.0.76.4.163
 TSL_SIGNING=0.4.0.2231.3.0
-serial=100
-
-key() { # name curve
-    openssl genpkey -algorithm EC -pkeyopt "ec_paramgen_curve:$2" \
-        -pkeyopt ec_param_enc:named_curve -out "$work/$1.key" 2>/dev/null
-}
 
 ca() { # name
     key "$1" brainpoolP256r1
+    wanted "$out/$1.pem" || return 0
     cat > "$work/$1.cnf" <<CNF
 [ext]
 basicConstraints = critical, CA:true, pathlen:0
@@ -53,19 +51,27 @@ keyUsage = critical, keyCertSign, cRLSign
 subjectKeyIdentifier = hash
 certificatePolicies = $GEM_OR_CP
 CNF
-    openssl req -new -key "$work/$1.key" \
+    openssl req -new -key "$keys/$1.key" \
         -subj "/C=DE/O=gematik GmbH NOT-VALID/OU=TSL-Signer-CA der Telematikinfrastruktur/CN=GEM.TSL-CA99 TEST-ONLY" \
         -out "$work/$1.csr"
-    serial=$((serial + 1))
-    openssl x509 -req -in "$work/$1.csr" -key "$work/$1.key" -sha256 -set_serial "$serial" \
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl x509 -req -in "$work/$1.csr" -key "$keys/$1.key" -sha256 -set_serial "$(serial_of "$1")" \
         -not_before "$NOW" -not_after "$TEN_YEARS" -extfile "$work/$1.cnf" -extensions ext \
-        -out "$out/$1.pem" 2>/dev/null
+        $(sign_options "$keys/$1.key") -out "$out/$1.pem" 2>/dev/null
 }
 
 # signer name issuer "key usage" "ext key usage" policy "extra lines" [curve] [digest]
 signer() {
     local name=$1 issuer=$2 ku=$3 eku=$4 policy=$5 extra=$6 curve=${7:-brainpoolP256r1}
     local digest=${8:-sha256} ext="$work/$1.cnf"
+    if [ ! -e "$keys/$name.key" ]; then
+        key "$name" "$curve"
+        if [ "$name" = signer-compressed-key ]; then
+            openssl ec -in "$keys/$name.key" -conv_form compressed -out "$work/$name.key" 2>/dev/null
+            mv "$work/$name.key" "$keys/$name.key"
+        fi
+    fi
+    wanted "$out/$name.pem" || return 0
     {
         echo "[ext]"
         echo "keyUsage = critical, $ku"
@@ -75,17 +81,13 @@ signer() {
         echo "authorityKeyIdentifier = keyid:always"
         [ -n "$extra" ] && printf '%b\n' "$extra"
     } > "$ext"
-    key "$name" "$curve"
-    if [ "$name" = signer-compressed-key ]; then
-        openssl ec -in "$work/$name.key" -conv_form compressed -out "$work/$name.key" 2>/dev/null
-    fi
-    openssl req -new -key "$work/$name.key" \
+    openssl req -new -key "$keys/$name.key" \
         -subj "/C=DE/O=gematik GmbH NOT-VALID/CN=TSL Signing Unit 99 $name TEST-ONLY" \
         -out "$work/$name.csr"
-    serial=$((serial + 1))
-    openssl x509 -req -in "$work/$name.csr" -CA "$out/$issuer.pem" -CAkey "$work/$issuer.key" \
-        -"$digest" -set_serial "$serial" -not_before "$NOW" -not_after "$FIVE_YEARS" \
-        -extfile "$ext" -extensions ext -out "$out/$name.pem" 2>/dev/null
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl x509 -req -in "$work/$name.csr" -CA "$out/$issuer.pem" -CAkey "$keys/$issuer.key" \
+        -"$digest" -set_serial "$(serial_of "$name")" -not_before "$NOW" -not_after "$FIVE_YEARS" \
+        $(sign_options "$keys/$issuer.key") -extfile "$ext" -extensions ext -out "$out/$name.pem" 2>/dev/null
 }
 
 ca ca
@@ -115,12 +117,14 @@ extendedKeyUsage = OCSPSigning
 subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 CNF
-openssl req -new -key "$work/ocsp-signer.key" \
-    -subj "/C=DE/O=gematik GmbH NOT-VALID/CN=TSL-CA99 OCSP-Signer TEST-ONLY" -out "$work/ocsp-signer.csr"
-serial=$((serial + 1))
-openssl x509 -req -in "$work/ocsp-signer.csr" -CA "$out/ca.pem" -CAkey "$work/ca.key" -sha256 \
-    -set_serial "$serial" -not_before "$NOW" -not_after "$FIVE_YEARS" \
-    -extfile "$work/ocsp-signer.cnf" -extensions ext -out "$out/ocsp-signer.pem" 2>/dev/null
+if wanted "$out/ocsp-signer.pem"; then
+    openssl req -new -key "$keys/ocsp-signer.key" \
+        -subj "/C=DE/O=gematik GmbH NOT-VALID/CN=TSL-CA99 OCSP-Signer TEST-ONLY" -out "$work/ocsp-signer.csr"
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl x509 -req -in "$work/ocsp-signer.csr" -CA "$out/ca.pem" -CAkey "$keys/ca.key" -sha256 \
+        -set_serial "$(serial_of ocsp-signer)" -not_before "$NOW" -not_after "$FIVE_YEARS" \
+        $(sign_options "$keys/ca.key") -extfile "$work/ocsp-signer.cnf" -extensions ext -out "$out/ocsp-signer.pem" 2>/dev/null
+fi
 
 . "$(dirname "$0")/../ocsp.sh"
 mkdir -p "$out/ocsp"

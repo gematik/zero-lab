@@ -1,8 +1,9 @@
 # OCSP responses assembled from DER pieces and signed with `openssl dgst`, sourced by the
 # generators here: the `openssl ocsp` responder can neither back-date a response nor add
 # the certHash extension gemSpec_PKI requires. Expects `$out` (certificates as
-# `$out/<name>.pem`, responses written to `$out/ocsp/`), `$work` (keys as
-# `$work/<name>.key`) and `$NOW` (producedAt and thisUpdate).
+# `$out/<name>.pem`, responses written to `$out/ocsp/`), `$keys` (keys as `$keys/<name>.key`),
+# `$work` and `$NOW` (producedAt and thisUpdate), and lib.sh: a response is written only when
+# missing, and signed deterministically.
 
 hex() { xxd -p "$@" | tr -d '\n'; }
 tlv() { # tag-hex content-hex, DER definite length
@@ -26,6 +27,7 @@ ECDSA_SHA256=$(tlv 30 "$(tlv 06 2a8648ce3d040302)")
 # ocsp_response name cert issuer signer good|revoked|unknown certhash-of|- next-update|- embed|-
 ocsp_response() {
     local name=$1 subject=$2 issuer=$3 signer=$4 status=$5 hash_of=$6 next=$7 embed=$8
+    wanted "$out/ocsp/$name.der" || return 0
     openssl x509 -in "$out/$subject.pem" -outform DER -out "$work/subject.der"
     openssl x509 -in "$out/$signer.pem" -outform DER -out "$work/signer.der"
     openssl ocsp -sha256 -issuer "$out/$issuer.pem" -cert "$out/$subject.pem" -no_nonce \
@@ -47,7 +49,9 @@ ocsp_response() {
     single=$(tlv 30 "$single$extensions")
     tbs=$(tlv 30 "$(tlv a1 "$(element "$work/signer.der" 2 5)")$(gentime "$NOW")$(tlv 30 "$single")")
     printf '%s' "$tbs" | xxd -r -p > "$work/tbs.der"
-    openssl dgst -sha256 -sign "$work/$signer.key" -out "$work/sig.der" "$work/tbs.der"
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl dgst -sha256 -sign "$keys/$signer.key" $(sign_options "$keys/$signer.key") \
+        -out "$work/sig.der" "$work/tbs.der"
     local basic="$tbs$ECDSA_SHA256$(tlv 03 "00$(hex "$work/sig.der")")"
     [ "$embed" != - ] && basic+=$(tlv a0 "$(tlv 30 "$(der "$signer")")")
     local bytes

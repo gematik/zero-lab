@@ -255,13 +255,25 @@ fn real() -> Vec<Value> {
 /// AlgorithmIdentifier, and the unused bits of the response's and the embedded certificate's signature.
 #[test]
 fn ocsp_002_what_no_signature_covers_is_read_strictly() {
+    // The positions follow from the structure, not from the fixture's lengths: the first
+    // ecdsa-with-SHA256 AlgorithmIdentifier is the response's signature algorithm, the last the
+    // embedded certificate's; 14 bytes on is the unused-bits octet of the BIT STRING after it.
+    const ECDSA_SHA256: [u8; 12] = [
+        0x30, 0x0a, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x04, 0x03, 0x02,
+    ];
     let der = std::fs::read(pki().join("ocsp/good.der")).unwrap();
     let (leaf, issuer) = (cert("ee-arzt.pem"), cert("sub-ca-hba.pem"));
     let check = check_at(NOW, false, None);
+    let at: Vec<usize> = der
+        .windows(ECDSA_SHA256.len())
+        .enumerate()
+        .filter_map(|(i, w)| (w == ECDSA_SHA256).then_some(i))
+        .collect();
+    let (response_alg, cert_alg) = (at[0], at[at.len() - 1]);
     for (byte, code) in [
-        (311, "ocsp_unavailable"),
-        (325, "ocsp_unavailable"),
-        (782, "ocsp_responder_untrusted"),
+        (response_alg, "ocsp_unavailable"),
+        (response_alg + 14, "ocsp_unavailable"),
+        (cert_alg + 14, "ocsp_responder_untrusted"),
     ] {
         let mut copy = der.clone();
         copy[byte] ^= 0x01;
