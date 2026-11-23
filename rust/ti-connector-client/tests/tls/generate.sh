@@ -6,34 +6,58 @@
 #   client.p12            client certificate and key under ca.pem, password "00"
 #   client-nopub.p12      the same without the optional public key in the private key,
 #                         as Java keystores and some card vendors write it
-# Test-only keys; validity is fixed around 2026 so the files never go stale.
+# Test-only keys are committed (keys/, and server-key.pem which the tests read); validity is
+# fixed around 2026 so the files never go stale. A run writes only what is missing, FORCE=1
+# writes everything again from the same keys (spec/fixtures.sh, and the test data rule of
+# docs/design/testing.md). The two .p12 files are randomised: OpenSSL draws the salts and IVs
+# of the PKCS#12 encryption and MAC itself, so they differ on every FORCE rebuild; the
+# certificate and key inside stay the same. Everything else is reproducible.
 set -euo pipefail
 cd "$(dirname "$0")"
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
+keys=$PWD/keys
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+. ../../../../spec/fixtures.sh
 days=(-not_before 20260101000000Z -not_after 20360101000000Z)
 
-openssl ecparam -name prime256v1 -genkey -noout -out "$tmp/ca.key"
-openssl req -x509 -new -key "$tmp/ca.key" -subj "/CN=Konnektor Test CA TEST-ONLY" \
-    -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign" \
-    "${days[@]}" -out ca.pem
+key ca p256
+key other p256
+key client p256
+if [ ! -e server-key.pem ]; then key server p256; mv "$keys/server.key" server-key.pem; fi
 
-openssl ecparam -name prime256v1 -genkey -noout -out server-key.pem
-openssl req -new -key server-key.pem -subj "/CN=konnektor.test" -out "$tmp/server.csr"
-printf 'subjectAltName=DNS:konnektor.test\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' > "$tmp/server.ext"
-openssl x509 -req -in "$tmp/server.csr" -CA ca.pem -CAkey "$tmp/ca.key" -set_serial 2 \
-    "${days[@]}" -extfile "$tmp/server.ext" -out server.pem
+if wanted ca.pem; then
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl req -x509 -new -key "$keys/ca.key" -subj "/CN=Konnektor Test CA TEST-ONLY" \
+        -addext "basicConstraints=critical,CA:TRUE" -addext "keyUsage=critical,keyCertSign" \
+        -set_serial "$(serial_of ca)" "${days[@]}" $(sign_options "$keys/ca.key") -out ca.pem
+fi
 
-openssl ecparam -name prime256v1 -genkey -noout -out "$tmp/other.key"
-openssl req -x509 -new -key "$tmp/other.key" -subj "/CN=konnektor.test" \
-    -addext "subjectAltName=DNS:konnektor.test" -addext "basicConstraints=critical,CA:FALSE" \
-    "${days[@]}" -out other.pem
+if wanted server.pem; then
+    openssl req -new -key server-key.pem -subj "/CN=konnektor.test" -out "$work/server.csr"
+    printf 'subjectAltName=DNS:konnektor.test\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n' > "$work/server.ext"
+    # shellcheck disable=SC2046
+    openssl x509 -req -in "$work/server.csr" -CA ca.pem -CAkey "$keys/ca.key" -set_serial "$(serial_of server)" \
+        "${days[@]}" -extfile "$work/server.ext" $(sign_options "$keys/ca.key") -out server.pem
+fi
 
-openssl ecparam -name prime256v1 -genkey -noout -out "$tmp/client.key"
-openssl req -new -key "$tmp/client.key" -subj "/CN=Clientsystem TEST-ONLY" -out "$tmp/client.csr"
-printf 'basicConstraints=critical,CA:FALSE\nextendedKeyUsage=clientAuth\n' > "$tmp/client.ext"
-openssl x509 -req -in "$tmp/client.csr" -CA ca.pem -CAkey "$tmp/ca.key" -set_serial 3 \
-    "${days[@]}" -extfile "$tmp/client.ext" -out "$tmp/client.pem"
-openssl pkcs12 -export -inkey "$tmp/client.key" -in "$tmp/client.pem" -passout pass:00 -out client.p12
-openssl ec -in "$tmp/client.key" -no_public -out "$tmp/client-nopub.key" 2>/dev/null
-openssl pkcs12 -export -inkey "$tmp/client-nopub.key" -in "$tmp/client.pem" -passout pass:00 -out client-nopub.p12
+if wanted other.pem; then
+    # shellcheck disable=SC2046
+    openssl req -x509 -new -key "$keys/other.key" -subj "/CN=konnektor.test" \
+        -addext "subjectAltName=DNS:konnektor.test" -addext "basicConstraints=critical,CA:FALSE" \
+        -set_serial "$(serial_of other)" "${days[@]}" $(sign_options "$keys/other.key") -out other.pem
+fi
+
+if wanted client.p12 || wanted client-nopub.p12; then
+    openssl req -new -key "$keys/client.key" -subj "/CN=Clientsystem TEST-ONLY" -out "$work/client.csr"
+    printf 'basicConstraints=critical,CA:FALSE\nextendedKeyUsage=clientAuth\n' > "$work/client.ext"
+    # shellcheck disable=SC2046
+    openssl x509 -req -in "$work/client.csr" -CA ca.pem -CAkey "$keys/ca.key" -set_serial "$(serial_of client)" \
+        "${days[@]}" -extfile "$work/client.ext" $(sign_options "$keys/ca.key") -out "$work/client.pem"
+    if wanted client.p12; then
+        openssl pkcs12 -export -inkey "$keys/client.key" -in "$work/client.pem" -passout pass:00 -out client.p12
+    fi
+    if wanted client-nopub.p12; then
+        openssl ec -in "$keys/client.key" -no_public -out "$work/client-nopub.key" 2>/dev/null
+        openssl pkcs12 -export -inkey "$work/client-nopub.key" -in "$work/client.pem" -passout pass:00 -out client-nopub.p12
+    fi
+fi
