@@ -49,7 +49,7 @@ use jwz::jwk::{Jwk, JwkSet, KeyResolver};
 use jwz::jws::{self, Jws};
 use jwz::jwt::{Claims, FixedClock};
 use jwz::keys::{JwsKey, Signature, SoftwareAgreementKey, SoftwareKey, SymmetricKey};
-use jwz::profile::{AES_128_GCM, AES_KW, DIRECT, HMAC, Policy, Profile, TypRule};
+use jwz::profile::{AES_128_GCM, AES_KW, DIRECT, Policy, Profile, TypRule};
 use serde_json::{Value, json};
 
 fn backend() -> Arc<RustCrypto> {
@@ -356,11 +356,18 @@ fn rfc_8725_3_1_a_resolved_key_that_names_no_alg_is_not_used() {
         jwk.alg = None;
         jwk
     };
-    let hmac = Profile::new("hmac", 1).with(&HMAC).policy;
-    let hs256 = SoftwareKey::generate(SignatureAlgorithm::HS256, &registry, backend()).unwrap();
     let ed = SoftwareKey::generate(SignatureAlgorithm::ED25519, &registry, backend()).unwrap();
     let ec = es256();
-    for (key, policy) in [(&hs256, hmac), (&ed, strict()), (&ec, strict())] {
+    // HS256 exists only with the hmac feature, which is off by default.
+    #[cfg(feature = "hmac")]
+    let hs256 = SoftwareKey::generate(SignatureAlgorithm::HS256, &registry, backend()).unwrap();
+    let cases = [(&ed, strict()), (&ec, strict())].into_iter();
+    #[cfg(feature = "hmac")]
+    let cases = cases.chain([(
+        &hs256,
+        Profile::new("hmac", 1).with(&jwz::profile::HMAC).policy,
+    )]);
+    for (key, policy) in cases {
         let token = jws::sign(b"x", HeaderParams::new(), key, &policy, &registry).unwrap();
         let named = key.public_jwk();
         assert_eq!(named.alg.as_deref(), Some(key.algorithm().as_str()));
