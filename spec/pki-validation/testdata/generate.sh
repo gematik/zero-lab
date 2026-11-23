@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Generates the TEST-ONLY corpus of spec/pki-validation with OpenSSL, an implementation independent
-# of ti-pki and go/tipki. The output (certificates as PEM, OCSP responses and CRLs as DER, no keys)
-# is committed; keys live only in a temporary directory. Everything is valid around the fixed
-# instant 2026-01-01T00:00:00Z, the reference time of every case in manifest.json.
+# of ti-pki and go/tipki. The TEST-ONLY keys in keys/ and the output (certificates as PEM, OCSP
+# responses and CRLs as DER) are committed; a run writes only what is missing, FORCE=1 writes
+# everything again from the same keys (spec/fixtures.sh, and the test data rule of
+# docs/design/testing.md). Every signature is deterministic (RFC 6979 ECDSA, RSA PKCS#1 v1.5), so
+# no output is randomised. Everything is valid around the fixed instant 2026-01-01T00:00:00Z, the
+# reference time of every case in manifest.json.
 #
 #   ti-root (P-256, GEM.RCA90) ── ti-ca (P-256, the TSL's CA) ── ti-ocsp (id-kp-OCSPSigning)
 #     ├─ ti-good        C.FD.TLS-S, CN svc.ti.test, DNS svc.ti.test and alt.ti.test
@@ -32,9 +35,11 @@ set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 out="${1:-$here}"
+keys="$out/keys"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$out/ocsp" "$out/crl"
+. "$here/../../fixtures.sh"
 
 NOW=20260101000000Z
 FIVE_YEARS=20310101000000Z
@@ -178,30 +183,22 @@ subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always
 CNF
 
-serial=2000
-key() { # name kind
-    case "$2" in
-        p256|p384|p521)
-            openssl genpkey -algorithm EC -pkeyopt "ec_paramgen_curve:P-${2#p}" \
-                -pkeyopt ec_param_enc:named_curve -out "$work/$1.key" 2>/dev/null ;;
-        rsa*) openssl genpkey -algorithm RSA -pkeyopt "rsa_keygen_bits:${2#rsa}" \
-                -out "$work/$1.key" 2>/dev/null ;;
-    esac
-}
-
-# cert name cn issuer(name|self) from to section [extra x509 options...]; the key is $work/<name>.key
+# cert name cn issuer(name|self) from to section [extra x509 options...]; the key is $keys/<name>.key
 cert() {
     local name=$1 cn=$2 issuer=$3 from=$4 to=$5 section=$6
     shift 6
-    serial=$((serial + 1))
-    openssl req -new -key "$work/$name.key" -subj "/C=DE/O=TEST-ONLY/CN=$cn" -out "$work/$name.csr"
-    local signer=(-key "$work/$name.key")
+    wanted "$out/$name.pem" || return 0
+    openssl req -new -key "$keys/$name.key" -subj "/C=DE/O=TEST-ONLY/CN=$cn" -out "$work/$name.csr"
+    local signer_key="$keys/$name.key"
+    local signer=(-key "$signer_key")
     if [ "$issuer" != self ]; then
-        signer=(-CA "$out/$issuer.pem" -CAkey "$work/$issuer.key")
+        signer_key="$keys/$issuer.key"
+        signer=(-CA "$out/$issuer.pem" -CAkey "$signer_key")
     fi
-    openssl x509 -req -in "$work/$name.csr" "${signer[@]}" -set_serial "$serial" \
+    # shellcheck disable=SC2046 # sign_options prints whole options, one per line
+    openssl x509 -req -in "$work/$name.csr" "${signer[@]}" -set_serial "$(serial_of "$name")" \
         -not_before "$from" -not_after "$to" -extfile "$work/ext.cnf" -extensions "$section" \
-        "$@" -out "$out/$name.pem" 2>/dev/null
+        $(sign_options "$signer_key") "$@" -out "$out/$name.pem" 2>/dev/null
 }
 
 # --- TI ------------------------------------------------------------------------------------
@@ -234,7 +231,7 @@ web_ee() { # name kind cn section [extra...]
     cert "$name" "$cn" web-ca "$NOW" "$NINETY_DAYS" "$section" -sha256 "$@"
 }
 web_ee web-p256 p256 other.web.test web
-web_ee web-p384 p384 other.web.test web
+web_ee web-p384 P-384 other.web.test web
 web_ee web-rsa3072 rsa3072 other.web.test web
 web_ee web-rsa2048 rsa2048 other.web.test web
 web_ee web-p521 p521 other.web.test web
@@ -275,8 +272,9 @@ ocsp_response web-p256-unknown web-p256 web-ca web-ocsp unknown - "$NINETY_DAYS"
 
 # --- CRL -----------------------------------------------------------------------------------
 
+# The CRL number is fixed per CRL, not counted by `openssl ca`, so a CRL written alone gets the same
+# number as in a full run.
 mkdir -p "$work/ca"
-: > "$work/ca/index.txt"
 cat > "$work/ca.cnf" <<CNF
 [ca]
 default_ca = web
@@ -288,14 +286,16 @@ crl_extensions = crl_ext
 [crl_ext]
 authorityKeyIdentifier = keyid:always
 CNF
-echo 01 > "$work/ca/crlnumber"
-crl() { # name
-    openssl ca -config "$work/ca.cnf" -gencrl -cert "$out/web-ca.pem" -keyfile "$work/web-ca.key" \
+crl() { # name number; the revoked entries are in $work/ca/index.txt
+    wanted "$out/crl/$1.der" || return 0
+    echo "$2" > "$work/ca/crlnumber"
+    openssl ca -config "$work/ca.cnf" -gencrl -cert "$out/web-ca.pem" -keyfile "$keys/web-ca.key" \
         -crl_lastupdate "$NOW" -crl_nextupdate 20260108000000Z -out "$work/crl.pem" 2>/dev/null
     openssl crl -in "$work/crl.pem" -outform DER -out "$out/crl/$1.der"
 }
-crl web-ca-empty
+: > "$work/ca/index.txt"
+crl web-ca-empty 01
 revoked_serial=$(openssl x509 -in "$out/web-crl-revoked.pem" -noout -serial | cut -d= -f2)
 printf 'R\t%s\t%s\t%s\tunknown\t/C=DE/O=TEST-ONLY/CN=www.web.test\n' \
     "${NINETY_DAYS:2}" "251201000000Z" "$revoked_serial" > "$work/ca/index.txt"
-crl web-ca-revoked
+crl web-ca-revoked 02
