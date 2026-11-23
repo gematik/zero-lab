@@ -3,7 +3,7 @@
 # (TSLSIG-031 – 035) with OpenSSL: a TSL signer CA in the Tab_PKI_212 profile and
 # C.TSL.SIG signers under it, each breaking one rule. Run with `just test-pki` from rust/. The
 # TEST-ONLY keys in keys/ and the certificates are committed; a run writes only what is
-# missing, FORCE=1 everything again from the same keys (../lib.sh).
+# missing, FORCE=1 everything again from the same keys (spec/fixtures.sh).
 #
 #   ca.pem                 GEM.TSL-CA99 TEST-ONLY (brainpoolP256r1, CA, pathLen 0)
 #   ca-same-name.pem       the same name with another key: the AKI check
@@ -32,7 +32,7 @@ out="${1:-$(cd "$(dirname "$0")" && pwd)}"
 keys="$out/keys"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-. "$(dirname "$0")/../lib.sh"
+. "$(dirname "$0")/../../../../../spec/fixtures.sh"
 
 NOW=20260101000000Z
 TEN_YEARS=20360101000000Z

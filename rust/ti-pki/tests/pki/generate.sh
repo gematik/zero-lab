@@ -2,7 +2,7 @@
 # Generates the test PKI with OpenSSL: an implementation independent of ti-pki produces
 # every certificate the tests validate. Run with `just test-pki` from rust/. The TEST-ONLY keys
 # in keys/ and the output are committed; a run writes only what is missing, FORCE=1 writes
-# everything again from the same keys (lib.sh, and the test data rule of docs/design/testing.md).
+# everything again from the same keys (spec/fixtures.sh, and the test data rule of docs/design/testing.md).
 #
 # The topology mirrors go/gempki/internal/testca (archived at go/gempki/v0.23.1), validated at a fixed instant
 # (TestPki::NOW, 2026-01-01T00:00:00Z) so the files never go stale:
@@ -55,7 +55,7 @@ out="${1:-$(cd "$(dirname "$0")" && pwd)}"
 keys="$out/keys"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-. "$(dirname "$0")/lib.sh"
+. "$(dirname "$0")/../../../../spec/fixtures.sh"
 
 NOW=20260101000000Z
 TEN_YEARS=20360101000000Z
