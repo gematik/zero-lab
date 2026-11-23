@@ -6,12 +6,13 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-23T20:13:00Z'
-updated_date: '2026-11-23T20:14:00Z'
+updated_date: '2026-11-23T20:21:00Z'
 labels:
   - rust
   - ti-pki
   - zeta
-dependencies: []
+dependencies:
+  - TASK-410
 priority: medium
 ordinal: 422000
 ---
@@ -42,3 +43,9 @@ gemSpec_OID V3.27.0 (13.11.2026, CI_26_4-1) changes one requirement against V3.2
 6. ti-cli: schema, tests/cli.rs profile list (currently pins the list), AGENTS.md, ReleaseNotes.
 7. just check-changed in rust/; full just check before merge.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-23: paused on the maintainer's call; builds on TASK-410 (stable test data) so the new fixture changes only itself. Source changes kept as a patch; they add the role type and zeta-guard-tls-c in Rust and Go, GS-A_4446-21 tests, and the fixture line in generate.sh.
+<!-- SECTION:NOTES:END -->
