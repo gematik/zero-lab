@@ -9,6 +9,7 @@ generator, the command-line contract every decoder provides, and the interoperab
 testdata/
   manifest.json      every case: source, profile, rules covered, expected result
   private-key-info.json  PrivateKeyInfo and keyBag vectors (P12-041, P12-002, P12-004)
+  keys/              the TEST-ONLY keys the corpus is generated from
   vendor/            two connector client identities as delivered (BER, RC2-40, 3DES,
                      SHA-1 MAC), with their passwords and SHA256SUMS
 tool/                p12conformance: generates the corpus, verifies decoders (Go, stdlib only)
@@ -20,10 +21,16 @@ interop/
 
 ## Corpus
 
-The corpus is **generated per run** and not committed: keys and certificates are created fresh by
-the generator (P-256 CA, RSA-2048 and P-256 leaves, all `TEST-ONLY`), and `openssl pkcs12 -export`
-writes the files from them. No private key of the corpus is ever committed. The only committed
-files are the two vendor identities in `testdata/vendor`, which no tool can regenerate.
+The corpus is **generated per run** and not committed, from committed inputs: the `TEST-ONLY` keys
+in `testdata/keys` (P-256 CA, RSA-2048 and P-256 leaves; the generator makes a missing one once),
+certificates the generator signs from them with fixed instants, serial numbers derived from their
+names and RFC 6979 ECDSA, and `openssl pkcs12 -export`, which writes the files. Certificates,
+expectations, passwords and every case not written by OpenSSL come out the same on every run; the
+files OpenSSL writes differ in their salts and IVs, which the command draws at random, and nothing
+the decoders report depends on those. A run writes only what is missing in its output directory;
+`FORCE=1` writes everything (the test data rule of `docs/design/testing.md`). Besides the keys, the
+only committed inputs are the two vendor identities in `testdata/vendor`, which no tool can
+regenerate.
 
 Each case is written once per encoding:
 
