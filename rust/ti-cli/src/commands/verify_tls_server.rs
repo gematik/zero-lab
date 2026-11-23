@@ -29,6 +29,7 @@
 use serde::Serialize;
 use ti_client::input::Loaded;
 use ti_client::peer::{StatusSource, TlsServerVerdict};
+use ti_client::pki::inspect::{CertificateInfo, KeyRule, describe_under};
 use ti_pki::{Certificate, Timestamp};
 
 use crate::cli::{GlobalArgs, VerifyArgs};
@@ -358,14 +359,18 @@ fn findings(report: &Report) -> Vec<Line> {
         .collect()
 }
 
+/// The end entity as `pki inspect` describes it, its key rated by TLSV-041 as the verdict
+/// rates it, not by the TI's VALID-002.
+fn details(ee: &Certificate, at: Timestamp) -> CertificateInfo {
+    describe_under(&Loaded::without_key(ee.clone()), at, KeyRule::Web)
+}
+
 /// The terminal view: the end entity as `pki inspect` shows it, the result, the chain and
 /// the findings.
 fn sections(report: &Report) -> Document {
     let mut doc = Document::default();
     if let Some(ee) = report.certificates.first() {
-        let details =
-            ti_client::pki::inspect::describe(&Loaded::without_key(ee.clone()), report.at_ts);
-        super::inspect::certificate_sections(&mut doc, &details, report.at_ts);
+        super::inspect::certificate_sections(&mut doc, &details(ee, report.at_ts), report.at_ts);
     }
     doc.section("TLS server verdict");
     doc.field("result", verdict(report));
@@ -413,4 +418,42 @@ fn summary(report: &Report) -> Document {
         doc.pem(pem);
     }
     doc
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::document::Block;
+
+    /// 2026-01-01, when the corpus's certificates were made for.
+    const AT: Timestamp = Timestamp(1_767_225_600);
+
+    fn corpus(name: &str) -> Certificate {
+        let path = format!(
+            "{}/../../spec/pki-validation/testdata/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        ti_pki::parse_pem_certificates(&std::fs::read(path).unwrap())
+            .unwrap()
+            .remove(0)
+    }
+
+    /// TLSV-041: the key line of a server judged under `web` names the rule and says what the
+    /// verdict says (ti-client's test of the same certificates proves the verdict), an ECDSA
+    /// P-384 key admissible, an RSA 2048 key phased out.
+    #[test]
+    fn tlsv_041_the_key_line_names_the_web_rule() {
+        for (leaf, line) in [
+            ("web-p384.pem", "ECDSA P-384 admissible (TLSV-041)"),
+            ("web-rsa2048.pem", "RSA 2048 phased out (TLSV-041)"),
+        ] {
+            let mut doc = Document::default();
+            super::super::inspect::certificate_sections(&mut doc, &details(&corpus(leaf), AT), AT);
+            let key = doc.blocks.iter().find_map(|block| match block {
+                Block::Field(label, value) if label == "algorithm" => Some(value.plain()),
+                _ => None,
+            });
+            assert_eq!(key.as_deref(), Some(line), "{leaf}");
+        }
+    }
 }

@@ -94,8 +94,12 @@ pub struct Certificate {
 pub struct Key {
     /// In words, e.g. `ECDSA brainpoolP256r1`.
     pub algorithm: String,
-    /// gemSpec_Krypt: `admissible`, `phased out`, `not admissible`.
+    /// `admissible`, `phased out`, `not admissible`, under [`Key::rule`].
     pub status: &'static str,
+    /// The rule the status follows: `VALID-002` (gemSpec_Krypt's tables) for a TI
+    /// certificate, as [`Certificate::new`] rates every key; a view that knows the
+    /// certificate is outside the TI rates it under the TLS profile `web` instead.
+    pub rule: &'static str,
 }
 
 /// The validation profile the certificate would be checked under.
@@ -141,6 +145,7 @@ impl Certificate {
             key: Key {
                 algorithm,
                 status: status.as_str(),
+                rule: "VALID-002",
             },
             signature_algorithm: cert.signature_algorithm(),
             certificate_type: detect_certificate_type(cert).map(CertificateType::as_str),

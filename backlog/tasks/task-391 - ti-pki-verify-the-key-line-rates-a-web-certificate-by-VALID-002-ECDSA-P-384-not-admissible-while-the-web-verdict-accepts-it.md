@@ -3,10 +3,10 @@ id: TASK-391
 title: >-
   ti pki verify: the key line rates a web certificate by VALID-002 (ECDSA P-384
   not admissible) while the web verdict accepts it
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-19 12:42'
-updated_date: '2026-11-19 12:43'
+updated_date: '2026-11-23 01:51'
 labels:
   - rust
   - pki
@@ -44,13 +44,31 @@ Not checked: ti-client's inspect path (rust/ti-client/src/pki/inspect.rs:244, si
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 The key line of a certificate that is not a TI certificate is rated by the web profile's rule (TLSV-041, TLSV-042 for a CA), a TI certificate's by VALID-002, and the line says which rule it applied
-- [ ] #2 A test named after TLSV-041 shows an ECDSA P-384 web end entity as admissible and an RSA 2048 one as phased out, in the key line and in the verdict alike
-- [ ] #3 Whether P-521 is admissible for the web profile is answered from A_28976 / gemSpec_Krypt and recorded in spec/pki-validation
+- [x] #1 The key line of a certificate that is not a TI certificate is rated by the web profile's rule (TLSV-041, TLSV-042 for a CA), a TI certificate's by VALID-002, and the line says which rule it applied
+- [x] #2 A test named after TLSV-041 shows an ECDSA P-384 web end entity as admissible and an RSA 2048 one as phased out, in the key line and in the verdict alike
+- [x] #3 Whether P-521 is admissible for the web profile is answered from A_28976 / gemSpec_Krypt and recorded in spec/pki-validation
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Rate the key line by the rule of the profile the certificate falls under: ti-tls exposes web::key_status (TLSV-041/042, the same judgement WebCheck::verify applies); ti-pki's model::Key carries the rule (VALID-002 by default); ti-client's describe_under/KeyRule picks it (verify --connect web: web; pki verify ti: VALID-002; pki inspect: VALID-002 when the certificate has a TI type or the input shows a TI environment, else web); the CLI prints the rule in the key line; JSON schemas gain key.rule. Answer P-521 from A_28976 and record it in spec/pki-validation.
+<!-- SECTION:PLAN:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-19: the same connection fails in the zeta CLI. ZETA SDK 2.0.1 checks the revocation of the chain as sent, and stops at the self-signed Root G5 the server sends. That is in zeta-backlog TASK-19.
+
+2026-11-22: The web verdict already applied TLSV-041/042 (ti-tls web.rs); only the key line (ti_pki::model::Certificate::new -> classify_key, VALID-002) disagreed. Callers checked: ti-client pki/inspect.rs key_algorithm uses only the description (unchanged); pki/signature.rs rates the signer of a TI document signature, VALID-002 stays; connector cards and ti-connector-client use only the description. A TI CA carries no TI type, so pki inspect decides by the input's TI environment (pki verify's detection: embedded root, chain, markers); the corpus's web certificates carry TEST-ONLY and would read as TI there, real web certificates do not.
+
+P-521 (AC #3): A_28976 (gemSpec_Krypt V2.51.0, https://gemspec.gematik.de/docs/gemSpec/gemSpec_Krypt/gemSpec_Krypt_V2.51.0/#A_28976) names no curves; it requires the 120-bit level per TR-02102-2 'Domainparameter und Schlüssellängen'. TR-02102-2 version 2026-01, section 3.6.1 Table 14 (ECDSA >= 250 bit, RSA >= 3000 bit) and 3.6.2 (brainpoolP256r1/384r1/512r1 recommended, secp256r1/secp384r1/secp521r1 where those are unavailable). So P-521 meets A_28976. A_16176-01 (ePA-internal non-TI keys) lists P-256, P-384 and brainpool, not P-521. The rule is not changed: A_28976 binds the provider, not what a client must accept, and the verifiers have no P-521 signature verification (WEB_CERTIFICATE_ALGORITHMS, WEB_SCHEMES); admitting it needs that first. Recorded in spec/pki-validation/README.md, 'Keys beyond the rules', referenced from TLSV-041/042.
+
+Verification: cargo test (ti-client pki::inspect, ti-cli verify_tls_server) pass; just check-changed: fmt, clippy (both feature sets), doc pass; nextest 820/821, the one failure ti-cli::probe probes_protocols_catalog_instances_and_timeouts passes alone (timing under load, unrelated).
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+The key line of `ti pki verify` and `ti pki inspect` now names the rule it applied and follows the profile: a certificate judged under the TLS profile web (verify --connect, web) is rated by TLSV-041 (end entity) or TLSV-042 (CA) through ti_tls::web::key_status, the judgement the verdict applies; a TI certificate keeps VALID-002. pki inspect takes VALID-002 when the certificate has a TI type or the input shows a TI environment, the web rule otherwise. ti_pki::model::Key gains `rule` (JSON: key.rule, schemas of pki inspect, identity inspect and ti-wasm updated). Tests: ti-client tlsv_041_the_key_line_of_a_web_certificate_agrees_with_its_verdict (P-384 admissible, RSA 2048 phased out with key_phased_out, key line and verdict on the same corpus certificates), valid_002_a_ti_certificate_is_rated_by_the_ti_tables, ti-cli tlsv_041_the_key_line_names_the_web_rule. P-521: meets A_28976 (via TR-02102-2 2026-01 §3.6), not listed by A_16176-01; TLSV-041/042 stay at P-256/P-384 because the verifiers have no P-521 verification; recorded in spec/pki-validation 'Keys beyond the rules'.
+<!-- SECTION:FINAL_SUMMARY:END -->

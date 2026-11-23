@@ -123,9 +123,11 @@ take `web`.
   level that gemSpec_Krypt requires of identities from an internet PKI (A_28976, after TR-02102-2) and of
   non-TI RSA keys (A_16176-01). An RSA key of 2048 to 2999 bits is accepted with the warning
   `key_phased_out`, the code VALID-002 gives the same key in the TI ([Deviations](#deviations)); a smaller
-  RSA key and any other key are refused (`key_not_admissible`).
+  RSA key and any other key are refused (`key_not_admissible`), P-521 among them
+  ([Keys beyond the rules](#keys-beyond-the-rules)).
 - **TLSV-042** A CA's key is ECDSA on P-256 or P-384, or RSA of at least 2048 bits
   (`key_not_admissible`). The lower RSA floor is the Web-PKI's today, as the ZETA SDK accepts it.
+  P-521 is admissible under A_28976 but not here ([Keys beyond the rules](#keys-beyond-the-rules)).
 - **TLSV-043** The name matches a `dNSName` subject alternative name as TLSV-024 compares them
   (A_27856-02); the commonName is not read.
 - **TLSV-044** The end entity's revocation status is required (A_27857-02): from a stapled OCSP response,
@@ -220,6 +222,23 @@ maintainer's decision of 2026-11-10 (TASK-282); the `ti` profile has neither.
 A host that needs the strict rules judges the server with the profile's verification entry point, which
 returns the verdict with its warnings, and refuses a verdict that carries `key_phased_out` or
 `revocation_unavailable` in its own verifier. The verifiers here do not offer it as an option.
+
+## Keys beyond the rules
+
+A_28976 (gemSpec_Krypt V2.51.0,
+<https://gemspec.gematik.de/docs/gemSpec/gemSpec_Krypt/gemSpec_Krypt_V2.51.0/#A_28976>) does not list
+curves: it requires the 120-bit level and refers to TR-02102-2's section on domain parameters and key
+lengths. TR-02102-2 (version 2026-01, section 3.6) asks for ECDSA keys of at least 250 bits and RSA of at
+least 3000 bits (Table 14) and recommends brainpoolP256r1, P384r1 and P512r1, with secp256r1, secp384r1
+and secp521r1 where those are not available (section 3.6.2). A P-521 key, and a brainpool key, therefore
+meet A_28976. A_16176-01, which TLSV-041 also cites, lists P-256 and P-384 and the brainpool curves for
+non-TI keys of the ePA-Aktensystem, but not P-521; it binds that product, not internet servers.
+
+TLSV-041 and TLSV-042 admit fewer keys than A_28976: P-521 and brainpool are refused
+(`key_not_admissible`). A_28976 binds the provider who obtains the certificate, not what a client must
+accept, and admitting P-521 needs its signature verification in the handshake and in certificate paths,
+which the implementations do not have (checked 2026-11-22, TASK-391). The rules change when that is
+added.
 
 ## Security considerations
 

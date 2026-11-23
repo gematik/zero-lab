@@ -29,6 +29,7 @@ use core::time::Duration;
 use const_oid::ObjectIdentifier;
 use der::Decode;
 use rustls_pki_types::{CertificateDer, ServerName, TrustAnchor, UnixTime};
+use ti_pki::key::KeyStatus;
 use ti_pki::ocsp::{ResponseCheck, request, verify_response};
 use ti_pki::{RevocationStatus, Timestamp};
 use webpki::{
@@ -37,6 +38,7 @@ use webpki::{
 };
 use x509_cert::ext::pkix::name::{DistributionPointName, GeneralName};
 use x509_cert::ext::pkix::{CrlDistributionPoints, KeyUsages};
+use x509_cert::spki::SubjectPublicKeyInfoOwned;
 
 use crate::algorithms::WEB_CERTIFICATE_ALGORITHMS;
 use crate::fetch::Fetch;
@@ -335,6 +337,28 @@ fn server_name(host: &str) -> ServerName<'static> {
         .unwrap_or_else(|_| ServerName::try_from("invalid.invalid").expect("a valid name"))
 }
 
+/// TLSV-041 for an end entity, TLSV-042 for a CA (`ca`): what the profile says of `key`, the
+/// same judgement [`WebCheck::verify`] passes on it, and the rule that gave it. A view of a
+/// certificate outside the TI rates its key with this, not with VALID-002, so that it cannot
+/// call a key the verdict accepted not admissible.
+pub fn key_status(key: &SubjectPublicKeyInfoOwned, ca: bool) -> (KeyStatus, &'static str) {
+    let key = Key::of(key);
+    if ca {
+        let status = if key.admissible_ca() {
+            KeyStatus::Admissible
+        } else {
+            KeyStatus::NotAdmissible
+        };
+        return (status, "TLSV-042");
+    }
+    let status = match (key.admissible_end_entity(), key.phased_out()) {
+        (false, _) => KeyStatus::NotAdmissible,
+        (true, true) => KeyStatus::PhasedOut,
+        (true, false) => KeyStatus::Admissible,
+    };
+    (status, "TLSV-041")
+}
+
 /// A public key as the profile judges it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Key {
@@ -345,6 +369,32 @@ enum Key {
 }
 
 impl Key {
+    fn of(spki: &SubjectPublicKeyInfoOwned) -> Key {
+        if spki.algorithm.oid == EC_PUBLIC_KEY {
+            match spki
+                .algorithm
+                .parameters
+                .as_ref()
+                .and_then(|p| p.decode_as::<ObjectIdentifier>().ok())
+            {
+                Some(curve) if curve == P256 => Key::P256,
+                Some(curve) if curve == P384 => Key::P384,
+                _ => Key::Other,
+            }
+        } else if spki.algorithm.oid == RSA {
+            spki.subject_public_key
+                .as_bytes()
+                .and_then(|bits| RsaPublicKey::from_der(bits).ok())
+                .map_or(Key::Other, |rsa| {
+                    let modulus = rsa.modulus.as_bytes();
+                    let lead = modulus.first().map_or(8, |b| b.leading_zeros() as usize);
+                    Key::Rsa(modulus.len() * 8 - lead)
+                })
+        } else {
+            Key::Other
+        }
+    }
+
     /// TLSV-041: what an end entity may have, RSA from 2048 bits.
     fn admissible_end_entity(self) -> bool {
         matches!(self, Key::P256 | Key::P384) || matches!(self, Key::Rsa(bits) if bits >= 2048)
@@ -402,30 +452,7 @@ impl Info {
     fn parse(der: &[u8]) -> Result<Info, ()> {
         let cert = x509_cert::Certificate::from_der(der).map_err(|_| ())?;
         let tbs = cert.tbs_certificate();
-        let spki = tbs.subject_public_key_info();
-        let key = if spki.algorithm.oid == EC_PUBLIC_KEY {
-            match spki
-                .algorithm
-                .parameters
-                .as_ref()
-                .and_then(|p| p.decode_as::<ObjectIdentifier>().ok())
-            {
-                Some(curve) if curve == P256 => Key::P256,
-                Some(curve) if curve == P384 => Key::P384,
-                _ => Key::Other,
-            }
-        } else if spki.algorithm.oid == RSA {
-            spki.subject_public_key
-                .as_bytes()
-                .and_then(|bits| RsaPublicKey::from_der(bits).ok())
-                .map_or(Key::Other, |rsa| {
-                    let modulus = rsa.modulus.as_bytes();
-                    let lead = modulus.first().map_or(8, |b| b.leading_zeros() as usize);
-                    Key::Rsa(modulus.len() * 8 - lead)
-                })
-        } else {
-            Key::Other
-        };
+        let key = Key::of(tbs.subject_public_key_info());
         let mut key_usage = None;
         let mut crl_urls = Vec::new();
         for ext in tbs.extensions().map(Vec::as_slice).unwrap_or_default() {

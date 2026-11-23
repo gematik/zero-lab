@@ -284,7 +284,9 @@ pub(super) fn certificate_sections(doc: &mut Document, cert: &CertificateInfo, n
     };
     doc.section("Key").field(
         "algorithm",
-        Line::text(format!("{} ", cert.key.algorithm)).and_status(key_tone, cert.key.status),
+        Line::text(format!("{} ", cert.key.algorithm))
+            .and_status(key_tone, cert.key.status)
+            .and_dim(format!(" ({})", cert.key.rule)),
     );
     if cert.private_key {
         doc.field("private key", "in this file");
@@ -491,6 +493,7 @@ fn summary(report: &Report) -> Document {
             "key",
             Line::text(format!("{} ", cert.key.algorithm))
                 .and_status(key_tone, cert.key.status)
+                .and_dim(format!(" ({})", cert.key.rule))
                 .and_dim(format!(" · signed {}", cert.signature_algorithm)),
         );
         if cert.private_key {

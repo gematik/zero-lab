@@ -131,10 +131,16 @@ pub fn inspect(
     now: Timestamp,
 ) -> Result<(Inspection, Vec<Certificate>), Error> {
     let input = input::load(bytes, name, p12_password)?;
+    let all: Vec<Certificate> = input
+        .certificates
+        .iter()
+        .map(|loaded| loaded.certificate.clone())
+        .collect();
+    let ti = shows_ti(&all, now);
     let certificates: Vec<CertificateInfo> = input
         .certificates
         .iter()
-        .map(|loaded| describe(loaded, now))
+        .map(|loaded| describe_under(loaded, now, KeyRule::of(&loaded.certificate, ti)))
         .collect();
     let pkcs12 = input
         .pkcs12
@@ -157,23 +163,67 @@ pub fn inspect(
 
 /// `certificates`, which `source` names, described at `now`.
 pub fn describe_all(source: String, certificates: Vec<Certificate>, now: Timestamp) -> Inspection {
+    let ti = shows_ti(&certificates, now);
     Inspection {
         source,
         certificates: certificates
             .into_iter()
-            .map(|certificate| describe(&Loaded::without_key(certificate), now))
+            .map(|certificate| {
+                let rule = KeyRule::of(&certificate, ti);
+                describe_under(&Loaded::without_key(certificate), now, rule)
+            })
             .collect(),
         pkcs12: None,
     }
 }
 
-/// `loaded` described at `now`.
+/// The rule a certificate's key is rated by in its description.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyRule {
+    /// VALID-002, gemSpec_Krypt's tables: a TI certificate.
+    Ti,
+    /// The TLS profile `web` of `spec/pki-validation`: TLSV-041 for an end entity, TLSV-042
+    /// for a CA. A certificate outside the TI is held to it, never to the TI's tables.
+    Web,
+}
+
+impl KeyRule {
+    /// `cert`'s rule when nothing judged it under a profile: the TI's when it carries a TI
+    /// type or `ti_input` (the certificates it came with show a TI environment), else the
+    /// web's. A TI CA carries no type of its own, so the input's environment decides for it.
+    pub fn of(cert: &Certificate, ti_input: bool) -> KeyRule {
+        if ti_input || ti_pki::detect_certificate_type(cert).is_some() {
+            KeyRule::Ti
+        } else {
+            KeyRule::Web
+        }
+    }
+}
+
+/// Whether `certs` show a TI environment, by the detection `pki verify` uses.
+fn shows_ti(certs: &[Certificate], now: Timestamp) -> bool {
+    environment(None, certs, now).is_ok()
+}
+
+/// `loaded` described at `now`, its key rated by VALID-002.
 pub fn describe(loaded: &Loaded, now: Timestamp) -> CertificateInfo {
+    describe_under(loaded, now, KeyRule::Ti)
+}
+
+/// `loaded` described at `now`, its key rated by `rule`.
+pub fn describe_under(loaded: &Loaded, now: Timestamp, rule: KeyRule) -> CertificateInfo {
     let (friendly_name, local_key_id) = loaded.bag.as_ref().map_or((None, None), |(name, id)| {
         (name.clone(), id.as_deref().map(hex_id))
     });
+    let mut info = model::Certificate::new(&loaded.certificate, now);
+    if rule == KeyRule::Web {
+        let cert = &loaded.certificate;
+        let (status, rule) = ti_tls::web::key_status(cert.public_key_info(), cert.is_ca());
+        info.key.status = status.as_str();
+        info.key.rule = rule;
+    }
     CertificateInfo {
-        info: model::Certificate::new(&loaded.certificate, now),
+        info,
         private_key: loaded.private_key,
         friendly_name,
         local_key_id,
@@ -322,5 +372,87 @@ fn curve_name(oid: &ObjectIdentifier) -> String {
         "1.3.132.0.34" => "P-384".to_owned(),
         "1.3.132.0.35" => "P-521".to_owned(),
         other => other.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rustls_pki_types::CertificateDer;
+    use ti_tls::{Offline, WebCheck};
+
+    use super::*;
+
+    /// 2026-01-01, when the corpus's certificates and OCSP responses were made for.
+    const AT: Timestamp = Timestamp(1_767_225_600);
+
+    fn corpus(name: &str) -> Vec<u8> {
+        let path = format!(
+            "{}/../../spec/pki-validation/testdata/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        std::fs::read(path).unwrap()
+    }
+
+    fn der(name: &str) -> Vec<u8> {
+        pem_rfc7468::decode_vec(&corpus(name)).unwrap().1
+    }
+
+    /// TLSV-041: a web end entity's key line says what its verdict says, an ECDSA P-384 key
+    /// admissible and an RSA 2048 key phased out (`key_phased_out`), rated by TLSV-041 and
+    /// not by VALID-002, which calls P-384 not admissible.
+    #[test]
+    fn tlsv_041_the_key_line_of_a_web_certificate_agrees_with_its_verdict() {
+        let check = WebCheck::new([CertificateDer::from(der("web-root.pem"))]);
+        for (leaf, status, warnings) in [
+            ("web-p384", "admissible", &[][..]),
+            ("web-rsa2048", "phased out", &["key_phased_out"][..]),
+        ] {
+            let chain = [
+                CertificateDer::from(der(&format!("{leaf}.pem"))),
+                CertificateDer::from(der("web-ca.pem")),
+            ];
+            let stapled = corpus(&format!("ocsp/{leaf}-good.der"));
+            let verdict =
+                crate::block_on(check.verify(&chain, "www.web.test", Some(&stapled), AT, &Offline));
+            assert!(verdict.is_valid(), "{leaf}: {}", verdict.detail);
+            assert_eq!(verdict.warnings, warnings, "{leaf}");
+
+            let certs: Vec<Certificate> = chain
+                .iter()
+                .map(|c| Certificate::from_der(c).unwrap())
+                .collect();
+            // The corpus names carry TEST-ONLY, which environment detection reads as the TI's
+            // test environment; a real web certificate does not, and has no TI type.
+            let rule = KeyRule::of(&certs[0], false);
+            assert_eq!(rule, KeyRule::Web, "{leaf}");
+            let line = describe_under(&Loaded::without_key(certs[0].clone()), AT, rule);
+            assert_eq!(
+                (line.key.status, line.key.rule),
+                (status, "TLSV-041"),
+                "{leaf}"
+            );
+            let ca = describe_under(&Loaded::without_key(certs[1].clone()), AT, rule);
+            assert_eq!((ca.key.status, ca.key.rule), ("admissible", "TLSV-042"));
+        }
+        let p384 = Certificate::from_der(&der("web-p384.pem")).unwrap();
+        let ti = describe(&Loaded::without_key(p384), AT);
+        assert_eq!(
+            (ti.key.status, ti.key.rule),
+            ("not admissible", "VALID-002")
+        );
+    }
+
+    /// VALID-002: a TI certificate's key line keeps gemSpec_Krypt's tables, brainpoolP256r1
+    /// admissible, whichever certificate of a TI input it is.
+    #[test]
+    fn valid_002_a_ti_certificate_is_rated_by_the_ti_tables() {
+        let certs: Vec<Certificate> = ["ti-good.pem", "ti-ca.pem"]
+            .iter()
+            .map(|name| Certificate::from_der(&der(name)).unwrap())
+            .collect();
+        let inspection = describe_all("ti".into(), certs, AT);
+        for cert in &inspection.certificates {
+            assert_eq!(cert.key.rule, "VALID-002", "{}", cert.subject);
+        }
     }
 }

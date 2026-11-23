@@ -173,12 +173,17 @@
             },
             "status": {
               "type": "string",
-              "description": "gemSpec_Krypt admissibility"
+              "description": "admissibility under rule"
+            },
+            "rule": {
+              "type": "string",
+              "description": "the rule the status follows: VALID-002 (gemSpec_Krypt) for a TI certificate, TLSV-041 or TLSV-042 (TLS profile web) for one outside the TI"
             }
           },
           "required": [
             "algorithm",
-            "status"
+            "status",
+            "rule"
           ],
           "additionalProperties": false
         },

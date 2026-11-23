@@ -383,7 +383,11 @@ fn outside_ti(request: &Request, at: Timestamp) -> Verification {
             message: "no chain to a root of any TI environment".into(),
         }],
         warnings: Vec::new(),
-        details: inspect::describe(&Loaded::without_key(leaf), at),
+        // Outside every TI environment: a TI type alone makes it a TI certificate.
+        details: {
+            let rule = inspect::KeyRule::of(&leaf, false);
+            inspect::describe_under(&Loaded::without_key(leaf), at, rule)
+        },
         result,
     }
 }
