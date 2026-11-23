@@ -4,7 +4,7 @@ title: 'Test data: generated fixtures are stable, and adding one changes only th
 status: In Progress
 assignee: []
 created_date: '2026-11-23T20:21:00Z'
-updated_date: '2026-11-23T20:21:00Z'
+updated_date: '2026-11-23T20:41:00Z'
 labels:
   - testing
   - rust
@@ -22,10 +22,10 @@ rust/ti-pki/tests/pki/generate.sh rebuilds the whole test PKI with fresh keys on
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 docs/design/testing.md states the rule once: a generated fixture is reproducible from committed inputs (TEST-ONLY keys, fixed instants, deterministic signatures), its generator writes only what is missing unless a full rebuild is asked for explicitly, and adding a fixture changes that fixture and the corpus entries that describe it, nothing else
-- [ ] #2 rust/ti-pki/tests/pki (generate.sh, ocsp.sh, tsl-signer/generate.sh) follows it: the TEST-ONLY keys are committed next to the certificates, ECDSA signatures are deterministic (RFC 6979, OpenSSL nonce-type 1), a second run of just test-pki changes no file, and a forced rebuild reproduces the same bytes wherever the algorithm allows (RSA-PSS salts are the documented exception)
-- [ ] #3 The switch is one commit whose diff is the keys and the regenerated fixtures and corpora, with the Rust and Go corpus tests green on it
-- [ ] #4 Each other generator is checked against the rule; those that do not follow it get a follow-up task each
+- [x] #1 docs/design/testing.md states the rule once: a generated fixture is reproducible from committed inputs (TEST-ONLY keys, fixed instants, deterministic signatures), its generator writes only what is missing unless a full rebuild is asked for explicitly, and adding a fixture changes that fixture and the corpus entries that describe it, nothing else
+- [x] #2 rust/ti-pki/tests/pki (generate.sh, ocsp.sh, tsl-signer/generate.sh) follows it: the TEST-ONLY keys are committed next to the certificates, ECDSA signatures are deterministic (RFC 6979, OpenSSL nonce-type 1), a second run of just test-pki changes no file, and a forced rebuild reproduces the same bytes wherever the algorithm allows (RSA-PSS salts are the documented exception)
+- [x] #3 The switch is one commit whose diff is the keys and the regenerated fixtures and corpora, with the Rust and Go corpus tests green on it
+- [x] #4 Each other generator is checked against the rule; those that do not follow it get a follow-up task each
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -39,3 +39,9 @@ rust/ti-pki/tests/pki/generate.sh rebuilds the whole test PKI with fresh keys on
 6. Survey the other eight generators; follow-up tasks for those that rebuild everything.
 7. Then TASK-409 on top: one new certificate, its corpus entries.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-23, branch feat/ti-pki-oid-3.27, d42cd212. rust/ti-pki/tests/pki/lib.sh: keys committed in keys/ (77) and tsl-signer/keys/ (13), made only when missing; wanted() writes an output only when missing or FORCE=1; serial_of(name) = 0x1 + 15 hex of SHA-256(name); sign_options() adds -sigopt nonce-type:1 for EC keys (OpenSSL >= 3.2; 4.1 here). Proof: a second just test-pki changes no file; FORCE=1 reproduces every byte except ee-rsa-pss.pem (random PSS salt, named in lib.sh). ocsp_002 now derives its byte positions from the DER (first/last ecdsa-with-SHA256 AlgorithmIdentifier), checked against the old fixture (311, 325, 782). Rule in docs/design/testing.md 'Generated fixtures are stable'. Follow-ups TASK-411 to 417, one per other generator. Rust workspace 943 tests and Go tipki green on the switch.
+<!-- SECTION:NOTES:END -->

@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-23T20:13:00Z'
-updated_date: '2026-11-23T20:21:00Z'
+updated_date: '2026-11-23T20:41:00Z'
 labels:
   - rust
   - ti-pki
@@ -25,11 +25,11 @@ gemSpec_OID V3.27.0 (13.11.2026, CI_26_4-1) changes one requirement against V3.2
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 ti-pki's OID tables follow gemSpec_OID V3.27.0: oid_zeta-guard is admitted on C.FD.AUT and C.FD.TLS-C, every citation of GS-A_4446-20 and of V3.26.0 moves to -21 and V3.27.0, and a diff of the two versions' tables shows no other change left out
-- [ ] #2 A profile for the Notification Service's client certificate (working name zeta-guard-tls-c): type C.FD.TLS-C, extended key usage clientAuth, technical role oid_zeta-guard, a CA of the component PKI named in the verified TSL, revocation checked hard-fail like the other profiles; ti pki verify --validation-profile takes it, select_for_cert picks it for such a certificate, and zeta-guard-aut stays C.FD.AUT only
-- [ ] #3 Tests named after GS-A_4446-21 and the profile's rules pass with generated certificates (role on C.FD.TLS-C admitted, the same role on another TLS type refused, the profile refusing C.FD.AUT and a certificate without the role), and the traceability table is regenerated
-- [ ] #4 The requirement that makes the push gateways check this certificate is found (gemF_PushNotification or the DiPag specification) and cited in the profile's documentation; if it states further checks (a name, a role list, a pinned CA), they are part of the profile or a follow-up task
-- [ ] #5 ti-cli's schema, AGENTS.md profile list and ReleaseNotes name the new profile and the gemSpec_OID version
+- [x] #1 ti-pki's OID tables follow gemSpec_OID V3.27.0: oid_zeta-guard is admitted on C.FD.AUT and C.FD.TLS-C, every citation of GS-A_4446-20 and of V3.26.0 moves to -21 and V3.27.0, and a diff of the two versions' tables shows no other change left out
+- [x] #2 A profile for the Notification Service's client certificate (working name zeta-guard-tls-c): type C.FD.TLS-C, extended key usage clientAuth, technical role oid_zeta-guard, a CA of the component PKI named in the verified TSL, revocation checked hard-fail like the other profiles; ti pki verify --validation-profile takes it, select_for_cert picks it for such a certificate, and zeta-guard-aut stays C.FD.AUT only
+- [x] #3 Tests named after GS-A_4446-21 and the profile's rules pass with generated certificates (role on C.FD.TLS-C admitted, the same role on another TLS type refused, the profile refusing C.FD.AUT and a certificate without the role), and the traceability table is regenerated
+- [x] #4 The requirement that makes the push gateways check this certificate is found (gemF_PushNotification or the DiPag specification) and cited in the profile's documentation; if it states further checks (a name, a role list, a pinned CA), they are part of the profile or a follow-up task
+- [x] #5 ti-cli's schema, AGENTS.md profile list and ReleaseNotes name the new profile and the gemSpec_OID version
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -48,4 +48,6 @@ gemSpec_OID V3.27.0 (13.11.2026, CI_26_4-1) changes one requirement against V3.2
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-23: paused on the maintainer's call; builds on TASK-410 (stable test data) so the new fixture changes only itself. Source changes kept as a patch; they add the role type and zeta-guard-tls-c in Rust and Go, GS-A_4446-21 tests, and the fixture line in generate.sh.
+
+2026-11-23, branch feat/ti-pki-oid-3.27, on top of TASK-410. Rust and Go: oid_zeta-guard admitted on C.FD.AUT and C.FD.TLS-C (GS-A_4446-21), tables cite V3.27.0; profile zeta-guard-tls-c (C.FD.TLS-C, role oid_zeta-guard, hard-fail) in ti-pki and go/tipki. Tests: gs_a_4446_21_zeta_guard_is_admitted_on_fd_aut_and_fd_tls_c, gs_a_4446_21_zeta_guard_tls_c_takes_the_notification_services_client_certificate (accepts the role on TLS-C, refuses TLS-C without it and FD.AUT with it), prof_003 selection; corpus and traceability re-blessed. The new fixture is one certificate and one key. Gateway check: gemF_PushNotification V1.4.0 A_28981 (C.FD.TLS-C of the component PKI with the client's role; V1.4.0 names oid_epa_mgmt and oid_erezept, not yet oid_zeta-guard) and A_28982 (method 1 pinning, method 2 TI PKI + validity + role, no revocation); the profile also checks revocation hard-fail, cited in both profiles.
 <!-- SECTION:NOTES:END -->
