@@ -6,11 +6,12 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:31'
+updated_date: '2026-11-24 10:34'
 labels:
   - ti-pki
   - tests
 dependencies:
-  - TASK-436
+  - TASK-437
 references:
   - backlog/docs/doc-8
   - docs/design/testing.md
@@ -34,3 +35,17 @@ From the spike TASK-436 (doc-8): gematik's PKI test suite (app-PkiTestsuite 8.1.
 - [ ] #4 The host holds no trust logic: TSL, chain, OCSP and CertificateVerify are decided by ti-pki
 - [ ] #5 A gated recipe runs the suite and is listed in the development guide's gated-test table
 <!-- AC:END -->
+
+## Implementation Plan
+
+<!-- SECTION:PLAN:BEGIN -->
+Order: TASK-437 (core picks the OCSP address from the TSL's ServiceSupplyPoint: the suite's certificates carry no AIA, so otherwise the host would hold TUC_PKI_006 logic) -> ti-tls ClientCertVerifier (own task) -> this task.
+
+1. ti-tls: a rustls ClientCertVerifier over the core, the counterpart of TiVerifier (ti-tls/src/verifier.rs): Validator::validate with the HCI_AUT profile (profile.rs), OcspChecker; TLS 1.2 CertificateVerify through verify_tls12_signature with TI_SCHEMES (brainpool included). Reusable, so the host keeps no trust code.
+2. Host: an unpublished workspace crate, TEST-ONLY, blocking std, workspace deps only (ti-pki, ti-tls, ti-client's Http transport, rustls). It does I/O only: env config, a thread that ticks the Reloader (ReloadPolicy interval = the suite's tslDownloadIntervalSeconds), a Transport wrapper that appends ?activeTslSeqNr=<the loaded TSL's number> (the suite's download protocol), a std TcpListener with rustls ServerConnection, one thread per connection. Server key and certificate are made at image build (P-256, TEST-ONLY; the suite only checks expiry), never committed.
+3. TSL service emulation: a TEST-ONLY container, alpine pinned by digest with python3 (stdlib) and openssl. It proxies the suite's tsl-provider and passes tsl.xml/tsl.sha2 through unchanged. Next to them it publishes .sig = SEQUENCE{ecdsa-with-SHA256, BIT STRING ECDSA-Sig-Value, signer certificate} over the exact bytes, signed with the suite's TEST-ONLY TSL-Signing-Unit p12 whose certificate the XMLDSig names, and .ocsp = openssl ocsp for the signer at the ServiceSupplyPoint of its CA in that TSL. Test material comes from the pkits image, never from the repository.
+4. compose: suite (testObjectType IntermediaerServer: SMC-B client certificates, brainpool, HCI_AUT profile exists in the core), simulators, emulation, host. One just recipe, an entry in the gated-test table.
+5. Run allTests.txt; record per test in doc-8: pass, or failure with its reason (core finding -> task, decision, host limitation).
+
+Open: TrustConfig::validate requires tsl_url to be https (the .sha2 is read from it). The emulation serves HTTPS with a TEST-ONLY CA made at image build and the host trusts that CA through its transport config. No check is relaxed for it.
+<!-- SECTION:PLAN:END -->
