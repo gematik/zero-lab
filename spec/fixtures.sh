@@ -1,4 +1,4 @@
-# What the generators here share, sourced by generate.sh, tsl-signer/generate.sh and ocsp.sh.
+# What every fixture generator of the repository shares (rust/ti-pki/tests/pki and the rest).
 # They follow the test data rule of docs/design/testing.md: every output is reproducible from
 # committed inputs, and a run writes only what is missing, so adding a certificate changes that
 # certificate and nothing else.
@@ -10,9 +10,11 @@
 # - A serial number is derived from the output's name, not counted, so the order of the lines
 #   in a generator does not decide it and an added certificate takes no other's number.
 # - ECDSA signatures are deterministic (RFC 6979, OpenSSL's nonce-type 1): a rebuild gives the
-#   same bytes. RSA-PSS salts are random, so ee-rsa-pss differs on every FORCE rebuild.
+#   same bytes. What a scheme randomises (RSA-PSS salts, PKCS#12 salts and IVs) differs on every
+#   FORCE rebuild; each generator names those outputs.
 #
-# Expects `$keys` (the key directory) and `$work` (a temporary directory).
+# Source it as `. path/to/spec/fixtures.sh`. Expects `$keys` (the key directory) and `$work` (a
+# temporary directory).
 
 FORCE=${FORCE:-}
 

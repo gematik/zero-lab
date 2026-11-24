@@ -2,7 +2,7 @@
 # generators here: the `openssl ocsp` responder can neither back-date a response nor add
 # the certHash extension gemSpec_PKI requires. Expects `$out` (certificates as
 # `$out/<name>.pem`, responses written to `$out/ocsp/`), `$keys` (keys as `$keys/<name>.key`),
-# `$work` and `$NOW` (producedAt and thisUpdate), and lib.sh: a response is written only when
+# `$work` and `$NOW` (producedAt and thisUpdate), and spec/fixtures.sh: a response is written only when
 # missing, and signed deterministically.
 
 hex() { xxd -p "$@" | tr -d '\n'; }

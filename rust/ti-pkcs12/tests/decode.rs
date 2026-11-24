@@ -35,7 +35,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use ti_pkcs12::{Error, decode, is_pkcs12};
 
-/// The fixtures as copied from `go/pkcs12/testdata` and `go/pkcs12/legacy/testdata`.
+/// The fixtures as copied from `go/pkcs12/testdata` and `go/pkcs12/legacy/testdata`, and the
+/// generator that writes them again from their keys.
 const FIXTURES: &[(&str, &str)] = &[
     (
         "aes128.p12",
@@ -67,7 +68,7 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
     (
         "generate_test_data.sh",
-        "d39ca35a0d67dba134b2357bf9e0df8aa1d12c669aff77c82e31082c59eddbd6",
+        "a938558f8f0f878eba16a898a18afc4f0c34ba0885ceb6ceba5e2d5e74877577",
     ),
     (
         "high-iter.p12",

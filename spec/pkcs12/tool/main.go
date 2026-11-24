@@ -22,10 +22,11 @@
 // Command p12conformance generates the PKCS#12 conformance corpus of
 // spec/pkcs12 and checks decoders against it. See ../CONFORMANCE.md.
 //
-//	p12conformance generate -manifest ../testdata/manifest.json -out DIR
+//	[FORCE=1] p12conformance generate -manifest ../testdata/manifest.json -out DIR
 //	p12conformance verify -corpus DIR [-profile legacy|modern] [-coarse] [-timeout 30s] -- DECODER [ARGS...]
 //
-// The tool uses only the standard library and the openssl command.
+// generate writes only the files missing in DIR, FORCE=1 all of them. The
+// tool uses only the standard library and the openssl command.
 package main
 
 import (
