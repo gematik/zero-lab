@@ -151,6 +151,28 @@ func TestA_26589_01_UserInfoCarriesTheUserDataOfTheToken(t *testing.T) {
 	}
 }
 
+func TestA_26589_01_UserInfoCarriesTheBirthdateOfTheToken(t *testing.T) {
+	v, err := pep.ZETAUserInfo(applied(t, setClaims(`{"sub":"X1","profession_oid":"1.2.276.0.76.4.49","common_name":"Erika","birthdate":"1964-08-12"}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decoded(t, v)["birthdate"]; got != "1964-08-12" {
+		t.Fatalf("birthdate %v", got)
+	}
+}
+
+func TestA_26589_01_AMalformedBirthdateIsLeftOut(t *testing.T) {
+	for _, bad := range []string{"12.08.1964", "1964-02-30", "1964-8-12", "1964-08-12T00:00:00Z", ""} {
+		v, err := pep.ZETAUserInfo(applied(t, setClaims(`{"sub":"X1","profession_oid":"1.2.276.0.76.4.49","common_name":"Erika","birthdate":"`+bad+`"}`)))
+		if err != nil {
+			t.Fatalf("%q: %v", bad, err)
+		}
+		if _, ok := decoded(t, v)["birthdate"]; ok {
+			t.Errorf("%q carried", bad)
+		}
+	}
+}
+
 func TestA_26589_01_UserInfoOmitsAnAbsentOrganizationName(t *testing.T) {
 	v, err := pep.ZETAUserInfo(applied(t, setClaims(`{"sub":"X1","profession_oid":"1.2.276.0.76.4.49","common_name":"Erika"}`)))
 	if err != nil {
@@ -188,6 +210,16 @@ func TestA_26590_02_ClientDataCarriesTheClientDataOfTheToken(t *testing.T) {
 		if got[k] != w {
 			t.Fatalf("%s = %v, want %v", k, got[k], w)
 		}
+	}
+}
+
+func TestA_26590_02_ClientDataNamesThePlatformOther(t *testing.T) {
+	v, err := pep.ZETAClientData(applied(t, setClaims(`{"client_id":"c","product_id":"p","product_version":"1","platform":"other"}`)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := decoded(t, v)["platform"]; got != "other" {
+		t.Fatalf("platform %v", got)
 	}
 }
 

@@ -25,6 +25,7 @@ import (
 	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
+	"time"
 )
 
 // The headers a ZETA PEP HTTP proxy puts into the request it forwards (gemSpec_ZETA A_25669-01). A request
@@ -40,15 +41,16 @@ func ZETAHeaderNames() []string {
 	return []string{HeaderZETAUserInfo, HeaderZETAClientData, HeaderZETAPoPPContent}
 }
 
-// zetaUserInfo is zeta-user-info.yaml of the gematik ZETA schemas.
+// zetaUserInfo is zeta-user-info.yaml of the gematik ZETA schemas, release 2.0.0-1.
 type zetaUserInfo struct {
 	Identifier       string `json:"identifier"`
 	ProfessionOID    string `json:"professionOID"`
 	CommonName       string `json:"commonName"`
 	OrganizationName string `json:"organizationName,omitempty"`
+	Birthdate        string `json:"birthdate,omitempty"`
 }
 
-// zetaClientData is client-data.yaml of the gematik ZETA schemas.
+// zetaClientData is client-data.yaml of the gematik ZETA schemas, release 2.0.0-1.
 type zetaClientData struct {
 	ClientID       string `json:"client_id"`
 	ProductID      string `json:"product_id"`
@@ -56,14 +58,14 @@ type zetaClientData struct {
 	Platform       string `json:"platform,omitempty"`
 }
 
-// zetaClaims are the access token's claims the two headers are made of. The token names its holder in sub, as
-// the ZETA access token schema and the authorization server have it; Tabelle 15 of A_26589-01 calls that claim
-// identifier.
+// zetaClaims are the access token's claims (access-token.yaml, release 2.0.0-1) the two headers are made of.
+// The token names its holder in sub, which Tabelle 15 of A_26589-01 calls identifier.
 type zetaClaims struct {
 	Subject          string `json:"sub"`
 	ProfessionOID    string `json:"profession_oid"`
 	CommonName       string `json:"common_name"`
 	OrganizationName string `json:"organization_name"`
+	Birthdate        string `json:"birthdate"`
 	ClientID         string `json:"client_id"`
 	ProductID        string `json:"product_id"`
 	ProductVersion   string `json:"product_version"`
@@ -78,7 +80,8 @@ var (
 
 // ZETAUserInfo is the value of zeta-user-info for the request ctx let through (A_26589-01): the user data of
 // the verified token's claims as Base64-URL encoded JSON. It is an error when the claims lack a member the
-// schema requires.
+// schema requires. The birthdate, there only with the insured's consent (A_26973-02), is carried when it is a
+// date and left out otherwise, so that a malformed one costs the request nothing but the member.
 func ZETAUserInfo(ctx Context) (string, error) {
 	c, err := zetaClaimsOf(ctx)
 	if err != nil {
@@ -92,6 +95,7 @@ func ZETAUserInfo(ctx Context) (string, error) {
 		ProfessionOID:    c.ProfessionOID,
 		CommonName:       c.CommonName,
 		OrganizationName: c.OrganizationName,
+		Birthdate:        birthdate(c.Birthdate),
 	})
 }
 
@@ -108,10 +112,17 @@ func ZETAClientData(ctx Context) (string, error) {
 	}
 	data := zetaClientData{ClientID: c.ClientID, ProductID: c.ProductID, ProductVersion: c.ProductVersion}
 	switch c.Platform {
-	case "android", "apple", "windows", "linux":
+	case "android", "apple", "windows", "linux", "other":
 		data.Platform = c.Platform
 	}
 	return zetaHeaderValue(data)
+}
+
+func birthdate(claim string) string {
+	if _, err := time.Parse(time.DateOnly, claim); err != nil {
+		return ""
+	}
+	return claim
 }
 
 func zetaClaimsOf(ctx Context) (zetaClaims, error) {
