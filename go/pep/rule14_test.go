@@ -106,7 +106,7 @@ func TestServerRule14_RefusedTokenClaimsAreNotQuoted(t *testing.T) {
 
 // Server rule 14: claims that do not fit the type a policy asks for are refused without the value.
 func TestServerRule14_ClaimsOfAnotherTypeAreNotQuoted(t *testing.T) {
-	c := &pepContext{claimsRaw: []byte(`{"n":` + numberMarker + `}`)}
+	c := &pepContext{claims: &claimsCell{raw: []byte(`{"n":` + numberMarker + `}`)}}
 	var claims struct {
 		N uint8 `json:"n"`
 	}

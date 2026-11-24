@@ -40,11 +40,17 @@ func init() {
 }
 
 // EnforcePolicyMiddleware is the Caddy HTTP handler enforce_policy: a request reaches the next handler
-// only if Enforcer lets it through, and is denied otherwise.
+// only if Enforcer lets it through, and is denied otherwise. The headers of gemSpec_ZETA A_25669-01 never
+// pass from the client; ZETAUserInfo and ZETAClientData make them from the verified token's claims.
 type EnforcePolicyMiddleware struct {
 	Enforcer *pep.EnforcerHolder `json:"enforcer"`
-	logger   *slog.Logger
-	app      *App
+	// ZETAUserInfo puts zeta-user-info into the forwarded request (A_26589-01).
+	ZETAUserInfo bool `json:"zeta_user_info,omitempty"`
+	// ZETAClientData puts zeta-client-data into the forwarded request; off unless the endpoint asks for it
+	// (A_26492-02, A_26590-02).
+	ZETAClientData bool `json:"zeta_client_data,omitempty"`
+	logger         *slog.Logger
+	app            *App
 }
 
 // CaddyModule registers the handler under the module ID "http.handlers.enforce_policy".
@@ -83,13 +89,44 @@ func (m EnforcePolicyMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Reques
 	if err := httpguard.CheckPath(asReceived.URL.EscapedPath()); err != nil {
 		return caddyhttp.Error(http.StatusBadRequest, err)
 	}
+	for _, name := range pep.ZETAHeaderNames() {
+		r.Header.Del(name)
+	}
 	pepCtx := m.app.pep.NewContext(w, asReceived)
 	m.logger.Info("EnforcePolicyMiddleware", "enforcer", m.Enforcer)
 	var nextErr error
-	m.Enforcer.Apply(pepCtx, func(_ pep.Context) {
+	m.Enforcer.Apply(pepCtx, func(ctx pep.Context) {
+		if !m.setZETAHeaders(ctx, r.Header) {
+			return
+		}
 		nextErr = next.ServeHTTP(w, r)
 	})
 	return nextErr
+}
+
+// setZETAHeaders puts the configured headers of A_25669-01 into h; a request whose token lacks the claims
+// they are made of is denied, since A_26589-01 makes the user data a condition of forwarding.
+func (m EnforcePolicyMiddleware) setZETAHeaders(ctx pep.Context, h http.Header) bool {
+	for _, header := range []struct {
+		on    bool
+		name  string
+		value func(pep.Context) (string, error)
+	}{
+		{m.ZETAUserInfo, pep.HeaderZETAUserInfo, pep.ZETAUserInfo},
+		{m.ZETAClientData, pep.HeaderZETAClientData, pep.ZETAClientData},
+	} {
+		if !header.on {
+			continue
+		}
+		v, err := header.value(ctx)
+		if err != nil {
+			m.logger.Warn("request denied: no ZETA header", "header", header.name, "error", err)
+			ctx.Deny(pep.ErrorAccessDeinied("the token lacks the claims the resource needs"))
+			return false
+		}
+		h.Set(header.name, v)
+	}
+	return true
 }
 
 // receivedRequest is r with the URL the client sent, which Caddy keeps beside the request it rewrites; r itself
@@ -109,6 +146,8 @@ func receivedRequest(r *http.Request) *http.Request {
 // Structure:
 //
 //	enforce_policy {
+//	   zeta_user_info
+//	   zeta_client_data
 //	   verify_bearer
 //	   scope <scope>
 //	   any_of {
@@ -119,10 +158,19 @@ func receivedRequest(r *http.Request) *http.Request {
 //		}
 //
 //	}
-func (m EnforcePolicyMiddleware) unmarshalMultipleEnforcer(d *caddyfile.Dispenser, me pep.MultipleEnforcer, nesting int) error {
+func (m *EnforcePolicyMiddleware) unmarshalMultipleEnforcer(d *caddyfile.Dispenser, me pep.MultipleEnforcer, nesting int) error {
 	// handle the block
 	for d.NextBlock(nesting) {
 		switch d.Val() {
+		case "zeta_user_info", "zeta_client_data":
+			if nesting != 0 || d.NextArg() {
+				return d.Errf("%s takes no arguments and belongs to the enforce_policy block itself", d.Val())
+			}
+			if d.Val() == "zeta_user_info" {
+				m.ZETAUserInfo = true
+			} else {
+				m.ZETAClientData = true
+			}
 		case "authorization_bearer":
 			e := &pep.EnforcerAuthorizationBearer{
 				TypeVal: pep.EnforcerTypeAuthorizationBearer,

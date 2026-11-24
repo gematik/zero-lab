@@ -366,8 +366,12 @@ type pepContext struct {
 	accessTokenRaw string
 	accessToken    *AccessToken
 	dpop           *dpop.Proof
-	claimsRaw      []byte
+	// claims is shared by every context WithDeny derives, so the claims an enforcer inside all_of or any_of
+	// sets are the ones the handler after the policy reads.
+	claims *claimsCell
 }
+
+type claimsCell struct{ raw []byte }
 
 func (c *pepContext) Writer() http.ResponseWriter {
 	return c.writer
@@ -388,6 +392,7 @@ func (c *pepContext) WithDeny(deny func(Context, Error)) Context {
 		writer:  c.writer,
 		request: c.request,
 		deny:    deny,
+		claims:  c.claims,
 	}
 }
 
@@ -400,14 +405,14 @@ func (c *pepContext) Slogger() *slog.Logger {
 }
 
 func (c *pepContext) SetClaims(raw []byte) {
-	c.claimsRaw = raw
+	c.claims.raw = raw
 }
 
 func (c *pepContext) UnmarshalClaims(claims any) error {
-	if c.claimsRaw == nil {
+	if c.claims.raw == nil {
 		return errors.New("claims not available, authorize_bearer or dpop not used")
 	}
-	if err := json.Unmarshal(c.claimsRaw, claims); err != nil {
+	if err := json.Unmarshal(c.claims.raw, claims); err != nil {
 		return &reasonError{reason: "token claims: do not decode into the type asked for", err: err}
 	}
 
@@ -450,7 +455,7 @@ func (c *pepContext) verifyAuthorizationBearer() error {
 	}
 	c.accessTokenRaw = bearerToken
 	c.accessToken = token
-	c.claimsRaw = token.Payload
+	c.claims.raw = token.Payload
 	return nil
 }
 
@@ -563,7 +568,7 @@ func (c *pepContext) verifyAccessToken(accessToken string) error {
 	}
 	c.accessTokenRaw = accessToken
 	c.accessToken = jwtToken
-	c.claimsRaw = jwtToken.Payload
+	c.claims.raw = jwtToken.Payload
 
 	return nil
 }
@@ -576,6 +581,7 @@ func (p *PEP) NewContext(w http.ResponseWriter, r *http.Request) Context {
 		writer:  w,
 		request: r,
 		deny:    p.deny,
+		claims:  &claimsCell{},
 	}
 }
 

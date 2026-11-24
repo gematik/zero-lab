@@ -39,6 +39,36 @@ is not watched.
 }
 ```
 
+## ZETA headers for the resource
+
+`enforce_policy` forwards the request with all its headers, the client's `Authorization` and `DPoP`
+included, as gemSpec_ZETA A_25669-01 has the PEP HTTP proxy do (gemSpec_ZETA 2.0.0 CC and the schemas of
+ZETA release 2.0.0-1): the resource may check the token and the proof again. The headers of A_25669-01
+come only from zaddy: `zeta-user-info`, `zeta-client-data` and `zeta-popp-token-content` that the client
+sent are removed from every request, with or without the subdirectives below.
+
+- `zeta_user_info` puts `zeta-user-info` into the forwarded request (A_26589-01): `identifier` from the
+  token's `sub`, `professionOID` from `profession_oid`, `commonName` from `common_name` and, when the token
+  has them, `organizationName` from `organization_name` and `birthdate` (A_26973-02; left out unless it is a
+  `YYYY-MM-DD` date), as Base64-URL encoded JSON.
+- `zeta_client_data` puts `zeta-client-data` in as well (A_26590-02): `client_id`, `product_id`,
+  `product_version` and `platform` when it is one the schema knows. It is off unless the endpoint asks for
+  it (A_26492-02).
+
+A request whose token lacks a claim a configured header needs is refused with 403 `access_denied`. PoPP is
+not supported, so `zeta-popp-token-content` is only removed.
+
+```caddyfile
+handle /api/* {
+	enforce_policy {
+		authorization_dpop
+		zeta_user_info
+		zeta_client_data
+	}
+	reverse_proxy resource:8080
+}
+```
+
 ## Access tokens
 
 `resource` is required: an access token is taken only if its `aud` names it (RFC 9700 Section
