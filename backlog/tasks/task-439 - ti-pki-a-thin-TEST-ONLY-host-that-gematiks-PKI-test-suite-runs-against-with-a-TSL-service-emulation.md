@@ -6,12 +6,12 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:31'
-updated_date: '2026-11-24 10:34'
+updated_date: '2026-11-24 12:03'
 labels:
   - ti-pki
   - tests
 dependencies:
-  - TASK-437
+  - TASK-438
 references:
   - backlog/docs/doc-8
   - docs/design/testing.md
@@ -49,3 +49,9 @@ Order: TASK-437 (core picks the OCSP address from the TSL's ServiceSupplyPoint: 
 
 Open: TrustConfig::validate requires tsl_url to be https (the .sha2 is read from it). The emulation serves HTTPS with a TEST-ONLY CA made at image build and the host trusts that CA through its transport config. No check is relaxed for it.
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+OCSP address: the host relies on the AIA of the suite's certificates, which gematik adds to the suite (TASK-438). TASK-437 (address from the TSL's ServiceSupplyPoint, TUC_PKI_005) stays a separate spec finding and no longer blocks this task.
+<!-- SECTION:NOTES:END -->

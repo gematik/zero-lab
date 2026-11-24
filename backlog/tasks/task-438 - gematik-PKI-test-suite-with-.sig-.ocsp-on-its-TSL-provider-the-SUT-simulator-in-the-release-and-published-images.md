@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:18'
+updated_date: '2026-11-24 12:03'
 labels:
   - ti-pki
   - tests
@@ -28,4 +29,11 @@ Found in the PKI test suite spike (TASK-436, doc-8). app-PkiTestsuite 8.1.0 serv
 <!-- AC:BEGIN -->
 - [ ] #1 gematik's answer on .sig/.ocsp in the TSL provider is recorded
 - [ ] #2 gematik's answer on the SUT simulator in the release and on published images is recorded
+- [ ] #3 gematik's PKI test suite issues its test end-entity certificates with an AIA OCSP URI (the responder's /ocsp/{seqNr}), recorded with the suite version that carries it
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-24: the maintainer reports that gematik makes the AIA change in the suite: its test certificates get an AIA OCSP URI. ti-pki takes the OCSP address from the AIA (rust/ti-pki/src/ocsp.rs:1075), so with it the suite's OCSP cases reach the core without TASK-437.
+<!-- SECTION:NOTES:END -->
