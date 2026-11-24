@@ -6,11 +6,12 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:31'
-updated_date: '2026-11-24 12:55'
+updated_date: '2026-11-24 13:06'
 labels:
   - ti-pki
   - tests
 dependencies:
+  - TASK-437
   - TASK-438
 references:
   - backlog/docs/doc-8
@@ -56,4 +57,6 @@ Open: TrustConfig::validate requires tsl_url to be https (the .sha2 is read from
 OCSP address: the host relies on the AIA of the suite's certificates, which gematik adds to the suite (TASK-438). TASK-437 (address from the TSL's ServiceSupplyPoint, TUC_PKI_005) stays a separate spec finding and no longer blocks this task.
 
 Suite 8.1.1: target test object type IntermediaerServerInternet; its ecc-internet certificates carry AIA http://127.0.0.1:8083/ocsp/ (TASK-438 notes). The host runs in the ocsp-responder's network namespace (compose network_mode) until gematik makes the address configurable; the responder's path still needs the sequence number.
+
+gemLibPki check (TASK-437 notes): gematik's SUT simulators, the internet variant included, take the OCSP address from the TSL SSP, not the AIA. TASK-437 blocks this task again.
 <!-- SECTION:NOTES:END -->
