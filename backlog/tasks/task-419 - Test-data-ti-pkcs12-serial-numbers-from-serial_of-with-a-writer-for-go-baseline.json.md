@@ -3,9 +3,10 @@ id: TASK-419
 title: >-
   Test data: ti-pkcs12 serial numbers from serial_of, with a writer for
   go-baseline.json
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-24T05:41:00Z'
+updated_date: '2026-11-24T19:40:00Z'
 labels:
   - testdata
 dependencies: []
@@ -20,8 +21,14 @@ rust/ti-pkcs12/tests/fixtures/generate_test_data.sh keeps the three historic cer
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 go-baseline.json is written by a documented command, never by hand
-- [ ] #2 Every serial number in the generator comes from serial_of
-- [ ] #3 A plain run changes no file; FORCE=1 reproduces every byte except the named randomised outputs
-- [ ] #4 ti-pkcs12 tests pass with all and default features
+- [x] #1 go-baseline.json is written by a documented command, never by hand
+- [x] #2 Every serial number in the generator comes from serial_of
+- [x] #3 A plain run changes no file; FORCE=1 reproduces every byte except the named randomised outputs
+- [x] #4 ti-pkcs12 tests pass with all and default features
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-24, on chore/pkcs12-testdata. go-baseline.json is written by rust/ti-pkcs12/tests/fixtures/baseline (a Go module of its own beside the fixtures, go/pkcs12 by replace and the standard library, as spec/pkcs12/interop/go), which generate_test_data.sh runs on every run (just test-pkcs12 in rust/). Against the committed file the writer first gave the same certificates, keys and pairs, with two differences kept: the BER vendor files are read natively by legacy.Decode, so their entries carry the file's own friendlyName, localKeyId and key encoding instead of an OpenSSL re-export's (tests/decode.rs drops its exception for them and compares everything); and an error is the conformance code (malformed), not go/pkcs12's wording, so rewording Go's errors or new random data does not change the file. Serial numbers from serial_of (ca, server, ec), one FORCE=1 rebuild with OpenSSL 4.1.0. Verified: a plain run changes no file; a second FORCE=1 changes only the nine .p12 files and random.p12; ti-pkcs12 tests pass with all, default and no default features; just check-changed passes. shellcheck is not installed here, the script was not linted.
+<!-- SECTION:NOTES:END -->
