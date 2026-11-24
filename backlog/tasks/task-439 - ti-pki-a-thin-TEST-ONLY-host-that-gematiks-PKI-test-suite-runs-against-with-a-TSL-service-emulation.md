@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:31'
-updated_date: '2026-11-24 12:03'
+updated_date: '2026-11-24 12:55'
 labels:
   - ti-pki
   - tests
@@ -39,7 +39,7 @@ From the spike TASK-436 (doc-8): gematik's PKI test suite (app-PkiTestsuite 8.1.
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Order: TASK-437 (core picks the OCSP address from the TSL's ServiceSupplyPoint: the suite's certificates carry no AIA, so otherwise the host would hold TUC_PKI_006 logic) -> ti-tls ClientCertVerifier (own task) -> this task.
+Order: TASK-437 (core picks the OCSP address from the TSL's ServiceSupplyPoint: the suite's ecc certificates carry an AIA to ehca.gematik.de, not to its responder, so otherwise the host would hold TUC_PKI_006 logic) -> ti-tls ClientCertVerifier (own task) -> this task.
 
 1. ti-tls: a rustls ClientCertVerifier over the core, the counterpart of TiVerifier (ti-tls/src/verifier.rs): Validator::validate with the HCI_AUT profile (profile.rs), OcspChecker; TLS 1.2 CertificateVerify through verify_tls12_signature with TI_SCHEMES (brainpool included). Reusable, so the host keeps no trust code.
 2. Host: an unpublished workspace crate, TEST-ONLY, blocking std, workspace deps only (ti-pki, ti-tls, ti-client's Http transport, rustls). It does I/O only: env config, a thread that ticks the Reloader (ReloadPolicy interval = the suite's tslDownloadIntervalSeconds), a Transport wrapper that appends ?activeTslSeqNr=<the loaded TSL's number> (the suite's download protocol), a std TcpListener with rustls ServerConnection, one thread per connection. Server key and certificate are made at image build (P-256, TEST-ONLY; the suite only checks expiry), never committed.
@@ -54,4 +54,6 @@ Open: TrustConfig::validate requires tsl_url to be https (the .sha2 is read from
 
 <!-- SECTION:NOTES:BEGIN -->
 OCSP address: the host relies on the AIA of the suite's certificates, which gematik adds to the suite (TASK-438). TASK-437 (address from the TSL's ServiceSupplyPoint, TUC_PKI_005) stays a separate spec finding and no longer blocks this task.
+
+Suite 8.1.1: target test object type IntermediaerServerInternet; its ecc-internet certificates carry AIA http://127.0.0.1:8083/ocsp/ (TASK-438 notes). The host runs in the ocsp-responder's network namespace (compose network_mode) until gematik makes the address configurable; the responder's path still needs the sequence number.
 <!-- SECTION:NOTES:END -->
