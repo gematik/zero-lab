@@ -4,7 +4,7 @@ title: 'Test data: generated fixtures are stable, and adding one changes only th
 status: Done
 assignee: []
 created_date: '2026-11-23T20:21:00Z'
-updated_date: '2026-11-23T20:49:00Z'
+updated_date: '2026-11-24T05:49:00Z'
 labels:
   - testing
   - rust
@@ -49,5 +49,5 @@ rust/ti-pki/tests/pki/generate.sh rebuilds the whole test PKI with fresh keys on
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Merged in this merge of feat/ti-pki-oid-3.27. The test PKI of rust/ti-pki is stable: TEST-ONLY keys committed, serials derived from the name, ECDSA deterministic (RFC 6979), a run writes only what is missing and FORCE=1 rebuilds every byte except the RSA-PSS fixture. The rule is in docs/design/testing.md; TASK-411 to 417 bring the other generators to it.
+All generators follow docs/design/testing.md 'Generated fixtures are stable' via spec/fixtures.sh (TASK-411 to 417, merged 70f13022). Follow-ups: TASK-419, TASK-420.
 <!-- SECTION:FINAL_SUMMARY:END -->

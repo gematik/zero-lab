@@ -3,9 +3,10 @@ id: TASK-412
 title: >-
   Test data: rust/ti-pkcs12/tests/fixtures/generate_test_data.sh follows the
   stable fixture rule
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-23T20:29:00Z'
+updated_date: '2026-11-24T05:49:00Z'
 labels:
   - testing
 dependencies: []
@@ -21,5 +22,11 @@ rust/ti-pkcs12/tests/fixtures/generate_test_data.sh rebuilds all of its outputs 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A second run of the generator changes no file, a FORCE=1 rebuild reproduces the same bytes except the outputs the generator names as randomised, and the tests that read the fixtures pass on the switch commit
+- [x] #1 A second run of the generator changes no file, a FORCE=1 rebuild reproduces the same bytes except the outputs the generator names as randomised, and the tests that read the fixtures pass on the switch commit
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Generator follows the stable fixture rule; merged in 70f13022.
+<!-- SECTION:FINAL_SUMMARY:END -->
