@@ -54,16 +54,14 @@ The crate builds for `wasm32-unknown-unknown`.
 
 ## Tests
 
-The fixtures are those of `go/pkcs12`, copied unchanged and pinned by SHA-256:
-- OpenSSL-generated files for AES-128/256, 3DES, no MAC, the empty password, a chain
-  and an EC key;
+The fixtures are pinned by SHA-256:
+- OpenSSL-generated files for AES-128/256, 3DES, no MAC, the empty password, a chain, an EC
+  key and high iteration counts (`tests/fixtures/generate_test_data.sh`, `just test-pkcs12`);
 - two BER vendor files (`legacy/`).
 
-Every one decodes to the certificates, keys and pairs the Go decoder reports
-(`tests/fixtures/go-baseline.json`). One exception for the BER files: that baseline was
-written through an OpenSSL re-export, which rewrites attributes and re-encodes keys. There, the
-attributes and private scalars are pinned to what `openssl pkcs12 -info` shows in the
-originals.
+Every one decodes to the certificates, keys, attributes and pairs the Go decoder reports
+(`tests/fixtures/go-baseline.json`, written by the generator from `go/pkcs12`). The attributes
+and private scalars of the BER files are also pinned to what `openssl pkcs12 -info` shows.
 
 ## License
 

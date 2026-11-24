@@ -531,6 +531,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `wasm-vendor [<dir>]` | Copy the package into `<dir>/vendor/ti-wasm` (default `../../gemiverse`) |
 | `core-deps` | Prove ti-pki's core pulls in no HTTP client, executor or file watcher |
 | `test-pki` | Regenerate the OpenSSL test PKI in `ti-pki/tests/pki` |
+| `test-pkcs12` | Design time (OpenSSL, Go): write what is missing of `ti-pkcs12/tests/fixtures` and its `go-baseline.json` |
 | `nonprod-absent` | Prove ti-pki without `dangerous-nonprod` contains no non-prod trust material |
 | `audit` | Tier 2: `advisories`, `vet`, `msrv`, `semver` |
 | `vet-suggest` | Dependencies still awaiting a cargo vet audit |

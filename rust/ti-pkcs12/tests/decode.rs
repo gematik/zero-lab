@@ -21,12 +21,11 @@
  * find details in the "Readme" file.
  */
 
-//! Decoding pinned against the Go implementation: every fixture of `go/pkcs12` (copied
-//! unchanged, pinned by SHA-256 below) decodes to the certificates, keys, attributes and
-//! pairs Go's decoder reports in `fixtures/go-baseline.json`. Go reads the two BER
-//! vendor files through an `openssl -legacy` re-export, which assigns new `localKeyId`s
-//! and drops `friendlyName`; here they decode natively, so for those two the attributes
-//! are pinned to what `openssl pkcs12 -info` shows in the original file instead.
+//! Decoding pinned against the Go implementation: every fixture (pinned by SHA-256 below)
+//! decodes to the certificates, keys, attributes and pairs `go/pkcs12` reports in
+//! `fixtures/go-baseline.json`, which `fixtures/generate_test_data.sh` writes. For the two BER
+//! vendor files the attributes are also pinned to what `openssl pkcs12 -info` shows, a source
+//! independent of both decoders.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -35,48 +34,48 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use ti_pkcs12::{Error, decode, is_pkcs12};
 
-/// The fixtures as copied from `go/pkcs12/testdata` and `go/pkcs12/legacy/testdata`, and the
-/// generator that writes them again from their keys.
+/// The fixtures `generate_test_data.sh` writes from the keys of `go/pkcs12/testdata`, the vendor
+/// files of `go/pkcs12/legacy/testdata`, and the generator itself.
 const FIXTURES: &[(&str, &str)] = &[
     (
         "aes128.p12",
-        "7e68bc88486e15b8aad1b4cedeab2faf1a3821dd83e5b47043bd52b402263fe6",
+        "807e014ae52423cb5eb1be27717935b6bf815f5a295f87671932e4562589c629",
     ),
     (
         "ca-cert.pem",
-        "491ba985ed2fcfb47a43fbe18578ab7b747f0435b8a1c05d1edcdff419007f56",
+        "db0d78ab94c788852905f7b425208a41ceb92058e921fbf4721a2050570393ff",
     ),
     (
         "cert-only.p12",
-        "3ac0b55804f0b9d5bb36d53e8128dd4ccda6c95a22ed8ecba87afb1a593df1c6",
+        "c70c0a1c4dfcc71ea04aa4da1bc2441615c3b1930a86068ece9db6f25482a012",
     ),
     (
         "chain.pem",
-        "724d2e5f96d9565b639775150892bd60853927c36fd8cda1428c6d207abb2121",
+        "344c8c41a2e66f57b5e0de3c81a53c899aa47bfa00514b085f36033df4b127ee",
     ),
     (
         "ec-cert.pem",
-        "fc9643413db6351b12e571e89bcbff2cba3a66285382da768db48b3b28dfd5d7",
+        "a117dbd871475d97b81fe67bd271c56d49e0510407dd257b99f3b44007822818",
     ),
     (
         "ec.p12",
-        "63a3169c8a557fbdd58427596813b1934c64a8f940c023618d8ea7d6d7e31656",
+        "309d4c49a390eaa49a580fc5ab87e5ba377846f596e8e575e01843ce0fd7bd0e",
     ),
     (
         "empty-pass.p12",
-        "0f6da7eed6df1115fb09dcc55c7242c8cf9e2935f1f20a63b0a484027276018f",
+        "d5f75a4ef9a3196be9b70d04b5b6151a740cbf67f7049d143f87d836aa28146d",
     ),
     (
         "generate_test_data.sh",
-        "a938558f8f0f878eba16a898a18afc4f0c34ba0885ceb6ceba5e2d5e74877577",
+        "1316f76de3e94818f1fadad1ea3bb409fe276ccd951d9d37e26c444577e4aeb4",
     ),
     (
         "high-iter.p12",
-        "816fac1f39d8bf684156525f09ef852501554fcb1ebf8d2a2bfc8df279dfb552",
+        "56874c3e902e3ad08011038777f64db9ecead4c50239113503078ef804ca692c",
     ),
     (
         "legacy.p12",
-        "41a32daf3536df1007b6bd12d17c0cd6ab89aa603b27c189f39338d61f082bea",
+        "46b3c513a446397b6a28b8794ae66a79a285a9ccb1f03ee613804e1aec8dd2c5",
     ),
     (
         "legacy/cgm-password.txt",
@@ -96,35 +95,35 @@ const FIXTURES: &[(&str, &str)] = &[
     ),
     (
         "modern.p12",
-        "8c0d0ea06719b689ea82980c79340b894e7d7bd6ddc39eeea8377848d239a602",
+        "9e1f9224defbdcaaa273f87617e9b89aa1383039112ef5967f0201a617e8a5ea",
     ),
     (
         "multi-cert.p12",
-        "44ce70b5ce1ac46c2cf462cb2dbc35d283b1b6854e159e9931ae87b2f3fe1a3f",
+        "e3630a95e57c9e1939b32c4f4f227ea635ed02938d8be1124e21e1fc8a59b5c2",
     ),
     (
         "no-mac.p12",
-        "de267f0ee4a916875b0e31ba5dd447318d53480ac0dd021a3ead1b814cf5cdb3",
+        "2558fbf4726263fa75280f038f2196eb3268729663906f6f972e40c762da907e",
     ),
     (
         "not-pkcs12.p12",
-        "f0937bf08878010f583b16a984b95e861ecd88e2bd0198fb5e58318c14c6a3b2",
+        "cfd862bab05190c07cffdda4c093654c6532326b62c0b5234fad8647f0e052f6",
     ),
     (
         "random.p12",
-        "8e9743b8c4b2e60a48e85ff1877450437f90f7aaa296d25f6d87d16c1703aa46",
+        "19aee46bebe8d6dd0c30e1727f8d6d739a6e1fa9f0f44459c419be15420adeb5",
     ),
     (
         "README.md",
-        "8074f3d178bddd0417462eab9bcd1329f10db544a2dee9a0bca0ef823b5bbcd0",
+        "3e8b4eaa966b96422f28566a623ee3364f051e2b10ee4cf27b12aa33bb32e7ce",
     ),
     (
         "server-cert.pem",
-        "f0937bf08878010f583b16a984b95e861ecd88e2bd0198fb5e58318c14c6a3b2",
+        "cfd862bab05190c07cffdda4c093654c6532326b62c0b5234fad8647f0e052f6",
     ),
     (
         "truncated.p12",
-        "17f3172e90fc983d756d620d60fc5766c716cc8356c8f14157863f3569ea1611",
+        "ea87f2758f5a106e3c84e60e54074894705e392dfb60bb7f96dee50b7cab9fb0",
     ),
 ];
 
@@ -202,15 +201,8 @@ fn decodes_like_go() {
         let p12 = result.unwrap_or_else(|e| panic!("{name}: {e}"));
         assert!(is_pkcs12(&bytes), "{name}");
 
-        // Go's attributes for the BER files are OpenSSL's re-export, not the file's.
-        let reexported = name.starts_with("legacy/");
         let comparable = |mut bag: Value| {
-            let bag_fields = bag.as_object_mut().unwrap();
-            bag_fields.remove("subject");
-            if reexported {
-                bag_fields.remove("friendly_name");
-                bag_fields.remove("local_key_id");
-            }
+            bag.as_object_mut().unwrap().remove("subject");
             bag
         };
         let certificates: Vec<Value> = p12
@@ -251,12 +243,7 @@ fn decodes_like_go() {
             .cloned()
             .map(comparable)
             .collect();
-        // The re-export also re-encodes the PKCS#8 key (it drops the redundant curve
-        // inside ECPrivateKey); the same keys are checked by their scalars below.
-        if !reexported {
-            assert_eq!(keys, expected, "{name}: keys");
-        }
-        assert_eq!(keys.len(), expected.len(), "{name}: key count");
+        assert_eq!(keys, expected, "{name}: keys");
         assert_eq!(
             p12.pairs().len(),
             usize::try_from(entry["pairs"].as_u64().unwrap()).unwrap(),
@@ -291,6 +278,19 @@ fn p12_010_wrong_passwords_are_told_apart_from_broken_files() {
         let err = decode(&read(name), "test1234").unwrap_err();
         assert!(!err.is_wrong_password(), "{name}: {err}");
     }
+}
+
+/// P12-036: a file whose producer chose high iteration counts opens while its derivations (the
+/// MAC, and PBKDF2 for the certificates and for the key) stay within the work budget of one
+/// decode. `high-iter.p12` has 600,000 for each, 1,800,000 of 10,000,000.
+#[test]
+fn p12_036_high_iteration_counts_within_the_budget_are_decoded() {
+    const HIGH_ITERATIONS: u32 = 600_000;
+    const { assert!(HIGH_ITERATIONS * 3 <= ti_pkcs12::MAX_ITERATIONS) };
+    let bytes = std::fs::read(fixtures().join("high-iter.p12")).unwrap();
+    let p12 = decode(&bytes, "test1234").unwrap();
+    assert_eq!(p12.pairs().len(), 1);
+    assert_eq!(p12.mac.unwrap().iterations, HIGH_ITERATIONS);
 }
 
 /// `is_pkcs12` tells a PFX from other input by its first bytes, under a length of
