@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:18'
+updated_date: '2026-11-24 10:43'
 labels:
   - ti-pki
   - spec
@@ -30,3 +31,9 @@ Found in the PKI test suite spike (TASK-436, doc-8). ti-pki asks OCSP at the con
 - [ ] #1 The requirement text on the source of the OCSP address is cited in spec/pki-validation
 - [ ] #2 ti-pki and go/tipki follow it, or the deviation is recorded with the reason
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Spec checked (gemSpec_PKI 2.28.0): TUC_PKI_006 (GS-A_4657-03, step 'Ermittlung der OCSP-Adresse') delegates to TUC_PKI_005 (GS-A_4656, https://gemspec.gematik.de/docs/gemSpec/gemSpec_PKI/gemSpec_PKI_V2.28.0/#GS-A_4656): find the issuing CA in the TSL (TUC_PKI_003) and take the URI of its ServiceSupplyPoint; no ServiceSupplyPoint is the error SERVICESUPPLYPOINT_MISSING. The certificate's AIA is not a source in the TI profile. The address may also be kept in the system's trust store (note of TUC_PKI_005). Nothing in spec/pki-validation or spec/pki-profiles records TUC_PKI_005 today, so ti-pki's AIA lookup is an unrecorded deviation. The data is already there: TrustStore::listed_responders holds (CA certificate, ServiceSupplyPoint URL) from the TSL (truststore.rs:50), and RevocationChecker::check receives the store (ocsp.rs:1069). The web profile keeps the AIA (TLSV-044). The suite's test certificates have no AIA at all.
+<!-- SECTION:NOTES:END -->
