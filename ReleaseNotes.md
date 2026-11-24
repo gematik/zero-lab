@@ -1,5 +1,36 @@
 # Release Notes
 
+# Release go/zaddy v2.11.9-zero.1
+
+zaddy is now versioned as the Caddy it builds with plus our revision (TASK-422): this is Caddy 2.11.9 with our
+first revision on it, the image is `zero-caddy:2.11.9-zero.1`, and `zero-caddy` prints `2.11.9-zero.1`. Verified on
+the release branch: `just check` across all Go modules passed; `govulncheck` reports no vulnerabilities.
+
+### breaking
+- The module path is `github.com/gematik/zero-lab/go/zaddy/v2` (TASK-422).
+- The image tag is the version alone; `-caddy<version>` is no longer appended.
+- A policy with a SessionCookie enforcer is refused at provisioning without `revocations_database_url` (TASK-313).
+- `enforce_policy` refuses a non-canonical path and checks the DPoP `htu` against the path as received (TASK-359,
+  TASK-360).
+
+### added
+- `revocations_database_url`: zaddy follows the revocations zero-pep-proxy shares over the kv store and bus, before it
+  serves, and does not start when it cannot read them (TASK-313).
+- The `protected_resource_metadata` handler serves RFC 9728 metadata from the `pep` block, with `scopes_supported` and
+  `metadata_member`; every 401 names it in `resource_metadata` (TASK-379).
+- Without `jwks_path` the authorization server's keys come from its RFC 8414 metadata through the egress client, read at
+  start and refreshed every 15 minutes in the background, never on the request path (TASK-379).
+- The egress client takes the forward proxy, with credentials from `egress_proxy_credentials_path` (TASK-407).
+
+### changed
+- Every access token names the resource and says it is one by its `typ` (TASK-366).
+- OpenTelemetry 1.47.0, fixing GO-2026-6974 and GO-2026-6975 (baggage parsing reachable from every request; TASK-418).
+- Every dependency at its latest version that builds with Caddy 2.11.9 (TASK-421). quic-go v0.63.0 and
+  go.step.sm/crypto v0.91.0 stay: Caddy 2.11.9 does not build with their latest releases. The module needs Go 1.27.3
+  (slackhq/nebula v1.12.0).
+- pep, kv and egress are pinned at main a574be18 (pseudo-versions); their changes since go/pep v0.29.0 and
+  go/kv v0.6.0 are not tagged yet, and egress has no tag.
+
 # Release 2026-11-22: go/kv v0.6.0, go/dpop v1.0.0-beta.4, go/pep v0.29.0, go/pep/proxy v0.6.0
 
 The request checks of servers.md rule 28 and the RFC 9700 findings of TASK-259 for the PEP, and key files read

@@ -197,7 +197,7 @@ via `--build-arg VERSION`:
 ```console
 just docker-build epa      # spilikin/zero-epa:<git-describe>            (+ :latest)
 just docker-build pdp
-just docker-build caddy    # spilikin/zero-caddy:<ver>-caddy2.11.7
+just docker-build caddy    # spilikin/zero-caddy:2.11.9-zero.1 (Caddy version, our revision)
 just docker-push epa       # build + push
 ```
 
