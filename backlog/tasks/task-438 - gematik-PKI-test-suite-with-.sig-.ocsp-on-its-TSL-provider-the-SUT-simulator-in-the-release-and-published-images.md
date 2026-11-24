@@ -29,7 +29,7 @@ Found in the PKI test suite spike (TASK-436, doc-8). app-PkiTestsuite 8.1.0 serv
 <!-- AC:BEGIN -->
 - [ ] #1 gematik's answer on .sig/.ocsp in the TSL provider is recorded
 - [ ] #2 gematik's answer on the SUT simulator in the release and on published images is recorded
-- [x] #3 gematik's PKI test suite issues its test end-entity certificates with an AIA OCSP URI (the responder's /ocsp/{seqNr}), recorded with the suite version that carries it
+- [ ] #3 gematik's PKI test suite issues its test end-entity certificates with an AIA OCSP URI (the responder's /ocsp/{seqNr}), recorded with the suite version that carries it
 <!-- AC:END -->
 
 ## Implementation Notes
