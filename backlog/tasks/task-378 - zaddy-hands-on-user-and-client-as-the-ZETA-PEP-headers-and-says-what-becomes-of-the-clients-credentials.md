@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: 2026-11-18 10:42
-updated_date: '2026-11-24T19:06:00Z'
+updated_date: '2026-11-24T19:11:00Z'
 labels:
   - zaddy
   - go
@@ -47,4 +47,6 @@ Spec: gemSpec_ZETA 1.3.2 (2026-06-26) A_25669-01, A_26589-01, A_26590-02, A_2649
 
 <!-- SECTION:NOTES:BEGIN -->
 Implemented on feat/zaddy-zeta-headers. Found on the way: pep's all_of/any_of handed the next handler a context without the claims a token enforcer set (WithDeny made a fresh context), so nothing after the policy could read them; fixed with a shared claims cell, and any_of restores the claims after a denied branch. identifier comes from sub (access token schema and zeta-pdp-go), Tabelle 15 names the claim identifier. Base64-URL with padding as ngx_pep; metsubushi's decoder reads it (checked in node). AC 4 needs the live run behind zero-caddy with tokens of zeta-pdp-go.
+
+Source switched to gemSpec_ZETA 2.0.0 CC (09.07.2026) and the schemas of gematik/zeta release/2.0.0-1 at the maintainer's word: A_25669-01, A_26589-01, A_26590-02, A_26492-02 read as in 1.3.2; zeta-user-info gains the optional birthdate (A_26973-02), client-data's platform gains other. In 2.0.0-1 profession_oid is required only for tokens of authenticated users: a token without a user is refused 403 where zeta_user_info is on.
 <!-- SECTION:NOTES:END -->
