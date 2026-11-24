@@ -1,10 +1,10 @@
 ---
 id: TASK-422
 title: 'zaddy: version as the Caddy version plus our revision'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-24T06:04:00Z'
-updated_date: '2026-11-24T06:04:00Z'
+updated_date: '2026-11-24T18:32:00Z'
 labels:
   - go
   - zaddy
@@ -20,8 +20,14 @@ zaddy and its zero-caddy image carry the Caddy version first and our revision af
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Module path github.com/gematik/zero-lab/go/zaddy/v2
-- [ ] #2 just tag zaddy refuses a version whose Caddy part differs from zaddy/go.mod or lacks -zero.N
-- [ ] #3 Image tag and binary version are the module version alone
-- [ ] #4 git-and-releases.md and the Go development guide state the scheme
+- [x] #1 Module path github.com/gematik/zero-lab/go/zaddy/v2
+- [x] #2 just tag zaddy refuses a version whose Caddy part differs from zaddy/go.mod or lacks -zero.N
+- [x] #3 Image tag and binary version are the module version alone
+- [x] #4 git-and-releases.md and the Go development guide state the scheme
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zaddy versioned as <Caddy version>-zero.N: module path go/zaddy/v2, just tag checks the Caddy part against go.mod, image tag and binary show the version alone, Dockerfile takes CADDY_VERSION from go.mod. First tag go/zaddy/v2.11.9-zero.1.
+<!-- SECTION:FINAL_SUMMARY:END -->
