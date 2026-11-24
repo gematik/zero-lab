@@ -22,6 +22,7 @@
 package pep
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -184,6 +185,12 @@ func (e EnforcerAnyOf) Apply(ctx Context, next HandlerFunc) {
 	}
 
 	subCtx := ctx.WithDeny(singleDeny)
+	// A denied branch may have set claims before it denied, say a token verified whose proof then failed;
+	// they must not be the claims of the branch that allows.
+	var before jsontext.Value
+	if ctx.UnmarshalClaims(&before) != nil {
+		before = nil
+	}
 
 	for _, enforcer := range e.EnforcerHolders {
 		ctx.Slogger().Debug("Applying enforcer", "type", enforcer.Type())
@@ -193,6 +200,7 @@ func (e EnforcerAnyOf) Apply(ctx Context, next HandlerFunc) {
 			return
 		}
 		errorFromGuard = nil
+		ctx.SetClaims(before)
 	}
 
 	ctx.Deny(ErrorAccessDeinied("None of the enforcers in any_of allowed the request"))
