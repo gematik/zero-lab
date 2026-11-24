@@ -16,7 +16,7 @@ Run `./generate_test_data.sh` to create test files in `testdata/` directory.
 | `no-mac.p12` | No integrity protection | `test1234` | AES-256-CBC | None |
 | `legacy.p12` | Legacy 3DES | `test1234` | 3DES-CBC | SHA-1 |
 | `cert-only.p12` | Certificate only, no key | `test1234` | AES-256-CBC | SHA-256 |
-| `high-iter.p12` | Standard encryption | `test1234` | AES-256-CBC | SHA-256 |
+| `high-iter.p12` | 600000 iterations (MAC and PBKDF2) | `test1234` | AES-256-CBC | SHA-256 |
 | `empty-pass.p12` | Empty password | *(empty)* | AES-256-CBC | SHA-256 |
 | `aes128.p12` | AES-128-CBC | `test1234` | AES-128-CBC | SHA-256 |
 | `truncated.p12` | Invalid: truncated file | N/A | N/A | N/A |

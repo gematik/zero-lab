@@ -919,6 +919,12 @@ test-pki:
     ti-pki/tests/pki/generate.sh
     ti-pki/tests/pki/tsl-signer/generate.sh
 
+# Write what is missing of ti-pkcs12's OpenSSL fixtures from their committed keys, and
+# go-baseline.json from go/pkcs12 (needs Go); FORCE=1 rewrites everything, the .p12 files with
+# new salts and IVs, whose digests in tests/decode.rs follow
+test-pkcs12:
+    ti-pkcs12/tests/fixtures/generate_test_data.sh
+
 # Every feature alone and every pair of features must compile (catches feature-gated
 # breakage); all features together are built by clippy --all-features
 features:
