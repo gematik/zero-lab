@@ -279,7 +279,21 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
 
 # Tag a module: `just tag brainpool 0.3.1`. Modules are versioned solely by their own tags.
 tag name version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # zaddy is versioned as the Caddy it links plus our revision: 2.11.9-zero.1, -zero.2, …
+    if [ "{{name}}" = zaddy ]; then
+        caddy=$(just _caddyver)
+        if ! [[ "{{version}}" =~ ^${caddy//./\.}-zero\.[1-9][0-9]*$ ]]; then
+            echo "zaddy {{version}}: expected $caddy-zero.N, the Caddy version in zaddy/go.mod plus our revision" >&2
+            exit 1
+        fi
+    fi
     git tag -a "go/{{name}}/v{{version}}" -m "{{name}} v{{version}}"
+
+# (internal) The Caddy version zaddy/go.mod requires, without the v
+_caddyver:
+    @awk '/caddyserver\/caddy\/v2 v[0-9]/{sub(/^v/,"",$2); print $2; exit}' zaddy/go.mod
 
 # Push all local tags
 push-tags:
@@ -324,9 +338,8 @@ docker-build name:
     esac
     v=$(just _modver "$mod")
     tag=$v
-    # The caddy tag carries the upstream version from zaddy/go.mod as well.
-    if [ "{{name}}" = caddy ]; then tag=$v-caddy$(awk '/caddyserver\/caddy\/v2 v[0-9]/{sub(/^v/,"",$2); print $2; exit}' zaddy/go.mod); fi
-    docker build --platform linux/amd64 --build-arg VERSION="$v" -t "{{DOCKER_USER}}/$image:$tag" -f "$file" .
+    docker build --platform linux/amd64 --build-arg VERSION="$v" --build-arg CADDY_VERSION="$(just _caddyver)" \
+        -t "{{DOCKER_USER}}/$image:$tag" -f "$file" .
     docker tag "{{DOCKER_USER}}/$image:$tag" "{{DOCKER_USER}}/$image:latest"
     echo "{{DOCKER_USER}}/$image:$tag"
 

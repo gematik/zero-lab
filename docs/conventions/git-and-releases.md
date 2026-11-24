@@ -37,6 +37,12 @@
   sibling references in step is in its development guide.
 - `just versions`, `just changed` and `just tag <unit> <version>` work the same way in
   every workspace.
+- A unit that is an upstream product with our modules built in carries the upstream
+  version first and our revision after it, counted from 1 for each upstream version:
+  `go/zaddy/v2.11.9-zero.1` is Caddy 2.11.9 with our first revision on it. Its module path
+  carries the upstream major (`go/zaddy/v2`), and its image and binary show the same
+  version. `just tag` refuses a version whose upstream part differs from the one the unit
+  builds with.
 
 ## Helpers in images and installations
 

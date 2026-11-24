@@ -34,7 +34,7 @@ import (
 	// plug in Caddy modules here
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
 
-	_ "github.com/gematik/zero-lab/go/zaddy"
+	_ "github.com/gematik/zero-lab/go/zaddy/v2"
 )
 
 // Version is the zero-caddy release version. It defaults to "dev" and is overridden
@@ -55,11 +55,15 @@ func resolveVersion() string {
 	return Version
 }
 
-// fullVersion combines the zero-caddy version with the upstream Caddy version as
-// SemVer build metadata, e.g. "0.16.0+caddy2.11.7".
+// fullVersion is the release version, which already names Caddy ("2.11.9-zero.1"); an
+// untagged build names the Caddy it links as SemVer build metadata ("dev+caddy2.11.9").
 func fullVersion() string {
+	v := resolveVersion()
+	if v != "dev" {
+		return v
+	}
 	caddyVersion, _ := caddy.Version()
-	return fmt.Sprintf("%s+caddy%s", resolveVersion(), strings.TrimPrefix(caddyVersion, "v"))
+	return fmt.Sprintf("%s+caddy%s", v, strings.TrimPrefix(caddyVersion, "v"))
 }
 
 func main() {

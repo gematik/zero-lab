@@ -1,4 +1,4 @@
-module github.com/gematik/zero-lab/go/zaddy
+module github.com/gematik/zero-lab/go/zaddy/v2
 
 go 1.27.3
 
