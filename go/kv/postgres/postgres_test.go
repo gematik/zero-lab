@@ -39,8 +39,26 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/kv/kvtest"
 	"github.com/gematik/zero-lab/go/kv/postgres"
 )
+
+// The tests share the database of TEST_DATABASE_URL, which a migrator has to have prepared: Open applies no
+// schema.
+func TestMain(m *testing.M) {
+	if dsn := os.Getenv("TEST_DATABASE_URL"); dsn != "" {
+		db, err := sql.Open("pgx", dsn)
+		if err == nil {
+			_, err = postgres.Migrate(context.Background(), db)
+			_ = db.Close()
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "TEST_DATABASE_URL:", err)
+			os.Exit(1)
+		}
+	}
+	os.Exit(m.Run())
+}
 
 // testStore opens the Postgres store from TEST_DATABASE_URL (skipping when unset) and namespaces all
 // keys under a unique prefix it cleans up afterwards, so the test is isolated from a shared database.
@@ -614,9 +632,10 @@ func freshDatabase(t *testing.T) string {
 	return u.String()
 }
 
-// Replicas of a first installation start together against an empty database. CREATE TABLE IF NOT EXISTS does
-// not make that safe: of two sessions that create the table at once, one fails on the catalog's unique index.
-func TestPostgres_OpenOfAnEmptyDatabaseByManyAtOnceSucceedsForAll(t *testing.T) {
+// Replicas of a first installation without a migration job start together against an empty database, each
+// applying the schema. CREATE TABLE IF NOT EXISTS does not make that safe: of two sessions that create the
+// table at once, one fails on the catalog's unique index.
+func TestPostgres_OpenWithMigrateOfAnEmptyDatabaseByManyAtOnceSucceedsForAll(t *testing.T) {
 	ctx := context.Background()
 	const replicas = 8
 	for round := range 5 {
@@ -626,7 +645,7 @@ func TestPostgres_OpenOfAnEmptyDatabaseByManyAtOnceSucceedsForAll(t *testing.T) 
 		for range replicas {
 			go func() {
 				<-start
-				s, err := postgres.Open(ctx, dsn)
+				s, err := postgres.Open(ctx, dsn, postgres.WithMigrate())
 				if err == nil {
 					err = s.Close()
 				}
@@ -640,4 +659,32 @@ func TestPostgres_OpenOfAnEmptyDatabaseByManyAtOnceSucceedsForAll(t *testing.T) 
 			}
 		}
 	}
+}
+
+func TestPostgres_Contract(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	kvtest.Store(t, func(t *testing.T) kv.Store {
+		s, err := postgres.Open(context.Background(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+func TestPostgres_MarkerContract(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	kvtest.Marker(t, func(t *testing.T, mark func(string, []byte) string) kv.Store {
+		s, err := postgres.Open(context.Background(), dsn, postgres.WithMark(mark))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
 }

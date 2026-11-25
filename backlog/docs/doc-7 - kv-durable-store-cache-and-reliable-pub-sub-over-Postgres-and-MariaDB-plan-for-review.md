@@ -297,19 +297,23 @@ go/kv v0.7.0 put the statements under an advisory lock (TASK-423); that lock is 
 DDL when `Open` runs none. The plan separates the two roles:
 
 - **Migrations are code of their own.** Each backend keeps numbered, embedded SQL steps and a table
-  `kv_schema(version, applied_at)`. `Migrate(ctx, db, to)` applies the steps up to `to` with one migrator at a
+  `kv_schema(version, name, contract, applied_at)`. `Migrate(ctx, db, opts...)` applies the steps (all, or up to `To(version)`) with one migrator at a
   time: under `pg_advisory_lock` on Postgres, a row of `kv_schema` locked `FOR UPDATE` on MariaDB. On Postgres each step is one transaction.
   MariaDB commits implicitly at every DDL statement, so a step there is one statement that can be repeated
   (`IF NOT EXISTS`, `IF EXISTS`), and the version is recorded after it: a migrator that died in a step repeats it.
-- **`Migrate` is a function, not a program.** Each backend exports `Migrate(ctx, db, to, opts)` over a connection
+- **`Migrate` is a function, not a program.** Each backend exports `Migrate(ctx, db, opts...)` (options `To(version)`, `Contract()`) over a connection
   the caller opened with whatever credentials it has. The program that calls it with admin credentials, its image
   and the Job that runs it before a rollout are the host's ([what a host does](#what-a-host-does)).
 - **Rights are documented, not granted.** Each backend's documentation lists what a server role needs: `SELECT,
   INSERT, UPDATE, DELETE` on the tables, on Postgres also `USAGE` on the sequence of `kv_feed`. Whoever runs the
   database grants them, with the tools roles are managed with there. A role that lacks a right for a table a new
   release added fails at its first statement on it; `Open` cannot tell beforehand.
-- **The server runs no DDL unless told to.** By default `Open` reads `kv_schema` and refuses to start when the
-  version is below what it needs or above what it knows how to read (servers.md rule 17), naming both. With the
+- **The server runs no DDL unless told to.** By default `Open` reads `kv_schema` and refuses to start when a
+  step it needs is missing, or when a contract step it does not know was applied (servers.md rule 17), naming
+  the versions. It does start on expand steps it does not know: the next release's migrator runs before the
+  last replica of this release is gone, and a replica that restarts in between must come up (rule 22). So
+  `kv_schema` records for each step whether it is a contract step. (Corrected with TASK-428: the plan first
+  said it refuses any version above what it knows, which would have failed exactly that restart.) With the
   option `WithMigrate()`, which a host sets from a setting of its own (off unless set), `Open` first applies the
   missing expand steps itself, under the same lock as `Migrate`, and reports through the logger it was given that
   it did; it never runs a contract step. This is for deployments without a migration job (docker compose, a first

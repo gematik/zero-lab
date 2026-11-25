@@ -207,7 +207,7 @@ func openStore() kv.Store {
 		slog.Warn("PEP_DATABASE_URL not set — using in-memory kv store, for a single replica only (sessions are lost on restart and not shared across replicas)")
 		store = kv.NewMemory()
 	} else {
-		if store, err = postgres.Open(context.Background(), dsn); err != nil {
+		if store, err = postgres.Open(context.Background(), dsn, postgres.WithMigrate()); err != nil {
 			log.Fatalf("open postgres kv store: %v", err)
 		}
 		slog.Info("using postgres kv store for sessions")

@@ -162,7 +162,7 @@ mod-check: (_each_check "go mod tidy -diff && go mod verify")
     # Test federations and fakes are test code: no package a module builds imports one, so none
     # is compiled into an image (servers.md rule 17). Deps is what a package compiles, tests left out.
     for dir in $(find . -name go.mod -exec dirname {} \; | sort); do
-        found=$(cd "$dir" && go list -f '{{{{.ImportPath}}: {{{{join .Deps " "}}' ./... | grep -vE '/(oidftest|epatest): ' | grep -E '/(oidftest|epatest)( |$)' | cut -d: -f1)
+        found=$(cd "$dir" && go list -f '{{{{.ImportPath}}: {{{{join .Deps " "}}' ./... | grep -vE '/(oidftest|epatest|kvtest): ' | grep -E '/(oidftest|epatest|kvtest)( |$)' | cut -d: -f1)
         if [ -n "$found" ]; then echo "$dir compiles a test package into: $found"; fail=1; fi
     done
     exit $fail

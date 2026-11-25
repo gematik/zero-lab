@@ -178,7 +178,7 @@ func openStore(dsn, keyPath string) (kv.Store, nonce.Keys, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", storeKeyPathEnv, err)
 	}
-	store, err := postgres.Open(context.Background(), dsn)
+	store, err := postgres.Open(context.Background(), dsn, postgres.WithMigrate())
 	if err != nil {
 		return nil, nil, fmt.Errorf("open postgres kv store: %w", err)
 	}

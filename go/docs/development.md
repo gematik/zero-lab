@@ -129,7 +129,7 @@ and the release PR records the runs; the rules are in
 | ePA connect | `just epa-connect-test` | `EPA_*`, the Rust `ti` (`EPA_TI_BIN`), an SMC-B identity, a route to gematik's TSL hosts | VAU, authorization, record status and consent at both providers, over TLS verified under the `ti` profile | `epa` |
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
 | OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |
-| kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database | the Postgres store: round trip, expiry, `Take` and `SetIfAbsent` single-use under concurrency, a sealed store over it | `kv`, `pdp`, `pep`, `bff` |
+| kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database whose role may create databases and roles (the tests of the schema make their own) | the contract of a backend (`kv/kvtest`); the schema steps: applied once by many migrators, a database of before the steps adopted, `Open` with a role that may not change the schema, the version check, contract steps only when asked; a sealed store over it | `kv`, `kv/postgres`, `pdp`, `pep`, `bff` |
 
 ## Part B — Tag & reproducible builds
 
