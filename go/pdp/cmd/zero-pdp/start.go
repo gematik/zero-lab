@@ -178,7 +178,12 @@ func openStore(dsn, keyPath string) (kv.Store, nonce.Keys, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s: %w", storeKeyPathEnv, err)
 	}
-	store, err := postgres.Open(context.Background(), dsn, postgres.WithMigrate())
+	// The configuration holds one URL with the user and the password in it; the store takes them apart.
+	address, user, password, err := postgres.SplitURL(dsn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open postgres kv store: %w", err)
+	}
+	store, err := postgres.Open(context.Background(), address, user, password, postgres.WithMigrate())
 	if err != nil {
 		return nil, nil, fmt.Errorf("open postgres kv store: %w", err)
 	}

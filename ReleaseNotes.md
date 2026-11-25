@@ -1,5 +1,45 @@
 # Release Notes
 
+# Release 2026-11-25: go/kv/postgres v0.10.0, go/kv v0.9.1
+
+The Postgres backend takes user and password beside its DSN, reads by prefix over an index, cleans in batches
+and uses pgx's pool (TASK-430, the fourth step of the kv plan in backlog doc-7). Verified on the release branch:
+`just check` across all Go modules passed; kv on Postgres (Postgres 18, `TEST_DATABASE_URL`, with `-race`), the
+revocations of zero-pep-proxy over Postgres (`PEP_PG_DSN`) and `just kv-mariadb-test` passed on 2026-11-25.
+
+# Release go/kv/postgres v0.10.0
+
+### breaking
+- `Open(ctx, dsn, user, password, opts...)` and `OpenBus(ctx, dsn, user, password)`: the DSN is the address alone
+  (`postgres://host:port/database?sslmode=…`), as in go/kv/mariadb. A DSN that carries a user or a password, in
+  the URL or as a parameter (`user`, `password`, `passfile`, `service`, `servicefile`), is refused, and so is
+  one that is not a URL. What the driver would take from the environment (`PGUSER`, `PGPASSWORD`) is not used.
+  A host whose configuration still holds one URL with everything in it calls `SplitURL`.
+- `Migrate` takes connections from `OpenDB(dsn, user, password)`.
+- A new schema step, 2: run `Migrate` before the rollout, or keep `WithMigrate()`. A replica of v0.9.0 keeps
+  working on a database that has the step (an expand step).
+
+### added
+- Schema step 2: an index of the keys in the collation "C". `Keys` and the walk of the marks (`MarkedOther`,
+  `CountMarkedOther`, `Marks`) read a range of it; before, each read the whole table. The step builds the index
+  in its transaction; for a table of many millions of records build it beforehand with `CREATE INDEX
+  CONCURRENTLY idx_kv_key_c ON kv (key COLLATE "C")`, which the step then finds.
+- `SplitURL`, `OpenDB`.
+
+### changed
+- Keys are listed in the order of their bytes, as in memory and in go/kv/mariadb, whatever the database's
+  collation.
+- `Cleanup` deletes expired records in batches of 1000, each a transaction, and one replica at a time: a
+  replica that finds another at it returns with what it removed, which may be nothing.
+- pgx's own pool (`pgxpool`) instead of database/sql; `SetMany` is one batch in one transaction.
+- zero-pdp, zero-pep-proxy and zaddy keep their one connection URL (`PEP_DATABASE_URL`,
+  `revocations_database_url`) and take it apart with `SplitURL`.
+
+# Release go/kv v0.9.1
+
+### added
+- `kv/kvtest`: keys are in the order of their bytes; an empty value is a value.
+
 # Release go/kv/mariadb v0.1.0
 
 The MariaDB backend of kv, a module of its own (TASK-429, the third step of the kv plan in backlog doc-7).

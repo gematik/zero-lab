@@ -60,6 +60,24 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// openKV opens the store of a connection URL that carries its user and password, as TEST_DATABASE_URL does:
+// the store takes the address and the two apart.
+func openKV(ctx context.Context, dsn string, opts ...postgres.Option) (kv.Store, error) {
+	address, user, password, err := postgres.SplitURL(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return postgres.Open(ctx, address, user, password, opts...)
+}
+
+func openSteps(ctx context.Context, dsn string, steps []postgres.Step, opts ...postgres.Option) (kv.Store, error) {
+	address, user, password, err := postgres.SplitURL(dsn)
+	if err != nil {
+		return nil, err
+	}
+	return postgres.OpenSteps(ctx, address, user, password, steps, opts...)
+}
+
 // testStore opens the Postgres store from TEST_DATABASE_URL (skipping when unset) and namespaces all
 // keys under a unique prefix it cleans up afterwards, so the test is isolated from a shared database.
 func testStore(t *testing.T) (kv.Store, string) {
@@ -68,7 +86,7 @@ func testStore(t *testing.T) (kv.Store, string) {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
 	}
-	s, err := postgres.Open(context.Background(), dsn)
+	s, err := openKV(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -469,7 +487,7 @@ func TestPostgres_MarksFindWhatIsOfAnotherKind(t *testing.T) {
 	}
 	ctx := context.Background()
 	mark := func(_ string, value []byte) string { return string(value[:1]) }
-	s, err := postgres.Open(ctx, dsn, postgres.WithMark(mark))
+	s, err := openKV(ctx, dsn, postgres.WithMark(mark))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -537,7 +555,7 @@ func TestPostgres_MarksFindWhatIsOfAnotherKind(t *testing.T) {
 	if marks, err := marker.Marks(ctx, prefix); err != nil || len(marks) != 3 || marks[""] != 1 || marks["a"] != 1 || marks["b"] != 3 {
 		t.Errorf("marks: %v, %v", marks, err)
 	}
-	plain, err := postgres.Open(ctx, dsn)
+	plain, err := openKV(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,12 +579,12 @@ func TestPostgres_ResealMarksWhatHadNoMark(t *testing.T) {
 		t.Fatal(err)
 	}
 	prefix := fmt.Sprintf("test:%d:%s:", time.Now().UnixNano(), t.Name())
-	before, err := postgres.Open(ctx, dsn)
+	before, err := openKV(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer before.Close()
-	marked, err := postgres.Open(ctx, dsn, postgres.WithMark(kv.SealedMarker(nil)))
+	marked, err := openKV(ctx, dsn, postgres.WithMark(kv.SealedMarker(nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -645,7 +663,7 @@ func TestPostgres_OpenWithMigrateOfAnEmptyDatabaseByManyAtOnceSucceedsForAll(t *
 		for range replicas {
 			go func() {
 				<-start
-				s, err := postgres.Open(ctx, dsn, postgres.WithMigrate())
+				s, err := openKV(ctx, dsn, postgres.WithMigrate())
 				if err == nil {
 					err = s.Close()
 				}
@@ -667,7 +685,7 @@ func TestPostgres_Contract(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
 	}
 	kvtest.Store(t, func(t *testing.T) kv.Store {
-		s, err := postgres.Open(context.Background(), dsn)
+		s, err := openKV(context.Background(), dsn)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -681,7 +699,7 @@ func TestPostgres_MarkerContract(t *testing.T) {
 		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
 	}
 	kvtest.Marker(t, func(t *testing.T, mark func(string, []byte) string) kv.Store {
-		s, err := postgres.Open(context.Background(), dsn, postgres.WithMark(mark))
+		s, err := openKV(context.Background(), dsn, postgres.WithMark(mark))
 		if err != nil {
 			t.Fatal(err)
 		}

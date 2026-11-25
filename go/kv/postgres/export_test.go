@@ -50,6 +50,37 @@ func MigrateSteps(ctx context.Context, db *sql.DB, steps []Step, opts ...Migrate
 	return migrate(ctx, db, steps, o)
 }
 
-func OpenSteps(ctx context.Context, dsn string, steps []Step, opts ...Option) (kv.Store, error) {
-	return open(ctx, dsn, steps, opts...)
+func OpenSteps(ctx context.Context, dsn, user, password string, steps []Step, opts ...Option) (kv.Store, error) {
+	return open(ctx, dsn, user, password, steps, opts...)
+}
+
+// The statements that read by prefix, for tests that ask the database for their plan.
+const (
+	KeysSQL        = keysSQL
+	MarkedOtherSQL = markedOtherSQL
+)
+
+// LikePrefix is the LIKE pattern of a literal prefix.
+func LikePrefix(prefix string) string { return likePrefix(prefix) }
+
+// CleanupLock is the advisory lock of a replica that deletes expired records.
+const CleanupLock = int64(cleanupLock)
+
+// SetCleanupBatch sets how many records a statement of Cleanup deletes and returns what to call to set it
+// back.
+func SetCleanupBatch(n int) (restore func()) {
+	old := cleanupBatch
+	cleanupBatch = n
+	return func() { cleanupBatch = old }
+}
+
+// Config is what a DSN and the credentials beside it become: the host, the database, and the user and the
+// password the driver logs in with.
+func Config(dsn, user, password string) (host, database, asUser, withPassword string, err error) {
+	cfg, err := poolConfig(dsn, user, password)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	c := cfg.ConnConfig
+	return c.Host, c.Database, c.User, c.Password, nil
 }

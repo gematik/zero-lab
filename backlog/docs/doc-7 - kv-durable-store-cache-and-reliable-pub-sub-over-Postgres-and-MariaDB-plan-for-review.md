@@ -414,7 +414,7 @@ maintained that day, and a Galera cluster of three writing nodes on 12.3):
   (maintainer, 2026-11-25), as zeta-guard-helm has them for the notification service and Keycloak: a URL
   without credentials in the configuration, `username` and `password` in a secret. A DSN that carries a user
   or a password is refused. The connection is TLS unless the DSN says `tls=false`, and a parameter the backend
-  does not know is refused. kv/postgres still takes them in its URL; bringing it in line is a task to come.
+  does not know is refused. kv/postgres takes them the same way since TASK-430 (v0.10.0).
 
 Not proven here: a primary with replicas (the tests need no read from a replica, and the backend reads where it
 writes), and the cost of `wsrep_sync_wait` per read, which TASK-431 measures with the classes of data. The counter row per
