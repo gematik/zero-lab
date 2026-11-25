@@ -44,6 +44,7 @@ type step struct {
 // not looked at again. What changes is a new step.
 var steps = []step{
 	{schema.Step{Version: 1, Name: "the kv table with expiry and marks"}, schemaSQL},
+	{schema.Step{Version: 2, Name: "an index of the keys by their bytes, for prefixes and order"}, keyIndexSQL},
 }
 
 // schemaTableSQL creates the record of applied steps. It is the one statement outside the steps: it has to
@@ -82,9 +83,8 @@ func To(version int) MigrateOption { return func(o *migrateOptions) { o.to = ver
 func Contract() MigrateOption { return func(o *migrateOptions) { o.contract = true } }
 
 // Migrate applies the schema steps a database lacks and returns the version it is at afterwards. It is what
-// a migration job runs before a rollout, over a connection opened with credentials that may change the
-// schema (the driver is registered as "pgx"); a server's own role then needs no such rights, and [Open]
-// only checks the version. Any number of migrators may run at once: each step is one transaction under an
+// a migration job runs before a rollout, over connections opened as a role that may change the schema
+// ([OpenDB]); a server's own role then needs no such rights, and [Open] only checks the version. Any number of migrators may run at once: each step is one transaction under an
 // advisory lock, applied once. Without [Contract] it stops before the first contract step.
 //
 // A database that an earlier release created without recording steps is adopted: step 1 changes nothing

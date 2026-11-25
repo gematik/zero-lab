@@ -76,14 +76,26 @@ func hasProbe(t *testing.T, db *sql.DB) bool {
 	return n == 1
 }
 
-// ahead are the steps of releases to come, after the one of this release: an expand step, a contract step
-// that undoes it, and an expand step after that.
+// released is how many steps this release has.
+var released = len(postgres.ReleasedSteps())
+
+// ahead are the steps of this release and, after them, those of releases to come: an expand step, a
+// contract step that undoes it, and an expand step after that.
 func ahead() []postgres.Step {
-	return slices.Concat(postgres.ReleasedSteps()[:1], []postgres.Step{
-		postgres.NewStep(2, "a probe column", false, `ALTER TABLE kv ADD COLUMN probe text`),
-		postgres.NewStep(3, "the probe column goes", true, `ALTER TABLE kv DROP COLUMN probe`),
-		postgres.NewStep(4, "a probe table", false, `CREATE TABLE kv_probe (id integer PRIMARY KEY)`),
+	return slices.Concat(postgres.ReleasedSteps(), []postgres.Step{
+		postgres.NewStep(released+1, "a probe column", false, `ALTER TABLE kv ADD COLUMN probe text`),
+		postgres.NewStep(released+2, "the probe column goes", true, `ALTER TABLE kv DROP COLUMN probe`),
+		postgres.NewStep(released+3, "a probe table", false, `CREATE TABLE kv_probe (id integer PRIMARY KEY)`),
 	})
+}
+
+// upTo is the versions 1 to n as appliedVersions prints them.
+func upTo(n int) string {
+	versions := make([]int, n)
+	for i := range versions {
+		versions[i] = i + 1
+	}
+	return fmt.Sprint(versions)
 }
 
 // Several migration jobs, or replicas that apply the schema themselves, start together: each step is
@@ -102,7 +114,7 @@ func TestMigrate_Task428ByManyAtOnceAppliesEachStepOnce(t *testing.T) {
 				if err == nil {
 					var version int
 					version, err = postgres.MigrateSteps(ctx, db, ahead(), postgres.Contract())
-					if err == nil && version != 4 {
+					if err == nil && version != released+3 {
 						err = fmt.Errorf("at version %d", version)
 					}
 					_ = db.Close()
@@ -116,7 +128,7 @@ func TestMigrate_Task428ByManyAtOnceAppliesEachStepOnce(t *testing.T) {
 				t.Errorf("round %d: %v", round, err)
 			}
 		}
-		if got := appliedVersions(t, adminOf(t, dsn)); fmt.Sprint(got) != "[1 2 3 4]" {
+		if got := appliedVersions(t, adminOf(t, dsn)); fmt.Sprint(got) != upTo(released+3) {
 			t.Errorf("round %d: applied %v", round, got)
 		}
 	}
@@ -135,16 +147,16 @@ func TestMigrate_Task428AdoptsADatabaseOfBeforeTheStepsWithItsData(t *testing.T)
 		t.Fatal(err)
 	}
 
-	_, err := postgres.Open(ctx, dsn)
+	_, err := openKV(ctx, dsn)
 	var v *schema.VersionError
-	if !errors.As(err, &v) || v.Found != 0 || v.Needs != 1 {
+	if !errors.As(err, &v) || v.Found != 0 || v.Needs != released {
 		t.Fatalf("Open before migrating: %v", err)
 	}
 
-	if version, err := postgres.Migrate(ctx, db); err != nil || version != 1 {
+	if version, err := postgres.Migrate(ctx, db); err != nil || version != released {
 		t.Fatalf("version %d, err %v", version, err)
 	}
-	s, err := postgres.Open(ctx, dsn)
+	s, err := openKV(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +164,7 @@ func TestMigrate_Task428AdoptsADatabaseOfBeforeTheStepsWithItsData(t *testing.T)
 	if got, found, err := s.Get(ctx, "of-before"); err != nil || !found || string(got) != "kept" {
 		t.Fatalf("the record of before: %q, found %v, err %v", got, found, err)
 	}
-	if version, err := postgres.Migrate(ctx, db); err != nil || version != 1 {
+	if version, err := postgres.Migrate(ctx, db); err != nil || version != released {
 		t.Fatalf("migrating again: version %d, err %v", version, err)
 	}
 }
@@ -198,7 +210,7 @@ func TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema(t *test
 		}
 	}
 
-	s, err := postgres.Open(ctx, u.String())
+	s, err := openKV(ctx, u.String())
 	if err != nil {
 		t.Fatalf("Open with a role without schema rights: %v", err)
 	}
@@ -224,16 +236,16 @@ func TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema(t *test
 func TestOpen_Rule17RefusesADatabaseThatLacksAStepItNeeds(t *testing.T) {
 	ctx := context.Background()
 	dsn := freshDatabase(t)
-	steps := ahead()[:2]
-	if _, err := postgres.MigrateSteps(ctx, adminOf(t, dsn), steps, postgres.To(1)); err != nil {
+	steps := ahead()[:released+1]
+	if _, err := postgres.MigrateSteps(ctx, adminOf(t, dsn), steps, postgres.To(released)); err != nil {
 		t.Fatal(err)
 	}
-	_, err := postgres.OpenSteps(ctx, dsn, steps)
+	_, err := openSteps(ctx, dsn, steps)
 	var v *schema.VersionError
-	if !errors.As(err, &v) || !errors.Is(err, schema.ErrVersion) || v.Found != 1 || v.Needs != 2 {
+	if !errors.As(err, &v) || !errors.Is(err, schema.ErrVersion) || v.Found != released || v.Needs != released+1 {
 		t.Fatalf("got %v", err)
 	}
-	for _, word := range []string{"version 1", "needs 2"} {
+	for _, word := range []string{fmt.Sprintf("version %d", released), fmt.Sprintf("needs %d", released+1)} {
 		if !strings.Contains(err.Error(), word) {
 			t.Errorf("the error does not say %q: %v", word, err)
 		}
@@ -245,10 +257,10 @@ func TestOpen_Rule17RefusesADatabaseThatLacksAStepItNeeds(t *testing.T) {
 func TestOpen_Rule22StartsOnExpandStepsOfANewerRelease(t *testing.T) {
 	ctx := context.Background()
 	dsn := freshDatabase(t)
-	if _, err := postgres.MigrateSteps(ctx, adminOf(t, dsn), ahead()[:2]); err != nil {
+	if _, err := postgres.MigrateSteps(ctx, adminOf(t, dsn), ahead()[:released+1]); err != nil {
 		t.Fatal(err)
 	}
-	s, err := postgres.Open(ctx, dsn)
+	s, err := openKV(ctx, dsn)
 	if err != nil {
 		t.Fatalf("this release on a database one expand step ahead: %v", err)
 	}
@@ -266,9 +278,9 @@ func TestOpen_Rule17RefusesADatabaseWithAContractStepItDoesNotKnow(t *testing.T)
 	if _, err := postgres.MigrateSteps(ctx, adminOf(t, dsn), ahead(), postgres.Contract()); err != nil {
 		t.Fatal(err)
 	}
-	_, err := postgres.Open(ctx, dsn)
+	_, err := openKV(ctx, dsn)
 	var v *schema.VersionError
-	if !errors.As(err, &v) || v.Contract != 3 || v.Found != 4 || v.Knows != 1 {
+	if !errors.As(err, &v) || v.Contract != released+2 || v.Found != released+3 || v.Knows != released {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -280,12 +292,12 @@ func TestOpen_Task428WithMigrateAppliesExpandStepsAndNeverAContractStep(t *testi
 	dsn := freshDatabase(t)
 	db := adminOf(t, dsn)
 
-	s, err := postgres.OpenSteps(ctx, dsn, ahead()[:3], postgres.WithMigrate())
+	s, err := openSteps(ctx, dsn, ahead()[:released+2], postgres.WithMigrate())
 	if err != nil {
 		t.Fatalf("a release whose last step is a contract step: %v", err)
 	}
 	_ = s.Close()
-	if got := appliedVersions(t, db); fmt.Sprint(got) != "[1 2]" {
+	if got := appliedVersions(t, db); fmt.Sprint(got) != upTo(released+1) {
 		t.Fatalf("applied %v", got)
 	}
 	if !hasProbe(t, db) {
@@ -294,9 +306,9 @@ func TestOpen_Task428WithMigrateAppliesExpandStepsAndNeverAContractStep(t *testi
 
 	// The release after it needs step 4, which stands behind the contract step: it does not start, and
 	// leaves the contract step alone.
-	_, err = postgres.OpenSteps(ctx, dsn, ahead(), postgres.WithMigrate())
+	_, err = openSteps(ctx, dsn, ahead(), postgres.WithMigrate())
 	var v *schema.VersionError
-	if !errors.As(err, &v) || v.Found != 2 || v.Needs != 4 {
+	if !errors.As(err, &v) || v.Found != released+1 || v.Needs != released+3 {
 		t.Fatalf("got %v", err)
 	}
 	if !hasProbe(t, db) {
@@ -308,13 +320,13 @@ func TestOpen_Task428WithMigrateAppliesExpandStepsAndNeverAContractStep(t *testi
 func TestMigrate_Task428AppliesAContractStepOnlyWhenAsked(t *testing.T) {
 	ctx := context.Background()
 	db := adminOf(t, freshDatabase(t))
-	if version, err := postgres.MigrateSteps(ctx, db, ahead(), postgres.To(1)); err != nil || version != 1 {
+	if version, err := postgres.MigrateSteps(ctx, db, ahead(), postgres.To(released)); err != nil || version != released {
 		t.Fatalf("to 1: version %d, err %v", version, err)
 	}
-	if version, err := postgres.MigrateSteps(ctx, db, ahead()); err != nil || version != 2 {
+	if version, err := postgres.MigrateSteps(ctx, db, ahead()); err != nil || version != released+1 {
 		t.Fatalf("without contract: version %d, err %v", version, err)
 	}
-	if version, err := postgres.MigrateSteps(ctx, db, ahead(), postgres.Contract()); err != nil || version != 4 {
+	if version, err := postgres.MigrateSteps(ctx, db, ahead(), postgres.Contract()); err != nil || version != released+3 {
 		t.Fatalf("with contract: version %d, err %v", version, err)
 	}
 	if hasProbe(t, db) {
@@ -327,16 +339,16 @@ func TestMigrate_Task428AppliesAContractStepOnlyWhenAsked(t *testing.T) {
 func TestMigrate_Task428AFailedStepLeavesNothingBehind(t *testing.T) {
 	ctx := context.Background()
 	db := adminOf(t, freshDatabase(t))
-	steps := slices.Concat(postgres.ReleasedSteps()[:1], []postgres.Step{postgres.NewStep(2, "half a step", false,
+	steps := slices.Concat(postgres.ReleasedSteps(), []postgres.Step{postgres.NewStep(released+1, "half a step", false,
 		`ALTER TABLE kv ADD COLUMN probe text; ALTER TABLE no_such_table ADD COLUMN probe text`)})
 	version, err := postgres.MigrateSteps(ctx, db, steps)
-	if err == nil || version != 1 || !strings.Contains(err.Error(), "step 2 (half a step)") {
+	if err == nil || version != released || !strings.Contains(err.Error(), fmt.Sprintf("step %d (half a step)", released+1)) {
 		t.Fatalf("version %d, err %v", version, err)
 	}
 	if hasProbe(t, db) {
 		t.Fatal("the first statement of the failed step stands")
 	}
-	if got := appliedVersions(t, db); fmt.Sprint(got) != "[1]" {
+	if got := appliedVersions(t, db); fmt.Sprint(got) != upTo(released) {
 		t.Fatalf("applied %v", got)
 	}
 }

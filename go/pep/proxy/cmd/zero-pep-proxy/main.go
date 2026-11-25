@@ -207,7 +207,12 @@ func openStore() kv.Store {
 		slog.Warn("PEP_DATABASE_URL not set — using in-memory kv store, for a single replica only (sessions are lost on restart and not shared across replicas)")
 		store = kv.NewMemory()
 	} else {
-		if store, err = postgres.Open(context.Background(), dsn, postgres.WithMigrate()); err != nil {
+		// PEP_DATABASE_URL is one URL with the user and the password in it; the store takes them apart.
+		address, user, password, err := postgres.SplitURL(dsn)
+		if err != nil {
+			log.Fatalf("open postgres kv store: %v", err)
+		}
+		if store, err = postgres.Open(context.Background(), address, user, password, postgres.WithMigrate()); err != nil {
 			log.Fatalf("open postgres kv store: %v", err)
 		}
 		slog.Info("using postgres kv store for sessions")
@@ -231,7 +236,11 @@ func openRevocations(store kv.Store, ttl time.Duration) proxy.Revocations {
 		slog.Warn("PEP_DATABASE_URL not set — revocations held in memory, for a single replica only")
 		return proxy.NewMemoryRevocations(nil)
 	}
-	bus, err := postgres.OpenBus(context.Background(), dsn)
+	address, user, password, err := postgres.SplitURL(dsn)
+	if err != nil {
+		log.Fatalf("open revocation bus: %v", err)
+	}
+	bus, err := postgres.OpenBus(context.Background(), address, user, password)
 	if err != nil {
 		log.Fatalf("open revocation bus: %v", err)
 	}

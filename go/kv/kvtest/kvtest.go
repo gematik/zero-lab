@@ -126,6 +126,31 @@ func Store(t *testing.T, open func(t *testing.T) kv.Store) {
 		}
 	})
 
+	run("keys are in the order of their bytes, whatever a language would say", func(t *testing.T, s kv.Store, p string) {
+		// By their bytes: B (0x42), Z (0x5a), a (0x61), ä (0xc3 0xa4). A dictionary has a, ä, B, Z.
+		want := []string{p + "B", p + "Z", p + "a", p + "ä"}
+		for _, k := range []string{p + "ä", p + "a", p + "Z", p + "B"} {
+			if err := s.Set(ctx, k, []byte("v"), 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got, err := s.Keys(ctx, p); err != nil || !slices.Equal(got, want) {
+			t.Errorf("got %q, want %q, err %v", got, want, err)
+		}
+	})
+
+	run("an empty value is a value", func(t *testing.T, s kv.Store, p string) {
+		if err := s.Set(ctx, p+"empty", nil, 0); err != nil {
+			t.Fatal(err)
+		}
+		if got, found, err := s.Get(ctx, p+"empty"); err != nil || !found || len(got) != 0 {
+			t.Errorf("got %v, found %v, err %v", got, found, err)
+		}
+		if got, found, err := s.Take(ctx, p+"empty"); err != nil || !found || len(got) != 0 {
+			t.Errorf("taken %v, found %v, err %v", got, found, err)
+		}
+	})
+
 	run("a record with a TTL ends, for Get, Take and Keys", func(t *testing.T, s kv.Store, p string) {
 		for _, k := range []string{"get", "take", "keys"} {
 			if err := s.Set(ctx, p+k, []byte("v"), expiry); err != nil {
