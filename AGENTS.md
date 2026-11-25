@@ -83,7 +83,8 @@ file its row names.
 | [`go/tipki`](go/tipki) | library | The TI's PKI in Go: certificate types and profiles, trust bundles (`bundlefile`, `fetch`), OIDs (`oid`), TLS verification under the `ti` profile (`titls`) | brainpool | [README](go/tipki/README.md) |
 | [`go/egress`](go/egress) | library | A server's connections to the internet: the `web` TLS profile and the egress client (https only) | | `doc.go` |
 | [`go/httpguard`](go/httpguard) | library | The request checks every server runs first: path, single parameters, Host; standard library only | | `path.go` |
-| [`go/kv`](go/kv) | library | Key/value store with TTLs behind one interface; `postgres` backend, `revoked` sets, sealed records | | `kv.go` |
+| [`go/kv`](go/kv) | library | Key/value store with TTLs behind one interface, in memory; `revoked` sets, sealed records; no requirement outside the standard library | | `kv.go` |
+| [`go/kv/postgres`](go/kv/postgres) | library | The PostgreSQL backend of kv (pgx), a module of its own so that only programs that wire it carry the driver | kv | `postgres.go` |
 | [`go/nonce`](go/nonce) | library | Nonces that verify themselves (AES-256-GCM), no store | | `nonce.go` |
 | [`go/dpop`](go/dpop) | library | DPoP (RFC 9449) for clients and for servers that check proofs | | [README](go/dpop/README.md) |
 | [`go/openid`](go/openid) | library | OpenID Connect login by authorization code with PKCE; `providers`, the list of identity providers a server offers | | `openid.go` |

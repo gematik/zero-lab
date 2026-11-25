@@ -26,8 +26,9 @@
 // the id). [NewSealed] wraps a Store so that it sees ciphertext only (server rule 5).
 //
 // This package has no external dependencies: it ships the interface and the in-memory backend
-// (NewMemory — the default for tests and dev). The Postgres backend is the package kv/postgres in this
-// module: kv's go.mod requires pgx, but a binary links the driver only if it imports kv/postgres.
+// (NewMemory — the default for tests and dev). The Postgres backend is the module kv/postgres:
+// this module requires nothing outside the standard library, so a consumer has a database driver in its
+// module graph only if it requires a backend.
 // Consumers accept the kv.Store interface (the duck type), not a concrete backend.
 //
 // Atomicity: Take (get+delete), SetIfAbsent and SetMany (multi-key write) are atomic, which the
