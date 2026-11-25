@@ -3,10 +3,10 @@ id: TASK-428
 title: >-
   kv: numbered migrations with Migrate, a version check in Open and WithMigrate;
   kv/schema and kv/kvtest
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T18:05:00Z'
-updated_date: '2026-11-25T18:41:00Z'
+updated_date: '2026-11-25T18:56:00Z'
 labels:
   - go
 dependencies:
@@ -31,11 +31,19 @@ Step 1 of doc-7 (Schema creation and migrations). Today postgres.Open applies th
 - [x] #2 Migrate applies numbered steps once, with one migrator at a time, proven by a test that starts several together on an empty database; a database created by go/kv v0.7.0 is adopted without a change of data
 - [x] #3 Open without WithMigrate runs no DDL (proven with a role that has DML rights only) and refuses an older or an unknown newer schema version, naming both
 - [x] #4 Open with WithMigrate applies missing expand steps and never a contract step
-- [ ] #5 The rights a server role needs are documented in the backend; whether servers.md gains the rule that a server's role has no DDL rights is decided with the maintainer
+- [x] #5 The rights a server role needs are documented in the backend; whether servers.md gains the rule that a server's role has no DDL rights is decided with the maintainer
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-25, on feat/kv-migrations, not committed yet. kv/schema (Step, Applied, Validate, Version, Pending, Needs, Check, VersionError; no SQL, no driver) and kv/kvtest (Store with Swapper, Marker) in go/kv; memory and Postgres run the contract suite. kv/postgres: steps with their SQL (step 1 is the schema of before, every statement of which changes nothing where it ran), kv_schema(version, name, contract, applied_at), Migrate(ctx, db, opts...) with To and Contract, each step one transaction under pg_advisory_xact_lock; Open runs no DDL and checks the version; WithMigrate applies pending expand steps first. Deviation from doc-7, corrected there: Open refuses a missing step and an unknown contract step, not any version above what it knows, so that a replica of release N restarts while N+1's expand steps are applied (rule 22); kv_schema therefore records which steps are contract steps. Logging through slog, as reap.go and bus.go do. The hosts here (zero-pdp, zero-pep-proxy, zaddy) pass WithMigrate and so behave as before; a setting for it would be a host feature. just mod-check treats kvtest as a test package. Verified against Postgres 18: 39 tests pass with -race, none skipped; with the advisory lock taken out the two tests that start many at once fail with the 23505 of TASK-423; zero-pep-proxy's revocations test over Postgres passes; just lint is clean. Open: just check's tidy check outside the workspace needs kv with the new packages on the remote (push, just sync). AC 5: the rights are in Open's documentation; the servers.md rule is the maintainer's decision.
+
+2026-11-25, released at the maintainer's word: go/kv v0.9.0 (kv/schema, kv/kvtest), then go/kv/postgres v0.9.0 requiring it; zero-pdp, zero-pep-proxy and zaddy pinned to both by just sync. just check in go/ passed on the pinned state; the Postgres suite passed with -race in the workspace and with GOWORK=off, zero-pep-proxy's revocations test over Postgres too. AC 5: servers.md rule 22 now says that a server does not change its schema (a role for rows only, numbered steps applied by a migration job with its own credentials, contract steps only when asked) and that it checks the schema it finds; decided by the maintainer on 2026-11-25.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+kv/postgres changes its schema in numbered, recorded steps: Migrate applies them, each once and in one transaction under an advisory lock, a contract step only when asked; Open runs no DDL and refuses a database that lacks a step it needs or has a contract step it does not know, while it starts on a newer release's expand steps (rule 22); WithMigrate lets Open apply expand steps for deployments without a job. kv/schema holds the logic without SQL, kv/kvtest the contract tests that memory and Postgres run. servers.md rule 22 carries the rule. Released as go/kv v0.9.0 and go/kv/postgres v0.9.0; the hosts here pass WithMigrate and behave as before.
+<!-- SECTION:FINAL_SUMMARY:END -->
