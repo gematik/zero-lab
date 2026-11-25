@@ -6,11 +6,12 @@ require (
 	github.com/caddyserver/caddy/v2 v2.11.9
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4
-	github.com/gematik/zero-lab/go/egress v0.0.0-20261124054954-a574be188e77
+	github.com/gematik/zero-lab/go/egress v0.0.0-20261125181715-958e3e239aec
 	github.com/gematik/zero-lab/go/httpguard v0.2.0
-	github.com/gematik/zero-lab/go/kv v0.6.1-0.20261124054954-a574be188e77
+	github.com/gematik/zero-lab/go/kv v0.7.1-0.20261125181715-958e3e239aec
+	github.com/gematik/zero-lab/go/kv/postgres v0.0.0-20261125181715-958e3e239aec
 	github.com/gematik/zero-lab/go/nonce v0.24.0
-	github.com/gematik/zero-lab/go/pep v0.29.1-0.20261124054954-a574be188e77
+	github.com/gematik/zero-lab/go/pep v0.29.1-0.20261125181715-958e3e239aec
 	github.com/go-jose/go-jose/v4 v4.1.9
 )
 
@@ -20,6 +21,8 @@ require (
 	cloud.google.com/go/auth v0.24.4 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.1 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
+	cloud.google.com/go/iam v1.14.0 // indirect
+	cloud.google.com/go/longrunning v1.3.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/bigmod v0.1.0 // indirect
 	filippo.io/edwards25519 v1.2.0 // indirect

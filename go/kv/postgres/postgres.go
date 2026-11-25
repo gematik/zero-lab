@@ -19,9 +19,10 @@
 // For additional notes and disclaimer from gematik and in case of changes by gematik,
 // find details in the "Readme" file.
 
-// Package postgres is the PostgreSQL backend for the kv.Store interface. It is a separate package from
-// kv so that importing kv never pulls in a database driver (Go prunes pgx from modules that import only
-// kv); only code that wires Postgres imports this package. Open returns a kv.Store (the duck type), so
+// Package postgres is the PostgreSQL backend for the kv.Store interface. It is a module of its own, so
+// that a module requiring kv has no database driver in its module graph; only a program that wires
+// Postgres requires this one. It requires a kv that no longer holds this package: an older kv beside it
+// would provide the same import path twice. Open returns a kv.Store (the duck type), so
 // callers stay decoupled from this backend.
 package postgres
 
