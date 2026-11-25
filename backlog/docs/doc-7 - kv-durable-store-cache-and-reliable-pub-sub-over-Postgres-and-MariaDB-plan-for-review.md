@@ -8,7 +8,7 @@ created_date: '2026-11-22 15:27'
 
 # kv: durable store, cache and reliable pub/sub over Postgres and MariaDB
 
-Status: plan for review (2026-11-22, revised 2026-11-25). Nothing of it is built and no tasks exist yet; each step
+Status: reviewed with the maintainer on 2026-11-25 (first drafted 2026-11-22). Nothing of it is built; the steps
 below becomes a task once agreed.
 
 Decided by the maintainer on 2026-11-25: MariaDB is a required backend, not an option for later, and
@@ -511,24 +511,19 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
 2. **`Get` across Galera's writing nodes**: whether writing a read record again is enough to make a decision safe,
    and what it costs; to be answered by the contract tests on a cluster before the contract of `Tx` is final.
 
-## Tasks this would become
+## Tasks
 
-Not created yet (maintainer, 2026-11-25): the plan is reviewed first.
+Created on 2026-11-25, in the order they build on each other:
 
-- kv: cut the modules: go/kv without requirements, go/kv/postgres as a module at the same import path; `go.work`,
-  Justfile, `AGENTS.md`, the requirements of the programs here that import it.
-- kv: `kv/schema` and `kv/kvtest`; numbered migrations and `kv_schema` in kv/postgres, `Migrate`,
-  `Open` that checks the version and applies steps only with `WithMigrate()`; the rights of a server role
-  documented (and the servers.md rule, if agreed).
-- kv/mariadb: the module with the driver's evaluation, `kv.Store`, `Swapper`, `Marker` over MariaDB, its
-  migrations and `Migrate`, the contract tests gated by `TEST_MARIADB_DSN` against the oldest and newest
-  LTS and a Galera cluster, the gated suite listed in the development guide.
-- kv/postgres: prefix index (`COLLATE "C"` / `text_pattern_ops`), batched and advisory-locked Cleanup, pgxpool.
-- kv: `Durability`, ephemeral memory store, `kv_cache` in both backends (unlogged and asynchronous commit on
-  Postgres, InnoDB on MariaDB).
-- kv: `Feed` + `Transactor.Tx` with memory, Postgres (`kv_feed`, `kv_topic`, transactional notify) and MariaDB
-  (the same tables, polling) backends, after "still open" 2 is answered; contract tests, also against a Galera cluster of three writing nodes.
-- kv: `NewSealedFeed`; purposes per class.
-- kv: a guide for hosts from the table in "what a host does".
-- zero-pep-proxy and zaddy: the requirement on go/kv/postgres with the module cut; nothing else.
-- zeta-authserver-go: adoption, by its own team (external).
+| Task | What | After |
+|---|---|---|
+| TASK-427 | one module per backend: go/kv without requirements, go/kv/postgres a module at the same import path; the hosts here gain the requirement | |
+| TASK-428 | numbered migrations with `Migrate`, the version check in `Open`, `WithMigrate()`; `kv/schema`, `kv/kvtest` | 427 |
+| TASK-429 | go/kv/mariadb | 428 |
+| TASK-430 | kv/postgres: prefix index, batched single cleaner, pgxpool | 428 |
+| TASK-431 | `Durability` and the ephemeral class in memory, Postgres and MariaDB | 428, 429 |
+| TASK-432 | `Feed` and `Transactor.Tx` in memory, Postgres and MariaDB | 429, 430 |
+| TASK-433 | `NewSealedFeed`, purposes per class | 431, 432 |
+| TASK-434 | a guide for hosts | 432, 433 |
+
+Not tasks here: adoption by zeta-authserver-go (its own repository), and anything a host does.

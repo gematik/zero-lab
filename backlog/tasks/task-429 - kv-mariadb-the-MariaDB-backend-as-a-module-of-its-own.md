@@ -1,0 +1,32 @@
+---
+id: TASK-429
+title: 'kv/mariadb: the MariaDB backend as a module of its own'
+status: To Do
+assignee: []
+created_date: '2026-11-25T18:05:00Z'
+labels:
+  - go
+dependencies:
+  - TASK-428
+documentation:
+  - >-
+    backlog/docs/doc-7 -
+    kv-durable-store-cache-and-reliable-pub-sub-over-Postgres-and-MariaDB-plan-for-review.md
+priority: high
+ordinal: 442000
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+doc-7, MariaDB, the second backend. Required by the maintainer (2026-11-25), in every topology: a single node, a primary with replicas, Galera with one or several writing nodes. Driver github.com/go-sql-driver/mysql (approved 2026-11-25; v1.10.2 looked at that day: pure Go, no cgo, no unsafe, requires filippo.io/edwards25519 v1.2.0 alone); its evaluation under docs/conventions/dependencies.md is recorded with this task. Scope: kv.Store, Swapper and Marker over MariaDB with the statements of doc-7's table (DELETE … RETURNING, INSERT … ON DUPLICATE KEY UPDATE with ROW_COUNT(), a binary key column for prefix scans, expiry from the database clock), its numbered steps and Migrate (a row of kv_schema locked FOR UPDATE; every DDL statement commits implicitly, so steps are single repeatable statements), the version check and WithMigrate as in kv/postgres. No GET_LOCK and no AUTO_INCREMENT for order: neither holds across Galera's nodes. Every statement is written to be repeated on a deadlock or certification failure (errors 1213, 1205), a bounded number of times. wsrep_sync_wait is configurable, WithSyncWait(mode), automatic by default (on when the server reports wsrep_on). The facts of doc-7 are from documentation: the contract tests prove them, and if one does not hold the plan comes back for review.
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [ ] #1 go/kv/mariadb is a module in go.work requiring go/kv and the driver, with its row in AGENTS.md and the driver's evaluation recorded
+- [ ] #2 The contract suite of kv/kvtest passes gated by TEST_MARIADB_DSN against the oldest and the newest LTS release maintained at the time, named in the development guide's gated-suite table
+- [ ] #3 Against a Galera cluster of three writing nodes the single-use operations (Take, SetIfAbsent, Swap) have exactly one winner when run concurrently through different nodes, and a value set through one node is found through another with sync wait on
+- [ ] #4 Migrate, the version check and WithMigrate behave as in kv/postgres, with the same tests
+- [ ] #5 Each statement of doc-7's MariaDB table that did not hold as written is recorded, and doc-7 corrected
+<!-- AC:END -->
