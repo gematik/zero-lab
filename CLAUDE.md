@@ -5,6 +5,9 @@ security before convenience, features or speed of delivery. The binding rules fo
 language are in [`docs/`](docs/README.md); read the documents a change touches before
 planning it. This file only summarises them and adds what applies to agents.
 
+Where each crate, module and specification is, what it does and which document describes it:
+[`AGENTS.md`](AGENTS.md). Start there instead of reading every module.
+
 ## The criteria every change is held against
 
 Full text: [docs/principles.md](docs/principles.md). Check a plan against them before
@@ -62,4 +65,6 @@ guides next to them.
 - **Documents:** each rule lives in one document under `docs/`; change that document, not
   this file. Profiles map rules to their language and do not restate them. Keep this file
   a summary with links.
+- **Map:** a new, renamed or removed crate or module changes its row in
+  [`AGENTS.md`](AGENTS.md) in the same commit ([text for agents](docs/conventions/agents.md#the-repositorys-map)).
 - **Sources:** every new source file starts with the EUPL header its neighbours use.

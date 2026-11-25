@@ -3,10 +3,8 @@
 Rust libraries for the gematik Telematikinfrastruktur, developed alongside the Go modules in
 [`../go`](../go).
 
-| Crate | Purpose |
-| --- | --- |
-| [`ti-types`](./ti-types) | Shared vocabulary types (`Env`, `Tier`), `no_std`, no dependencies |
-| [`ti-pki`](./ti-pki) | X.509 certificate validation against the TI PKI (port of the archived `go/gempki`) |
+The crates, with their layers and what each depends on, are listed in the repository's map,
+[AGENTS.md](../AGENTS.md#rust-crates).
 
 Every crate is versioned independently by its own git tag `rust/<crate>/vX.Y.Z`. The
 workspace `Cargo.toml` wires the crates together for local development. See the
