@@ -6,6 +6,26 @@ agent may do with them. The reasons are in
 Rules for agents that develop this repository are in [`CLAUDE.md`](../../CLAUDE.md), not
 here.
 
+## The repository's map
+
+- [`AGENTS.md`](../../AGENTS.md) at the root is the map of the repository, for an agent that
+  works in it and for one that looks for a building block to use: one row for every crate
+  of the Rust workspace and every module of `go.work` (what it is, its layer, what it
+  depends on inside the repository, the document to read next), the shared specifications,
+  and a table from task to unit.
+- It is a map, not a second copy: a row says what a unit is in one sentence and names the
+  unit's own document. It states no rule (those are in `docs/` and `CLAUDE.md`) and does not
+  describe how a tool is called (that is the tool's guide, below). READMEs link to it and
+  keep no list of units of their own.
+- A new, renamed or removed unit changes its row in the same commit. `just check` in
+  `rust/` and in `go/` fails when a workspace member has no row or a row names a unit that
+  is gone (`just agents-map`).
+- The check proves that every unit has a row, not that the row is still true. A release
+  reads the rows of the units it ships (what the unit is, its layer, what it depends on,
+  the document to read next, a status such as "unreleased") and the rows of the task table
+  that name them, and corrects them in the release pull request
+  ([releasing](git-and-releases.md#releasing)).
+
 ## One guide per tool
 
 - Every CLI owns one guide, `AGENTS.md` next to its sources

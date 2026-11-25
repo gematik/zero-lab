@@ -33,6 +33,7 @@ a profile that says how its code meets them.
 
 | What | Where |
 |---|---|
+| Every crate, module and specification: what it is and where it is described | [`AGENTS.md`](../AGENTS.md) |
 | Shared specifications (rules, result codes, corpora) | [`spec/`](../spec/README.md) |
 | Development and release guides per workspace | [`rust/docs/development.md`](../rust/docs/development.md), [`go/docs/development.md`](../go/docs/development.md) |
 | Decisions and the architecture decision record | [`backlog/decisions/`](../backlog/decisions/), [doc-1](../backlog/docs/doc-1%20-%20Rust-as-the-core-architecture-Go-review-integration-means-workflow.md) |

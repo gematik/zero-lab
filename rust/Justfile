@@ -411,9 +411,23 @@ check-changed base="main":
     if [ -n "$SCRIPTS" ]; then just scripts-test; fi
 
 # Everything a PR must pass, in the order that fails fastest
-check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet hsm-proxy-codegen-check
+check: fmt clippy doc test scripts-test wasm32 wasm-unsafe-free unsafe-free core-deps nonprod-absent jwz-backends jwz-rsa-guard machete deny vet hsm-proxy-codegen-check agents-map
     just brainpool-absent jwz
     just brainpool-absent ti-jwz
+
+# The repository's map for agents, ../AGENTS.md, has one row for every crate of the workspace
+# and none for a crate that is gone
+agents-map:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    members=$(cargo metadata --no-deps --format-version 1 --locked \
+        | python3 -c 'import json, sys; print("\n".join(sorted(p["name"] for p in json.load(sys.stdin)["packages"])))')
+    rows=$(sed -nE 's/^\| \[`rust\/([^`]+)`\].*/\1/p' ../AGENTS.md | sort)
+    if ! diff <(echo "$members") <(echo "$rows") >/dev/null; then
+        echo "AGENTS.md and the workspace differ (< only in the workspace, > only in AGENTS.md):"
+        diff <(echo "$members") <(echo "$rows") | grep '^[<>]'
+        exit 1
+    fi
 
 # The feature matrix and the default-feature tests take most of the time and break only
 # when features or their gating change; `just release` runs them.
