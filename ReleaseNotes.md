@@ -1,5 +1,39 @@
 # Release Notes
 
+# Release 2026-11-25: go/kv v0.9.0, go/kv/postgres v0.9.0
+
+The Postgres schema changes in numbered steps that a migrator applies, and a server no longer changes its schema
+(TASK-428, the second step of the kv plan in backlog doc-7; servers.md rule 22). Verified on the release branch:
+`just check` across all Go modules passed; kv on Postgres (Postgres 18, `TEST_DATABASE_URL`, with `-race`) and
+the revocations of zero-pep-proxy over Postgres (`PEP_PG_DSN`) passed on 2026-11-25.
+
+# Release go/kv v0.9.0
+
+### added
+- `kv/schema`: numbered schema steps, which of them are pending, and whether a program may work on the schema it
+  finds; no SQL and no driver.
+- `kv/kvtest`: the contract of a backend as tests (`Store` with `Swapper`, `Marker`). It is test code.
+
+# Release go/kv/postgres v0.9.0
+
+### breaking
+- `Open` applies no schema. It reads the steps the database records (`kv_schema`) and fails with an error that
+  is a `schema.ErrVersion` when a step it needs is missing, or when a contract step it does not know was
+  applied. A host does one of two things before it takes this release: run `postgres.Migrate` over a connection
+  with schema rights before the rollout, or pass `postgres.WithMigrate()` to `Open`, which applies the missing
+  expand steps as before. A database of an earlier release is adopted by either: its schema is step 1, and its
+  data is not touched.
+- The server's role needs `SELECT, INSERT, UPDATE, DELETE` on `kv` and `SELECT` on `kv_schema`; with
+  `WithMigrate()` also the right to create and alter tables.
+
+### added
+- `Migrate(ctx, db, opts...)` with `To(version)` and `Contract()`: each step is one transaction under an advisory
+  lock and is applied once, however many migrators run; a contract step only when asked.
+- `WithMigrate()`.
+
+### changed
+- zero-pdp, zero-pep-proxy and zaddy pass `WithMigrate()` and behave as before.
+
 # Release 2026-11-25: go/kv v0.8.0, go/kv/postgres v0.8.0
 
 The Postgres backend is a module of its own, so that a module requiring kv has no database driver in its module

@@ -4,9 +4,9 @@ go 1.27.0
 
 require (
 	github.com/fxamacker/cbor/v2 v2.10.0
-	github.com/gematik/zero-lab/go/egress v0.0.0-20261125182535-a94d81da6b4f
+	github.com/gematik/zero-lab/go/egress v0.0.0-20261125184445-728a754aa96f
 	github.com/gematik/zero-lab/go/httpguard v0.2.0
-	github.com/gematik/zero-lab/go/tipki v0.33.1-0.20261125182535-a94d81da6b4f
+	github.com/gematik/zero-lab/go/tipki v0.33.1-0.20261125184445-728a754aa96f
 	github.com/joho/godotenv v1.5.1
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6

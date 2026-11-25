@@ -39,7 +39,7 @@ func TestRevocations_ReachTheOtherReplicaOverPostgres(t *testing.T) {
 		t.Skip("PEP_PG_DSN not set — skipping Postgres LISTEN/NOTIFY integration test")
 	}
 	ctx := context.Background()
-	store, err := postgres.Open(ctx, dsn)
+	store, err := postgres.Open(ctx, dsn, postgres.WithMigrate())
 	if err != nil {
 		t.Fatal(err)
 	}

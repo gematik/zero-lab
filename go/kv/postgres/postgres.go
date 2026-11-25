@@ -40,7 +40,9 @@ import (
 	"github.com/gematik/zero-lab/go/kv"
 )
 
-// schemaSQL is applied idempotently on Open (no migration tool). value is bytea — an opaque binary store
+// schemaSQL is step 1 of the schema (migrate.go), and what releases before the steps applied on every Open:
+// every statement of it changes nothing where it has run before, which is how such a database is adopted.
+// value is bytea — an opaque binary store
 // (the kv never queries inside values), so JSON, snapshots, and at-rest ciphertext all store as raw bytes
 // with no base64/jsonb overhead. The DO block migrates pre-existing jsonb tables in place. The metadata column
 // is no longer read or written, but stays: during a rolling deploy an older replica's upsert still names it
@@ -72,8 +74,9 @@ ALTER TABLE kv ADD COLUMN IF NOT EXISTS marked_at timestamptz;
 const markedOther = `(mark IS DISTINCT FROM $2 OR marked_at IS DISTINCT FROM created_at)`
 
 type store struct {
-	db   *sql.DB
-	mark func(key string, value []byte) string
+	db      *sql.DB
+	mark    func(key string, value []byte) string
+	migrate bool
 }
 
 // Option adjusts the store [Open] returns.
@@ -83,6 +86,14 @@ type Option func(*store)
 // value, kv.SealedMarker for a store that is sealed.
 func WithMark(mark func(key string, value []byte) string) Option {
 	return func(s *store) { s.mark = mark }
+}
+
+// WithMigrate makes [Open] apply the schema steps the database lacks before it checks the version, as
+// [Migrate] does, but never a contract step. It is for a deployment without a migration job (a compose
+// file, a first installation by hand): the server's role then needs the right to change the schema, which
+// the default exists to take away.
+func WithMigrate() Option {
+	return func(s *store) { s.migrate = true }
 }
 
 // markOf is the statement parameter for the mark of a value: NULL without one.
@@ -96,48 +107,39 @@ func (s *store) markOf(key string, value []byte) any {
 	return nil
 }
 
-// Open connects to Postgres at dsn, applies the kv schema, and returns a kv.Store.
+// Open connects to Postgres at dsn, checks the schema and returns a kv.Store. It runs no DDL: it refuses a
+// database that lacks a step this release needs, or on which a contract step it does not know was applied
+// (an error that is a schema.ErrVersion and names the versions). The steps are applied by [Migrate], or by
+// Open itself with [WithMigrate]. The role of dsn needs SELECT, INSERT, UPDATE and DELETE on the table kv
+// and SELECT on kv_schema, and with [WithMigrate] the right to create and alter tables in the schema.
 func Open(ctx context.Context, dsn string, opts ...Option) (kv.Store, error) {
+	return open(ctx, dsn, steps, opts...)
+}
+
+func open(ctx context.Context, dsn string, steps []step, opts ...Option) (kv.Store, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("kv/postgres: open: %w", err)
-	}
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("kv/postgres: ping: %w", err)
-	}
-	if err := applySchema(ctx, db); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("kv/postgres: schema: %w", err)
 	}
 	s := &store{db: db}
 	for _, opt := range opts {
 		opt(s)
 	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("kv/postgres: ping: %w", err)
+	}
+	if s.migrate {
+		if _, err := migrate(ctx, db, steps, migrateOptions{}); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("kv/postgres: schema: %w", err)
+		}
+	}
+	if err := checkSchema(ctx, db, steps); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("kv/postgres: schema: %w", err)
+	}
 	return s, nil
-}
-
-// schemaLock is the advisory lock every Open holds while it applies the schema, a number of this package's
-// choosing: advisory locks are per database, and a database holds one kv table.
-const schemaLock = 0x6b765f736368656d // "kv_schem"
-
-// applySchema runs schemaSQL in one transaction under schemaLock. Replicas start together, and IF NOT EXISTS
-// does not make concurrent DDL safe: two sessions that create the table at once collide on the catalog's
-// unique index, and two that alter it deadlock. With the lock the second waits for the first one's commit
-// and then finds the schema in place.
-func applySchema(ctx context.Context, db *sql.DB) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, int64(schemaLock)); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 // MarkedOther implements kv.Marker.

@@ -298,6 +298,19 @@ everything outside the workload untrusted.
     tokens, sealed values, stored records and messages from either are readable by the
     other; schema changes go expand, migrate, contract; keys rotate with an overlap in
     which old and new both verify.
+    - **A server does not change its schema.** A server's database role may read and write
+      rows and nothing else: it cannot create, alter or drop a table, so a compromised
+      server cannot either. Schema steps are numbered and recorded in the database, and a
+      migration job applies them before the rollout, with credentials of its own that no
+      server holds. An expand step is applied while replicas of release N still run and
+      restart; a contract step, which removes what N uses, only when none is left and only
+      when asked for.
+    - **A server checks the schema it finds** (rule 17): it does not start when a step it
+      needs is missing, nor when a contract step it does not know was applied, and it
+      starts on expand steps of a newer release. A deployment without a migration job (a
+      compose file, a first installation by hand) may let the server apply expand steps
+      itself, by a setting that is off unless set; its role then has the rights this rule
+      otherwise takes away.
 23. **A separate admin plane.** Admin, metrics, health and debug endpoints listen on their
     own port with their own authentication (mTLS), restricted by NetworkPolicy, except the
     bare probe path of rule 31, which the kubelet reaches without a certificate; nothing

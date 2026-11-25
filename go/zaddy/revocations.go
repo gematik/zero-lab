@@ -50,7 +50,7 @@ type openRevocationsFunc func(ctx context.Context, dsn string) (kv.Store, kv.Bus
 // The store is not sealed: only its keys are read, which a sealed store leaves in clear, so zaddy needs no
 // share of zero-pep-proxy's store keys.
 func openPostgresRevocations(ctx context.Context, dsn string) (kv.Store, kv.Bus, error) {
-	store, err := postgres.Open(ctx, dsn)
+	store, err := postgres.Open(ctx, dsn, postgres.WithMigrate())
 	if err != nil {
 		return nil, nil, err
 	}
