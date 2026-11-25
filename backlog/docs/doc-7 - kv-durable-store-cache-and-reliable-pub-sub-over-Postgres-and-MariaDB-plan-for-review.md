@@ -140,7 +140,14 @@ What the contract says, so that it holds on every backend:
   range, differently in every database. What belongs together is reached by key: a record names its relatives, or
   an index record lists them (as `userClients` does). How a host lays out such relations (a client under its user,
   a session under both, what is removed with what) is the host's design; kv gives the transaction and documents
-  the patterns in the guide for hosts. This part is not designed to the end: see what is still open.
+  two patterns in the guide for hosts, both tried below on zeta-authserver-go's store.
+- **Pattern: a root record.** Records that change together hang under one record (a user). Every transaction that
+  changes any of them begins with `Get` of the root and ends with `Set` of it. The `Get` makes transactions of one
+  root wait for each other on one node; the `Set` puts the root into the write set, which is what Galera checks
+  between nodes. Nothing else needs a lock, and transactions of different roots do not meet.
+- **Pattern: an index in a related record.** What would be found by a prefix is listed in a record the transaction
+  reads anyway (the set of a user's clients; the sessions of a client in the client's record), with the end of
+  each member so that the list is pruned when it is written.
 - **Few records, short.** A transaction is for the handful of records of one operation, not for a batch; the
   backends bound the number of operations and the time.
 - **No store calls beside tx inside fn.** They would run outside the transaction and can wait on the connection
@@ -225,6 +232,61 @@ Today: `NewSealed` seals values with the key as associated data; keys stay clear
 cursors, retention, a broadcast to followers), so every consumer's tests run the same contract. One shared
 contract test suite (`kv/kvtest`) runs against memory and, gated by `TEST_DATABASE_URL` and `TEST_MARIADB_DSN`,
 against Postgres and MariaDB.
+
+#### The case: zeta-authserver-go's store
+
+Read on 2026-11-25 in `authserver/kvstore` (kvstore.go, names.go) to see whether `Tx` and the two patterns
+carry every operation that touches more than one record. It is a reading of the code, not a change to it; that
+repository's owner decides what it adopts.
+
+Its model, as far as it matters here: every record is a key and a sealed value in the one table; keys are in the
+clear, so a user stands in them by a name (an HMAC of the identifier under a name key), written `<U>` below.
+
+| Key | Holds |
+|---|---|
+| `user:<U>` | the user |
+| `clients:<U>` | the set of the user's clients, client id to first login: which clients a user has is this record, not what the store lists |
+| `client:<U>:<client_id>` | the client instance bound to this user, with when it was last seen |
+| `registration:<client_id>`, `binding:<client_id>` | the client by itself |
+| `session:<U>:<client_id>:<sid>` | a session and the id of its one refresh token |
+| `session-id:<sid>` | where the session of an id is, and when it ends |
+| `session-revoked:<when>:<until>:<sid>:<mac>` | a revocation, all of it in the key |
+
+The root is the user's record (`user:<U>`), which every login writes already. The sessions of a client have no
+record that lists them; they are the keys with the prefix `session:<U>:<client_id>:`.
+
+| Operation | Today | With `Tx` | Enough? |
+|---|---|---|---|
+| `Remember` (a login): client, user, session, session index, registration; for a new client the user's set of clients, after making room | `SetMany` for the writes; the set is read before, outside the transaction, so two new clients at once can lose one (noted in the code) | one `Tx`: `Get` user (root), `Get` the set, make room, the writes | yes |
+| `makeRoom`: reads the record of every client in the set, evicts the longest inactive | reads and deletes outside any transaction | inside the `Tx` of `Remember`; the clients are named by the set, at most the limit of clients per user | yes |
+| `drop` (a client goes: its record and its sessions) | finds the sessions with `Keys("session:<user>:<client>:")`, under each name the user had | needs the sessions without a scan: the client's record lists its sessions (key and end), written at each login, which writes that record anyway | yes, with the index; the one change of layout the plan asks of this store |
+| `RemoveClient` | reads the set, drops, deletes registration and binding, writes the set last so that a failure can be repeated | one `Tx` under the root; the order no longer matters | yes |
+| `TerminateSession` (by session id only): index, session, a revocation | three steps; correct by the order of writes | one `Tx`: `Get` index, `Get` session, `Set` ended, `Publish` the revocation | yes; needs no root, it changes one session |
+| `EndSession`: a revocation, then delete index and session | three steps | one `Tx` with `Publish` | yes |
+| `Rotate` (refresh token) | `Get` then `Swap` | stays; a single record, compare-and-swap is the cheaper tool | no `Tx` needed |
+| `KeepRegistration` | `Get` then `Set`; two at once: the later wins (noted in the code) | `Tx`, or `SetIfAbsent` and `Swap` | either |
+| `adopt` (a user's records move to a new name) | `Keys("client:<old>:")`, `Rename` one by one, the user's record last as the sign that it is done | one `Tx` per user: the clients are named by the set; move = `Get`, `Set` under the new key, `Delete` | yes |
+| `Rekey` walk | `Others` by marks, outside transactions, safe to repeat | stays as it is; `Reseal` is compare-and-swap per record | no `Tx` needed |
+| `Revocations(since)` | scans `session-revoked:<time prefix>` | `Follow` of the Feed; the records' own MAC ("of this server") is what a sealed feed gives | by the Feed, when it adopts it |
+| `Seen`, `Lease`, logins, bindings, e-mail | single statements (`SetIfAbsent`, `Take`, `Set`) | unchanged | no `Tx` needed |
+
+Findings:
+
+1. `Tx` with the two patterns carries every operation. kv need not offer more than the transaction: no sets kept
+   by the backend, no scan inside a transaction.
+2. One prefix scan sits on a path that must be transactional (`drop`). It goes when the client's record lists its
+   sessions. Every other scan is maintenance (`Rekey`, cleaning) or becomes the Feed. The store's own reason for
+   the set of clients holds for this list too: a record can be deleted from the database or put back into it,
+   a member of a sealed list cannot, so what the database lists under a prefix is not what decides. A scan inside
+   `Tx` would be the easier change and the weaker one.
+3. The largest transaction is a login that evicts: the root, the set, one record per client of the user (bounded
+   by the limit of clients per user), and per evicted client its sessions with their index records and a
+   publish each. That bounds what "few records" has to allow.
+4. A login would lock its user's record. Logins of one user wait for each other; logins of different users do
+   not. `Rotate`, the hot path, takes no part.
+5. The race `Remember` documents (a new client lost from the set) and the one it does not (a login of a client
+   that another login of the same user is evicting at that moment leaves a session and a client record behind,
+   outside the set) both end with the root record.
 
 ## Schema creation and migrations: a server without DDL rights
 
@@ -445,11 +507,10 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
 1. **zeta-authserver-go and the Feed**: does it adopt Feed for its revocations (its Revocations(since) iterator
    maps onto Follow), and when? Not decided (maintainer, 2026-11-25). Nothing in the libraries waits for the
    answer; it decides how soon the Feed is proven by a real host.
-2. **Records that belong together**: `Tx` gives the transaction; how relations are laid out is left to the host
-   and to a guide. To settle before `Tx` is built, with zeta-authserver-go's store as the case: which of its
-   operations need a read inside the transaction (the user's set of clients, making room, removing a client with
-   its sessions), whether naming relatives by key and index records is enough for all of them, and whether kv
-   should offer more than the transaction (for example a set of keys under one record, kept by the backend).
+2. **Records that belong together**: answered for zeta-authserver-go's store
+   ([the case](#the-case-zeta-authserver-gos-store)): `Tx`, a root record and an index in a related record are
+   enough, and kv offers no more than the transaction. To confirm by the maintainer: that `Tx` stays without
+   `Keys(prefix)`, which asks that store to list a client's sessions in the client's record.
 3. **`Get` across Galera's writing nodes**: whether writing a read record again is enough to make a decision safe,
    and what it costs; to be answered by the contract tests on a cluster before the contract of `Tx` is final.
 
