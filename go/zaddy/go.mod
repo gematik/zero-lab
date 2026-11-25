@@ -6,11 +6,12 @@ require (
 	github.com/caddyserver/caddy/v2 v2.11.9
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4
-	github.com/gematik/zero-lab/go/egress v0.0.0-20261124054954-a574be188e77
+	github.com/gematik/zero-lab/go/egress v0.0.0-20261125181715-958e3e239aec
 	github.com/gematik/zero-lab/go/httpguard v0.2.0
-	github.com/gematik/zero-lab/go/kv v0.7.1-0.20261125181609-a6e11b3107c4
+	github.com/gematik/zero-lab/go/kv v0.7.1-0.20261125181715-958e3e239aec
+	github.com/gematik/zero-lab/go/kv/postgres v0.0.0-20261125181715-958e3e239aec
 	github.com/gematik/zero-lab/go/nonce v0.24.0
-	github.com/gematik/zero-lab/go/pep v0.29.1-0.20261124054954-a574be188e77
+	github.com/gematik/zero-lab/go/pep v0.29.1-0.20261125181715-958e3e239aec
 	github.com/go-jose/go-jose/v4 v4.1.9
 )
 
@@ -55,7 +56,6 @@ require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
-	github.com/gematik/zero-lab/go/kv/postgres v0.0.0-00010101000000-000000000000
 	github.com/go-chi/chi/v5 v5.5.0 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -180,5 +180,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.1 // indirect
 )
-
-replace github.com/gematik/zero-lab/go/kv/postgres => ../kv/postgres

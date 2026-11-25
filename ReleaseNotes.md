@@ -1,5 +1,31 @@
 # Release Notes
 
+# Release 2026-11-25: go/kv v0.8.0, go/kv/postgres v0.8.0
+
+The Postgres backend is a module of its own, so that a module requiring kv has no database driver in its module
+graph (TASK-427, the first step of the kv plan in backlog doc-7). Verified on the release branch: `just check`
+across all Go modules passed; kv on Postgres (Postgres 18, `TEST_DATABASE_URL`, with `-race`) passed on
+2026-11-25, in the workspace and as a build outside it.
+
+# Release go/kv v0.8.0
+
+### breaking
+- The package `kv/postgres` is no longer part of this module; it is the module
+  `github.com/gematik/zero-lab/go/kv/postgres`, at the same import path. A consumer that imports it changes no
+  code and takes both in one step: `go get github.com/gematik/zero-lab/go/kv/postgres@v0.8.0`, which lifts kv
+  with it. A `go.mod` that names a kv below v0.8.0 beside the new module does not build: Go finds the package
+  twice and says so (`ambiguous import`).
+
+### changed
+- go/kv requires nothing outside the standard library: pgx and its requirements leave the module graph of every
+  consumer that does not use Postgres.
+
+# Release go/kv/postgres v0.8.0
+
+### added
+- The PostgreSQL backend of kv as a module, unchanged in behaviour from the package of go/kv v0.7.0 (schema under
+  an advisory lock, TASK-423). It requires go/kv v0.8.0.
+
 # Release 2026-11-25: go/oidf v0.55.0, go/oidftest v0.1.0
 
 The test federation is a module of its own, so that oidf requires nothing a test needs (TASK-406). Verified on
