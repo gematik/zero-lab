@@ -106,7 +106,20 @@ check-changed base="main":
     just lint golangci modernize test
 
 # Every check of a change
-check: lint golangci modernize vuln mod-check test test-race api-lint
+check: lint golangci modernize vuln mod-check test test-race api-lint agents-map
+
+# The repository's map for agents, ../AGENTS.md, has one row for every module of go.work and
+# none for a module that is gone
+agents-map:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    members=$(sed -nE 's/^[[:space:]]+\.\/(.+)$/\1/p' go.work | sort)
+    rows=$(sed -nE 's/^\| \[`go\/([^`]+)`\].*/\1/p' ../AGENTS.md | sort)
+    if ! diff <(echo "$members") <(echo "$rows") >/dev/null; then
+        echo "AGENTS.md and go.work differ (< only in go.work, > only in AGENTS.md):"
+        diff <(echo "$members") <(echo "$rows") | grep '^[<>]'
+        exit 1
+    fi
 
 # go vet and staticcheck
 lint: (_each_check "go vet ./... && go run " + STATICCHECK + " ./...")

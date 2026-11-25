@@ -530,6 +530,7 @@ the user's machine. The checksums are not signed yet (see "Known compromises").
 | `wasm-smoke` | The package in Node on the real TSLs, cross-checked with `ti pki tsl verify` |
 | `wasm-vendor [<dir>]` | Copy the package into `<dir>/vendor/ti-wasm` (default `../../gemiverse`) |
 | `core-deps` | Prove ti-pki's core pulls in no HTTP client, executor or file watcher |
+| `agents-map` | Part of `check`: `AGENTS.md` at the repository root has a row for every crate of the workspace and none for a crate that is gone |
 | `test-pki` | Regenerate the OpenSSL test PKI in `ti-pki/tests/pki` |
 | `test-pkcs12` | Design time (OpenSSL, Go): write what is missing of `ti-pkcs12/tests/fixtures` and its `go-baseline.json` |
 | `nonprod-absent` | Prove ti-pki without `dangerous-nonprod` contains no non-prod trust material |

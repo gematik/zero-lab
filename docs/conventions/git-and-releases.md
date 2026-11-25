@@ -72,5 +72,8 @@
    the runs, or the waiver with its reason, in the release pull request.
 3. The workspace's pre-release checks are green (`just audit` and what the development
    guide adds).
-4. Bump, tag and push as the development guide describes; only tag-pinned consumers then
+4. Read the rows of the released units in [`AGENTS.md`](../../AGENTS.md) against what the
+   release ships and correct them in the release pull request
+   ([text for agents](agents.md#the-repositorys-map)).
+5. Bump, tag and push as the development guide describes; only tag-pinned consumers then
    see the new code.
