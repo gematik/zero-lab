@@ -31,6 +31,7 @@ package schema
 import (
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // Step is one change of the schema. Versions count from 1 without gaps.
@@ -107,9 +108,9 @@ func Pending(steps []Step, found, to int, contract bool) (pending []Step, held *
 // Needs is the version a program with these steps needs at least: its last step that is not a contract
 // step. A contract step it does not need: it works before and after.
 func Needs(steps []Step) int {
-	for i := len(steps) - 1; i >= 0; i-- {
-		if !steps[i].Contract {
-			return steps[i].Version
+	for _, s := range slices.Backward(steps) {
+		if !s.Contract {
+			return s.Version
 		}
 	}
 	return 0
