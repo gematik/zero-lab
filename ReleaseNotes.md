@@ -1,5 +1,27 @@
 # Release Notes
 
+# Release 2026-11-25: go/oidf v0.55.0, go/oidftest v0.1.0
+
+The test federation is a module of its own, so that oidf requires nothing a test needs (TASK-406). Verified on
+the release branch: `just check` across all Go modules passed; OpenID Federation (`just oidf-test`) against
+https://app-ref.federationmaster.de passed on 2026-11-25.
+
+# Release go/oidf v0.55.0
+
+### breaking
+- The package `oidf/oidftest` is gone; it is the module `github.com/gematik/zero-lab/go/oidftest` (TASK-406).
+  A test that imported it changes the import path and requires the new module.
+
+### changed
+- A metadata policy is ignored on purpose; the parser says why (TASK-292).
+
+# Release go/oidftest v0.1.0
+
+### added
+- oidf's test federation (a federation master and a sektoral IDP on one test server) as a module of its own,
+  with oidf's login tests. It requires go/oidf v0.55.0. It is for tests: `just mod-check` refuses an importer
+  that is not one.
+
 # Release go/kv v0.7.0
 
 Replicas that start together against an empty database all start, and the revocation sets zero-pep-proxy and zaddy
