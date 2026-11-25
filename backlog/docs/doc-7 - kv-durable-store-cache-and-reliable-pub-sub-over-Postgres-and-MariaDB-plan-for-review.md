@@ -9,7 +9,7 @@ created_date: '2026-11-22 15:27'
 # kv: durable store, cache and reliable pub/sub over Postgres and MariaDB
 
 Status: reviewed with the maintainer on 2026-11-25 (first drafted 2026-11-22). Nothing of it is built; the steps
-below becomes a task once agreed.
+are the tasks listed at the end.
 
 Decided by the maintainer on 2026-11-25: MariaDB is a required backend, not an option for later, and
 `github.com/go-sql-driver/mysql` is approved as its driver. The interfaces are therefore designed for both
