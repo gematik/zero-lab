@@ -6,7 +6,7 @@ require (
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4
 	github.com/gematik/zero-lab/go/egress v0.0.0-20261122165346-56c6c247e654
 	github.com/gematik/zero-lab/go/idpd v0.3.1-0.20261122165346-56c6c247e654
-	github.com/gematik/zero-lab/go/kv v0.7.0
+	github.com/gematik/zero-lab/go/kv v0.7.1-0.20261125181609-a6e11b3107c4
 	github.com/gematik/zero-lab/go/nonce v0.24.0
 	github.com/gematik/zero-lab/go/oidf v0.54.3-0.20261122165346-56c6c247e654
 	github.com/gematik/zero-lab/go/oidftest v0.0.0-20261122165346-56c6c247e654
@@ -17,6 +17,7 @@ require (
 
 require (
 	github.com/gematik/zero-lab/go/brainpool v1.4.1 // indirect
+	github.com/gematik/zero-lab/go/kv/postgres v0.0.0-00010101000000-000000000000
 	github.com/gematik/zero-lab/go/tipki v0.33.1-0.20261122165346-56c6c247e654 // indirect
 	golang.org/x/crypto v0.59.0 // indirect
 )
