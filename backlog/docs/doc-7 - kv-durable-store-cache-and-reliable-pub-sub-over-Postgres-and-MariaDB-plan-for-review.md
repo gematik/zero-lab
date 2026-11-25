@@ -501,17 +501,14 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
 | Hosts | built elsewhere; this repository builds libraries; a host is one image with both drivers |
 | Schema applied by the server | configurable, `WithMigrate()`, off by default |
 | Granting rights | not a function of the library; documented per backend |
+| Records that belong together | `Tx` without `Keys(prefix)`; a root record and an index in a related record ([the case](#the-case-zeta-authserver-gos-store)); kv offers no more than the transaction |
 
 ## Still open
 
 1. **zeta-authserver-go and the Feed**: does it adopt Feed for its revocations (its Revocations(since) iterator
    maps onto Follow), and when? Not decided (maintainer, 2026-11-25). Nothing in the libraries waits for the
    answer; it decides how soon the Feed is proven by a real host.
-2. **Records that belong together**: answered for zeta-authserver-go's store
-   ([the case](#the-case-zeta-authserver-gos-store)): `Tx`, a root record and an index in a related record are
-   enough, and kv offers no more than the transaction. To confirm by the maintainer: that `Tx` stays without
-   `Keys(prefix)`, which asks that store to list a client's sessions in the client's record.
-3. **`Get` across Galera's writing nodes**: whether writing a read record again is enough to make a decision safe,
+2. **`Get` across Galera's writing nodes**: whether writing a read record again is enough to make a decision safe,
    and what it costs; to be answered by the contract tests on a cluster before the contract of `Tx` is final.
 
 ## Tasks this would become
@@ -530,7 +527,7 @@ Not created yet (maintainer, 2026-11-25): the plan is reviewed first.
 - kv: `Durability`, ephemeral memory store, `kv_cache` in both backends (unlogged and asynchronous commit on
   Postgres, InnoDB on MariaDB).
 - kv: `Feed` + `Transactor.Tx` with memory, Postgres (`kv_feed`, `kv_topic`, transactional notify) and MariaDB
-  (the same tables, polling) backends, after "still open" 2 and 3 are answered; contract tests, also against a Galera cluster of three writing nodes.
+  (the same tables, polling) backends, after "still open" 2 is answered; contract tests, also against a Galera cluster of three writing nodes.
 - kv: `NewSealedFeed`; purposes per class.
 - kv: a guide for hosts from the table in "what a host does".
 - zero-pep-proxy and zaddy: the requirement on go/kv/postgres with the module cut; nothing else.
