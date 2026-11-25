@@ -1,10 +1,10 @@
 ---
 id: TASK-429
 title: 'kv/mariadb: the MariaDB backend as a module of its own'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T18:05:00Z'
-updated_date: '2026-11-25T19:28:00Z'
+updated_date: '2026-11-25T19:40:00Z'
 labels:
   - go
 dependencies:
@@ -38,4 +38,12 @@ doc-7, MariaDB, the second backend. Required by the maintainer (2026-11-25), in 
 2026-11-25, on feat/kv-mariadb, not committed yet. go/kv/mariadb: mariadb.go (Open, OpenDB, the store, Swapper, Marker, WithMark, WithMigrate, WithSyncWait, WithTLS, the DSN as a URL), migrate.go (steps, Migrate with To and Contract, the version check through kv/schema); in go.work, the Justfile's lists and AGENTS.md. Driver go-sql-driver/mysql v1.10.2 with its reason beside the requirement in go.mod (looked at 2026-11-25: pure Go, no cgo, no unsafe; requires filippo.io/edwards25519 v1.2.0 alone, pure Go without unsafe, assembly for amd64). Verified with just kv-mariadb-test (new; Docker): 28 tests against MariaDB 10.11.19 and 12.3.3, none skipped, with -race; the Galera suite against three writing nodes of 12.3. What the tests showed against doc-7, corrected there: (1) no lock serialises migrators: DDL commits and releases a row lock, so steps are single repeatable statements, proven by running each twice and by migrators through three nodes at once; (2) error 1317 (query interrupted) joins 1213 and 1205 as right to repeat: a node breaks a statement off for a schema change of the cluster; (3) Swap is SELECT FOR UPDATE plus UPDATE in one transaction, since an UPDATE counts changed rows; (4) SetIfAbsent is one INSERT ON DUPLICATE KEY UPDATE whose assignments read expires_at before they set it, reported by its row count; (5) with the repeating taken out the Galera contract fails with 1213, so one winner across nodes rests on it; (6) wsrep_sync_wait=7: 300 of 300 found through another node with it, 11, 1 and 0 of 300 missed without in three runs; (7) keys bounded at 1024 bytes and refused beyond, sessions in strict mode and UTC; (8) the official image's health check fails on a node that joined (it takes the donor's health-check user), so the compose file checks as root. Not proven: a primary with replicas; the cost of the wait (TASK-431). just check in go/ passed.
 
 2026-11-25, maintainer: no user and no password in the DSN; they are parameters. Open(ctx, dsn, user, password, opts...) and OpenDB(dsn, user, password, opts...); the DSN is mariadb://host:port/database with tls=false as its one parameter, and one that carries a user or a password is refused without repeating it. A password is taken as it is (tested with URL delimiters and escapes in it). Compared before: zeta-guard-helm 2.0.2 gives the notification service and Keycloak a JDBC URL without credentials and username and password from a secret; zeta-authserver-go puts the whole URL with the password into a file. The tests take TEST_MARIADB_DSN, TEST_MARIADB_USER and TEST_MARIADB_PASSWORD. just kv-mariadb-test passed again on this state. kv/postgres still takes the credentials in its URL: a task to come, if the maintainer wants it in line.
+
+2026-11-25, released at the maintainer's word: go/kv/mariadb v0.1.0, requiring go/kv v0.9.0. just check in go/ passed before the merge (one earlier run failed in pep/proxy's TestServerRule10_SnapshotWrongKeyAndTamper, which fails by chance about once in 300 runs and is not touched here: TASK-435). A module outside the workspace gets the tag with go get, builds, and has no pgx in its module graph.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/kv/mariadb is the MariaDB backend of kv, a module of its own on go-sql-driver/mysql: kv.Store, Swapper and Marker, the schema in numbered repeatable steps with Migrate, Open without DDL, WithMigrate. It rests on nothing that holds on one node only, repeats a statement that lost against another writer, and in a cluster waits for the cluster's commits; the address is the DSN, user and password are parameters beside it. Proven by just kv-mariadb-test against MariaDB 10.11 and 12.3 and with every call through another writing node of a Galera cluster of three; doc-7 corrected where the tests said otherwise. Released as go/kv/mariadb v0.1.0.
+<!-- SECTION:FINAL_SUMMARY:END -->
