@@ -105,7 +105,7 @@ func Open(ctx context.Context, dsn string, opts ...Option) (kv.Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("kv/postgres: ping: %w", err)
 	}
-	if _, err := db.ExecContext(ctx, schemaSQL); err != nil {
+	if err := applySchema(ctx, db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("kv/postgres: schema: %w", err)
 	}
@@ -114,6 +114,29 @@ func Open(ctx context.Context, dsn string, opts ...Option) (kv.Store, error) {
 		opt(s)
 	}
 	return s, nil
+}
+
+// schemaLock is the advisory lock every Open holds while it applies the schema, a number of this package's
+// choosing: advisory locks are per database, and a database holds one kv table.
+const schemaLock = 0x6b765f736368656d // "kv_schem"
+
+// applySchema runs schemaSQL in one transaction under schemaLock. Replicas start together, and IF NOT EXISTS
+// does not make concurrent DDL safe: two sessions that create the table at once collide on the catalog's
+// unique index, and two that alter it deadlock. With the lock the second waits for the first one's commit
+// and then finds the schema in place.
+func applySchema(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, int64(schemaLock)); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // MarkedOther implements kv.Marker.

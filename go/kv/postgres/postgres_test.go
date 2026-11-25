@@ -28,6 +28,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -582,5 +583,61 @@ func TestPostgres_ResealMarksWhatHadNoMark(t *testing.T) {
 	}
 	if got, found, err := store.Get(ctx, prefix+"a"); err != nil || !found || string(got) != "of before the marks" {
 		t.Errorf("a: %q, found %v, %v", got, found, err)
+	}
+}
+
+// freshDatabase creates an empty database beside the one of TEST_DATABASE_URL, drops it afterwards, and returns
+// its DSN: the schema is created once per database, so a test of its creation needs one of its own.
+func freshDatabase(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("TEST_DATABASE_URL: %v", err)
+	}
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	name := fmt.Sprintf("kv_fresh_%d", time.Now().UnixNano())
+	if _, err := admin.Exec(`CREATE DATABASE ` + name); err != nil {
+		t.Fatalf("create database: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec(`DROP DATABASE ` + name + ` WITH (FORCE)`)
+		_ = admin.Close()
+	})
+	u.Path = "/" + name
+	return u.String()
+}
+
+// Replicas of a first installation start together against an empty database. CREATE TABLE IF NOT EXISTS does
+// not make that safe: of two sessions that create the table at once, one fails on the catalog's unique index.
+func TestPostgres_OpenOfAnEmptyDatabaseByManyAtOnceSucceedsForAll(t *testing.T) {
+	ctx := context.Background()
+	const replicas = 8
+	for round := range 5 {
+		dsn := freshDatabase(t)
+		start := make(chan struct{})
+		errs := make(chan error, replicas)
+		for range replicas {
+			go func() {
+				<-start
+				s, err := postgres.Open(ctx, dsn)
+				if err == nil {
+					err = s.Close()
+				}
+				errs <- err
+			}()
+		}
+		close(start)
+		for range replicas {
+			if err := <-errs; err != nil {
+				t.Errorf("round %d: %v", round, err)
+			}
+		}
 	}
 }

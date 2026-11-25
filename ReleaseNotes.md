@@ -1,5 +1,19 @@
 # Release Notes
 
+# Release go/kv v0.7.0
+
+Replicas that start together against an empty database all start, and the revocation sets zero-pep-proxy and zaddy
+share. Verified on the release branch: `just check` across all Go modules passed; kv on Postgres (Postgres 18,
+`TEST_DATABASE_URL`, with `-race`) passed on 2026-11-25.
+
+### added
+- `kv/revoked`: revocation sets shared between replicas over the store and the bus (TASK-313).
+
+### fixed
+- `postgres.Open` applies the schema in one transaction under an advisory lock. Before, two processes that opened
+  the same database at the same moment raced on the schema: one failed with `duplicate key value violates unique
+  constraint "pg_type_typname_nsp_index"` on an empty database, or with `deadlock detected` (TASK-423).
+
 # Release go/zaddy v2.11.9-zero.1
 
 zaddy is now versioned as the Caddy it builds with plus our revision (TASK-422): this is Caddy 2.11.9 with our

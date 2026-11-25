@@ -3,9 +3,10 @@ id: TASK-423
 title: >-
   kv/postgres: two processes that open a fresh database together race on the
   schema, and one fails
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-24T21:16:00Z'
+updated_date: '2026-11-25T06:19:00Z'
 labels:
   - go
 dependencies: []
@@ -20,5 +21,11 @@ Found in zeta-authserver-go (its TASK-167, and once before in TASK-166) on 2026-
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Several processes opening an empty database at the same moment all succeed, held by a test that starts them together
+- [x] #1 Several processes opening an empty database at the same moment all succeed, held by a test that starts them together
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-25, on fix/kv-postgres-schema-race. Reproduced with a test that opens a fresh database from 8 sessions at once, 5 rounds: without a lock most sessions fail with the reported 23505 on pg_type_typname_nsp_index, and one round also showed deadlock detected (40P01) from the ALTER statements. Fix: applySchema runs schemaSQL in one transaction under pg_advisory_xact_lock; the second session waits for the commit and finds the schema. 100 rounds pass after it. just check in go/ passed; the Postgres suite (16 tests, -race, Postgres 18) passed with none skipped.
+<!-- SECTION:NOTES:END -->
