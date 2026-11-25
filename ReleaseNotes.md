@@ -1,5 +1,25 @@
 # Release Notes
 
+# Release go/kv/mariadb v0.1.0
+
+The MariaDB backend of kv, a module of its own (TASK-429, the third step of the kv plan in backlog doc-7).
+Verified on the release branch: `just check` across all Go modules passed; `just kv-mariadb-test` passed on
+2026-11-25: the contract of a backend and the schema steps against MariaDB 10.11 and 12.3, and the same contract
+with every call through another writing node of a Galera cluster of three (12.3), with `-race`.
+
+### added
+- `Open`, `Migrate` with `To` and `Contract`, `WithMigrate`, `WithMark` as in go/kv/postgres: `kv.Store`,
+  `kv.Swapper` and `kv.Marker` over MariaDB, the schema in numbered steps, `Open` without DDL.
+- For a single node, a primary with replicas and Galera with one or several writing nodes: no lock of one node,
+  a statement that lost against another writer is repeated a bounded number of times, and in a cluster a session
+  waits for the cluster's commits (`WithSyncWait`: automatic, always, never).
+- The DSN is the address alone, `mariadb://host:port/database`; user and password are parameters of `Open` and
+  `OpenDB` beside it, and a DSN that carries either is refused. TLS unless the DSN says `tls=false`; `WithTLS`
+  for a server the system's roots do not vouch for.
+- A key is at most 1024 bytes (`MaxKeyLen`); a longer one is refused (`ErrKeyTooLong`), never cut short.
+- New requirement: `github.com/go-sql-driver/mysql` v1.10.2 (pure Go, no cgo, no `unsafe`), which requires
+  `filippo.io/edwards25519` v1.2.0. No other module of this repository requires either.
+
 # Release 2026-11-25: go/kv v0.9.0, go/kv/postgres v0.9.0
 
 The Postgres schema changes in numbered steps that a migrator applies, and a server no longer changes its schema

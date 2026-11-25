@@ -1,0 +1,36 @@
+# A Galera cluster of three writing nodes for the gated tests of kv/mariadb (just kv-mariadb-galera).
+# TEST ONLY: the root password is a placeholder, the ports are bound to loopback, nothing is kept.
+name: kv-mariadb-galera
+
+x-node: &node
+  image: mariadb:${MARIADB_VERSION:-12.3}
+  environment:
+    MARIADB_ROOT_PASSWORD: test-only
+    MARIADB_DATABASE: kv
+  tmpfs:
+    - /var/lib/mysql
+  healthcheck:
+    # A node that joins takes the donor's data and with it the donor's health-check user, whose
+    # password its own health-check file does not hold: the check asks as root.
+    test: ["CMD-SHELL", "mariadb -uroot -ptest-only -N -e \"SHOW STATUS LIKE 'wsrep_local_state_comment'\" | grep -q Synced"]
+    interval: 2s
+    timeout: 5s
+    retries: 60
+
+services:
+  node1:
+    <<: *node
+    command: [--wsrep_on=ON, --wsrep_provider=/usr/lib/galera/libgalera_smm.so, "--wsrep_cluster_address=gcomm://node1,node2,node3", --wsrep_sst_method=rsync, --binlog_format=ROW, --innodb_autoinc_lock_mode=2, --wsrep_node_address=node1, --wsrep-new-cluster]
+    ports: ["127.0.0.1:${GALERA_PORT1:-33071}:3306"]
+  node2:
+    <<: *node
+    command: [--wsrep_on=ON, --wsrep_provider=/usr/lib/galera/libgalera_smm.so, "--wsrep_cluster_address=gcomm://node1,node2,node3", --wsrep_sst_method=rsync, --binlog_format=ROW, --innodb_autoinc_lock_mode=2, --wsrep_node_address=node2]
+    ports: ["127.0.0.1:${GALERA_PORT2:-33072}:3306"]
+    depends_on:
+      node1: { condition: service_healthy }
+  node3:
+    <<: *node
+    command: [--wsrep_on=ON, --wsrep_provider=/usr/lib/galera/libgalera_smm.so, "--wsrep_cluster_address=gcomm://node1,node2,node3", --wsrep_sst_method=rsync, --binlog_format=ROW, --innodb_autoinc_lock_mode=2, --wsrep_node_address=node3]
+    ports: ["127.0.0.1:${GALERA_PORT3:-33073}:3306"]
+    depends_on:
+      node2: { condition: service_healthy }

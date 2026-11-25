@@ -8,6 +8,7 @@ use (
 	./httpguard
 	./idpd
 	./kv
+	./kv/mariadb
 	./kv/postgres
 	./metsubushi
 	./nonce
