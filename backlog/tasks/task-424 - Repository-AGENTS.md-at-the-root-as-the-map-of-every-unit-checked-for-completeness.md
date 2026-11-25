@@ -3,10 +3,10 @@ id: TASK-424
 title: >-
   Repository: AGENTS.md at the root as the map of every unit, checked for
   completeness
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-24T21:53:00Z'
-updated_date: '2026-11-25T06:08:00Z'
+updated_date: '2026-11-25T17:35:00Z'
 labels:
   - docs
   - agents
@@ -36,3 +36,9 @@ An agent that reads the repository, to work in it or to use one of its building 
 
 2026-11-25, maintainer: the map is maintained at releases from now on. Releasing has a new step 4 (read the released units' rows against what ships, correct them in the release pull request); the rule itself is a bullet of The repository's map in docs/conventions/agents.md, since the completeness check proves a row exists, not that it is true.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+AGENTS.md at the root is the map of the repository: a table from task to unit, one row for each of the 16 crates and 18 Go modules (layer, purpose, dependencies inside the repository, the document to read next), the shared specifications. just agents-map, part of just check in rust/ and go/, fails when a workspace member has no row or a row names a unit that is gone. A release reads the rows of the units it ships (step 4 of Releasing). The READMEs, CLAUDE.md and docs/conventions/agents.md point to it. Full just check passed in rust/ and go/ on the branch before the merge.
+<!-- SECTION:FINAL_SUMMARY:END -->
