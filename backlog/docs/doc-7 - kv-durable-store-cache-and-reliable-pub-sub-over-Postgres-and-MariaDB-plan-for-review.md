@@ -95,15 +95,21 @@ type Feed interface {
 }
 type Event struct { Cursor Cursor; Payload []byte; At time.Time }
 
-// Writer couples state and events: what it writes and what it announces commit together or not at all, so a
-// subscriber never hears of a change that did not happen, nor misses one that did.
-type Writer interface {
-    Apply(ctx context.Context, w Write) error
+// Transactor runs fn in one transaction: what fn reads stays as read until the end, and what it writes and
+// publishes commits together or not at all. A subscriber never hears of a change that did not happen, nor
+// misses one that did, and records that belong together change together.
+type Transactor interface {
+    Tx(ctx context.Context, fn func(tx Tx) error) error
 }
-type Write struct {
-    Set     []Entry
-    Delete  []string
-    Publish []Publication // {Topic, Payload}
+
+// Tx is the store inside a transaction. It names records by key only: no SQL, no handle of the backend.
+type Tx interface {
+    Get(ctx context.Context, key string) ([]byte, bool, error) // holds the record against other writers
+    Set(ctx context.Context, key string, value []byte, ttl time.Duration) error
+    SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
+    Take(ctx context.Context, key string) ([]byte, bool, error)
+    Delete(ctx context.Context, key string) error
+    Publish(ctx context.Context, topic string, event []byte) error
 }
 ```
 
@@ -112,9 +118,45 @@ event arrives is a property of the backend, not of the contract: Postgres pushes
 ([MariaDB](#mariadb-the-second-backend)). A consumer must not depend on push.
 
 `Bus` stays for what it is (best-effort signals inside one deployment) and is documented as such; new code uses
-`Feed`. MariaDB gets no `Bus`. Revocations become: `Apply(Write{Set: revoked key, Publish: revoked id})`, and every replica keeps a local
+`Feed`. MariaDB gets no `Bus`. Revocations become one `Tx` that sets the revoked key and publishes the revoked id, and every replica keeps a local
 set from `Follow(topic, cursor)`; after a restart it reads the durable keys once and follows from `Latest`. No
 periodic rescan.
+
+#### Transactions and records that belong together
+
+Decided in review (2026-11-25): a transaction with a callback, not a declarative list of writes, because records
+that belong together are read before they are written. The case at hand is zeta-authserver-go's store: a login
+writes the client, the user, the session, its index and the pinned registration with `SetMany`, and for a new
+client it first reads the user's set of clients, makes room in it and writes it back. The read is outside the
+transaction, so two logins of one user at the same moment can leave a client out of the set (the code says so).
+With `Tx` the set is read with `Get`, which holds it, and written in the same transaction.
+
+What the contract says, so that it holds on every backend:
+
+- **fn may run more than once.** A backend repeats it when the database reports a conflict (a deadlock, a
+  serialization failure, a certification failure in Galera), a bounded number of times. fn therefore has no effect
+  outside tx and decides anew from what it reads each time.
+- **Records are named, not searched.** `Tx` has no `Keys(prefix)`: a scan inside a transaction locks or validates a
+  range, differently in every database. What belongs together is reached by key: a record names its relatives, or
+  an index record lists them (as `userClients` does). How a host lays out such relations (a client under its user,
+  a session under both, what is removed with what) is the host's design; kv gives the transaction and documents
+  the patterns in the guide for hosts. This part is not designed to the end: see what is still open.
+- **Few records, short.** A transaction is for the handful of records of one operation, not for a batch; the
+  backends bound the number of operations and the time.
+- **No store calls beside tx inside fn.** They would run outside the transaction and can wait on the connection
+  fn holds.
+- **`Get` holds, on one node.** Postgres and MariaDB read with `FOR UPDATE`. Across the writing nodes of a Galera
+  cluster only writes are checked against each other at commit, a held read is not: a decision that rests on a
+  record fn only read can be overtaken by a writer on another node. fn that needs the record unchanged writes it
+  (the value it read, again), and the contract tests prove on a cluster whether that suffices. To be confirmed by
+  those tests, like the other Galera statements.
+- **Sealed stores** wrap `Tx` as they wrap `Store`: values are sealed and opened per key, events per topic, and the
+  marks are written with the records.
+- **One class per transaction.** A transaction touches durable records and events, or ephemeral records, not both:
+  on Postgres the ephemeral table commits asynchronously, and a transaction over both would promise for the cache
+  what only the durable table keeps.
+
+`SetMany` stays (it is a transaction without reads), as do the single-statement operations, which need none.
 
 ### 2. Postgres: two table classes and an event log
 
@@ -122,31 +164,32 @@ periodic rescan.
 |---|---|---|
 | `kv` (existing) | logged | durable records, as today |
 | `kv_cache` | `UNLOGGED` | ephemeral records: no WAL, several times faster writes, truncated after a crash and absent on streaming replicas, which is exactly the Ephemeral promise |
-| `kv_feed` | logged, `id bigint GENERATED ALWAYS AS IDENTITY`, `topic`, `payload bytea`, `created_at` | the event log behind Feed; retention by time per topic |
+| `kv_feed` | logged, `topic`, `seq bigint`, `payload bytea`, `created_at`, primary key `(topic, seq)` | the event log behind Feed; retention by time per topic |
+| `kv_topic` | logged, `topic` primary key, `seq bigint` | the counter of each topic, raised in the transaction that publishes |
 
 Features used, each for a reason:
 
 - **Index for prefixes**: `key text COLLATE "C"` (or a `text_pattern_ops` index) so `Keys`/`Marker` are range
   scans. Added without rewriting the table: a second index first, the column change in a later release (rule 22).
 - **Atomic single statements** (as today, kept): `INSERT … ON CONFLICT DO NOTHING RETURNING` (SetIfAbsent),
-  `DELETE … RETURNING` (Take), `UPDATE … WHERE value = $old` (Swap), `SetMany`/`Apply` in one transaction.
+  `DELETE … RETURNING` (Take), `UPDATE … WHERE value = $old` (Swap), `SetMany` and `Tx` in one transaction.
 - **Asynchronous commit for the ephemeral class only**: `SET LOCAL synchronous_commit = off` inside the
   transactions that touch only `kv_cache`; durable writes keep synchronous commit. This is the "Redis-like" mode:
   writes return without waiting for the WAL flush; a crash loses at most the last few hundred milliseconds,
   which the Ephemeral class allows anyway.
-- **Transactional NOTIFY**: `Apply` inserts into `kv_feed` and calls `pg_notify(topic, id)` in the same
-  transaction; Postgres delivers notifications only on commit. The notification carries the event id only (well
+- **Transactional NOTIFY**: a publish inserts into `kv_feed` and calls `pg_notify(topic, seq)` in the same
+  transaction; Postgres delivers notifications only on commit. The notification carries the number only (well
   under the 8000-byte payload limit, nothing secret); a follower that wakes up reads `kv_feed WHERE topic = $1 AND
-  id > $cursor ORDER BY id`. A missed notification costs latency until the next one or a slow poll (e.g. 30 s), not
-  correctness.
-- **Ordered commits per topic**: ids from an identity column become visible in commit order, not id order, so a
-  follower reading `id > cursor` could step over an event that commits later with a smaller id. `Apply` therefore
-  takes `pg_advisory_xact_lock(hashtext(topic))` before it inserts into `kv_feed`: publishes to one topic commit one
-  after another, and their ids rise in commit order. The topics here see few events (revocations, invalidations),
-  so serialising them per topic costs nothing measurable; a busy topic would need another scheme and is out of scope.
-  MariaDB cannot use such a lock across a Galera cluster and orders events by a counter row per topic
-  ([MariaDB](#mariadb-the-second-backend)); whether Postgres uses the same counter row, for one design in both
-  backends, is open question 6.
+  seq > $cursor ORDER BY seq`. A missed notification costs latency until the next one or a slow poll (e.g. 30 s),
+  not correctness.
+- **Ordered events per topic, one design for both databases** (decided in review, 2026-11-25): a publish raises
+  the topic's counter, `UPDATE kv_topic SET seq = seq + 1 WHERE topic = $1 RETURNING seq`, and inserts the event
+  with that number, in one transaction. The row lock makes publishes to one topic commit one after another, so
+  the numbers are gapless and rise in commit order, and a follower reading `seq > cursor` steps over nothing. An
+  identity column would not do: its values become visible in commit order, not in their own. The topics here see
+  few events (revocations, invalidations), so serialising them per topic costs nothing measurable; a busy topic
+  would need another scheme and is out of scope. MariaDB uses the same two statements
+  ([MariaDB](#mariadb-the-second-backend)).
 - **One cleaner, not every replica**: `pg_try_advisory_lock` around `Cleanup` and feed retention; deletes in
   batches (`DELETE … WHERE ctid IN (SELECT ctid … LIMIT 1000)`) so a backlog of expired rows never takes long locks.
 - **pgx native pool** (`pgxpool`) instead of database/sql: prepared statements, batches for `SetMany`, and
@@ -166,7 +209,7 @@ Today: `NewSealed` seals values with the key as associated data; keys stay clear
 - **Ephemeral store**: `NewSealed` works unchanged over `kv_cache`; the same keyring or keychain, the purpose names
   the class, so a sealed durable record cannot be replayed into the cache table or back.
 - **Feed payloads**: `NewSealedFeed(feed, keys, purpose)` seals each payload with AAD = purpose ‖ topic, and the
-  event id where the backend assigns it before the write (`nextval` in the same transaction). Payloads never pass
+  event's number, which the backend has from the topic's counter before it writes the event. Payloads never pass
   through `pg_notify`, which only carries the id, so the database's notification queue and logs see no content.
 - **Topic names** are clear like keys: a topic carries no secret; a per-subject topic uses the hashed subject.
 - **Re-keying** (rule 22): kv keeps offering the parts and no more: `Marker` in every backend and over both record
@@ -239,7 +282,7 @@ maintained when the backend is built, and against a Galera cluster of three writ
 | Ephemeral table | `UNLOGGED` | no per-table equivalent: InnoDB is always logged; `MEMORY` holds no BLOB/TEXT; Aria with `TRANSACTIONAL=0` is not crash-safe and not transactional with InnoDB. The cache table stays InnoDB, and the Ephemeral promise is kept by semantics, not speed |
 | Asynchronous commit | `SET LOCAL synchronous_commit = off` per transaction | `innodb_flush_log_at_trx_commit` is global only; no per-transaction switch |
 | Push for the feed | `LISTEN`/`NOTIFY`, transactional | none. Followers poll `kv_feed WHERE topic = ? AND id > ?` on an index (e.g. every second), which is cheap, or MaxScale/binlog CDC, which we do not want |
-| Ordered events per topic | advisory transaction lock, ids of an identity column | a counter row per topic, `UPDATE kv_topic SET seq = seq + 1 WHERE topic = ?`, in the transaction that inserts the event with that `seq`; no `GET_LOCK`, no `AUTO_INCREMENT` (see Galera below) |
+| Ordered events per topic | a counter row per topic, the same | a counter row per topic, `UPDATE kv_topic SET seq = seq + 1 WHERE topic = ?`, in the transaction that inserts the event with that `seq`; no `GET_LOCK`, no `AUTO_INCREMENT` (see Galera below) |
 | One migrator | `pg_advisory_lock` | a row of `kv_schema` taken with `SELECT … FOR UPDATE`; DDL itself is replicated in total order by Galera |
 | One cleaner | `pg_try_advisory_lock` | none needed: several cleaners deleting expired rows in batches only cost a retry |
 | Schema steps | transactional DDL | every DDL statement commits implicitly: steps are single, repeatable statements |
@@ -271,12 +314,14 @@ cluster, and the design avoids each:
   counter row: two transactions that raise the same counter on two nodes conflict at certification, one is rolled
   back with a deadlock error and repeated by the backend, and the `seq` values that commit are gapless and in
   commit order on every node. The same scheme is correct on a single node and on Postgres (where the row lock
-  serialises), so the Feed has one design, and Postgres' advisory lock per topic becomes an optimisation to
-  decide on, not a second mechanism.
+  serialises), so the Feed has one design in both backends (decided in review).
 - A write on one node is not at once visible on another. A single-use value set through node A and taken through
   node B a moment later may not be found: for an authorization code that is a failed login, not a replay, but it
-  is a defect all the same. The backend sets `wsrep_sync_wait` for its sessions so that a read waits until the
-  node has applied what the cluster committed; the cost is latency per read, to be measured. Atomicity is not at
+  is a defect all the same. With `wsrep_sync_wait` set for its sessions a read waits until the node has applied
+  what the cluster committed; the cost is latency per read, to be measured. It is configurable (decided in
+  review): `WithSyncWait(mode)` with `SyncWaitAuto` (the default: on when the server reports `wsrep_on`),
+  `SyncWaitAlways` and `SyncWaitNever`, for a host that knows its cluster has one writing node or accepts the
+  window. Atomicity is not at
   stake: of two `Take`s of one record on two nodes one fails certification, is repeated, and finds nothing.
 
 Every statement of the MariaDB backend is written to be repeated on a deadlock or certification failure (errors
@@ -306,7 +351,7 @@ Proposed: one module per backend, the core without any requirement.
 
 | Module | Packages | Requires | Tag |
 |---|---|---|---|
-| `go/kv` | `kv` (Store, Durability, Feed, Writer, memory backends, Sealed, Keyring, Keychain), `kv/revoked`, `kv/kvtest` (the contract tests, importing `testing` only), `kv/schema` (numbered steps, version check; no SQL dialect, no driver) | nothing outside the standard library | `go/kv/vX` |
+| `go/kv` | `kv` (Store, Durability, Feed, Transactor, memory backends, Sealed, Keyring, Keychain), `kv/revoked`, `kv/kvtest` (the contract tests, importing `testing` only), `kv/schema` (numbered steps, version check; no SQL dialect, no driver) | nothing outside the standard library | `go/kv/vX` |
 | `go/kv/postgres` | `postgres` (Open, the steps, `Migrate`) | go/kv, pgx | `go/kv/postgres/vX` |
 | `go/kv/mariadb` | `mariadb` (Open, the steps, `Migrate`) | go/kv, go-sql-driver/mysql | `go/kv/mariadb/vX` |
 
@@ -352,13 +397,14 @@ against them, and they are not tasks of this repository.
 | Schema | `Migrate`, the version check in `Open`, `WithMigrate()` | a migration program per database with admin credentials, its image, the Job before a rollout, `Contract()` when no old replica is left; or the setting that turns `WithMigrate()` on |
 | Roles | the list of rights a server role needs, in the backend's documentation | creates the roles, grants the rights again when a release adds a table, keeps the admin credentials out of the server |
 | Class of data | `Durability`, `DurabilityOf` | puts each kind of record into the class it needs and refuses at start a store that promises less |
-| Events | `Feed`, `Writer.Apply`, `NewSealedFeed` | topics, retention, the local state built from `Follow`, what happens while the feed cannot be read |
+| Events and transactions | `Feed`, `Transactor.Tx`, `NewSealedFeed` | topics, retention, the local state built from `Follow`, what happens while the feed cannot be read |
 | Keys | `Keyring`, `Keychain`, `Unwrapper`, `Sealed`, `Marker`, `Resealer` | where the files and the key-encryption key come from, adding a keychain entry, the walk that reseals, when an old key goes |
 | Cleaning | `Cleanup`, feed retention as calls | when and how often they run |
 | Health and metrics | errors, and counts such as `SealedByKeys` | probes, metrics, logs |
 
-zero-pep-proxy and zaddy are hosts that live in this repository and use kv today. Whether they follow this plan
-here or are replaced by hosts elsewhere is open question 8.
+zero-pep-proxy and zaddy are hosts that live in this repository and use kv today. They stay on Postgres only
+(decided in review, 2026-11-25): they take the module cut (a requirement on go/kv/postgres) and link no MariaDB
+driver. `Store`, `Bus` and kv/revoked keep working for them; moving them to `Feed` is not part of this plan.
 
 ## Migration (servers.md rule 22: mixed versions work)
 
@@ -367,39 +413,45 @@ here or are replaced by hosts elsewhere is open question 8.
    so that a mistake in the cut shows alone.
 1. Release N: migrations, `Migrate` and `WithMigrate()`; a host either runs `Migrate` before its rollout
    or sets the option before it takes this release, and the release notes say so as a breaking change; new tables
-   and indexes are additive, nothing reads them yet. kv/postgres moves to pgxpool behind the same `kv.Store`. go/kv/mariadb appears with
-   `kv.Store` and the contract tests; it never applies a schema itself.
-2. Release N+1: `Feed`, `Writer`, `Durability` in kv and both backends; revocations of zero-pep-proxy and zaddy
-   write both the old way (key + Bus) and the Feed; followers read the Feed. oidf documents move to the ephemeral
-   store.
-3. Release N+2: the Bus path of revocations and kv/revoked's rescan go; the old `metadata` column goes.
+   and indexes are additive, nothing reads them yet. kv/postgres moves to pgxpool behind the same `kv.Store`
+   (confirmed in review). go/kv/mariadb appears with `kv.Store` and the contract tests.
+2. Release N+1: `Feed`, `Transactor`, `Durability` in kv and both backends. Hosts adopt them in their own time;
+   a host that moves its revocations writes both the old way (key + Bus) and the Feed for one release, and its
+   followers read the Feed.
+3. Later: the `metadata` column goes, as a contract step. `Bus` and kv/revoked stay while zero-pep-proxy and zaddy
+   use them.
 
 Consumers that need durability (`kv.DurabilityOf(store) == kv.Durable`) refuse an ephemeral store at start:
 zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once and codes.
 
-## Open questions for review
+## Decided in review (2026-11-25)
 
-1. **Names**: `Feed` and `Writer.Apply`, or one `Tx(ctx, func(Tx) error)`? Apply is declarative and keeps
-   backends simple (memory, and a future one); a callback transaction is more flexible but leaks backend
-   semantics. Recommendation: Apply.
-2. **Sessions**: durable (survive a database crash; today's behaviour) or ephemeral (faster; a crash signs
-   everyone out)? Recommendation: durable for zero-pep-proxy's sessions, ephemeral for the oidf documents and the
-   revocation mirror.
-3. **Feed retention**: per topic by time (revocations: the snapshot TTL, 8 h) or by count? Recommendation: by
-   time, set by the publisher.
-4. **zeta-authserver-go**: does it adopt Feed for its revocations (its Revocations(since) iterator maps onto Follow) in
-   the same step, or later? It is the largest user.
-5. **Scope of pgxpool**: kv/postgres already requires pgx; switching from database/sql to pgxpool adds no module
-   but uses more of pgx. To confirm under the dependency rules.
-6. **One ordering scheme or two**: MariaDB orders events by a counter row per topic. Does Postgres use the same
-   (one design, one set of tests, a row update per publish) or keep the advisory lock with identity ids (no extra
-   row, a second mechanism)? Recommendation: the counter row in both.
-7. **`wsrep_sync_wait`** costs latency on every read of the MariaDB backend, also on a single node where it does
-   nothing useful. Always on, or only when the server reports it is part of a cluster (`wsrep_on`)?
-   Recommendation: only in a cluster, decided at `Open`.
-8. **The hosts in this repository**: zero-pep-proxy and zaddy import kv/postgres. With hosts built elsewhere, do
-   they adopt the new libraries (the module cut forces at least a changed requirement), stay on Postgres only, or
-   go the way of zero-pdp?
+| Question | Decision |
+|---|---|
+| A declarative list of writes or a callback transaction | `Tx(ctx, func(Tx) error)`, because records that belong together are read before they are written ([transactions](#transactions-and-records-that-belong-together)) |
+| Sessions durable or ephemeral | durable; federation documents and revocation mirrors are ephemeral. The class of a kind of record is the host's choice, the library offers both |
+| Feed retention | by time per topic, set by the publisher |
+| pgxpool instead of database/sql in kv/postgres | yes |
+| One ordering scheme or two | one: the counter row per topic in Postgres and MariaDB |
+| `wsrep_sync_wait` | configurable, `WithSyncWait(mode)`, automatic by default |
+| zero-pep-proxy and zaddy | stay on Postgres only |
+| MariaDB | required; every topology; driver go-sql-driver/mysql |
+| Hosts | built elsewhere; this repository builds libraries; a host is one image with both drivers |
+| Schema applied by the server | configurable, `WithMigrate()`, off by default |
+| Granting rights | not a function of the library; documented per backend |
+
+## Still open
+
+1. **zeta-authserver-go and the Feed**: does it adopt Feed for its revocations (its Revocations(since) iterator
+   maps onto Follow), and when? Not decided (maintainer, 2026-11-25). Nothing in the libraries waits for the
+   answer; it decides how soon the Feed is proven by a real host.
+2. **Records that belong together**: `Tx` gives the transaction; how relations are laid out is left to the host
+   and to a guide. To settle before `Tx` is built, with zeta-authserver-go's store as the case: which of its
+   operations need a read inside the transaction (the user's set of clients, making room, removing a client with
+   its sessions), whether naming relatives by key and index records is enough for all of them, and whether kv
+   should offer more than the transaction (for example a set of keys under one record, kept by the backend).
+3. **`Get` across Galera's writing nodes**: whether writing a read record again is enough to make a decision safe,
+   and what it costs; to be answered by the contract tests on a cluster before the contract of `Tx` is final.
 
 ## Tasks this would become
 
@@ -416,9 +468,9 @@ Not created yet (maintainer, 2026-11-25): the plan is reviewed first.
 - kv/postgres: prefix index (`COLLATE "C"` / `text_pattern_ops`), batched and advisory-locked Cleanup, pgxpool.
 - kv: `Durability`, ephemeral memory store, `kv_cache` in both backends (unlogged and asynchronous commit on
   Postgres, InnoDB on MariaDB).
-- kv: `Feed` + `Writer.Apply` with memory, Postgres (`kv_feed`, transactional notify) and MariaDB (`kv_feed`,
-  polling, a counter row per topic) backends, contract tests, also against a Galera cluster of three writing nodes.
+- kv: `Feed` + `Transactor.Tx` with memory, Postgres (`kv_feed`, `kv_topic`, transactional notify) and MariaDB
+  (the same tables, polling) backends, after "still open" 2 and 3 are answered; contract tests, also against a Galera cluster of three writing nodes.
 - kv: `NewSealedFeed`; purposes per class.
 - kv: a guide for hosts from the table in "what a host does".
-- zero-pep-proxy and zaddy: by the answer to open question 8.
+- zero-pep-proxy and zaddy: the requirement on go/kv/postgres with the module cut; nothing else.
 - zeta-authserver-go: adoption, by its own team (external).
