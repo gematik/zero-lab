@@ -298,7 +298,7 @@ DDL when `Open` runs none. The plan separates the two roles:
 
 - **Migrations are code of their own.** Each backend keeps numbered, embedded SQL steps and a table
   `kv_schema(version, name, contract, applied_at)`. `Migrate(ctx, db, opts...)` applies the steps (all, or up to `To(version)`) with one migrator at a
-  time: under `pg_advisory_lock` on Postgres, a row of `kv_schema` locked `FOR UPDATE` on MariaDB. On Postgres each step is one transaction.
+  time: under an advisory lock on Postgres, where each step is one transaction. MariaDB has no lock that would do (see its table below): there every migrator may run a step, and a step run twice changes nothing.
   MariaDB commits implicitly at every DDL statement, so a step there is one statement that can be repeated
   (`IF NOT EXISTS`, `IF EXISTS`), and the version is recorded after it: a migrator that died in a step repeats it.
 - **`Migrate` is a function, not a program.** Each backend exports `Migrate(ctx, db, opts...)` (options `To(version)`, `Contract()`) over a connection
@@ -342,14 +342,14 @@ maintained when the backend is built, and against a Galera cluster of three writ
 |---|---|---|
 | Atomic get-and-delete (Take) | `DELETE … RETURNING` | `DELETE … RETURNING` (since 10.0.5) |
 | Set if absent or expired | `INSERT … ON CONFLICT DO UPDATE … WHERE expired RETURNING` | `INSERT … ON DUPLICATE KEY UPDATE` with `IF(expires_at <= NOW(6), …)` and `ROW_COUNT()` (1 inserted, 2 replaced, 0 kept) |
-| Compare-and-swap | `UPDATE … WHERE value = $old` | the same, `ROW_COUNT()`; no `UPDATE … RETURNING` needed |
+| Compare-and-swap | `UPDATE … WHERE value = $old` | `SELECT … FOR UPDATE` and `UPDATE` in one transaction: the count of an `UPDATE` says how many rows changed, not how many matched (corrected with TASK-429) |
 | Prefix scans on an index | `COLLATE "C"` / `text_pattern_ops` | `VARBINARY` key or a `_bin` collation; `LIKE 'p%'` then uses the index |
 | Expiry from the database clock (TASK-107) | `now() + interval` | `NOW(6) + INTERVAL ? MICROSECOND` |
 | Ephemeral table | `UNLOGGED` | no per-table equivalent: InnoDB is always logged; `MEMORY` holds no BLOB/TEXT; Aria with `TRANSACTIONAL=0` is not crash-safe and not transactional with InnoDB. The cache table stays InnoDB, and the Ephemeral promise is kept by semantics, not speed |
 | Asynchronous commit | `SET LOCAL synchronous_commit = off` per transaction | `innodb_flush_log_at_trx_commit` is global only; no per-transaction switch |
 | Push for the feed | `LISTEN`/`NOTIFY`, transactional | none. Followers poll `kv_feed WHERE topic = ? AND id > ?` on an index (e.g. every second), which is cheap, or MaxScale/binlog CDC, which we do not want |
 | Ordered events per topic | a counter row per topic, the same | a counter row per topic, `UPDATE kv_topic SET seq = seq + 1 WHERE topic = ?`, in the transaction that inserts the event with that `seq`; no `GET_LOCK`, no `AUTO_INCREMENT` (see Galera below) |
-| One migrator | `pg_advisory_lock` | a row of `kv_schema` taken with `SELECT … FOR UPDATE`; DDL itself is replicated in total order by Galera |
+| One migrator | `pg_advisory_xact_lock` | none: a DDL statement commits and with that releases a row lock, and `GET_LOCK` holds on one node. A step is one statement that changes nothing when run again, and its record is written with `ON DUPLICATE KEY`; Galera replicates DDL in one order (corrected with TASK-429) |
 | One cleaner | `pg_try_advisory_lock` | none needed: several cleaners deleting expired rows in batches only cost a retry |
 | Schema steps | transactional DDL | every DDL statement commits implicitly: steps are single, repeatable statements |
 | Marks for re-keying (rule 22) | two nullable columns | the same |
@@ -392,8 +392,34 @@ cluster, and the design avoids each:
 
 Every statement of the MariaDB backend is written to be repeated on a deadlock or certification failure (errors
 1213 and 1205), a bounded number of times; the contract tests run each single-use operation concurrently through
-different nodes. All of this is to be proven by those tests against a real cluster before it is claimed; if
-`wsrep_sync_wait` or the counter row do not hold what is written here, the plan comes back for review.
+different nodes.
+
+**Proven with TASK-429** (2026-11-25, `just kv-mariadb-test`: MariaDB 10.11 and 12.3, the oldest and the newest LTS
+maintained that day, and a Galera cluster of three writing nodes on 12.3):
+
+- The contract of a backend holds when every call goes through another writing node: of 16 that take, set or
+  swap one record at once, one wins. It holds because losers are repeated: with the repeating taken out the
+  same tests fail with error 1213, which is what a node reports for a failed certification.
+- A third error belongs to the ones to repeat: 1317, query execution was interrupted, which a node reports for a
+  statement it broke off to let a schema change of the cluster through. Seen with migrators on different nodes
+  at once; a server would meet it while a migration job runs.
+- `wsrep_sync_wait` does what the plan says: with it (mask 7: reads, updates and deletes, inserts) 300 of 300
+  values written through one node were taken through another at once; without it 11, 1 and 0 of 300 were not
+  yet there, in three runs. It is on by itself where the server reports `wsrep_on`.
+- Migrators through three nodes at once all succeed, by repeatable steps alone.
+- A key is the table's primary key and bounded: 1024 bytes (`VARBINARY`). A longer key is refused before the
+  statement, and sessions run in strict mode, so nothing is cut short. Postgres has no such bound; a host that
+  must run on both keeps its keys within it.
+- The DSN is the address alone (`mariadb://host:port/database`); user and password are parameters beside it
+  (maintainer, 2026-11-25), as zeta-guard-helm has them for the notification service and Keycloak: a URL
+  without credentials in the configuration, `username` and `password` in a secret. A DSN that carries a user
+  or a password is refused. The connection is TLS unless the DSN says `tls=false`, and a parameter the backend
+  does not know is refused. kv/postgres still takes them in its URL; bringing it in line is a task to come.
+
+Not proven here: a primary with replicas (the tests need no read from a replica, and the backend reads where it
+writes), and the cost of `wsrep_sync_wait` per read, which TASK-431 measures with the classes of data. The counter row per
+topic and `Get` inside a transaction across writing nodes are TASK-432's to prove; if they do not hold what is
+written here, the plan comes back for review.
 
 **The driver.** `github.com/go-sql-driver/mysql` v1.10.2 (approved 2026-11-25), looked at on that day: pure Go, no
 cgo, no `unsafe`; it requires one module, `filippo.io/edwards25519` v1.2.0 (for the `client_ed25519`

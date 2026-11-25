@@ -84,6 +84,7 @@ file its row names.
 | [`go/egress`](go/egress) | library | A server's connections to the internet: the `web` TLS profile and the egress client (https only) | | `doc.go` |
 | [`go/httpguard`](go/httpguard) | library | The request checks every server runs first: path, single parameters, Host; standard library only | | `path.go` |
 | [`go/kv`](go/kv) | library | Key/value store with TTLs behind one interface, in memory; `revoked` sets, sealed records; `schema` (numbered schema steps, the version check) and `kvtest` (the contract tests of a backend); no requirement outside the standard library | | `kv.go` |
+| [`go/kv/mariadb`](go/kv/mariadb) | library | The MariaDB backend of kv (go-sql-driver/mysql), a module of its own; written for one node, replicas and Galera with several writing nodes; `Migrate` applies its schema steps, `Open` checks the version and runs no DDL | kv | `mariadb.go`, `migrate.go` |
 | [`go/kv/postgres`](go/kv/postgres) | library | The PostgreSQL backend of kv (pgx), a module of its own so that only programs that wire it carry the driver; `Migrate` applies its schema steps, `Open` checks the version and runs no DDL | kv | `postgres.go`, `migrate.go` |
 | [`go/nonce`](go/nonce) | library | Nonces that verify themselves (AES-256-GCM), no store | | `nonce.go` |
 | [`go/dpop`](go/dpop) | library | DPoP (RFC 9449) for clients and for servers that check proofs | | [README](go/dpop/README.md) |

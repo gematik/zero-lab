@@ -154,7 +154,7 @@ mod-check: (_each_check "go mod tidy -diff && go mod verify")
     if [ -n "$found" ]; then echo "egress carries: $found"; fail=1; fi
     found=$(cd pep && GOWORK=off go list -m all | grep 'zero-lab/go/' | grep -vE 'zero-lab/go/(pep|dpop)( |$)')
     if [ -n "$found" ]; then echo "pep, which zaddy takes in, carries: $found"; fail=1; fi
-    for dir in brainpool dpop egress idpd kv kv/postgres nonce oidf oidftest openid pep pkcs12 tipki; do
+    for dir in brainpool dpop egress idpd kv kv/mariadb kv/postgres nonce oidf oidftest openid pep pkcs12 tipki; do
         found=$(cd "$dir" && GOWORK=off go list -deps ./... | grep -E 'yaml')
         if [ -n "$found" ]; then echo "$dir compiles: $found"; fail=1; fi
         if grep -qE 'yaml' "$dir/go.mod"; then echo "$dir/go.mod names yaml"; fail=1; fi
@@ -281,7 +281,7 @@ sync REF=`git rev-parse --abbrev-ref HEAD`:
     done
     go work sync
     # It also lifts a yaml module the tests of a dependency use; a base library names none (decision-13).
-    for dir in brainpool dpop egress idpd kv kv/postgres nonce oidf oidftest openid pep pkcs12 tipki; do
+    for dir in brainpool dpop egress idpd kv kv/mariadb kv/postgres nonce oidf oidftest openid pep pkcs12 tipki; do
         ( cd "$dir" && go mod edit -droprequire=go.yaml.in/yaml/v3 -droprequire=gopkg.in/yaml.v3 )
     done
     # go work sync raises versions to what the workspace selects, so tidy again or go.sum
@@ -407,6 +407,33 @@ epa-connect-test:
 # ePA entitlement. VSDM_HMAC_KEY and VSDM_HMAC_KID come from the shell, never from ./.env
 epa-entitle-test:
     go test ./epa -run TestEPA_Entitle -count=1 -v -timeout 5m
+
+# kv/mariadb's gated suites (TASK-429): the contract of a backend and the schema steps against the oldest and the
+# newest maintained LTS release, then the same contract with every call through another writing node of a
+# Galera cluster of three. Needs Docker; the databases are in memory and gone afterwards.
+kv-mariadb-test oldest="10.11" newest="12.3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    compose="docker compose -f kv/mariadb/testdata/galera.compose.yaml"
+    export TEST_MARIADB_USER=root TEST_MARIADB_PASSWORD=test-only
+    cleanup() {
+        docker rm -f kv-mariadb-test >/dev/null 2>&1 || true
+        $compose down -v >/dev/null 2>&1 || true
+    }
+    trap cleanup EXIT
+    for version in {{oldest}} {{newest}}; do
+        echo "==> MariaDB $version"
+        docker rm -f kv-mariadb-test >/dev/null 2>&1 || true
+        docker run -d --name kv-mariadb-test -e MARIADB_ROOT_PASSWORD=test-only -e MARIADB_DATABASE=kv \
+            --tmpfs /var/lib/mysql -p 127.0.0.1:33061:3306 "mariadb:$version" >/dev/null
+        until docker exec kv-mariadb-test healthcheck.sh --connect >/dev/null 2>&1; do sleep 1; done
+        TEST_MARIADB_DSN='mariadb://127.0.0.1:33061/kv?tls=false' go test ./kv/mariadb -count=1 -race
+    done
+    echo "==> Galera, three writing nodes, MariaDB {{newest}}"
+    MARIADB_VERSION={{newest}} $compose up -d --wait
+    nodes=""
+    for port in 33071 33072 33073; do nodes="$nodes,mariadb://127.0.0.1:$port/kv?tls=false"; done
+    TEST_MARIADB_GALERA_DSNS="${nodes#,}" go test ./kv/mariadb -count=1 -race -run Galera -v | grep -v '^=== '
 
 # OpenID Federation against the master in OIDF_FEDMASTER_URL
 oidf-test:

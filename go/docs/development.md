@@ -130,6 +130,7 @@ and the release PR records the runs; the rules are in
 | ePA entitlement | `just epa-entitle-test` | as ePA connect, plus `VSDM_HMAC_KEY` / `VSDM_HMAC_KID` | entitlement with a VSDM proof | `epa` |
 | OpenID Federation | `just oidf-test` | `OIDF_FEDMASTER_URL` | entity statements and trust chains against a live federation master | `oidf`, `pep` |
 | kv on Postgres | `TEST_DATABASE_URL=… go test ./kv/postgres` | a Postgres database whose role may create databases and roles (the tests of the schema make their own) | the contract of a backend (`kv/kvtest`); the schema steps: applied once by many migrators, a database of before the steps adopted, `Open` with a role that may not change the schema, the version check, contract steps only when asked; a sealed store over it | `kv`, `kv/postgres`, `pdp`, `pep`, `bff` |
+| kv on MariaDB | `just kv-mariadb-test`; against a database of one's own: `TEST_MARIADB_DSN` (the address), `TEST_MARIADB_USER`, `TEST_MARIADB_PASSWORD`, and `TEST_MARIADB_GALERA_DSNS` for the nodes of a cluster | Docker | the contract of a backend (`kv/kvtest`) and the schema steps against the oldest and the newest maintained LTS release (10.11, 12.3); the same contract with every call through another writing node of a Galera cluster of three; a value written through one node found through another | `kv/mariadb` |
 
 ## Part B — Tag & reproducible builds
 
