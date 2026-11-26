@@ -1,6 +1,6 @@
 filippo.io/edwards25519 v1.2.0 h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=
 filippo.io/edwards25519 v1.2.0/go.mod h1:xzAOLCNug/yB62zG1bQ8uziwrIqIuxhctzJT18Q77mc=
-github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126225156-8def761b93b6 h1:npESGESs6THMye40c4/Zh+R9wanRChPXtinSnZPXSgc=
-github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126225156-8def761b93b6/go.mod h1:dLrz3xHV4IM+mRmYvup8s6XnhR1iDC31yAFuQTQMljY=
+github.com/gematik/zero-lab/go/kv v0.13.0 h1:TM629vDlfV8Y2sLoZNlD7aeubEMd1GR9heLbI7bgogM=
+github.com/gematik/zero-lab/go/kv v0.13.0/go.mod h1:dLrz3xHV4IM+mRmYvup8s6XnhR1iDC31yAFuQTQMljY=
 github.com/go-sql-driver/mysql v1.10.2 h1:5TRvGvczDohUMOCRA5aCAXgfSZOo/oNDSFD/2RrChS0=
 github.com/go-sql-driver/mysql v1.10.2/go.mod h1:M+cqaI7+xxXGG9swrdeUIoPG3Y3KCkF0pZej+SK+nWk=
