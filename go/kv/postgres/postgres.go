@@ -103,6 +103,9 @@ type store struct {
 	// listen is what a follower's own connection is made from, poll how often it looks untold (feed.go).
 	listen *pgx.ConnConfig
 	poll   time.Duration
+	// ephemeral is the class of the store, table the table of its records (ephemeral.go).
+	ephemeral bool
+	table     string
 }
 
 // Option adjusts the store [Open] returns.
@@ -146,7 +149,7 @@ func Open(ctx context.Context, dsn, user, password string, opts ...Option) (kv.S
 }
 
 func open(ctx context.Context, dsn, user, password string, steps []step, opts ...Option) (kv.Store, error) {
-	s := &store{poll: defaultFeedPoll}
+	s := &store{poll: defaultFeedPoll, table: "kv"}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -194,14 +197,14 @@ func ttlMicroseconds(ttl time.Duration) any {
 	return ttl.Microseconds()
 }
 
-const upsertSQL = `INSERT INTO kv(key, value, expires_at, mark, marked_at)
+const upsertSQL = `INSERT INTO @kv(key, value, expires_at, mark, marked_at)
 	VALUES($1, $2, now() + $3::bigint * interval '1 microsecond', $4, now())
 	ON CONFLICT(key) DO UPDATE SET value=excluded.value, created_at=now(), expires_at=excluded.expires_at,
 	  mark=excluded.mark, marked_at=now()`
 
 func (s *store) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	var v []byte
-	err := s.pool.QueryRow(ctx, `SELECT value FROM kv WHERE key=$1 AND `+live, key).Scan(&v)
+	err := s.queryRow(ctx, `SELECT value FROM @kv WHERE key=$1 AND `+live, key).Scan(&v)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -220,7 +223,7 @@ func nonNil(value []byte) []byte {
 }
 
 func (s *store) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	if _, err := s.pool.Exec(ctx, upsertSQL, key, nonNil(value), ttlMicroseconds(ttl), s.markOf(key, value)); err != nil {
+	if _, err := s.exec(ctx, upsertSQL, key, nonNil(value), ttlMicroseconds(ttl), s.markOf(key, value)); err != nil {
 		return fmt.Errorf("kv/postgres: set: %w", err)
 	}
 	return nil
@@ -229,7 +232,7 @@ func (s *store) Set(ctx context.Context, key string, value []byte, ttl time.Dura
 // SetIfAbsent is one statement, so two replicas cannot both win: the loser of a race for an expired row waits
 // for the winner's commit and then re-evaluates the WHERE on the new row, which is no longer expired.
 func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error) {
-	tag, err := s.pool.Exec(ctx, upsertSQL+` WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= now()`,
+	tag, err := s.exec(ctx, upsertSQL+` WHERE @kv.expires_at IS NOT NULL AND @kv.expires_at <= now()`,
 		key, nonNil(value), ttlMicroseconds(ttl), s.markOf(key, value))
 	if err != nil {
 		return false, fmt.Errorf("kv/postgres: set if absent: %w", err)
@@ -240,8 +243,8 @@ func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl t
 // Swap is one statement: the row is locked while its value is compared, so of two replicas that swap the same
 // value the second finds the first one's.
 func (s *store) Swap(ctx context.Context, key string, old, value []byte, ttl time.Duration) (bool, error) {
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE kv SET value=$3, created_at=now(), expires_at=now() + $4::bigint * interval '1 microsecond',
+	tag, err := s.exec(ctx,
+		`UPDATE @kv SET value=$3, created_at=now(), expires_at=now() + $4::bigint * interval '1 microsecond',
 		        mark=$5, marked_at=now()
 		  WHERE key=$1 AND value=$2 AND `+live,
 		key, nonNil(old), nonNil(value), ttlMicroseconds(ttl), s.markOf(key, value))
@@ -258,8 +261,11 @@ func (s *store) SetMany(ctx context.Context, entries ...kv.Entry) error {
 	}
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		batch := &pgx.Batch{}
+		if s.ephemeral {
+			batch.Queue(asyncCommitSQL)
+		}
 		for _, e := range entries {
-			batch.Queue(upsertSQL, e.Key, nonNil(e.Value), ttlMicroseconds(e.TTL), s.markOf(e.Key, e.Value))
+			batch.Queue(s.q(upsertSQL), e.Key, nonNil(e.Value), ttlMicroseconds(e.TTL), s.markOf(e.Key, e.Value))
 		}
 		return tx.SendBatch(ctx, batch).Close()
 	})
@@ -271,10 +277,10 @@ func (s *store) SetMany(ctx context.Context, entries ...kv.Entry) error {
 
 func (s *store) Take(ctx context.Context, key string) ([]byte, bool, error) {
 	var v []byte
-	err := s.pool.QueryRow(ctx, `DELETE FROM kv WHERE key=$1 AND `+live+` RETURNING value`, key).Scan(&v)
+	err := s.writeRow(ctx, `DELETE FROM @kv WHERE key=$1 AND `+live+` RETURNING value`, []any{key}, &v)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Absent or expired: an expired row is dropped so that it does not linger.
-		_, _ = s.pool.Exec(ctx, `DELETE FROM kv WHERE key=$1 AND `+expired, key)
+		_, _ = s.exec(ctx, `DELETE FROM @kv WHERE key=$1 AND `+expired, key)
 		return nil, false, nil
 	}
 	if err != nil {
@@ -284,14 +290,14 @@ func (s *store) Take(ctx context.Context, key string) ([]byte, bool, error) {
 }
 
 func (s *store) Delete(ctx context.Context, key string) error {
-	if _, err := s.pool.Exec(ctx, `DELETE FROM kv WHERE key=$1`, key); err != nil {
+	if _, err := s.exec(ctx, `DELETE FROM @kv WHERE key=$1`, key); err != nil {
 		return fmt.Errorf("kv/postgres: delete: %w", err)
 	}
 	return nil
 }
 
 func (s *store) keys(ctx context.Context, op, query string, args ...any) ([]string, error) {
-	rows, err := s.pool.Query(ctx, query, args...)
+	rows, err := s.query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("kv/postgres: %s: %w", op, err)
 	}
@@ -306,10 +312,10 @@ func (s *store) keys(ctx context.Context, op, query string, args ...any) ([]stri
 }
 
 // keysSQL lists the keys under a prefix; a statement of its own so that a test can ask for its plan.
-const keysSQL = `SELECT key FROM kv WHERE ` + live + ` AND ` + underPrefix + ` ` + byKey
+const keysSQL = `SELECT key FROM @kv WHERE ` + live + ` AND ` + underPrefix + ` ` + byKey
 
 // markedOtherSQL lists the keys under a prefix whose mark is another one, after a key.
-const markedOtherSQL = `SELECT key FROM kv WHERE ` + live + ` AND ` + underPrefix + ` AND ` + markedOther + `
+const markedOtherSQL = `SELECT key FROM @kv WHERE ` + live + ` AND ` + underPrefix + ` AND ` + markedOther + `
 	AND key COLLATE "C" > $4 ` + byKey + ` LIMIT $5`
 
 func (s *store) Keys(ctx context.Context, prefix string) ([]string, error) {
@@ -333,15 +339,18 @@ func (s *store) Cleanup(ctx context.Context) (int, error) {
 		var removed, events int64
 		var held bool
 		err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-			if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, int64(cleanupLock)).Scan(&held); err != nil || !held {
+			if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, s.cleanupLock()).Scan(&held); err != nil || !held {
 				return err
 			}
-			tag, err := tx.Exec(ctx, `DELETE FROM kv WHERE ctid IN (
-				SELECT ctid FROM kv WHERE `+expired+` LIMIT $1 FOR UPDATE SKIP LOCKED)`, cleanupBatch)
+			tag, err := tx.Exec(ctx, s.q(`DELETE FROM @kv WHERE ctid IN (
+				SELECT ctid FROM @kv WHERE `+expired+` LIMIT $1 FOR UPDATE SKIP LOCKED)`), cleanupBatch)
 			if err != nil {
 				return err
 			}
 			removed = tag.RowsAffected()
+			if s.ephemeral {
+				return nil
+			}
 			// The events of the feed whose retention is over go the same way; they are not counted.
 			tag, err = tx.Exec(ctx, `DELETE FROM kv_feed WHERE ctid IN (
 				SELECT ctid FROM kv_feed WHERE expires_at <= now() LIMIT $1 FOR UPDATE SKIP LOCKED)`, cleanupBatch)
@@ -376,9 +385,9 @@ func (s *store) Marks(ctx context.Context, prefix string) (map[string]int, error
 	if s.mark == nil {
 		return nil, kv.ErrNotMarker
 	}
-	rows, err := s.pool.Query(ctx,
+	rows, err := s.query(ctx,
 		`SELECT CASE WHEN marked_at IS DISTINCT FROM created_at THEN '' ELSE coalesce(mark, '') END, count(*)
-		   FROM kv WHERE `+live+` AND `+underPrefix+` GROUP BY 1`, prefix, likePrefix(prefix))
+		   FROM @kv WHERE `+live+` AND `+underPrefix+` GROUP BY 1`, prefix, likePrefix(prefix))
 	if err != nil {
 		return nil, fmt.Errorf("kv/postgres: marks: %w", err)
 	}
@@ -400,8 +409,8 @@ func (s *store) CountMarkedOther(ctx context.Context, prefix, mark string) (int,
 		return 0, kv.ErrNotMarker
 	}
 	var n int
-	err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM kv WHERE `+live+` AND `+underPrefix+` AND `+markedOther,
+	err := s.queryRow(ctx,
+		`SELECT count(*) FROM @kv WHERE `+live+` AND `+underPrefix+` AND `+markedOther,
 		prefix, likePrefix(prefix), mark).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("kv/postgres: count marked other: %w", err)

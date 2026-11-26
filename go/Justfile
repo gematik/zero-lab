@@ -428,6 +428,7 @@ kv-mariadb-test oldest="10.11" newest="12.3":
             --tmpfs /var/lib/mysql -p 127.0.0.1:33061:3306 "mariadb:$version" >/dev/null
         until docker exec kv-mariadb-test healthcheck.sh --connect >/dev/null 2>&1; do sleep 1; done
         TEST_MARIADB_DSN='mariadb://127.0.0.1:33061/kv?tls=false' go test ./kv/mariadb -count=1 -race
+        TEST_MARIADB_DSN='mariadb://127.0.0.1:33061/kv?tls=false' go test ./kv/mariadb -count=1 -run WhatAWriteCosts -v | grep 'per write'
     done
     echo "==> Galera, three writing nodes, MariaDB {{newest}}"
     MARIADB_VERSION={{newest}} $compose up -d --wait

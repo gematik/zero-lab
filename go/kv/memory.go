@@ -41,6 +41,8 @@ type memoryStore struct {
 	// event was published, so that followers look again.
 	topics  map[string]*memTopic
 	changed chan struct{}
+	// ephemeral is the class the store says it is of ([WithMemoryEphemeral]).
+	ephemeral bool
 }
 
 type memEntry struct {
@@ -75,6 +77,21 @@ type MemoryOption func(*memoryStore)
 // WithMemoryClock sets the time records expire by; the default is the system clock.
 func WithMemoryClock(now func() time.Time) MemoryOption {
 	return func(s *memoryStore) { s.now = now }
+}
+
+// WithMemoryEphemeral makes the store say it is [Ephemeral], and refuse events as an ephemeral store of a
+// database does: the stand-in for a cache in tests. Without it the store says it is [Durable], which it is
+// only for as long as its process lives.
+func WithMemoryEphemeral() MemoryOption {
+	return func(s *memoryStore) { s.ephemeral = true }
+}
+
+// Durability implements [Classed].
+func (s *memoryStore) Durability() Durability {
+	if s.ephemeral {
+		return Ephemeral
+	}
+	return Durable
 }
 
 // WithMemoryMark makes the store a [Marker], with the mark of a record being what mark says of its value.

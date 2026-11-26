@@ -3,9 +3,10 @@ id: TASK-431
 title: >-
   kv: Durability and an ephemeral class of records in memory, Postgres and
   MariaDB
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-25T18:05:00Z'
+updated_date: '2026-11-26T18:11:00Z'
 labels:
   - go
 dependencies:
@@ -27,8 +28,14 @@ doc-7, Proposal 1 and 2. kv serves two needs through one store: records whose lo
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 DurabilityOf reports the class of memory, Postgres and MariaDB stores and passes through NewSealed
-- [ ] #2 The ephemeral stores pass the contract suite; on Postgres the table is unlogged and its writes do not wait for the WAL flush, shown by a test
-- [ ] #3 A sealed record of one class is refused when found in the table of the other
-- [ ] #4 What MariaDB's ephemeral class costs against the durable one is measured and recorded, not assumed
+- [x] #1 DurabilityOf reports the class of memory, Postgres and MariaDB stores and passes through NewSealed
+- [x] #2 The ephemeral stores pass the contract suite; on Postgres the table is unlogged and its writes do not wait for the WAL flush, shown by a test
+- [x] #3 A sealed record of one class is refused when found in the table of the other
+- [x] #4 What MariaDB's ephemeral class costs against the durable one is measured and recorded, not assumed
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26, on feat/kv-durability. kv/durability.go (Durability, Classed, DurabilityOf, ErrEphemeralEvent); memory with WithMemoryEphemeral; the sealed store passes the class on and, over an ephemeral store, extends its purpose so that the class is in the derived key and the associated data (durable records unchanged). Postgres: step 4 kv_cache UNLOGGED with the indexes of kv, WithEphemeral, statements name the records' table as @kv and run on the store's table, each write of the ephemeral store is sent with SET LOCAL synchronous_commit = off in one batch (a transaction's setting, so that it holds behind a pooler), Tx sets it after BEGIN. MariaDB: step 4 kv_cache as InnoDB, WithEphemeral, the same statements over tabled handles. An ephemeral store refuses events in every backend: one class per transaction. A store that does not say its class counts as durable, as before the classes; chosen over 'ephemeral unless said' because every existing store and wrapper is durable. AC 2: relpersistence of kv_cache is u, of kv p; a write and a transaction of the ephemeral store run with synchronous_commit off, of the durable store on (asked through the write path itself). AC 3: a sealed record moved between the classes fails with ErrIntegrity under the same and under another key. AC 4, one writer, 512 bytes, 2000 writes, databases in containers with their data in memory, on a laptop: Postgres 18 durable 0.75 ms, ephemeral 0.34 ms; MariaDB 10.11 durable 0.71 ms, ephemeral 0.47 ms; MariaDB 12.3 durable 0.45 ms, ephemeral 0.49 ms: no difference on MariaDB beyond the noise between runs. just kv-mariadb-test prints the numbers. Verified: kv, Postgres (-race) and just kv-mariadb-test with the Galera cluster pass, the ephemeral contract also through three nodes; just lint exits 0.
+<!-- SECTION:NOTES:END -->

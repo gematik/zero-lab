@@ -187,7 +187,7 @@ func TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema(t *test
 	password := hex.EncodeToString(secret)
 	for _, stmt := range []string{
 		`CREATE ROLE ` + role + ` LOGIN PASSWORD '` + password + `'`,
-		`GRANT SELECT, INSERT, UPDATE, DELETE ON kv, kv_feed, kv_topic TO ` + role,
+		`GRANT SELECT, INSERT, UPDATE, DELETE ON kv, kv_cache, kv_feed, kv_topic TO ` + role,
 		`GRANT SELECT ON kv_schema TO ` + role,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -244,6 +244,17 @@ func TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema(t *test
 	}
 	if latest, err := s.(kv.Feed).Latest(ctx, "changes"); err != nil || latest != 1 {
 		t.Fatalf("Latest: %d, err %v", latest, err)
+	}
+	cache, err := openKV(ctx, u.String(), postgres.WithEphemeral())
+	if err != nil {
+		t.Fatalf("the ephemeral store with a role without schema rights: %v", err)
+	}
+	defer cache.Close()
+	if err := cache.Set(ctx, "document", []byte("d"), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if got, found, err := cache.Take(ctx, "document"); err != nil || !found || string(got) != "d" {
+		t.Fatalf("the ephemeral store: %q, found %v, err %v", got, found, err)
 	}
 }
 

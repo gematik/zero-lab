@@ -134,6 +134,8 @@ func (s *spread) Latest(ctx context.Context, topic string) (kv.Cursor, error) {
 	return s.node().(kv.Feed).Latest(ctx, topic)
 }
 
+func (s *spread) Durability() kv.Durability { return kv.DurabilityOf(s.nodes[0]) }
+
 func (s *spread) Close() error {
 	for _, node := range s.nodes {
 		_ = node.Close()
@@ -181,6 +183,14 @@ func TestGalera_Task432TheFeedContractHoldsThroughDifferentWritingNodes(t *testi
 func TestGalera_Task432TheTxContractHoldsThroughDifferentWritingNodes(t *testing.T) {
 	dsns := migratedCluster(t)
 	kvtest.Tx(t, func(t *testing.T) kv.Store { return openSpread(t, dsns) })
+}
+
+// The ephemeral class holds through different writing nodes as the durable one does.
+func TestGalera_Task431TheEphemeralContractHoldsThroughDifferentWritingNodes(t *testing.T) {
+	dsns := migratedCluster(t)
+	open := func(t *testing.T) kv.Store { return openSpread(t, dsns, mariadb.WithEphemeral()) }
+	kvtest.Store(t, open)
+	kvtest.Ephemeral(t, open)
 }
 
 // What a transaction only read is not protected across writing nodes: the lock of Get is one node's, and

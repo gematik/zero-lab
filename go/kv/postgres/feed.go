@@ -98,6 +98,11 @@ func (s *store) Tx(ctx context.Context, fn func(tx kv.Tx) error) error {
 	var err error
 	for try := range txAttempts {
 		err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+			if s.ephemeral {
+				if _, err := tx.Exec(ctx, asyncCommitSQL); err != nil {
+					return err
+				}
+			}
 			return fn(&pgTx{s: s, tx: tx})
 		})
 		if !lost(err) {
@@ -109,7 +114,7 @@ func (s *store) Tx(ctx context.Context, fn func(tx kv.Tx) error) error {
 		case <-time.After(time.Duration(1+jitter(4*(try+1))) * time.Millisecond):
 		}
 	}
-	if err != nil && !errors.Is(err, kv.ErrTxTooLarge) && !errors.Is(err, kv.ErrEvent) {
+	if err != nil && !errors.Is(err, kv.ErrTxTooLarge) && !errors.Is(err, kv.ErrEvent) && !errors.Is(err, kv.ErrEphemeralEvent) {
 		if _, database := errors.AsType[*pgconn.PgError](err); database {
 			return fmt.Errorf("kv/postgres: transaction: %w", err)
 		}
@@ -121,6 +126,14 @@ type pgTx struct {
 	s   *store
 	tx  pgx.Tx
 	ops kv.TxOps
+}
+
+func (t *pgTx) exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
+	return t.tx.Exec(ctx, t.s.q(query), args...)
+}
+
+func (t *pgTx) queryRow(ctx context.Context, query string, args ...any) pgx.Row {
+	return t.tx.QueryRow(ctx, t.s.q(query), args...)
 }
 
 // keyLock is the seed of the advisory locks Get takes on keys, so that they are no other lock of this
@@ -138,7 +151,7 @@ func (t *pgTx) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	var v []byte
-	err := t.tx.QueryRow(ctx, `SELECT value FROM kv WHERE key=$1 AND `+live+` FOR UPDATE`, key).Scan(&v)
+	err := t.queryRow(ctx, `SELECT value FROM @kv WHERE key=$1 AND `+live+` FOR UPDATE`, key).Scan(&v)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -152,7 +165,7 @@ func (t *pgTx) Set(ctx context.Context, key string, value []byte, ttl time.Durat
 	if err := t.ops.Count(); err != nil {
 		return err
 	}
-	_, err := t.tx.Exec(ctx, upsertSQL, key, nonNil(value), ttlMicroseconds(ttl), t.s.markOf(key, value))
+	_, err := t.exec(ctx, upsertSQL, key, nonNil(value), ttlMicroseconds(ttl), t.s.markOf(key, value))
 	return err
 }
 
@@ -160,7 +173,7 @@ func (t *pgTx) SetIfAbsent(ctx context.Context, key string, value []byte, ttl ti
 	if err := t.ops.Count(); err != nil {
 		return false, err
 	}
-	tag, err := t.tx.Exec(ctx, upsertSQL+` WHERE kv.expires_at IS NOT NULL AND kv.expires_at <= now()`,
+	tag, err := t.exec(ctx, upsertSQL+` WHERE @kv.expires_at IS NOT NULL AND @kv.expires_at <= now()`,
 		key, nonNil(value), ttlMicroseconds(ttl), t.s.markOf(key, value))
 	if err != nil {
 		return false, err
@@ -173,7 +186,7 @@ func (t *pgTx) Take(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	var v []byte
-	err := t.tx.QueryRow(ctx, `DELETE FROM kv WHERE key=$1 AND `+live+` RETURNING value`, key).Scan(&v)
+	err := t.queryRow(ctx, `DELETE FROM @kv WHERE key=$1 AND `+live+` RETURNING value`, key).Scan(&v)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -187,13 +200,16 @@ func (t *pgTx) Delete(ctx context.Context, key string) error {
 	if err := t.ops.Count(); err != nil {
 		return err
 	}
-	_, err := t.tx.Exec(ctx, `DELETE FROM kv WHERE key=$1`, key)
+	_, err := t.exec(ctx, `DELETE FROM @kv WHERE key=$1`, key)
 	return err
 }
 
 func (t *pgTx) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) error {
 	if err := t.ops.Count(); err != nil {
 		return err
+	}
+	if t.s.ephemeral {
+		return kv.ErrEphemeralEvent
 	}
 	_, err := publish(ctx, t.tx, topic, event, retention)
 	return err
@@ -243,6 +259,9 @@ func numberOf(cursor kv.Cursor) int64 {
 
 // Publish implements kv.Feed.
 func (s *store) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) (kv.Cursor, error) {
+	if s.ephemeral {
+		return 0, kv.ErrEphemeralEvent
+	}
 	var cursor kv.Cursor
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var err error
@@ -257,6 +276,9 @@ func (s *store) Publish(ctx context.Context, topic string, event []byte, retenti
 
 // Latest implements kv.Feed.
 func (s *store) Latest(ctx context.Context, topic string) (kv.Cursor, error) {
+	if s.ephemeral {
+		return 0, kv.ErrEphemeralEvent
+	}
 	var seq int64
 	err := s.pool.QueryRow(ctx, `SELECT seq FROM kv_topic WHERE topic=$1`, topic).Scan(&seq)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -271,6 +293,9 @@ func (s *store) Latest(ctx context.Context, topic string) (kv.Cursor, error) {
 // Follow implements kv.Feed. A follower listens on a connection of its own and looks when it is told and
 // every [WithFeedPoll]; while that connection cannot be made it only looks.
 func (s *store) Follow(ctx context.Context, topic string, from kv.Cursor) (<-chan kv.Event, error) {
+	if s.ephemeral {
+		return nil, kv.ErrEphemeralEvent
+	}
 	if topic == "" || len(topic) > kv.MaxTopicLen {
 		return nil, kv.ErrEvent
 	}

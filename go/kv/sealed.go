@@ -86,11 +86,20 @@ func NewSealed(inner Store, keys Keys, purpose string, opts ...SealedOption) Sto
 		panic("kv: NewSealed needs a store, keys and a purpose")
 	}
 	s := &sealedStore{inner: inner, keys: keys, purpose: purpose, now: time.Now}
+	// A record is sealed for the class of the store it is written to: one that was sealed for a durable
+	// store and put into an ephemeral one, or the other way, does not open. Durable records are sealed as
+	// they were before there were classes.
+	if DurabilityOf(inner) == Ephemeral {
+		s.purpose += ephemeralPurpose
+	}
 	for _, opt := range opts {
 		opt(s)
 	}
 	return s
 }
+
+// Durability implements [Classed]: a sealed store is of the class of the store below.
+func (s *sealedStore) Durability() Durability { return DurabilityOf(s.inner) }
 
 // SealedOption adjusts the store [NewSealed] returns.
 type SealedOption func(*sealedStore)

@@ -79,13 +79,16 @@ const (
 const syncWaitMask = "7"
 
 type store struct {
-	db       *sql.DB
+	db       tabled
 	mark     func(key string, value []byte) string
 	migrate  bool
 	syncWait SyncWait
 	tls      *tls.Config
 	// poll is how often a follower of the feed looks (feed.go).
 	poll time.Duration
+	// ephemeral is the class of the store, table the table of its records (ephemeral.go).
+	ephemeral bool
+	table     string
 }
 
 // Option adjusts the store [Open] returns.
@@ -219,7 +222,7 @@ func Open(ctx context.Context, dsn, user, password string, opts ...Option) (kv.S
 }
 
 func open(ctx context.Context, dsn, user, password string, steps []step, opts ...Option) (kv.Store, error) {
-	s := &store{poll: defaultFeedPoll}
+	s := &store{poll: defaultFeedPoll, table: "kv"}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -257,7 +260,7 @@ func open(ctx context.Context, dsn, user, password string, steps []step, opts ..
 			return nil, fmt.Errorf("kv/mariadb: ping: %w", err)
 		}
 	}
-	s.db = db
+	s.db = tabled{DB: db, table: s.table}
 	if s.migrate {
 		if _, err := migrate(ctx, db, steps, migrateOptions{}); err != nil {
 			_ = db.Close()
@@ -386,7 +389,7 @@ const expired = `(expires_at IS NOT NULL AND expires_at <= NOW(6))`
 // that no longer counts (server rule 22).
 const markedOther = `(NOT (mark <=> ?) OR NOT (marked_at <=> created_at))`
 
-const upsertSQL = "INSERT INTO kv(`key`, value, created_at, expires_at, mark, marked_at)" + `
+const upsertSQL = "INSERT INTO @kv(`key`, value, created_at, expires_at, mark, marked_at)" + `
 	VALUES(?, ?, NOW(6), NOW(6) + INTERVAL ? MICROSECOND, ?, NOW(6))
 	ON DUPLICATE KEY UPDATE value=VALUES(value), created_at=VALUES(created_at), expires_at=VALUES(expires_at),
 	  mark=VALUES(mark), marked_at=VALUES(marked_at)`
@@ -394,7 +397,7 @@ const upsertSQL = "INSERT INTO kv(`key`, value, created_at, expires_at, mark, ma
 // setIfAbsentSQL is one statement, so two replicas cannot both win. MariaDB assigns the columns of ON
 // DUPLICATE KEY UPDATE in order and each assignment sees the ones before it: expires_at, which the
 // condition reads, is assigned last.
-const setIfAbsentSQL = "INSERT INTO kv(`key`, value, created_at, expires_at, mark, marked_at)" + `
+const setIfAbsentSQL = "INSERT INTO @kv(`key`, value, created_at, expires_at, mark, marked_at)" + `
 	VALUES(?, ?, NOW(6), NOW(6) + INTERVAL ? MICROSECOND, ?, NOW(6))
 	ON DUPLICATE KEY UPDATE
 	  value      = IF(` + expired + `, VALUES(value), value),
@@ -433,7 +436,7 @@ func (s *store) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	}
 	var v []byte
 	err := again(ctx, func() error {
-		return s.db.QueryRowContext(ctx, "SELECT value FROM kv WHERE `key`=? AND "+live, []byte(key)).Scan(&v)
+		return s.db.QueryRowContext(ctx, "SELECT value FROM @kv WHERE `key`=? AND "+live, []byte(key)).Scan(&v)
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
@@ -478,18 +481,18 @@ func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl t
 }
 
 // inTx runs do in one transaction and repeats the whole of it when it lost against another writer.
-func (s *store) inTx(ctx context.Context, do func(tx *sql.Tx) error) error {
+func (s *store) inTx(ctx context.Context, do func(tx tabledTx) error) error {
 	return s.inTxAt(ctx, sql.LevelReadCommitted, do)
 }
 
-func (s *store) inTxAt(ctx context.Context, level sql.IsolationLevel, do func(tx *sql.Tx) error) error {
+func (s *store) inTxAt(ctx context.Context, level sql.IsolationLevel, do func(tx tabledTx) error) error {
 	return again(ctx, func() error {
 		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: level})
 		if err != nil {
 			return err
 		}
 		defer func() { _ = tx.Rollback() }()
-		if err := do(tx); err != nil {
+		if err := do(tabledTx{Tx: tx, table: s.table}); err != nil {
 			return err
 		}
 		return tx.Commit()
@@ -508,10 +511,10 @@ func (s *store) Swap(ctx context.Context, key string, old, value []byte, ttl tim
 		return false, err
 	}
 	var swapped bool
-	err = s.inTx(ctx, func(tx *sql.Tx) error {
+	err = s.inTx(ctx, func(tx tabledTx) error {
 		swapped = false
 		var one int
-		err := tx.QueryRowContext(ctx, "SELECT 1 FROM kv WHERE `key`=? AND value=? AND "+live+" FOR UPDATE",
+		err := tx.QueryRowContext(ctx, "SELECT 1 FROM @kv WHERE `key`=? AND value=? AND "+live+" FOR UPDATE",
 			[]byte(key), nonNil(old)).Scan(&one)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -519,7 +522,7 @@ func (s *store) Swap(ctx context.Context, key string, old, value []byte, ttl tim
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE kv SET value=?, created_at=NOW(6), "+
+		if _, err := tx.ExecContext(ctx, "UPDATE @kv SET value=?, created_at=NOW(6), "+
 			"expires_at=NOW(6) + INTERVAL ? MICROSECOND, mark=?, marked_at=NOW(6) WHERE `key`=?",
 			nonNil(value), ttlMicroseconds(ttl), mark, []byte(key)); err != nil {
 			return err
@@ -537,7 +540,7 @@ func (s *store) SetMany(ctx context.Context, entries ...kv.Entry) error {
 	if len(entries) == 0 {
 		return nil
 	}
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx tabledTx) error {
 		for _, e := range entries {
 			if err := s.upsert(ctx, tx, e); err != nil {
 				return err
@@ -557,12 +560,12 @@ func (s *store) Take(ctx context.Context, key string) ([]byte, bool, error) {
 	}
 	var v []byte
 	err := again(ctx, func() error {
-		return s.db.QueryRowContext(ctx, "DELETE FROM kv WHERE `key`=? AND "+live+" RETURNING value", []byte(key)).Scan(&v)
+		return s.db.QueryRowContext(ctx, "DELETE FROM @kv WHERE `key`=? AND "+live+" RETURNING value", []byte(key)).Scan(&v)
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		// Absent or expired: an expired row is dropped so that it does not linger.
 		_ = again(ctx, func() error {
-			_, err := s.db.ExecContext(ctx, "DELETE FROM kv WHERE `key`=? AND "+expired, []byte(key))
+			_, err := s.db.ExecContext(ctx, "DELETE FROM @kv WHERE `key`=? AND "+expired, []byte(key))
 			return err
 		})
 		return nil, false, nil
@@ -578,7 +581,7 @@ func (s *store) Delete(ctx context.Context, key string) error {
 		return nil
 	}
 	err := again(ctx, func() error {
-		_, err := s.db.ExecContext(ctx, "DELETE FROM kv WHERE `key`=?", []byte(key))
+		_, err := s.db.ExecContext(ctx, "DELETE FROM @kv WHERE `key`=?", []byte(key))
 		return err
 	})
 	if err != nil {
@@ -613,18 +616,21 @@ func (s *store) keys(ctx context.Context, op, query string, args ...any) ([]stri
 
 func (s *store) Keys(ctx context.Context, prefix string) ([]string, error) {
 	return s.keys(ctx, "keys",
-		"SELECT `key` FROM kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' ORDER BY `key`", likePrefix(prefix))
+		"SELECT `key` FROM @kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' ORDER BY `key`", likePrefix(prefix))
 }
 
 func (s *store) Cleanup(ctx context.Context) (int, error) {
 	var n int64
 	err := again(ctx, func() error {
-		res, err := s.db.ExecContext(ctx, `DELETE FROM kv WHERE `+expired)
+		res, err := s.db.ExecContext(ctx, `DELETE FROM @kv WHERE `+expired)
 		if err != nil {
 			return err
 		}
 		if n, err = res.RowsAffected(); err != nil {
 			return err
+		}
+		if s.ephemeral {
+			return nil
 		}
 		// The events of the feed whose retention is over go too; they are not counted.
 		_, err = s.db.ExecContext(ctx, `DELETE FROM kv_feed WHERE expires_at <= NOW(6)`)
@@ -644,7 +650,7 @@ func (s *store) MarkedOther(ctx context.Context, prefix, mark, after string, lim
 		return nil, kv.ErrNotMarker
 	}
 	return s.keys(ctx, "marked other",
-		"SELECT `key` FROM kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' AND "+markedOther+
+		"SELECT `key` FROM @kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' AND "+markedOther+
 			" AND `key` > ? ORDER BY `key` LIMIT ?", likePrefix(prefix), []byte(mark), []byte(after), limit)
 }
 
@@ -656,7 +662,7 @@ func (s *store) CountMarkedOther(ctx context.Context, prefix, mark string) (int,
 	var n int
 	err := again(ctx, func() error {
 		return s.db.QueryRowContext(ctx,
-			"SELECT COUNT(*) FROM kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' AND "+markedOther,
+			"SELECT COUNT(*) FROM @kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' AND "+markedOther,
 			likePrefix(prefix), []byte(mark)).Scan(&n)
 	})
 	if err != nil {
@@ -675,7 +681,7 @@ func (s *store) Marks(ctx context.Context, prefix string) (map[string]int, error
 		clear(marks)
 		rows, err := s.db.QueryContext(ctx,
 			"SELECT CASE WHEN NOT (marked_at <=> created_at) THEN '' ELSE COALESCE(mark, '') END AS m, COUNT(*)"+
-				" FROM kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' GROUP BY m", likePrefix(prefix))
+				" FROM @kv WHERE "+live+" AND `key` LIKE ? ESCAPE '!' GROUP BY m", likePrefix(prefix))
 		if err != nil {
 			return err
 		}

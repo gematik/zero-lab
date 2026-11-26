@@ -72,10 +72,10 @@ func WithFeedPoll(every time.Duration) Option {
 // as a deadlock, which is run again and finds the other's record. Across the writing nodes of a cluster
 // only what a transaction wrote is checked against the others; a record it only read is not.
 func (s *store) Tx(ctx context.Context, fn func(tx kv.Tx) error) error {
-	err := s.inTxAt(ctx, sql.LevelRepeatableRead, func(tx *sql.Tx) error {
+	err := s.inTxAt(ctx, sql.LevelRepeatableRead, func(tx tabledTx) error {
 		return fn(&mariaTx{s: s, tx: tx})
 	})
-	if err != nil && !errors.Is(err, kv.ErrTxTooLarge) && !errors.Is(err, kv.ErrEvent) && isDatabase(err) {
+	if err != nil && !errors.Is(err, kv.ErrTxTooLarge) && !errors.Is(err, kv.ErrEvent) && !errors.Is(err, kv.ErrEphemeralEvent) && isDatabase(err) {
 		return fmt.Errorf("kv/mariadb: transaction: %w", err)
 	}
 	return err
@@ -83,7 +83,7 @@ func (s *store) Tx(ctx context.Context, fn func(tx kv.Tx) error) error {
 
 type mariaTx struct {
 	s   *store
-	tx  *sql.Tx
+	tx  tabledTx
 	ops kv.TxOps
 }
 
@@ -95,7 +95,7 @@ func (t *mariaTx) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	var v []byte
-	err := t.tx.QueryRowContext(ctx, "SELECT value FROM kv WHERE `key`=? AND "+live+" FOR UPDATE", []byte(key)).Scan(&v)
+	err := t.tx.QueryRowContext(ctx, "SELECT value FROM @kv WHERE `key`=? AND "+live+" FOR UPDATE", []byte(key)).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -139,7 +139,7 @@ func (t *mariaTx) Take(ctx context.Context, key string) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 	var v []byte
-	err := t.tx.QueryRowContext(ctx, "DELETE FROM kv WHERE `key`=? AND "+live+" RETURNING value", []byte(key)).Scan(&v)
+	err := t.tx.QueryRowContext(ctx, "DELETE FROM @kv WHERE `key`=? AND "+live+" RETURNING value", []byte(key)).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
 	}
@@ -156,7 +156,7 @@ func (t *mariaTx) Delete(ctx context.Context, key string) error {
 	if len(key) > MaxKeyLen {
 		return nil
 	}
-	_, err := t.tx.ExecContext(ctx, "DELETE FROM kv WHERE `key`=?", []byte(key))
+	_, err := t.tx.ExecContext(ctx, "DELETE FROM @kv WHERE `key`=?", []byte(key))
 	return err
 }
 
@@ -164,7 +164,10 @@ func (t *mariaTx) Publish(ctx context.Context, topic string, event []byte, reten
 	if err := t.ops.Count(); err != nil {
 		return err
 	}
-	_, err := publish(ctx, t.tx, topic, event, retention)
+	if t.s.ephemeral {
+		return kv.ErrEphemeralEvent
+	}
+	_, err := publish(ctx, t.tx.Tx, topic, event, retention)
 	return err
 }
 
@@ -220,10 +223,13 @@ func numberOf(cursor kv.Cursor) int64 {
 
 // Publish implements kv.Feed.
 func (s *store) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) (kv.Cursor, error) {
+	if s.ephemeral {
+		return 0, kv.ErrEphemeralEvent
+	}
 	var cursor kv.Cursor
-	err := s.inTx(ctx, func(tx *sql.Tx) error {
+	err := s.inTx(ctx, func(tx tabledTx) error {
 		var err error
-		cursor, err = publish(ctx, tx, topic, event, retention)
+		cursor, err = publish(ctx, tx.Tx, topic, event, retention)
 		return err
 	})
 	if err != nil && !errors.Is(err, kv.ErrEvent) {
@@ -234,6 +240,9 @@ func (s *store) Publish(ctx context.Context, topic string, event []byte, retenti
 
 // Latest implements kv.Feed.
 func (s *store) Latest(ctx context.Context, topic string) (kv.Cursor, error) {
+	if s.ephemeral {
+		return 0, kv.ErrEphemeralEvent
+	}
 	var seq int64
 	err := again(ctx, func() error {
 		return s.db.QueryRowContext(ctx, `SELECT seq FROM kv_topic WHERE topic=?`, []byte(topic)).Scan(&seq)
@@ -249,6 +258,9 @@ func (s *store) Latest(ctx context.Context, topic string) (kv.Cursor, error) {
 
 // Follow implements kv.Feed: the follower looks for events every [WithFeedPoll].
 func (s *store) Follow(ctx context.Context, topic string, from kv.Cursor) (<-chan kv.Event, error) {
+	if s.ephemeral {
+		return nil, kv.ErrEphemeralEvent
+	}
 	if topic == "" || len(topic) > kv.MaxTopicLen {
 		return nil, kv.ErrEvent
 	}
