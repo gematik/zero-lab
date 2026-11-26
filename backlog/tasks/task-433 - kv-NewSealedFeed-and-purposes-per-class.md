@@ -1,10 +1,10 @@
 ---
 id: TASK-433
 title: 'kv: NewSealedFeed, and purposes per class'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T18:05:00Z'
-updated_date: '2026-11-26T18:42:00Z'
+updated_date: '2026-11-26T18:57:00Z'
 labels:
   - go
 dependencies:
@@ -36,3 +36,9 @@ doc-7, Encryption. Feed payloads are sealed with associated data of purpose, top
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26, on feat/kv-sealed-feed. kv/sealed_feed.go: eventSealer (format version | len(key ID) | key ID | salt | nonce | ciphertext and tag; HKDF label of its own, so that the keys of events and of records differ under one ring; associated data version, key ID, purpose, topic, number, each length-prefixed), NewSealedFeed, WithSealedEvents, the sealed store as Feed, sealedTx.Publish (ErrSealedEvent is gone). To bind an event to its number the backends offer PublishNumbered (kv.NumberedFeed, kv.NumberedTx): the payload is made by a function of the number inside the publishing transaction; memory, Postgres and MariaDB implement it and their plain Publish goes through it. A follower leaves out an event that does not open and logs topic and number; the missing number is the signal. AC 1, kvtest.SealedFeed, through the feed below as someone with write access to the database would: an event copied to another topic and to another number of its topic, another purpose, another key, an altered event, one never sealed and an empty one are not delivered, the events in their places are; an event sealed under a key of before opens while the ring holds it; passes in memory, Postgres, MariaDB and through three Galera nodes. AC 2, kvtest.Resealer over the durable and the ephemeral table in Postgres and MariaDB: SealedByKeys, SealedBy, CountOthers, Others page by page, Reseal once, Rename once. AC 3: after a sealed Set in each class and a sealed transaction with Publish, no row of kv, kv_cache or kv_feed holds the secret (position of the bytes in the column), and the notification's payload is the topic. Verified: kv (-race), Postgres 18 (-race), just kv-mariadb-test; just lint golangci modernize exit 0.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Events are sealed and bound to purpose, topic and number (NewSealedFeed; a sealed store is a sealed feed and its transactions publish sealed events; WithSealedEvents for keys of their own). The backends make an event from its number (PublishNumbered). An event that was moved, altered or made up is left out when followed, which shows as a missing number. Marks and resealing pass one contract suite over the table of each class in Postgres and MariaDB, and the database holds no record and no event in the clear. Released as go/kv v0.12.0, go/kv/postgres v0.13.0, go/kv/mariadb v0.4.0.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -1,10 +1,10 @@
 ---
 id: TASK-434
 title: 'kv: a guide for hosts'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T18:05:00Z'
-updated_date: '2026-11-26T18:44:00Z'
+updated_date: '2026-11-26T18:57:00Z'
 labels:
   - go
 dependencies:
@@ -35,3 +35,9 @@ doc-7, What a host does. Hosts are built elsewhere; this repository builds the l
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26, on feat/kv-sealed-feed with TASK-433. go/kv/docs/hosts.md: the modules, choosing the database (DSN, TLS, topologies, the key bound of MariaDB), the schema (the migration job, Open without DDL, contract steps, WithMigrate, the rights of the server's user per database), the two classes, sealing and what happens when the keys change, transactions with the two patterns and a worked login of a new client that evicts another (users, clients, sessions, as in zeta-authserver-go's store; a sketch for a host, not a change to that repository), events, what runs in the background, health and metrics, testing on the memory store, and a table from each statement about a backend to the test that proves it. AC 2 checked by a script: all 34 tests the guide names exist, as do the suites of kvtest, the symbols and the links. Linked from AGENTS.md's row for go/kv; the task table there names the backends. doc-7 says the plan is built and what is left.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/kv/docs/hosts.md tells a host what the kv libraries give and what they leave to it: the database and its DSN, the schema's rollout and the rights of the server's user, the two classes, sealing and the change of keys, transactions with the root-record and index patterns and a worked case, events, background work, health and testing, with the test that proves each statement about a backend. Linked from AGENTS.md. Released with go/kv v0.12.0.
+<!-- SECTION:FINAL_SUMMARY:END -->
