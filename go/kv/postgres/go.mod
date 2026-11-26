@@ -3,7 +3,7 @@ module github.com/gematik/zero-lab/go/kv/postgres
 go 1.27.0
 
 require (
-	github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126200044-65e31983670d
+	github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126225156-8def761b93b6
 	github.com/jackc/pgx/v5 v5.13.0
 )
 

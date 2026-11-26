@@ -1,6 +1,6 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126200044-65e31983670d h1:y2lS2YemzfcXD0zWLWZh2/2DxFJT6uf90Qp8JlJFXI4=
-github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126200044-65e31983670d/go.mod h1:dLrz3xHV4IM+mRmYvup8s6XnhR1iDC31yAFuQTQMljY=
+github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126225156-8def761b93b6 h1:npESGESs6THMye40c4/Zh+R9wanRChPXtinSnZPXSgc=
+github.com/gematik/zero-lab/go/kv v0.12.1-0.20261126225156-8def761b93b6/go.mod h1:dLrz3xHV4IM+mRmYvup8s6XnhR1iDC31yAFuQTQMljY=
 github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
