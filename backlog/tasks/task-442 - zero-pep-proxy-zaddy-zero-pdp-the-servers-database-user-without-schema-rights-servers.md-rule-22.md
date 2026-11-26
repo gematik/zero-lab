@@ -6,6 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-26T19:06:00Z'
+updated_date: '2026-11-26T19:56:00Z'
 labels:
   - go
   - security
@@ -27,3 +28,9 @@ servers.md rule 22 since TASK-428: a server does not change its schema; its data
 - [ ] #3 Applying the steps at start is a setting that is off unless set, logged when on
 - [ ] #4 zero-pdp is decided and the decision recorded
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26: zaddy keeps no database any more (maintainer; its revocations are TASK-443), so this task is about zero-pep-proxy and zero-pdp alone.
+<!-- SECTION:NOTES:END -->

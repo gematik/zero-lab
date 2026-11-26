@@ -38,8 +38,11 @@ modules passed; `just kv-postgres-test` (Postgres 18 without and with TLS) and `
 ### breaking
 - zero-pep-proxy: `PEP_DATABASE_URL` names no `sslmode`. `PEP_DATABASE_TLS_CA_PATH` names a CA bundle for the
   database's certificate; `PEP_DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS.
-- zaddy: `revocations_database_tls_ca_path` and `revocations_database_plaintext_accepted true` in the global
-  `pep` block, for the database of `revocations_database_url`.
+- zaddy keeps no database (maintainer, 2026-11-26): `revocations_database_url` is gone, and with it the session
+  revocations of TASK-313. An `enforce_policy` with a `SessionCookie` enforcer is refused at start, as it would
+  admit a signed-out session until its snapshot expires; a route that admits zero-pep-proxy's sessions uses
+  `forward_auth` to its `/oauth2/auth`. A Caddyfile that names `revocations_database_url` does not start.
+  Revocations without a database are TASK-443. zaddy no longer requires go/kv.
 - zero-pdp (frozen): `DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS; it has no setting for a
   CA of the deployment's own.
 

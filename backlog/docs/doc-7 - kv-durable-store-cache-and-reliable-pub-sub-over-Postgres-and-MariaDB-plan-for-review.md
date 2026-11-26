@@ -528,7 +528,7 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
 | pgxpool instead of database/sql in kv/postgres | yes |
 | One ordering scheme or two | one: the counter row per topic in Postgres and MariaDB |
 | `wsrep_sync_wait` | configurable, `WithSyncWait(mode)`, automatic by default |
-| zero-pep-proxy and zaddy | stay on Postgres only |
+| zero-pep-proxy and zaddy | stay on Postgres only; zaddy then lost its database altogether (maintainer, 2026-11-26; TASK-443 for its revocations) |
 | MariaDB | required; every topology; driver go-sql-driver/mysql |
 | Hosts | built elsewhere; this repository builds libraries; a host is one image with both drivers |
 | Schema applied by the server | configurable, `WithMigrate()`, off by default |
@@ -609,8 +609,8 @@ keep `WithMigrate()`.
   missing, which is the signal it already has for events that are gone, and reads its state anew. Whoever can
   write to the database can delete an event in any case; they cannot make one up, change one or move one.
 - **A sealed store is a sealed feed**, and its transactions publish sealed events, under the store's keys or,
-  with `WithSealedEvents(keys, purpose)`, under keys of their own: a program that only follows (zaddy, for
-  revocations) then needs no key that opens the records.
+  with `WithSealedEvents(keys, purpose)`, under keys of their own: a program that only follows then needs no
+  key that opens the records.
 - **Keys of events are apart from keys of records** under one ring (another label in the key derivation).
 - Marks and resealing (`Others`, `Reseal`, `Rename`, `SealedByKeys`) pass one contract suite over the table of
   each class in Postgres and MariaDB. With a sealed store neither `kv`, `kv_cache` nor `kv_feed` holds what was
