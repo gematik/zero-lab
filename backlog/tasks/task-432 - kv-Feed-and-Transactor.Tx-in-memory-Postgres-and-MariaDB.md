@@ -1,10 +1,10 @@
 ---
 id: TASK-432
 title: 'kv: Feed and Transactor.Tx in memory, Postgres and MariaDB'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-25T18:05:00Z'
-updated_date: '2026-11-26T06:04:00Z'
+updated_date: '2026-11-26T18:02:00Z'
 labels:
   - go
 dependencies:
@@ -39,4 +39,12 @@ doc-7, Proposal 1 (Feed, Transactions and records that belong together) and 2. F
 2026-11-25, on feat/kv-feed-tx, nothing committed. Done: kv/feed.go (Cursor, Event, Feed, Transactor, Tx, MaxTxOps, CheckEvent, TxOps), kv/memory_feed.go (the memory store as Feed and Transactor), kvtest.Feed and kvtest.Tx, kv/postgres/feed.go with schema step 3 (kv_topic, kv_feed), Cleanup also removes expired events, WithFeedPoll. Publish takes a retention, which must be positive. Postgres' Tx.Get takes a transaction's advisory lock on the key besides the row lock, so that it also holds a record that is not there. Passing: the contract suites for memory, and the whole Postgres suite with -race against Postgres 18, including an event that arrives without its notification and one that arrives by it. Left: kv/mariadb (steps for kv_topic and kv_feed, Tx, Publish, Follow by polling, the Galera tests through different nodes and what Get does not protect there), the sealed store as Transactor, the hosts' build, lint, doc-7's Still open 2, ReleaseNotes, AGENTS.md, the full check, release.
 
 2026-11-26, on feat/kv-feed-tx, not committed yet. Added since the last note: kv/mariadb/feed.go (steps 2 and 3, Tx at REPEATABLE READ, Publish, Latest, Follow by looking every second, WithFeedPoll), kv/sealed_tx.go (the sealed store as Transactor; Publish refused with ErrSealedEvent), the feed and transaction contracts for MariaDB and through the Galera nodes. Found with the cluster: (1) 16 publishers of one topic through three nodes: a publisher can get error 1062 on its event because another node's publisher took the number and committed first; treated as a lost transaction and run again; (2) 8 tries were too few (17 to 32 of 160 publishes gave up), 32 tries with pauses up to 64 ms sufficed in 5 runs of 160 and in 4 runs of the suite; (3) a record only read is not protected across nodes: 75 to 93 of 100 pairs of write-skewing transactions both committed, while the counter and the root-record cases of kvtest.Tx pass through three nodes. Verified: memory, Postgres 18 (-race) and MariaDB 10.11 and 12.3 pass the contract suites; the Galera suite passed four times with -race; just lint clean for kv, kv/postgres, kv/mariadb; the hosts build. Not built: one class per transaction (TASK-431). doc-7 has the answers under 'Answered with TASK-432'. Open: just check's tidy check needs kv on the remote (push, just sync).
+
+2026-11-26, released at the maintainer's word, after pulling main (12 commits of other work, backlog only): go/kv v0.10.0, then go/kv/postgres v0.11.0 and go/kv/mariadb v0.2.0 requiring it; zero-pdp, zero-pep-proxy and zaddy pinned. The linter found seven things in the first commit that an earlier note called clean (the filter over its output had hidden them): fixed, as were three the modernize check asked for; just lint is now checked by its exit status. just check in go/ passed on the branch and on the pinned state; Postgres with -race and just kv-mariadb-test passed on the final code.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+kv has transactions (Transactor, Tx) and an ordered feed of events per topic (Feed) in memory, Postgres and MariaDB, each held to one contract suite, on MariaDB also through the three writing nodes of a Galera cluster. Events are numbered by a counter row per topic, without a gap and in commit order; Postgres delivers by notification and by a periodic look, MariaDB by looking. A record a transaction read and wrote is protected everywhere; one it only read is not across writing nodes, measured, so the root-record pattern is part of the contract. A sealed store runs transactions and refuses to publish in them until events are sealed (TASK-433). Released as go/kv v0.10.0, go/kv/postgres v0.11.0, go/kv/mariadb v0.2.0.
+<!-- SECTION:FINAL_SUMMARY:END -->
