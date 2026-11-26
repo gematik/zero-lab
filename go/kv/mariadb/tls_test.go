@@ -26,7 +26,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -67,15 +66,24 @@ func tlsDatabase(t *testing.T) (dsn string, ca *x509.CertPool, client tls.Certif
 	if dsn == "" || dir == "" {
 		t.Skip("TEST_MARIADB_TLS_DSN and TEST_MARIADB_TLS_DIR not set: skipping the TLS tests of kv/mariadb (just kv-mariadb-test)")
 	}
-	pem, err := os.ReadFile(filepath.Join(dir, "ca.pem"))
+	// The files are read within the directory the variable names, and nowhere else.
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer root.Close()
+	read := func(name string) []byte {
+		data, err := root.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
 	ca = x509.NewCertPool()
-	if !ca.AppendCertsFromPEM(pem) {
+	if !ca.AppendCertsFromPEM(read("ca.pem")) {
 		t.Fatal("the CA file holds no certificate")
 	}
-	client, err = tls.LoadX509KeyPair(filepath.Join(dir, "client.pem"), filepath.Join(dir, "client-key.pem"))
+	client, err = tls.X509KeyPair(read("client.pem"), read("client-key.pem"))
 	if err != nil {
 		t.Fatal(err)
 	}

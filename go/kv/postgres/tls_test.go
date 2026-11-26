@@ -27,7 +27,6 @@ import (
 	"crypto/x509"
 	"net/url"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -119,15 +118,24 @@ func tlsDatabase(t *testing.T) (address, user, password string, ca *x509.CertPoo
 	if err != nil {
 		t.Fatal(err)
 	}
-	pem, err := os.ReadFile(filepath.Join(dir, "ca.pem"))
+	// The files are read within the directory the variable names, and nowhere else.
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer root.Close()
+	read := func(name string) []byte {
+		data, err := root.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
 	ca = x509.NewCertPool()
-	if !ca.AppendCertsFromPEM(pem) {
+	if !ca.AppendCertsFromPEM(read("ca.pem")) {
 		t.Fatal("the CA file holds no certificate")
 	}
-	client, err = tls.LoadX509KeyPair(filepath.Join(dir, "client.pem"), filepath.Join(dir, "client-key.pem"))
+	client, err = tls.X509KeyPair(read("client.pem"), read("client-key.pem"))
 	if err != nil {
 		t.Fatal(err)
 	}
