@@ -1,11 +1,26 @@
 # Release Notes
 
-# Release 2026-11-26: go/kv/postgres v0.14.0, go/kv/mariadb v0.5.0
+# Release 2026-11-27: go/kv v0.13.0, go/kv/postgres v0.14.0, go/kv/mariadb v0.5.0
 
 The connection to the database is protected as every other connection of a server: TLS unless the operator
-accepted plaintext (TASK-441; servers.md rule 29). Verified on the release branch: `just check` across all Go
-modules passed; `just kv-postgres-test` (Postgres 18 without and with TLS) and `just kv-mariadb-test` (MariaDB
-10.11 and 12.3, one with TLS, and a Galera cluster of three writing nodes) passed on 2026-11-26.
+accepted plaintext (TASK-441; servers.md rule 29). The hosts of this repository no longer change their schema
+by default (TASK-442), and zaddy keeps no database. Tests of a deployment with several pods found three defects,
+fixed here. Verified on the release branch: `just check` across all Go modules passed; `just kv-postgres-test`
+(Postgres 18 without and with TLS), `just kv-mariadb-test` (MariaDB 10.11 and 12.3, one with TLS, and a Galera
+cluster of three writing nodes) and `just kv-e2e-test` (pods as processes against Postgres, MariaDB and Galera)
+passed.
+
+# Release go/kv v0.13.0
+
+### added
+- `kv/kvtest`: suites of a deployment with several pods (`StartTogether`, `RollingMigration`, `Sealing`,
+  `Unsealed`, `Rotation`, `SealedEvents`, `Revocations`, `Logins`), some running each pod as a process of its
+  own, and `TxOutside`: what a transaction read is held against writers outside it.
+- `just kv-e2e-test`.
+
+### fixed
+- Tests of the suites that could not fail now can (Cleanup counting what it removed, a reseal that lengthens a
+  record's life, a forged record that a host's walk would seal).
 
 # Release go/kv/postgres v0.14.0
 
@@ -24,6 +39,13 @@ modules passed; `just kv-postgres-test` (Postgres 18 without and with TLS) and `
 - `OpenDB` and `OpenBus` take both options.
 - `just kv-postgres-test`.
 
+### fixed
+- A DSN takes no parameter at all. Before, `?synchronous_commit=off` turned off the flush of every durable write,
+  and `?host=` sent the connection to another host.
+- A transaction holds a record it found absent against writers outside it, as `kv.Tx.Get` promises: it puts an
+  expired placeholder in the record's place and locks it. Before, a `Set` outside could write the record under
+  the transaction.
+
 # Release go/kv/mariadb v0.5.0
 
 ### breaking
@@ -32,6 +54,11 @@ modules passed; `just kv-postgres-test` (Postgres 18 without and with TLS) and `
 
 ### added
 - `WithPlaintextAccepted()`. `WithTLS` refuses a configuration that skips verification.
+
+### fixed
+- A migrator whose step reached the database after another migrator had applied the steps that follow it runs
+  those steps again: an expand step that arrived after the contract step undoing it put back what was removed,
+  while `kv_schema` said it was gone.
 
 # Hosts of this repository
 
