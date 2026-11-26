@@ -3,10 +3,10 @@ id: TASK-441
 title: >-
   kv/postgres, kv/mariadb: database connections as every other connection: TLS
   unless plaintext is accepted explicitly
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-26T19:06:00Z'
-updated_date: '2026-11-26T19:27:00Z'
+updated_date: '2026-11-26T23:17:00Z'
 labels:
   - go
   - security
@@ -35,4 +35,12 @@ Decided by the maintainer on 2026-11-26: always uniform with the other connectio
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26, on feat/kv-db-tls. Both backends: TLS with the server's certificate verified for the host of the DSN under the system's roots; WithTLS for a CA, another name or a client certificate (a configuration that skips verification is refused); WithPlaintextAccepted as the one way to plaintext, logged at Open; the DSN carries no transport parameter (Postgres refuses ssl…, gssencmode, channel_binding; MariaDB refuses every parameter, tls=false is gone); pgx's fallback configurations are dropped and PGSSLMODE has no effect (tested with it set to disable, prefer, allow). OpenDB and OpenBus take the two options. Tests against real databases with a TEST-ONLY CA made per run (kv/kvtest/testdata/tls/tlscerts.go; just kv-postgres-test, new, and just kv-mariadb-test): a database without TLS refused by default and opened with the acceptance; with TLS, opened with the CA and the certificate's name, refused under the system's roots, with the address as the name, with another name and with another CA; a role that needs a client certificate refused without and let in with one; the follower's own connection and the bus work over TLS. Hosts: zero-pep-proxy PEP_DATABASE_PLAINTEXT_ACCEPTED and PEP_DATABASE_TLS_CA_PATH; zaddy revocations_database_plaintext_accepted and revocations_database_tls_ca_path; zero-pdp (frozen) DATABASE_PLAINTEXT_ACCEPTED only. Examples, compose file, CONFIG.md, DOCKERHUB.md, zaddy's README, go/kv/docs/hosts.md and the release notes follow. just lint golangci modernize exits 0; the full check and the release are still to come. Raised by the maintainer on the way: zaddy should not have a database at all (see the task to come).
+
+2026-11-27: the end-to-end tests of the second test agent found that a Postgres DSN still took other parameters (synchronous_commit, host, options); it now takes none, as kv/mariadb. Released with go/kv/postgres v0.14.0 and go/kv/mariadb v0.5.0 after just check, just kv-postgres-test, just kv-mariadb-test and just kv-e2e-test passed.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Both backends reach their database with TLS and the server's certificate verified, unless the host passes WithPlaintextAccepted, which it sets from a setting of its own and the backend logs; the DSN is the address alone and carries no parameter, so nothing in it can weaken the connection or a write's durability; WithTLS takes a CA, a name or a client certificate. The hosts here take the acceptance and a CA beside their database URL. Proven against databases with and without TLS under a test CA. Released as go/kv/postgres v0.14.0 and go/kv/mariadb v0.5.0.
+<!-- SECTION:FINAL_SUMMARY:END -->

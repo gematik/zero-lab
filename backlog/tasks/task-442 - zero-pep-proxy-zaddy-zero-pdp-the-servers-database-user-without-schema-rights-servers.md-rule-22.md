@@ -3,10 +3,10 @@ id: TASK-442
 title: >-
   zero-pep-proxy, zaddy, zero-pdp: the server's database user without schema
   rights (servers.md rule 22)
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-26T19:06:00Z'
-updated_date: '2026-11-26T19:58:00Z'
+updated_date: '2026-11-26T23:17:00Z'
 labels:
   - go
   - security
@@ -36,3 +36,9 @@ servers.md rule 22 since TASK-428: a server does not change its schema; its data
 
 2026-11-26, on feat/kv-db-tls. zero-pep-proxy: Open without WithMigrate by default; PEP_DATABASE_MIGRATE=true (one exact value) lets it apply expand steps at start, logged as a warning; zero-pep-proxy migrate [contract] applies the steps and stops, a subcommand of the existing host with the same database variables and a URL whose user may change the schema (a small command in an existing host; the maintainer's rule 'hosts are built elsewhere' is about new hosts, my reading). Tests: the setting read as an agreement; the subcommand refuses unknown words and a missing URL; against Postgres (PEP_PG_DSN): on a fresh database the server refuses with schema.ErrVersion, after migrate it opens as a role with DML rights only and writes, migrate run twice is fine. CONFIG.md, DOCKERHUB.md, .env.example and the e2e README (PEP_DATABASE_MIGRATE=true for the local stack) follow; no chart lives here, zero-lab-k8s needs the Job or the setting (other repository). zaddy keeps no database since today. zero-pdp: keeps WithMigrate, recorded in the code and the release notes as the exception of a frozen host; my decision under the freeze, not the maintainer's.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+zero-pep-proxy no longer changes its store's schema by default: zero-pep-proxy migrate applies the steps as a job before a rollout with a user that may, PEP_DATABASE_MIGRATE=true lets the server do it, and without either it refuses a database that lacks a step. Tested against Postgres with a server user that may only read and write rows. zaddy keeps no database (TASK-443 for its revocations); zero-pdp keeps applying its schema as a recorded exception of a frozen host. Released with go/kv/postgres v0.14.0.
+<!-- SECTION:FINAL_SUMMARY:END -->
