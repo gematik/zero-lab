@@ -95,6 +95,19 @@ type Tx interface {
 	Publish(ctx context.Context, topic string, event []byte, retention time.Duration) error
 }
 
+// NumberedFeed is a [Feed] that tells a publisher the number of its event before it writes the event:
+// event is called with the cursor the event will have and returns its payload. It is what sealing an event
+// needs, to bind the event to its place: the feeds of this module and its backends are. event runs inside
+// the transaction that publishes, and again whenever that transaction does.
+type NumberedFeed interface {
+	PublishNumbered(ctx context.Context, topic string, retention time.Duration, event func(Cursor) ([]byte, error)) (Cursor, error)
+}
+
+// NumberedTx is to [Tx] what [NumberedFeed] is to [Feed].
+type NumberedTx interface {
+	PublishNumbered(ctx context.Context, topic string, retention time.Duration, event func(Cursor) ([]byte, error)) error
+}
+
 const (
 	// MaxTxOps is how many calls of [Tx] one transaction may make.
 	MaxTxOps = 256

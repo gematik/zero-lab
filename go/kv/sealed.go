@@ -95,6 +95,9 @@ func NewSealed(inner Store, keys Keys, purpose string, opts ...SealedOption) Sto
 	for _, opt := range opts {
 		opt(s)
 	}
+	if s.events == nil {
+		s.events = &eventSealer{keys: keys, purpose: purpose}
+	}
 	return s
 }
 
@@ -120,6 +123,8 @@ type sealedStore struct {
 	sealExpiry bool
 	// class is what records under a key are told apart by beyond their seal, see [WithSealedClass].
 	class func(key string) string
+	// events seals the events of the store (sealed_feed.go); nil until the first one.
+	events *eventSealer
 }
 
 // aead derives a key per record from a random salt. Every accepted proof and nonce seals a record, so a key shared

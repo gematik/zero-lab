@@ -154,14 +154,19 @@ func (tx *memTx) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func (tx *memTx) Publish(_ context.Context, topic string, event []byte, retention time.Duration) error {
+func (tx *memTx) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) error {
+	return tx.PublishNumbered(ctx, topic, retention, func(Cursor) ([]byte, error) { return event, nil })
+}
+
+// PublishNumbered implements [NumberedTx].
+func (tx *memTx) PublishNumbered(_ context.Context, topic string, retention time.Duration, event func(Cursor) ([]byte, error)) error {
 	if err := tx.ops.Count(); err != nil {
 		return err
 	}
 	if tx.s.ephemeral {
 		return ErrEphemeralEvent
 	}
-	if err := CheckEvent(topic, event, retention); err != nil {
+	if err := CheckEvent(topic, nil, retention); err != nil {
 		return err
 	}
 	if _, kept := tx.topics[topic]; !kept {
@@ -172,13 +177,16 @@ func (tx *memTx) Publish(_ context.Context, topic string, event []byte, retentio
 		}
 		tx.topics[topic] = was
 	}
-	tx.s.publish(topic, event, retention)
+	// The topic is remembered before the event is made: an event that fails leaves the counter raised,
+	// which the failed transaction undoes.
 	tx.published = true
-	return nil
+	_, err := tx.s.publish(topic, retention, event)
+	return err
 }
 
-// publish appends an event; the store's lock is held.
-func (s *memoryStore) publish(topic string, event []byte, retention time.Duration) Cursor {
+// publish appends the event that event makes for its number; the store's lock is held. When event fails
+// or makes an event the feed does not take, nothing is appended and the counter stays.
+func (s *memoryStore) publish(topic string, retention time.Duration, event func(Cursor) ([]byte, error)) (Cursor, error) {
 	t := s.topics[topic]
 	if t == nil {
 		t = &memTopic{}
@@ -192,13 +200,23 @@ func (s *memoryStore) publish(topic string, event []byte, retention time.Duratio
 			kept = append(kept, e)
 		}
 	}
+	payload, err := event(Cursor(t.seq + 1))
+	if err == nil {
+		err = CheckEvent(topic, payload, retention)
+	}
+	if err != nil {
+		if t.seq == 0 && len(t.events) == 0 {
+			delete(s.topics, topic)
+		}
+		return 0, err
+	}
 	t.seq++
 	kept = append(kept, memEvent{
-		event:     Event{Cursor: Cursor(t.seq), Payload: clone(event), At: now},
+		event:     Event{Cursor: Cursor(t.seq), Payload: clone(payload), At: now},
 		expiresAt: now.Add(retention),
 	})
 	t.events = kept
-	return Cursor(t.seq)
+	return Cursor(t.seq), nil
 }
 
 // wake lets every follower look again; the store's lock is held.
@@ -208,11 +226,16 @@ func (s *memoryStore) wake() {
 }
 
 // Publish implements [Feed].
-func (s *memoryStore) Publish(_ context.Context, topic string, event []byte, retention time.Duration) (Cursor, error) {
+func (s *memoryStore) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) (Cursor, error) {
+	return s.PublishNumbered(ctx, topic, retention, func(Cursor) ([]byte, error) { return event, nil })
+}
+
+// PublishNumbered implements [NumberedFeed].
+func (s *memoryStore) PublishNumbered(_ context.Context, topic string, retention time.Duration, event func(Cursor) ([]byte, error)) (Cursor, error) {
 	if s.ephemeral {
 		return 0, ErrEphemeralEvent
 	}
-	if err := CheckEvent(topic, event, retention); err != nil {
+	if err := CheckEvent(topic, nil, retention); err != nil {
 		return 0, err
 	}
 	s.mu.Lock()
@@ -220,7 +243,10 @@ func (s *memoryStore) Publish(_ context.Context, topic string, event []byte, ret
 	if s.closed {
 		return 0, ErrClosed
 	}
-	cursor := s.publish(topic, event, retention)
+	cursor, err := s.publish(topic, retention, event)
+	if err != nil {
+		return 0, err
+	}
 	s.wake()
 	return cursor, nil
 }

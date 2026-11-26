@@ -590,6 +590,32 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
   Durable records are sealed as before.
 - The numbers are from a laptop and say which way and roughly how much, not what a deployment will see.
 
+The plan is built: the eight tasks below are done, and what a host does with the libraries is in
+[`go/kv/docs/hosts.md`](../../go/kv/docs/hosts.md) (TASK-434). What is left is the hosts' (zeta-authserver-go's
+adoption, still open) and the two findings noted along the way: pgx's `sslmode` default, and that the hosts here
+keep `WithMigrate()`.
+
+## Built with TASK-433 (2026-11-26)
+
+- **Events are sealed for their place.** `NewSealedFeed(feed, keys, purpose)` seals each event with AES-256-GCM
+  under a key derived from the ring's current key, the purpose and a fresh salt, with the key ID, the purpose,
+  the topic and the event's number as associated data. An event copied to another topic or to another number of
+  its own topic, one of another purpose or key, one that was altered and one that was never sealed do not open.
+- **The number comes before the event.** To bind an event to its number the sealer has to know it before the
+  event is written, so the backends offer `PublishNumbered` (`kv.NumberedFeed`, `kv.NumberedTx`): the event is
+  made by a function of its number, inside the publishing transaction, and again when that transaction runs
+  again. This is the one addition to the plan's interfaces.
+- **An event that does not open is left out** and logged with its topic and number. The follower sees a number
+  missing, which is the signal it already has for events that are gone, and reads its state anew. Whoever can
+  write to the database can delete an event in any case; they cannot make one up, change one or move one.
+- **A sealed store is a sealed feed**, and its transactions publish sealed events, under the store's keys or,
+  with `WithSealedEvents(keys, purpose)`, under keys of their own: a program that only follows (zaddy, for
+  revocations) then needs no key that opens the records.
+- **Keys of events are apart from keys of records** under one ring (another label in the key derivation).
+- Marks and resealing (`Others`, `Reseal`, `Rename`, `SealedByKeys`) pass one contract suite over the table of
+  each class in Postgres and MariaDB. With a sealed store neither `kv`, `kv_cache` nor `kv_feed` holds what was
+  stored or published, and the Postgres notification carries the topic alone (a test reads both).
+
 ## Tasks
 
 Created on 2026-11-25, in the order they build on each other:

@@ -161,13 +161,18 @@ func (t *mariaTx) Delete(ctx context.Context, key string) error {
 }
 
 func (t *mariaTx) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) error {
+	return t.PublishNumbered(ctx, topic, retention, func(kv.Cursor) ([]byte, error) { return event, nil })
+}
+
+// PublishNumbered implements kv.NumberedTx.
+func (t *mariaTx) PublishNumbered(ctx context.Context, topic string, retention time.Duration, event func(kv.Cursor) ([]byte, error)) error {
 	if err := t.ops.Count(); err != nil {
 		return err
 	}
 	if t.s.ephemeral {
 		return kv.ErrEphemeralEvent
 	}
-	_, err := publish(ctx, t.tx.Tx, topic, event, retention)
+	_, err := publish(ctx, t.tx.Tx, topic, retention, event)
 	return err
 }
 
@@ -177,8 +182,8 @@ func (t *mariaTx) Publish(ctx context.Context, topic string, event []byte, reten
 // and the one that is refused runs again. Either way the numbers have no gap and are in the order of the
 // commits on every node, and a follower that reads the events after its cursor steps over none. An
 // AUTO_INCREMENT column would not do: its values are neither.
-func publish(ctx context.Context, tx *sql.Tx, topic string, event []byte, retention time.Duration) (kv.Cursor, error) {
-	if err := kv.CheckEvent(topic, event, retention); err != nil {
+func publish(ctx context.Context, tx *sql.Tx, topic string, retention time.Duration, event func(kv.Cursor) ([]byte, error)) (kv.Cursor, error) {
+	if err := kv.CheckEvent(topic, nil, retention); err != nil {
 		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx,
@@ -189,9 +194,17 @@ func publish(ctx context.Context, tx *sql.Tx, topic string, event []byte, retent
 	if err := tx.QueryRowContext(ctx, `SELECT seq FROM kv_topic WHERE topic=?`, []byte(topic)).Scan(&seq); err != nil {
 		return 0, err
 	}
+	// The event is made for its number: a sealed one is bound to it.
+	payload, err := event(cursorOf(seq))
+	if err == nil {
+		err = kv.CheckEvent(topic, payload, retention)
+	}
+	if err != nil {
+		return 0, err
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO kv_feed(topic, seq, payload, created_at, expires_at)
 		VALUES(?, ?, ?, NOW(6), NOW(6) + INTERVAL ? MICROSECOND)`,
-		[]byte(topic), seq, nonNil(event), retention.Microseconds()); err != nil {
+		[]byte(topic), seq, nonNil(payload), retention.Microseconds()); err != nil {
 		// The number is taken: a publisher on another node of the cluster raised the counter to the same
 		// number and committed first (seen with publishers on three nodes at once). This transaction
 		// could not commit any more; it is told so here, before its commit would be, and runs again.
@@ -223,16 +236,21 @@ func numberOf(cursor kv.Cursor) int64 {
 
 // Publish implements kv.Feed.
 func (s *store) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) (kv.Cursor, error) {
+	return s.PublishNumbered(ctx, topic, retention, func(kv.Cursor) ([]byte, error) { return event, nil })
+}
+
+// PublishNumbered implements kv.NumberedFeed.
+func (s *store) PublishNumbered(ctx context.Context, topic string, retention time.Duration, event func(kv.Cursor) ([]byte, error)) (kv.Cursor, error) {
 	if s.ephemeral {
 		return 0, kv.ErrEphemeralEvent
 	}
 	var cursor kv.Cursor
 	err := s.inTx(ctx, func(tx tabledTx) error {
 		var err error
-		cursor, err = publish(ctx, tx.Tx, topic, event, retention)
+		cursor, err = publish(ctx, tx.Tx, topic, retention, event)
 		return err
 	})
-	if err != nil && !errors.Is(err, kv.ErrEvent) {
+	if isDatabase(err) {
 		return 0, fmt.Errorf("kv/mariadb: publish: %w", err)
 	}
 	return cursor, err

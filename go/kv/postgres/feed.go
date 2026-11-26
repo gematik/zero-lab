@@ -205,13 +205,18 @@ func (t *pgTx) Delete(ctx context.Context, key string) error {
 }
 
 func (t *pgTx) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) error {
+	return t.PublishNumbered(ctx, topic, retention, func(kv.Cursor) ([]byte, error) { return event, nil })
+}
+
+// PublishNumbered implements kv.NumberedTx.
+func (t *pgTx) PublishNumbered(ctx context.Context, topic string, retention time.Duration, event func(kv.Cursor) ([]byte, error)) error {
 	if err := t.ops.Count(); err != nil {
 		return err
 	}
 	if t.s.ephemeral {
 		return kv.ErrEphemeralEvent
 	}
-	_, err := publish(ctx, t.tx, topic, event, retention)
+	_, err := publish(ctx, t.tx, topic, retention, event)
 	return err
 }
 
@@ -220,8 +225,8 @@ func (t *pgTx) Publish(ctx context.Context, topic string, event []byte, retentio
 // the numbers have no gap and become visible in their own order, and a follower that reads the events
 // after its cursor steps over none. A sequence would not do: its values become visible in the order of the
 // commits, not in their own. The notification is sent by the database when the transaction commits.
-func publish(ctx context.Context, tx pgx.Tx, topic string, event []byte, retention time.Duration) (kv.Cursor, error) {
-	if err := kv.CheckEvent(topic, event, retention); err != nil {
+func publish(ctx context.Context, tx pgx.Tx, topic string, retention time.Duration, event func(kv.Cursor) ([]byte, error)) (kv.Cursor, error) {
+	if err := kv.CheckEvent(topic, nil, retention); err != nil {
 		return 0, err
 	}
 	var seq int64
@@ -229,9 +234,17 @@ func publish(ctx context.Context, tx pgx.Tx, topic string, event []byte, retenti
 		ON CONFLICT(topic) DO UPDATE SET seq = kv_topic.seq + 1 RETURNING seq`, topic).Scan(&seq); err != nil {
 		return 0, err
 	}
+	// The event is made for its number: a sealed one is bound to it.
+	payload, err := event(cursorOf(seq))
+	if err == nil {
+		err = kv.CheckEvent(topic, payload, retention)
+	}
+	if err != nil {
+		return 0, err
+	}
 	if _, err := tx.Exec(ctx, `INSERT INTO kv_feed(topic, seq, payload, expires_at)
 		VALUES($1, $2, $3, now() + $4::bigint * interval '1 microsecond')`,
-		topic, seq, nonNil(event), retention.Microseconds()); err != nil {
+		topic, seq, nonNil(payload), retention.Microseconds()); err != nil {
 		return 0, err
 	}
 	if _, err := tx.Exec(ctx, `SELECT pg_notify($1, $2)`, feedChannel, topic); err != nil {
@@ -259,16 +272,21 @@ func numberOf(cursor kv.Cursor) int64 {
 
 // Publish implements kv.Feed.
 func (s *store) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) (kv.Cursor, error) {
+	return s.PublishNumbered(ctx, topic, retention, func(kv.Cursor) ([]byte, error) { return event, nil })
+}
+
+// PublishNumbered implements kv.NumberedFeed.
+func (s *store) PublishNumbered(ctx context.Context, topic string, retention time.Duration, event func(kv.Cursor) ([]byte, error)) (kv.Cursor, error) {
 	if s.ephemeral {
 		return 0, kv.ErrEphemeralEvent
 	}
 	var cursor kv.Cursor
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var err error
-		cursor, err = publish(ctx, tx, topic, event, retention)
+		cursor, err = publish(ctx, tx, topic, retention, event)
 		return err
 	})
-	if err != nil && !errors.Is(err, kv.ErrEvent) {
+	if _, database := errors.AsType[*pgconn.PgError](err); database {
 		return 0, fmt.Errorf("kv/postgres: publish: %w", err)
 	}
 	return cursor, err

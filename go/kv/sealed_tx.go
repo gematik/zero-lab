@@ -23,17 +23,12 @@ package kv
 
 import (
 	"context"
-	"errors"
 	"time"
 )
 
-// ErrSealedEvent is what a transaction of a sealed store returns for an event: the store seals records,
-// and an event it passed on would reach the database in the clear. Events of a sealed store are published
-// through a sealed feed.
-var ErrSealedEvent = errors.New("kv: a sealed store publishes no events: they would not be sealed")
-
 // Tx implements [Transactor] over the store below: what a transaction reads is opened and what it writes
-// is sealed, record by record, as outside a transaction. It needs an inner [Transactor].
+// is sealed, record by record, as outside a transaction, and an event it publishes is sealed as by
+// [NewSealedFeed]. It needs an inner [Transactor].
 func (s *sealedStore) Tx(ctx context.Context, fn func(tx Tx) error) error {
 	inner, ok := s.inner.(Transactor)
 	if !ok {
@@ -81,6 +76,14 @@ func (t *sealedTx) SetIfAbsent(ctx context.Context, key string, value []byte, tt
 
 func (t *sealedTx) Delete(ctx context.Context, key string) error { return t.tx.Delete(ctx, key) }
 
-func (t *sealedTx) Publish(context.Context, string, []byte, time.Duration) error {
-	return ErrSealedEvent
+// Publish seals the event for its topic and its number, as [NewSealedFeed] does, and publishes it with the
+// transaction. It needs a transaction below that is a [NumberedTx].
+func (t *sealedTx) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) error {
+	numbered, ok := t.tx.(NumberedTx)
+	if !ok {
+		return ErrNotFeed
+	}
+	return numbered.PublishNumbered(ctx, topic, retention, func(cursor Cursor) ([]byte, error) {
+		return t.s.events.seal(topic, cursor, event)
+	})
 }

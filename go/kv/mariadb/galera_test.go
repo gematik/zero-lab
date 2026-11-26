@@ -134,6 +134,10 @@ func (s *spread) Latest(ctx context.Context, topic string) (kv.Cursor, error) {
 	return s.node().(kv.Feed).Latest(ctx, topic)
 }
 
+func (s *spread) PublishNumbered(ctx context.Context, topic string, retention time.Duration, event func(kv.Cursor) ([]byte, error)) (kv.Cursor, error) {
+	return s.node().(kv.NumberedFeed).PublishNumbered(ctx, topic, retention, event)
+}
+
 func (s *spread) Durability() kv.Durability { return kv.DurabilityOf(s.nodes[0]) }
 
 func (s *spread) Close() error {
@@ -183,6 +187,13 @@ func TestGalera_Task432TheFeedContractHoldsThroughDifferentWritingNodes(t *testi
 func TestGalera_Task432TheTxContractHoldsThroughDifferentWritingNodes(t *testing.T) {
 	dsns := migratedCluster(t)
 	kvtest.Tx(t, func(t *testing.T) kv.Store { return openSpread(t, dsns) })
+}
+
+// A sealed feed holds through different writing nodes: an event is sealed for the number its transaction
+// got, and a transaction that runs again seals it for the number it gets then.
+func TestGalera_Task433TheSealedFeedContractHoldsThroughDifferentWritingNodes(t *testing.T) {
+	dsns := migratedCluster(t)
+	kvtest.SealedFeed(t, func(t *testing.T) kv.Store { return openSpread(t, dsns, mariadb.WithFeedPoll(testPoll)) })
 }
 
 // The ephemeral class holds through different writing nodes as the durable one does.

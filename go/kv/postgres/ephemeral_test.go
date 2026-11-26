@@ -22,10 +22,14 @@
 package postgres_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/kvtest"
@@ -164,5 +168,113 @@ func TestPostgres_Task431WhatAWriteCostsInEachClass(t *testing.T) {
 		}
 		t.Logf("%s: %v per write of %d bytes, one after another", class, time.Since(start)/writes, len(value))
 		_ = s.Close()
+	}
+}
+
+func TestPostgres_SealedFeedContract(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	kvtest.SealedFeed(t, func(t *testing.T) kv.Store {
+		s, err := openKV(context.Background(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+// After the keys changed, the records of the key of before are found by their marks and taken along, in
+// the table of each class.
+func TestPostgres_ResealerContractOverBothTables(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	for class, opts := range map[string][]postgres.Option{"durable": nil, "ephemeral": {postgres.WithEphemeral()}} {
+		t.Run(class, func(t *testing.T) {
+			kvtest.Resealer(t, func(t *testing.T, mark func(string, []byte) string) kv.Store {
+				s, err := openKV(context.Background(), dsn, append([]postgres.Option{postgres.WithMark(mark)}, opts...)...)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return s
+			})
+		})
+	}
+}
+
+// Server rule 5: with a sealed store neither the tables nor the notification hold what was stored or
+// published. The notification carries the topic and nothing of the event.
+func TestPostgres_Rule5TheDatabaseHoldsNoRecordAndNoEventInTheClear(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshDatabase(t)
+	db := adminOf(t, dsn)
+	if _, err := postgres.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "Mustermann"
+	keys, err := kv.ParseKeyring([]byte("k1 " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if _, err := listener.ExecContext(ctx, `LISTEN kv_feed`); err != nil {
+		t.Fatal(err)
+	}
+	for _, opts := range [][]postgres.Option{nil, {postgres.WithEphemeral()}} {
+		raw, err := openKV(ctx, dsn, opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer raw.Close()
+		sealed := kv.NewSealed(raw, keys, "test")
+		if err := sealed.Set(ctx, "session", []byte("the session of Erika "+secret), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if kv.DurabilityOf(raw) == kv.Ephemeral {
+			continue
+		}
+		if err := sealed.(kv.Transactor).Tx(ctx, func(tx kv.Tx) error {
+			if err := tx.Set(ctx, "revoked", []byte("revoked: Erika "+secret), time.Minute); err != nil {
+				return err
+			}
+			return tx.Publish(ctx, "revocations", []byte("revoked: Erika "+secret), time.Minute)
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for table, column := range map[string]string{"kv": "value", "kv_cache": "value", "kv_feed": "payload"} {
+		var rows, inClear int
+		if err := db.QueryRow(`SELECT count(*), count(*) FILTER (WHERE position($1::bytea in `+column+`) > 0) FROM `+table,
+			[]byte(secret)).Scan(&rows, &inClear); err != nil {
+			t.Fatal(err)
+		}
+		if rows == 0 || inClear != 0 {
+			t.Errorf("table %s: %d rows, %d of them hold the secret in the clear", table, rows, inClear)
+		}
+	}
+	// The notification of the publish: its payload is the topic.
+	var payload string
+	if err := listener.Raw(func(driverConn any) error {
+		conn := driverConn.(*stdlib.Conn).Conn()
+		wait, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		n, err := conn.WaitForNotification(wait)
+		if err != nil {
+			return err
+		}
+		payload = n.Payload
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if payload != "revocations" {
+		t.Errorf("the notification carries %q", payload)
 	}
 }

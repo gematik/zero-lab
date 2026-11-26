@@ -1,5 +1,37 @@
 # Release Notes
 
+# Release 2026-11-26: go/kv v0.12.0, go/kv/postgres v0.13.0, go/kv/mariadb v0.4.0
+
+Sealed events, and a guide for hosts (TASK-433 and TASK-434, the last steps of the kv plan in backlog doc-7).
+Verified on the release branch: `just check` across all Go modules passed; kv on Postgres (Postgres 18,
+`TEST_DATABASE_URL`, with `-race`) and `just kv-mariadb-test` (MariaDB 10.11 and 12.3, and a Galera cluster of
+three writing nodes) passed on 2026-11-26.
+
+# Release go/kv v0.12.0
+
+### breaking
+- `ErrSealedEvent` is gone: a transaction of a sealed store now publishes, sealed.
+
+### added
+- `NewSealedFeed(feed, keys, purpose)`: events are sealed and bound to the purpose, their topic and their number;
+  one that was moved, altered or made up does not open and is left out, which shows as a missing number.
+- A sealed store is a `Feed`, and its transactions publish sealed events. `WithSealedEvents(keys, purpose)`
+  seals them under keys of their own, so that a program that only follows needs no key of the records.
+- `NumberedFeed` and `NumberedTx` (`PublishNumbered`): the event is made by a function of its number. The memory
+  store implements both.
+- `kv/kvtest`: `SealedFeed` and `Resealer`.
+- A guide for hosts: `go/kv/docs/hosts.md`.
+
+# Release go/kv/postgres v0.13.0
+
+### added
+- `PublishNumbered` for the store and its transactions.
+
+# Release go/kv/mariadb v0.4.0
+
+### added
+- `PublishNumbered` for the store and its transactions.
+
 # Release 2026-11-26: go/kv v0.11.0, go/kv/postgres v0.12.0, go/kv/mariadb v0.3.0
 
 Two classes of records: durable, for what must not be lost, and ephemeral, for what a loss only costs a fetch

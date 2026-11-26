@@ -22,9 +22,11 @@
 package mariadb_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -653,5 +655,80 @@ func TestMariaDB_Task431WhatAWriteCostsInEachClass(t *testing.T) {
 		}
 		t.Logf("%s: %v per write of %d bytes, one after another", class, time.Since(start)/writes, len(value))
 		_ = s.Close()
+	}
+}
+
+func TestMariaDB_SealedFeedContract(t *testing.T) {
+	dsn := testDSN(t)
+	kvtest.SealedFeed(t, func(t *testing.T) kv.Store {
+		s, err := openKV(context.Background(), dsn, mariadb.WithFeedPoll(testPoll))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+// After the keys changed, the records of the key of before are found by their marks and taken along, in
+// the table of each class.
+func TestMariaDB_ResealerContractOverBothTables(t *testing.T) {
+	dsn := testDSN(t)
+	for class, opts := range map[string][]mariadb.Option{"durable": nil, "ephemeral": {mariadb.WithEphemeral()}} {
+		t.Run(class, func(t *testing.T) {
+			kvtest.Resealer(t, func(t *testing.T, mark func(string, []byte) string) kv.Store {
+				s, err := openKV(context.Background(), dsn, append([]mariadb.Option{mariadb.WithMark(mark)}, opts...)...)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return s
+			})
+		})
+	}
+}
+
+// Server rule 5: with a sealed store the tables hold neither what was stored nor what was published.
+func TestMariaDB_Rule5TheDatabaseHoldsNoRecordAndNoEventInTheClear(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshDatabase(t, testDSN(t))
+	db := adminOf(t, dsn)
+	if _, err := mariadb.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "Mustermann"
+	keys, err := kv.ParseKeyring([]byte("k1 " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, opts := range [][]mariadb.Option{nil, {mariadb.WithEphemeral()}} {
+		raw, err := openKV(ctx, dsn, opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer raw.Close()
+		sealed := kv.NewSealed(raw, keys, "test")
+		if err := sealed.Set(ctx, "session", []byte("the session of Erika "+secret), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if kv.DurabilityOf(raw) == kv.Ephemeral {
+			continue
+		}
+		if err := sealed.(kv.Transactor).Tx(ctx, func(tx kv.Tx) error {
+			if err := tx.Set(ctx, "revoked", []byte("revoked: Erika "+secret), time.Minute); err != nil {
+				return err
+			}
+			return tx.Publish(ctx, "revocations", []byte("revoked: Erika "+secret), time.Minute)
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for table, column := range map[string]string{"kv": "value", "kv_cache": "value", "kv_feed": "payload"} {
+		var rows, inClear int
+		if err := db.QueryRow("SELECT COUNT(*), COALESCE(SUM(LOCATE(?, "+column+") > 0), 0) FROM "+table,
+			[]byte(secret)).Scan(&rows, &inClear); err != nil {
+			t.Fatal(err)
+		}
+		if rows == 0 || inClear != 0 {
+			t.Errorf("table %s: %d rows, %d of them hold the secret in the clear", table, rows, inClear)
+		}
 	}
 }

@@ -28,6 +28,7 @@ package kvtest
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"slices"
@@ -846,6 +847,230 @@ func Ephemeral(t *testing.T, open func(t *testing.T) kv.Store) {
 			if _, err := f.Latest(ctx, topic("ephemeral")); !errors.Is(err, kv.ErrEphemeralEvent) {
 				t.Errorf("Latest: %v", err)
 			}
+		}
+	})
+}
+
+// ring is a key ring of the given IDs, the first of them current. A key is its ID's first byte, repeated:
+// the suite's keys protect nothing.
+func ring(t *testing.T, ids ...string) *kv.Keyring {
+	t.Helper()
+	var lines strings.Builder
+	for _, id := range ids {
+		lines.WriteString(id + " " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{id[0]}, 32)) + "\n")
+	}
+	keys, err := kv.ParseKeyring([]byte(lines.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keys
+}
+
+// SealedFeed runs the contract of a sealed feed over the store open returns, which must be a kv.Feed that
+// numbers its events (kv.NumberedFeed): the store below sees no payload, and an event opens only where and
+// as what it was sealed.
+func SealedFeed(t *testing.T, open func(t *testing.T) kv.Store) {
+	t.Helper()
+	ctx := context.Background()
+	const secret = "the session of Erika Mustermann was revoked"
+	run := func(name string, test func(t *testing.T, raw kv.Feed, sealed kv.Feed)) {
+		t.Run(name, func(t *testing.T) {
+			s := open(t)
+			t.Cleanup(func() { _ = s.Close() })
+			raw, ok := s.(kv.Feed)
+			if !ok {
+				t.Fatal("the store is no kv.Feed")
+			}
+			test(t, raw, kv.NewSealedFeed(raw, ring(t, "a"), "kvtest events"))
+		})
+	}
+	follow := func(t *testing.T, f kv.Feed, topic string) <-chan kv.Event {
+		t.Helper()
+		ctx, cancel := context.WithCancel(ctx)
+		t.Cleanup(cancel)
+		events, err := f.Follow(ctx, topic, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return events
+	}
+
+	run("an event is read as published, and the feed below holds no payload", func(t *testing.T, raw, sealed kv.Feed) {
+		a := topic("sealed")
+		for i := 1; i <= 3; i++ {
+			if cursor, err := sealed.Publish(ctx, a, fmt.Appendf(nil, "%s %d", secret, i), time.Minute); err != nil || cursor != kv.Cursor(i) {
+				t.Fatalf("event %d: cursor %d, err %v", i, cursor, err)
+			}
+		}
+		below, opened := follow(t, raw, a), follow(t, sealed, a)
+		for i := 1; i <= 3; i++ {
+			if e := next(t, below); bytes.Contains(e.Payload, []byte("Mustermann")) {
+				t.Fatalf("the feed below holds event %d in the clear", e.Cursor)
+			}
+			if e := next(t, opened); e.Cursor != kv.Cursor(i) || string(e.Payload) != fmt.Sprintf("%s %d", secret, i) {
+				t.Fatalf("event %d: number %d, %q", i, e.Cursor, e.Payload)
+			}
+		}
+		if latest, err := sealed.Latest(ctx, a); err != nil || latest != 3 {
+			t.Fatalf("latest %d, err %v", latest, err)
+		}
+	})
+
+	run("an event put under another topic or another number does not open", func(t *testing.T, raw, sealed kv.Feed) {
+		a, b := topic("from"), topic("to")
+		if _, err := sealed.Publish(ctx, a, []byte(secret), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		taken := next(t, follow(t, raw, a)).Payload
+		// Whoever can write to the feed below copies the sealed event to another topic, and again to its
+		// own topic, where it gets the next number.
+		if _, err := raw.Publish(ctx, b, taken, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := raw.Publish(ctx, a, taken, time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sealed.Publish(ctx, a, []byte("after"), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		none(t, follow(t, sealed, b))
+		opened := follow(t, sealed, a)
+		if e := next(t, opened); e.Cursor != 1 || string(e.Payload) != secret {
+			t.Fatalf("the event in its place: number %d, %q", e.Cursor, e.Payload)
+		}
+		// Number 2 is the copy: it is left out, and the number that is missing shows it.
+		if e := next(t, opened); e.Cursor != 3 || string(e.Payload) != "after" {
+			t.Fatalf("after the copy: number %d, %q", e.Cursor, e.Payload)
+		}
+	})
+
+	run("an event opens neither under another purpose nor under another key, and not when altered", func(t *testing.T, raw, sealed kv.Feed) {
+		a := topic("purpose")
+		if _, err := sealed.Publish(ctx, a, []byte(secret), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		none(t, follow(t, kv.NewSealedFeed(raw, ring(t, "a"), "another purpose"), a))
+		none(t, follow(t, kv.NewSealedFeed(raw, ring(t, "b"), "kvtest events"), a))
+		// An event that was never sealed, and one with a bit of the sealed one changed.
+		taken := next(t, follow(t, raw, a)).Payload
+		altered := bytes.Clone(taken)
+		altered[len(altered)-1] ^= 1
+		for _, payload := range [][]byte{[]byte("made up"), altered, {}} {
+			if _, err := raw.Publish(ctx, a, payload, time.Minute); err != nil {
+				t.Fatal(err)
+			}
+		}
+		opened := follow(t, sealed, a)
+		if e := next(t, opened); e.Cursor != 1 {
+			t.Fatalf("number %d", e.Cursor)
+		}
+		none(t, opened)
+	})
+
+	run("an event sealed under a key of before opens while the ring holds that key", func(t *testing.T, raw, _ kv.Feed) {
+		a := topic("rotated")
+		if _, err := kv.NewSealedFeed(raw, ring(t, "a"), "kvtest events").Publish(ctx, a, []byte("old key"), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		rotated := kv.NewSealedFeed(raw, ring(t, "b", "a"), "kvtest events")
+		if _, err := rotated.Publish(ctx, a, []byte("new key"), time.Minute); err != nil {
+			t.Fatal(err)
+		}
+		opened := follow(t, rotated, a)
+		for i, want := range []string{"old key", "new key"} {
+			if e := next(t, opened); e.Cursor != kv.Cursor(i+1) || string(e.Payload) != want {
+				t.Fatalf("event %d: number %d, %q", i+1, e.Cursor, e.Payload)
+			}
+		}
+	})
+
+	run("too long an event is refused before it is sealed", func(t *testing.T, _, sealed kv.Feed) {
+		if _, err := sealed.Publish(ctx, topic("big"), make([]byte, kv.MaxEventLen), time.Minute); !errors.Is(err, kv.ErrEvent) {
+			t.Fatalf("got %v", err)
+		}
+	})
+}
+
+// Resealer runs the contract of kv.Resealer, which a sealed store is over a store that keeps marks and
+// swaps: after the keys changed, the records sealed under the key of before are found without reading
+// every record, and taken along. open returns the store below for a mark function.
+func Resealer(t *testing.T, open func(t *testing.T, mark func(key string, value []byte) string) kv.Store) {
+	t.Helper()
+	ctx := context.Background()
+	raw := open(t, kv.SealedMarker(nil))
+	t.Cleanup(func() { _ = raw.Close() })
+	p := prefix(t, raw)
+	before := kv.NewSealed(raw, ring(t, "a"), "kvtest records", kv.WithSealedExpiry(time.Now))
+	for _, k := range []string{"1", "2", "3"} {
+		if err := before.Set(ctx, p+k, []byte("of before "+k), time.Hour); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := kv.NewSealed(raw, ring(t, "b", "a"), "kvtest records", kv.WithSealedExpiry(time.Now))
+	if err := store.Set(ctx, p+"4", []byte("of now"), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	resealer, ok := store.(kv.Resealer)
+	if !ok {
+		t.Fatal("the sealed store is no kv.Resealer")
+	}
+
+	t.Run("the records of the key of before are counted and found, page by page", func(t *testing.T) {
+		if by, err := resealer.SealedByKeys(ctx, p); err != nil || by["a"] != 3 || by["b"] != 1 || len(by) != 2 {
+			t.Fatalf("sealed by %v, err %v", by, err)
+		}
+		if id, found, err := resealer.SealedBy(ctx, p+"1"); err != nil || !found || id != "a" {
+			t.Fatalf("sealed by %q, found %v, err %v", id, found, err)
+		}
+		if n, err := resealer.CountOthers(ctx, p); err != nil || n != 3 {
+			t.Fatalf("count %d, err %v", n, err)
+		}
+		first, err := resealer.Others(ctx, p, "", 2)
+		if err != nil || !slices.Equal(first, []string{p + "1", p + "2"}) {
+			t.Fatalf("first page %v, err %v", first, err)
+		}
+		rest, err := resealer.Others(ctx, p, first[len(first)-1], 2)
+		if err != nil || !slices.Equal(rest, []string{p + "3"}) {
+			t.Fatalf("second page %v, err %v", rest, err)
+		}
+	})
+
+	t.Run("a record is sealed again under the key of now, once, with its value", func(t *testing.T) {
+		if resealed, err := resealer.Reseal(ctx, p+"1"); err != nil || !resealed {
+			t.Fatalf("resealed %v, err %v", resealed, err)
+		}
+		if resealed, err := resealer.Reseal(ctx, p+"1"); err != nil || resealed {
+			t.Fatalf("again: resealed %v, err %v", resealed, err)
+		}
+		if resealed, err := resealer.Reseal(ctx, p+"4"); err != nil || resealed {
+			t.Fatalf("a record of the key of now: resealed %v, err %v", resealed, err)
+		}
+		if id, _, err := resealer.SealedBy(ctx, p+"1"); err != nil || id != "b" {
+			t.Fatalf("sealed by %q, err %v", id, err)
+		}
+		if got, found, err := store.Get(ctx, p+"1"); err != nil || !found || string(got) != "of before 1" {
+			t.Fatalf("the value: %q, found %v, err %v", got, found, err)
+		}
+		if n, err := resealer.CountOthers(ctx, p); err != nil || n != 2 {
+			t.Fatalf("count %d, err %v", n, err)
+		}
+	})
+
+	t.Run("a record is moved to another key under the key of now, once", func(t *testing.T) {
+		if moved, err := resealer.Rename(ctx, p+"2", p+"moved"); err != nil || !moved {
+			t.Fatalf("moved %v, err %v", moved, err)
+		}
+		if got, found, err := store.Get(ctx, p+"moved"); err != nil || !found || string(got) != "of before 2" {
+			t.Fatalf("under the new key: %q, found %v, err %v", got, found, err)
+		}
+		if _, found, _ := store.Get(ctx, p+"2"); found {
+			t.Fatal("the record is still under the key of before")
+		}
+		if moved, err := resealer.Rename(ctx, p+"2", p+"moved"); err != nil || moved {
+			t.Fatalf("again: moved %v, err %v", moved, err)
+		}
+		if by, err := resealer.SealedByKeys(ctx, p); err != nil || by["a"] != 1 || by["b"] != 3 {
+			t.Fatalf("sealed by %v, err %v", by, err)
 		}
 	})
 }
