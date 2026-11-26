@@ -47,7 +47,7 @@ func TestConfig_UserAndPasswordAreTakenBesideTheDSN(t *testing.T) {
 	// What the driver would take from the environment is not what it logs in with.
 	t.Setenv("PGUSER", "from-the-environment")
 	t.Setenv("PGPASSWORD", "from-the-environment")
-	host, database, user, with, err := postgres.Config("postgres://db.example:5433/store?connect_timeout=5", "kv", secret)
+	host, database, user, with, err := postgres.Config("postgres://db.example:5433/store", "kv", secret)
 	if err != nil || host != "db.example" || database != "store" {
 		t.Fatalf("host %q, database %q, err %v", host, database, err)
 	}
@@ -88,8 +88,8 @@ func TestConfig_ADSNWithAUserOrAPasswordIsRefused(t *testing.T) {
 }
 
 func TestSplitURL_TakesAConnectionURLApart(t *testing.T) {
-	address, user, password, err := postgres.SplitURL("postgres://kv:p%40ss@db.example:5433/store?connect_timeout=5")
-	if err != nil || address != "postgres://db.example:5433/store?connect_timeout=5" || user != "kv" || password != "p@ss" {
+	address, user, password, err := postgres.SplitURL("postgres://kv:p%40ss@db.example:5433/store")
+	if err != nil || address != "postgres://db.example:5433/store" || user != "kv" || password != "p@ss" {
 		t.Fatalf("address %q, user %q, password of %d bytes, err %v", address, user, len(password), err)
 	}
 	if _, _, _, _, err := postgres.Config(address, user, password); err != nil {

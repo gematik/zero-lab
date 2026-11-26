@@ -29,15 +29,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 )
-
-// credentialParameters are the parameters of a connection URL that name a user or a password, or a file
-// that holds them.
-var credentialParameters = []string{"user", "password", "passfile", "service", "servicefile"}
 
 // transport is how a store reaches its database: with TLS, which is the default, or in plaintext that the
 // operator accepted (server rule 29). It is never both and never one falling back to the other.
@@ -83,9 +78,9 @@ func (t transport) config(host string) (*tls.Config, error) {
 //
 // and from the user and the password, which are not part of it: a DSN is an address, written into
 // configuration and logs, and a password in a URL has to be escaped to be read as it is meant. A DSN that
-// carries a user or a password, as part of the URL or as a parameter, is refused; so is one that is not a
-// URL. Nor does the DSN say how the connection is protected: one that names sslmode or another parameter of
-// TLS is refused, so that nothing in an address can weaken the connection. The connection is TLS, with the
+// carries a user or a password is refused, and so is one with any parameter, as in kv/mariadb: a parameter
+// would set the session, name another host or say how the connection is protected, and nothing in an
+// address may weaken the connection or the durability of a write. So is one that is not a URL. The connection is TLS, with the
 // server's certificate verified for the host of the DSN, unless the transport says the operator accepted
 // plaintext; the driver's own modes that try one and fall back to the other are not used. What the driver
 // would otherwise take from the environment or from files in the user's home (PGUSER, PGPASSWORD,
@@ -103,16 +98,11 @@ func poolConfig(dsn, user, password string, t transport) (*pgxpool.Config, error
 	if u.User != nil {
 		return nil, errors.New("kv/postgres: the DSN carries a user or a password: they are given beside it")
 	}
-	query := u.Query()
-	for _, name := range credentialParameters {
-		if query.Has(name) {
-			return nil, fmt.Errorf("kv/postgres: the DSN names %s: user and password are given beside it", name)
-		}
-	}
-	for name := range query {
-		if strings.HasPrefix(name, "ssl") || name == "gssencmode" || name == "channel_binding" {
-			return nil, fmt.Errorf("kv/postgres: the DSN names %s: how the connection is protected is not part of the address", name)
-		}
+	// A parameter of a connection URL sets the session (synchronous_commit, search_path, options), names
+	// another host, a user, a password or a file that holds one, or says how the connection is protected:
+	// each is the store's or the host's to say, not the address's. So there is none.
+	for name := range u.Query() {
+		return nil, fmt.Errorf("kv/postgres: the DSN has a parameter, %s: it is the address alone", name)
 	}
 	if u.Hostname() == "" {
 		return nil, errors.New("kv/postgres: the DSN names no host")
