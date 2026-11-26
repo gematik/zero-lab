@@ -44,8 +44,11 @@ import (
 )
 
 // The tests share the database of TEST_DATABASE_URL, which a migrator has to have prepared: Open applies no
-// schema.
+// schema. A test binary that was started as a pod of a deployment test serves as that pod instead.
 func TestMain(m *testing.M) {
+	if kvtest.IsPod() {
+		os.Exit(kvtest.ServePod(openPod))
+	}
 	if dsn := os.Getenv("TEST_DATABASE_URL"); dsn != "" {
 		db, err := sql.Open("pgx", dsn)
 		if err == nil {

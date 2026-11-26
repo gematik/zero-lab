@@ -235,15 +235,24 @@ func Store(t *testing.T, open func(t *testing.T) kv.Store) {
 	})
 
 	run("Cleanup removes what has expired and nothing else", func(t *testing.T, s kv.Store, p string) {
-		if err := s.Set(ctx, p+"gone", []byte("v"), expiry); err != nil {
-			t.Fatal(err)
+		const gone = 5
+		for i := range gone {
+			if err := s.Set(ctx, fmt.Sprintf("%sgone:%d", p, i), []byte("v"), expiry); err != nil {
+				t.Fatal(err)
+			}
 		}
 		if err := s.Set(ctx, p+"stays", []byte("v"), 0); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(settle)
-		if removed, err := s.Cleanup(ctx); err != nil || removed < 1 {
+		if removed, err := s.Cleanup(ctx); err != nil || removed < gone {
 			t.Fatalf("removed %d, err %v", removed, err)
+		}
+		// A read hides an expired record whether it is there or not: only a second Cleanup that does not
+		// count them again shows that the first one took them out. On a shared database it may find what
+		// others let expire since, but not all of these again.
+		if again, err := s.Cleanup(ctx); err != nil || again >= gone {
+			t.Fatalf("a second Cleanup removed %d, err %v: the first did not take the expired records out", again, err)
 		}
 		if _, found, _ := s.Get(ctx, p+"stays"); !found {
 			t.Fatal("a record without a TTL was removed")
@@ -762,6 +771,50 @@ func Tx(t *testing.T, open func(t *testing.T) kv.Store) {
 		}
 	})
 
+	run("two transactions that wait for each other's records both take effect, whichever of them the database ends", func(t *testing.T, s kv.Store, tr kv.Transactor, p string) {
+		// Each reads one record, waits until the other has read its own, and then reads the other's:
+		// where both run at once, neither can go on, and the database ends one of them.
+		held := [2]chan struct{}{make(chan struct{}), make(chan struct{})}
+		var once [2]sync.Once
+		var runs atomic.Int64
+		count := func(tx kv.Tx, key string) error {
+			read, _, err := tx.Get(ctx, key)
+			if err != nil {
+				return err
+			}
+			n, _ := strconv.Atoi(string(read))
+			return tx.Set(ctx, key, []byte(strconv.Itoa(n+1)), 0)
+		}
+		errs := make(chan error, 2)
+		for i := range 2 {
+			go func() {
+				errs <- tr.Tx(ctx, func(tx kv.Tx) error {
+					runs.Add(1)
+					if err := count(tx, p+strconv.Itoa(i)); err != nil {
+						return err
+					}
+					once[i].Do(func() { close(held[i]) })
+					select {
+					case <-held[1-i]:
+					case <-time.After(settle):
+					}
+					return count(tx, p+strconv.Itoa(1-i))
+				})
+			}()
+		}
+		for range 2 {
+			if err := <-errs; err != nil {
+				t.Errorf("a transaction that met another: %v", err)
+			}
+		}
+		for i := range 2 {
+			if got, _, err := s.Get(ctx, p+strconv.Itoa(i)); err != nil || string(got) != "2" {
+				t.Errorf("record %d was counted up to %q by two transactions: %v", i, got, err)
+			}
+		}
+		t.Logf("the two transactions ran %d times", runs.Load())
+	})
+
 	run("an event a transaction may not publish fails it", func(t *testing.T, s kv.Store, tr kv.Transactor, p string) {
 		err := tr.Tx(ctx, func(tx kv.Tx) error {
 			if err := tx.Set(ctx, p+"record", []byte("r"), 0); err != nil {
@@ -776,6 +829,69 @@ func Tx(t *testing.T, open func(t *testing.T) kv.Store) {
 			t.Error("the record of the failed transaction is there")
 		}
 	})
+}
+
+// TxOutside runs the part of the contract of kv.Transactor that is about callers outside a transaction,
+// against the store open returns: what a transaction read with Get stays as read until its end, also
+// against a call of the store itself by another caller, for a record that is there and for one that is
+// not. It is for a store on one database node: across the writing nodes of a cluster a record a
+// transaction only read is not protected, which the contract says.
+func TxOutside(t *testing.T, open func(t *testing.T) kv.Store) {
+	t.Helper()
+	ctx := context.Background()
+	for name, there := range map[string]bool{
+		"a record a transaction read is not changed under it by a caller outside a transaction":         true,
+		"a record a transaction found absent is not written under it by a caller outside a transaction": false,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := open(t)
+			t.Cleanup(func() { _ = s.Close() })
+			tr, ok := s.(kv.Transactor)
+			if !ok {
+				t.Fatal("the store is no kv.Transactor")
+			}
+			key := prefix(t, s) + "decided-on"
+			if there {
+				if err := s.Set(ctx, key, []byte("before"), 0); err != nil {
+					t.Fatal(err)
+				}
+			}
+			outside := make(chan error, 1)
+			var write sync.Once
+			err := tr.Tx(ctx, func(tx kv.Tx) error {
+				first, found, err := tx.Get(ctx, key)
+				if err != nil {
+					return err
+				}
+				if found != there {
+					return fmt.Errorf("the transaction finds the record there: %v", found)
+				}
+				write.Do(func() {
+					go func() { outside <- s.Set(ctx, key, []byte("outside"), 0) }()
+				})
+				// Long enough for the caller outside to write, if nothing holds it.
+				time.Sleep(settle)
+				again, found, err := tx.Get(ctx, key)
+				if err != nil {
+					return err
+				}
+				if found != there || !bytes.Equal(again, first) {
+					return fmt.Errorf("what the transaction read changed under it: it read %q, there %v, and then %q, there %v", first, there, again, found)
+				}
+				return tx.Set(ctx, key, []byte("inside"), 0)
+			})
+			if err != nil {
+				t.Error(err)
+			}
+			if err := <-outside; err != nil {
+				t.Fatal(err)
+			}
+			// The caller outside waited for the transaction, so its value is the later one.
+			if got, _, err := s.Get(ctx, key); err != nil || string(got) != "outside" {
+				t.Errorf("after both, the record holds %q: %v", got, err)
+			}
+		})
+	}
 }
 
 // Ephemeral runs what an ephemeral store does besides the contract of kv.Store, against the store open
@@ -855,15 +971,19 @@ func Ephemeral(t *testing.T, open func(t *testing.T) kv.Store) {
 // the suite's keys protect nothing.
 func ring(t *testing.T, ids ...string) *kv.Keyring {
 	t.Helper()
-	var lines strings.Builder
-	for _, id := range ids {
-		lines.WriteString(id + " " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{id[0]}, 32)) + "\n")
-	}
-	keys, err := kv.ParseKeyring([]byte(lines.String()))
+	keys, err := parseRing(ids...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return keys
+}
+
+func parseRing(ids ...string) (*kv.Keyring, error) {
+	var lines strings.Builder
+	for _, id := range ids {
+		lines.WriteString(id + " " + base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{id[0]}, 32)) + "\n")
+	}
+	return kv.ParseKeyring([]byte(lines.String()))
 }
 
 // SealedFeed runs the contract of a sealed feed over the store open returns, which must be a kv.Feed that

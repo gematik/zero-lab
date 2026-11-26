@@ -74,8 +74,11 @@ func openSteps(ctx context.Context, dsn string, steps []mariadb.Step, opts ...ma
 }
 
 // The tests share the database of TEST_MARIADB_DSN, which a migrator has to have prepared: Open applies no
-// schema.
+// schema. A test binary that was started as a pod of a deployment test serves as that pod instead.
 func TestMain(m *testing.M) {
+	if kvtest.IsPod() {
+		os.Exit(kvtest.ServePod(openPod))
+	}
 	if dsn := os.Getenv(dsnEnv); dsn != "" {
 		db, err := openDB(dsn)
 		if err == nil {
