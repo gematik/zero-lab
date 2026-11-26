@@ -590,6 +590,11 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
   Durable records are sealed as before.
 - The numbers are from a laptop and say which way and roughly how much, not what a deployment will see.
 
+The plan is built: the eight tasks below are done, and what a host does with the libraries is in
+[`go/kv/docs/hosts.md`](../../go/kv/docs/hosts.md) (TASK-434). What is left is the hosts' (zeta-authserver-go's
+adoption, still open) and the two findings noted along the way: pgx's `sslmode` default, and that the hosts here
+keep `WithMigrate()`.
+
 ## Built with TASK-433 (2026-11-26)
 
 - **Events are sealed for their place.** `NewSealedFeed(feed, keys, purpose)` seals each event with AES-256-GCM
