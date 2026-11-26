@@ -45,3 +45,13 @@ func TestMemory_FeedContract(t *testing.T) {
 func TestMemory_TxContract(t *testing.T) {
 	kvtest.Tx(t, func(*testing.T) kv.Store { return kv.NewMemory() })
 }
+
+func TestMemory_SealedFeedContract(t *testing.T) {
+	kvtest.SealedFeed(t, func(*testing.T) kv.Store { return kv.NewMemory() })
+}
+
+func TestMemory_ResealerContract(t *testing.T) {
+	kvtest.Resealer(t, func(_ *testing.T, mark func(string, []byte) string) kv.Store {
+		return kv.NewMemory(kv.WithMemoryMark(mark))
+	})
+}

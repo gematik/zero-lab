@@ -96,26 +96,36 @@ func TestSealed_ATransactionDetectsAMovedRecord(t *testing.T) {
 	}
 }
 
-// An event a sealed store passed on would reach the database in the clear. Its transactions refuse to
-// publish, and a transaction that tried takes no effect.
-func TestSealed_ATransactionPublishesNoEventInTheClear(t *testing.T) {
+// An event a transaction of a sealed store publishes is sealed: the store below holds no payload in the
+// clear, and a follower of the sealed store reads it.
+func TestSealed_Rule5ATransactionSealsTheEventItPublishes(t *testing.T) {
 	ctx := context.Background()
 	raw := kv.NewMemory()
 	sealed := kv.NewSealed(raw, testRing(t, testRingLine("k1", 1)), "test")
 	err := sealed.(kv.Transactor).Tx(ctx, func(tx kv.Tx) error {
-		if err := tx.Set(ctx, "record", []byte("r"), 0); err != nil {
+		if err := tx.Set(ctx, "revoked:sid", []byte("r"), time.Minute); err != nil {
 			return err
 		}
-		return tx.Publish(ctx, "changes", []byte("who was revoked"), time.Minute)
+		return tx.Publish(ctx, "revocations", []byte("who was revoked"), time.Minute)
 	})
-	if !errors.Is(err, kv.ErrSealedEvent) {
-		t.Fatalf("got %v", err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, found, _ := raw.Get(ctx, "record"); found {
-		t.Error("the record of the refused transaction is there")
+	follow, cancel := context.WithCancel(ctx)
+	defer cancel()
+	below, err := raw.(kv.Feed).Follow(follow, "revocations", 0)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if latest, _ := raw.(kv.Feed).Latest(ctx, "changes"); latest != 0 {
-		t.Errorf("an event was published: latest %d", latest)
+	if e := <-below; e.Cursor != 1 || bytes.Contains(e.Payload, []byte("who was revoked")) {
+		t.Fatalf("the store below holds event %d in the clear", e.Cursor)
+	}
+	opened, err := sealed.(kv.Feed).Follow(follow, "revocations", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := <-opened; e.Cursor != 1 || string(e.Payload) != "who was revoked" {
+		t.Fatalf("the follower of the sealed store got event %d, %q", e.Cursor, e.Payload)
 	}
 }
 
