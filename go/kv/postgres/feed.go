@@ -110,8 +110,7 @@ func (s *store) Tx(ctx context.Context, fn func(tx kv.Tx) error) error {
 		}
 	}
 	if err != nil && !errors.Is(err, kv.ErrTxTooLarge) && !errors.Is(err, kv.ErrEvent) {
-		var pg *pgconn.PgError
-		if errors.As(err, &pg) {
+		if _, database := errors.AsType[*pgconn.PgError](err); database {
 			return fmt.Errorf("kv/postgres: transaction: %w", err)
 		}
 	}

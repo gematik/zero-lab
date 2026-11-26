@@ -33,7 +33,7 @@ type memTopic struct {
 }
 
 type memEvent struct {
-	Event
+	event     Event
 	expiresAt time.Time
 }
 
@@ -191,7 +191,7 @@ func (s *memoryStore) publish(topic string, event []byte, retention time.Duratio
 	}
 	t.seq++
 	kept = append(kept, memEvent{
-		Event:     Event{Cursor: Cursor(t.seq), Payload: clone(event), At: now},
+		event:     Event{Cursor: Cursor(t.seq), Payload: clone(event), At: now},
 		expiresAt: now.Add(retention),
 	})
 	t.events = kept
@@ -254,8 +254,8 @@ func (s *memoryStore) Follow(ctx context.Context, topic string, from Cursor) (<-
 			if t := s.topics[topic]; t != nil {
 				now := s.now()
 				for _, e := range t.events {
-					if e.Cursor > cursor && e.expiresAt.After(now) {
-						batch = append(batch, Event{Cursor: e.Cursor, Payload: clone(e.Payload), At: e.At})
+					if e.event.Cursor > cursor && e.expiresAt.After(now) {
+						batch = append(batch, Event{Cursor: e.event.Cursor, Payload: clone(e.event.Payload), At: e.event.At})
 					}
 				}
 			}

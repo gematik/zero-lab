@@ -307,8 +307,7 @@ func isDatabase(err error) bool {
 }
 
 func lost(err error) bool {
-	var marked *lostError
-	if errors.As(err, &marked) {
+	if _, marked := errors.AsType[*lostError](err); marked {
 		return true
 	}
 	var my *mysql.MySQLError
