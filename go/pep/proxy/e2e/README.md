@@ -72,7 +72,7 @@ All via environment; full reference in [`../cmd/zero-pep-proxy/CONFIG.md`](../cm
 
 - OIDF (needs a public host): point rathole at :8080 and add `PEP_PUBLIC_URL=https://<rathole-host>`,
   `PEP_OIDF_RP_CONFIG_PATH=...` (drop `PEP_INSECURE_COOKIE` — the default secure cookie is what you want over HTTPS).
-- Durable sessions + snapshot fast path: add `PEP_DATABASE_URL=postgres://zero:zero@127.0.0.1:5432/zero` and, for this database without TLS, `PEP_DATABASE_PLAINTEXT_ACCEPTED=true`
+- Durable sessions + snapshot fast path: add `PEP_DATABASE_URL=postgres://zero:zero@127.0.0.1:5432/zero` and, for this database without TLS, `PEP_DATABASE_PLAINTEXT_ACCEPTED=true`, and `PEP_DATABASE_MIGRATE=true` so that the proxy applies the store's schema itself (a deployment runs `zero-pep-proxy migrate` before the rollout instead)
   with a store key (`printf 'k1 %s\n' "$(openssl rand -base64 32)" > /tmp/pep-store.key`,
   `PEP_SESSION_STORE_KEY_PATH=/tmp/pep-store.key`), generate a snapshot key
   (`openssl rand -base64 32 > /tmp/pep-session.key`), and set `PEP_SESSION_KEY_PATH=/tmp/pep-session.key`.

@@ -36,6 +36,7 @@ import (
 const (
 	databasePlaintextEnv = "PEP_DATABASE_PLAINTEXT_ACCEPTED"
 	databaseCAPathEnv    = "PEP_DATABASE_TLS_CA_PATH"
+	databaseMigrateEnv   = "PEP_DATABASE_MIGRATE"
 )
 
 // database is where the store and the revocation bus are and how they are reached.
@@ -43,6 +44,8 @@ type database struct {
 	address, user, password string
 	// transport is how the connection is protected: TLS under the system's roots when it is empty.
 	transport []postgres.Option
+	// migrate lets the server apply the schema's expand steps itself at start (PEP_DATABASE_MIGRATE).
+	migrate bool
 }
 
 // databaseOf reads the peer from PEP_DATABASE_URL, one URL with the user and the password in it, which the
@@ -50,12 +53,29 @@ type database struct {
 // TLS with the server's certificate verified: under the system's roots, or under the CA bundle of
 // PEP_DATABASE_TLS_CA_PATH. Plaintext is the operator's acceptance, PEP_DATABASE_PLAINTEXT_ACCEPTED=true, as
 // for the listener; the URL itself says nothing of it, and one that names sslmode is refused by the store.
+// PEP_DATABASE_MIGRATE=true lets the server apply the schema itself (servers.md rule 22: off unless set).
+func databaseOfEnv(getenv func(string) string) (database, error) {
+	dsn, err := databaseURL(getenv)
+	if err != nil {
+		return database{}, err
+	}
+	return databaseOf(dsn, getenv, readOperatorFile)
+}
+
+// databaseOf is databaseOfEnv for a URL already read.
 func databaseOf(dsn string, getenv func(string) string, readFile func(string) ([]byte, error)) (database, error) {
 	address, user, password, err := postgres.SplitURL(dsn)
 	if err != nil {
 		return database{}, err
 	}
 	db := database{address: address, user: user, password: password}
+	switch getenv(databaseMigrateEnv) {
+	case "":
+	case "true":
+		db.migrate = true
+	default:
+		return database{}, fmt.Errorf("%s: true, or not set", databaseMigrateEnv)
+	}
 	accepted, caPath := getenv(databasePlaintextEnv), getenv(databaseCAPathEnv)
 	switch {
 	case accepted != "" && accepted != "true":

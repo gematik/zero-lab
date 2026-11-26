@@ -57,7 +57,10 @@
 //	                         sessions are lost on restart, not shared). The connection is TLS with the server's
 //	                         certificate verified, under the system's roots or the CA bundle of
 //	                         PEP_DATABASE_TLS_CA_PATH; plaintext only with PEP_DATABASE_PLAINTEXT_ACCEPTED=true
-//	                         (servers.md rule 29). The URL names no sslmode.
+//	                         (servers.md rule 29). The URL names no sslmode. The schema is applied before a
+//	                         rollout by `zero-pep-proxy migrate` (`migrate contract` once no older replica is
+//	                         left), with a URL whose user may change it; PEP_DATABASE_MIGRATE=true lets the
+//	                         server apply it itself (servers.md rule 22).
 //
 // Usage: zero-pep-proxy [-w workdir]
 //
@@ -215,7 +218,13 @@ func openStore() kv.Store {
 		if err != nil {
 			log.Fatalf("open postgres kv store: %v", err)
 		}
-		opts := append([]postgres.Option{postgres.WithMigrate()}, db.transport...)
+		// The schema is applied by a migration job (zero-pep-proxy migrate) unless the operator lets the
+		// server do it (servers.md rule 22).
+		opts := db.transport
+		if db.migrate {
+			slog.Warn("the session store's schema is applied by this server: its database user may change the schema (" + databaseMigrateEnv + ")")
+			opts = append(opts, postgres.WithMigrate())
+		}
 		if store, err = postgres.Open(context.Background(), db.address, db.user, db.password, opts...); err != nil {
 			log.Fatalf("open postgres kv store: %v", err)
 		}
@@ -262,6 +271,12 @@ func openRevocations(store kv.Store, ttl time.Duration) proxy.Revocations {
 func main() {
 	workdir := flag.String("w", "", "working directory: chdir here")
 	flag.Parse()
+	if flag.Arg(0) == "migrate" {
+		if err := migrateCommand(context.Background(), flag.Args()[1:], os.Getenv, os.Stdout); err != nil {
+			log.Fatalf("migrate: %v", err)
+		}
+		return
+	}
 
 	// Resolve an explicitly-set PEP_OPENID_PROVIDERS_PATH against the invocation directory now, before -w
 	// changes the cwd, so the providers file's own relative paths (OIDF keys/secrets) stay anchored to its

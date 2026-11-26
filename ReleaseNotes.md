@@ -38,13 +38,19 @@ modules passed; `just kv-postgres-test` (Postgres 18 without and with TLS) and `
 ### breaking
 - zero-pep-proxy: `PEP_DATABASE_URL` names no `sslmode`. `PEP_DATABASE_TLS_CA_PATH` names a CA bundle for the
   database's certificate; `PEP_DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS.
+- zero-pep-proxy no longer applies the session store's schema at start (servers.md rule 22, TASK-442): run
+  `zero-pep-proxy migrate` before the rollout, with a `PEP_DATABASE_URL` whose user may change the schema, or set
+  `PEP_DATABASE_MIGRATE=true` to let the server do it as before. Without either it does not start on a database
+  whose schema lacks a step, and says so. Its own user then needs `SELECT, INSERT, UPDATE, DELETE` on `kv`,
+  `kv_cache`, `kv_feed`, `kv_topic` and `SELECT` on `kv_schema`.
 - zaddy keeps no database (maintainer, 2026-11-26): `revocations_database_url` is gone, and with it the session
   revocations of TASK-313. An `enforce_policy` with a `SessionCookie` enforcer is refused at start, as it would
   admit a signed-out session until its snapshot expires; a route that admits zero-pep-proxy's sessions uses
   `forward_auth` to its `/oauth2/auth`. A Caddyfile that names `revocations_database_url` does not start.
   Revocations without a database are TASK-443. zaddy no longer requires go/kv.
 - zero-pdp (frozen): `DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS; it has no setting for a
-  CA of the deployment's own.
+  CA of the deployment's own. It keeps applying its schema at start, recorded as the exception of a frozen
+  host (TASK-442).
 
 # Release 2026-11-26: go/kv v0.12.0, go/kv/postgres v0.13.0, go/kv/mariadb v0.4.0
 

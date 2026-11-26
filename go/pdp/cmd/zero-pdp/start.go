@@ -185,6 +185,8 @@ func openStore(dsn, keyPath string) (kv.Store, nonce.Keys, error) {
 	}
 	// The database is reached with TLS unless the operator accepted plaintext (servers.md rule 29). zero-pdp
 	// is frozen: it gets the acceptance and no setting for a CA of the deployment's own.
+	// zero-pdp applies its schema itself, against servers.md rule 22: it is frozen and gets no migration job
+	// (TASK-442 records the exception).
 	opts := []postgres.Option{postgres.WithMigrate()}
 	switch os.Getenv("DATABASE_PLAINTEXT_ACCEPTED") {
 	case "":

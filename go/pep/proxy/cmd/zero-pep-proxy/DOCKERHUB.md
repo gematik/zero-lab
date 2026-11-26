@@ -43,6 +43,7 @@ Full reference: [CONFIG.md](https://github.com/gematik/zero-lab/blob/main/go/pep
 | PEP_DATABASE_URL | durable, shared sessions (Postgres); needs PEP_SESSION_STORE_KEY_PATH | in-memory |
 | PEP_DATABASE_TLS_CA_PATH | CA bundle for the database's certificate; the connection is TLS, verified | system roots |
 | PEP_DATABASE_PLAINTEXT_ACCEPTED | `true` accepts a database without TLS (servers.md rule 29) | refused |
+| PEP_DATABASE_MIGRATE | `true` lets the server apply the store's schema; otherwise run `zero-pep-proxy migrate` before the rollout | unset |
 | PEP_SESSION_STORE_KEY_PATH | key file sealing the kv store: `printf 'k1 %s\n' "$(openssl rand -base64 32)"` | required with PEP_DATABASE_URL |
 | PEP_SESSION_KEY_PATH | session-snapshot fast path (no DB per request) | off |
 | PEP_SESSION_TTL | session lifetime with the fast path | 8h |

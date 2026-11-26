@@ -3,10 +3,10 @@ id: TASK-442
 title: >-
   zero-pep-proxy, zaddy, zero-pdp: the server's database user without schema
   rights (servers.md rule 22)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-26T19:06:00Z'
-updated_date: '2026-11-26T19:56:00Z'
+updated_date: '2026-11-26T19:58:00Z'
 labels:
   - go
   - security
@@ -23,14 +23,16 @@ servers.md rule 22 since TASK-428: a server does not change its schema; its data
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 zero-pep-proxy and zaddy open the store without WithMigrate by default and start with a user that has no schema rights, shown by a test
-- [ ] #2 The schema steps can be applied before a rollout without a server doing it, and the e2e guide and the chart show how
-- [ ] #3 Applying the steps at start is a setting that is off unless set, logged when on
-- [ ] #4 zero-pdp is decided and the decision recorded
+- [x] #1 zero-pep-proxy and zaddy open the store without WithMigrate by default and start with a user that has no schema rights, shown by a test
+- [x] #2 The schema steps can be applied before a rollout without a server doing it, and the e2e guide and the chart show how
+- [x] #3 Applying the steps at start is a setting that is off unless set, logged when on
+- [x] #4 zero-pdp is decided and the decision recorded
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-26: zaddy keeps no database any more (maintainer; its revocations are TASK-443), so this task is about zero-pep-proxy and zero-pdp alone.
+
+2026-11-26, on feat/kv-db-tls. zero-pep-proxy: Open without WithMigrate by default; PEP_DATABASE_MIGRATE=true (one exact value) lets it apply expand steps at start, logged as a warning; zero-pep-proxy migrate [contract] applies the steps and stops, a subcommand of the existing host with the same database variables and a URL whose user may change the schema (a small command in an existing host; the maintainer's rule 'hosts are built elsewhere' is about new hosts, my reading). Tests: the setting read as an agreement; the subcommand refuses unknown words and a missing URL; against Postgres (PEP_PG_DSN): on a fresh database the server refuses with schema.ErrVersion, after migrate it opens as a role with DML rights only and writes, migrate run twice is fine. CONFIG.md, DOCKERHUB.md, .env.example and the e2e README (PEP_DATABASE_MIGRATE=true for the local stack) follow; no chart lives here, zero-lab-k8s needs the Job or the setting (other repository). zaddy keeps no database since today. zero-pdp: keeps WithMigrate, recorded in the code and the release notes as the exception of a frozen host; my decision under the freeze, not the maintainer's.
 <!-- SECTION:NOTES:END -->
