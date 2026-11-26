@@ -31,9 +31,9 @@ import "errors"
 type Durability int
 
 const (
-	// Durable: the write is committed and survives a crash of the database.
+	// Durable is a write that is committed and survives a crash of the database.
 	Durable Durability = iota
-	// Ephemeral: the write is atomic and seen by every replica at once, but may be lost when the database
+	// Ephemeral is a write that is atomic and seen by every replica at once, but may be lost when the database
 	// crashes or fails over. In exchange a backend may write it faster.
 	Ephemeral
 )
