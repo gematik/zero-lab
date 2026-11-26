@@ -6,12 +6,11 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:31'
-updated_date: '2026-11-24 13:06'
+updated_date: '2026-11-26 12:18'
 labels:
   - ti-pki
   - tests
 dependencies:
-  - TASK-437
   - TASK-438
 references:
   - backlog/docs/doc-8
@@ -40,7 +39,7 @@ From the spike TASK-436 (doc-8): gematik's PKI test suite (app-PkiTestsuite 8.1.
 ## Implementation Plan
 
 <!-- SECTION:PLAN:BEGIN -->
-Order: TASK-437 (core picks the OCSP address from the TSL's ServiceSupplyPoint: the suite's ecc certificates carry an AIA to ehca.gematik.de, not to its responder, so otherwise the host would hold TUC_PKI_006 logic) -> ti-tls ClientCertVerifier (own task) -> this task.
+Order: ti-tls ClientCertVerifier (own task) -> this task. The OCSP address comes from the AIA of the suite's certificates (TASK-438); the core keeps the AIA as its source.
 
 1. ti-tls: a rustls ClientCertVerifier over the core, the counterpart of TiVerifier (ti-tls/src/verifier.rs): Validator::validate with the HCI_AUT profile (profile.rs), OcspChecker; TLS 1.2 CertificateVerify through verify_tls12_signature with TI_SCHEMES (brainpool included). Reusable, so the host keeps no trust code.
 2. Host: an unpublished workspace crate, TEST-ONLY, blocking std, workspace deps only (ti-pki, ti-tls, ti-client's Http transport, rustls). It does I/O only: env config, a thread that ticks the Reloader (ReloadPolicy interval = the suite's tslDownloadIntervalSeconds), a Transport wrapper that appends ?activeTslSeqNr=<the loaded TSL's number> (the suite's download protocol), a std TcpListener with rustls ServerConnection, one thread per connection. Server key and certificate are made at image build (P-256, TEST-ONLY; the suite only checks expiry), never committed.
@@ -59,4 +58,6 @@ OCSP address: the host relies on the AIA of the suite's certificates, which gema
 Suite 8.1.1: target test object type IntermediaerServerInternet; its ecc-internet certificates carry AIA http://127.0.0.1:8083/ocsp/ (TASK-438 notes). The host runs in the ocsp-responder's network namespace (compose network_mode) until gematik makes the address configurable; the responder's path still needs the sequence number.
 
 gemLibPki check (TASK-437 notes): gematik's SUT simulators, the internet variant included, take the OCSP address from the TSL SSP, not the AIA. TASK-437 blocks this task again.
+
+2026-11-26: the maintainer keeps the AIA as the OCSP address source; TASK-437 is archived and no longer blocks this task. The host depends on the suite's certificates carrying an AIA to its responder (TASK-438).
 <!-- SECTION:NOTES:END -->
