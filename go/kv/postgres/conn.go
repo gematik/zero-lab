@@ -22,10 +22,14 @@
 package postgres
 
 import (
+	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -35,17 +39,58 @@ import (
 // that holds them.
 var credentialParameters = []string{"user", "password", "passfile", "service", "servicefile"}
 
+// transport is how a store reaches its database: with TLS, which is the default, or in plaintext that the
+// operator accepted (server rule 29). It is never both and never one falling back to the other.
+type transport struct {
+	// tls is a configuration of the host's own, for a server whose certificate the system's roots do not
+	// vouch for, or to present a client certificate.
+	tls *tls.Config
+	// plaintext is the operator's acceptance of a connection without TLS.
+	plaintext bool
+}
+
+// tlsCurves are the curves offered to the database: the NIST curves gemSpec_Krypt names for TLS, which
+// every server of an internet or a deployment PKI has.
+var tlsCurves = []tls.CurveID{tls.CurveP256, tls.CurveP384}
+
+// config is the TLS configuration of a connection to host, or nil for accepted plaintext.
+func (t transport) config(host string) (*tls.Config, error) {
+	if t.plaintext {
+		if t.tls != nil {
+			return nil, errors.New("kv/postgres: a TLS configuration beside accepted plaintext")
+		}
+		return nil, nil
+	}
+	if t.tls == nil {
+		return &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12, CurvePreferences: tlsCurves}, nil
+	}
+	if t.tls.InsecureSkipVerify {
+		return nil, errors.New("kv/postgres: a TLS configuration that skips verification")
+	}
+	cfg := t.tls.Clone()
+	if cfg.ServerName == "" {
+		cfg.ServerName = host
+	}
+	if cfg.MinVersion < tls.VersionTLS12 {
+		cfg.MinVersion = tls.VersionTLS12
+	}
+	return cfg, nil
+}
+
 // poolConfig makes the driver's configuration from a DSN of the form
 //
-//	postgres://host:port/database?sslmode=verify-full
+//	postgres://host:port/database
 //
 // and from the user and the password, which are not part of it: a DSN is an address, written into
 // configuration and logs, and a password in a URL has to be escaped to be read as it is meant. A DSN that
 // carries a user or a password, as part of the URL or as a parameter, is refused; so is one that is not a
-// URL. What the driver would otherwise take from the environment or from files in the user's home
-// (PGUSER, PGPASSWORD, a password file, a service file) is not used: the two given here are what it logs
-// in with.
-func poolConfig(dsn, user, password string) (*pgxpool.Config, error) {
+// URL. Nor does the DSN say how the connection is protected: one that names sslmode or another parameter of
+// TLS is refused, so that nothing in an address can weaken the connection. The connection is TLS, with the
+// server's certificate verified for the host of the DSN, unless the transport says the operator accepted
+// plaintext; the driver's own modes that try one and fall back to the other are not used. What the driver
+// would otherwise take from the environment or from files in the user's home (PGUSER, PGPASSWORD,
+// PGSSLMODE, a password file, a service file) is not used either.
+func poolConfig(dsn, user, password string, t transport) (*pgxpool.Config, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
 		// What is not a URL may still hold a secret someone put there: the parse error, which quotes it,
@@ -64,8 +109,20 @@ func poolConfig(dsn, user, password string) (*pgxpool.Config, error) {
 			return nil, fmt.Errorf("kv/postgres: the DSN names %s: user and password are given beside it", name)
 		}
 	}
+	for name := range query {
+		if strings.HasPrefix(name, "ssl") || name == "gssencmode" || name == "channel_binding" {
+			return nil, fmt.Errorf("kv/postgres: the DSN names %s: how the connection is protected is not part of the address", name)
+		}
+	}
+	if u.Hostname() == "" {
+		return nil, errors.New("kv/postgres: the DSN names no host")
+	}
 	if user == "" {
 		return nil, errors.New("kv/postgres: no user")
+	}
+	tlsConfig, err := t.config(u.Hostname())
+	if err != nil {
+		return nil, err
 	}
 	cfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
@@ -73,13 +130,48 @@ func poolConfig(dsn, user, password string) (*pgxpool.Config, error) {
 	}
 	cfg.ConnConfig.User = user
 	cfg.ConnConfig.Password = password
+	// One way to connect and no other to fall back to: the driver's own ones, made from its default mode
+	// or from PGSSLMODE, go.
+	cfg.ConnConfig.TLSConfig = tlsConfig
+	cfg.ConnConfig.Fallbacks = nil
 	return cfg, nil
 }
 
+// WithTLS sets the TLS configuration of the connections: a CA of the deployment's own, a client
+// certificate. Without it the server's certificate is verified against the system's roots. The name the
+// certificate is verified for is the host of the DSN unless the configuration names another. A
+// configuration that skips verification is refused.
+func WithTLS(config *tls.Config) Option {
+	return func(s *store) { s.transport.tls = config }
+}
+
+// WithPlaintextAccepted lets the store connect without TLS: the operator's statement that the deployment
+// protects the connection (server rule 29). A host sets it from a setting of its own beside the DSN, never
+// by default; the backend logs it at Open. Without it a database that offers no TLS is refused.
+func WithPlaintextAccepted() Option {
+	return func(s *store) { s.transport.plaintext = true }
+}
+
+func transportOf(opts []Option) transport {
+	s := &store{}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s.transport
+}
+
+// logPlaintext says at Open that a connection is in plaintext by the operator's acceptance.
+func logPlaintext(ctx context.Context, what string, t transport, cfg *pgxpool.Config) {
+	if t.plaintext {
+		slog.WarnContext(ctx, "kv/postgres: "+what+" is in plaintext, accepted by the operator",
+			"host", cfg.ConnConfig.Host, "database", cfg.ConnConfig.Database)
+	}
+}
+
 // OpenDB opens connections to the database of dsn as user: for [Migrate], which takes a role that may
-// change the schema.
-func OpenDB(dsn, user, password string) (*sql.DB, error) {
-	cfg, err := poolConfig(dsn, user, password)
+// change the schema. Of the options it takes [WithTLS] and [WithPlaintextAccepted].
+func OpenDB(dsn, user, password string, opts ...Option) (*sql.DB, error) {
+	cfg, err := poolConfig(dsn, user, password, transportOf(opts))
 	if err != nil {
 		return nil, err
 	}

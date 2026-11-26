@@ -3,9 +3,10 @@ id: TASK-441
 title: >-
   kv/postgres, kv/mariadb: database connections as every other connection: TLS
   unless plaintext is accepted explicitly
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-26T19:06:00Z'
+updated_date: '2026-11-26T19:08:00Z'
 labels:
   - go
   - security

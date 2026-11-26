@@ -408,6 +408,36 @@ epa-connect-test:
 epa-entitle-test:
     go test ./epa -run TestEPA_Entitle -count=1 -v -timeout 5m
 
+# kv/postgres' gated suites: everything against a Postgres without TLS, reached by the acceptance of plaintext,
+# and the rule for the connection (servers.md rule 29, TASK-441) against one with TLS under a TEST-ONLY CA made
+# for the run: the certificate's CA and name verified, a role that needs a client certificate. Needs Docker; the
+# databases and the certificates are gone afterwards.
+kv-postgres-test version="18-alpine":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    certs=$(mktemp -d)
+    cleanup() {
+        docker rm -f kv-postgres-test kv-postgres-test-tls >/dev/null 2>&1 || true
+        rm -rf "$certs"
+    }
+    trap cleanup EXIT
+    cleanup; mkdir -p "$certs"
+    go run kv/kvtest/testdata/tls/tlscerts.go "$certs"
+    docker run -d --name kv-postgres-test -e POSTGRES_PASSWORD=test-only --tmpfs /var/lib/postgresql \
+        -p 127.0.0.1:55439:5432 "postgres:{{version}}" >/dev/null
+    # The key has to be the server's own and closed to others, so the files are copied before the start.
+    docker run -d --name kv-postgres-test-tls -e POSTGRES_PASSWORD=test-only \
+        -v "$certs":/certs:ro -v "$PWD/kv/kvtest/testdata/tls/postgres-init.sh":/docker-entrypoint-initdb.d/tls.sh:ro \
+        -p 127.0.0.1:55440:5432 --entrypoint sh "postgres:{{version}}" -c \
+        'mkdir /tls && cp /certs/ca.pem /certs/server.pem /certs/server-key.pem /tls/ && chown -R postgres /tls && chmod 600 /tls/server-key.pem && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tls/server.pem -c ssl_key_file=/tls/server-key.pem -c ssl_ca_file=/tls/ca.pem' >/dev/null
+    for name in kv-postgres-test kv-postgres-test-tls; do
+        until docker exec "$name" psql -U postgres -h 127.0.0.1 -c 'select 1' >/dev/null 2>&1; do sleep 1; done
+    done
+    export TEST_DATABASE_URL='postgres://postgres:test-only@127.0.0.1:55439/postgres?sslmode=disable'
+    export TEST_DATABASE_TLS_URL='postgres://postgres:test-only@127.0.0.1:55440/postgres' TEST_DATABASE_TLS_DIR="$certs"
+    go test ./kv/postgres -count=1 -race
+    go test ./kv/postgres -count=1 -run 'Rule29' -v | grep -E '^(--- |ok|FAIL|PASS)'
+
 # kv/mariadb's gated suites (TASK-429): the contract of a backend and the schema steps against the oldest and the
 # newest maintained LTS release, then the same contract with every call through another writing node of a
 # Galera cluster of three. Needs Docker; the databases are in memory and gone afterwards.
@@ -416,25 +446,38 @@ kv-mariadb-test oldest="10.11" newest="12.3":
     set -euo pipefail
     compose="docker compose -f kv/mariadb/testdata/galera.compose.yaml"
     export TEST_MARIADB_USER=root TEST_MARIADB_PASSWORD=test-only
+    certs=$(mktemp -d)
     cleanup() {
-        docker rm -f kv-mariadb-test >/dev/null 2>&1 || true
+        docker rm -f kv-mariadb-test kv-mariadb-test-tls >/dev/null 2>&1 || true
         $compose down -v >/dev/null 2>&1 || true
+        rm -rf "$certs"
     }
     trap cleanup EXIT
+    cleanup; mkdir -p "$certs"
+    go run kv/kvtest/testdata/tls/tlscerts.go "$certs"
     for version in {{oldest}} {{newest}}; do
         echo "==> MariaDB $version"
         docker rm -f kv-mariadb-test >/dev/null 2>&1 || true
         docker run -d --name kv-mariadb-test -e MARIADB_ROOT_PASSWORD=test-only -e MARIADB_DATABASE=kv \
             --tmpfs /var/lib/mysql -p 127.0.0.1:33061:3306 "mariadb:$version" >/dev/null
         until docker exec kv-mariadb-test healthcheck.sh --connect >/dev/null 2>&1; do sleep 1; done
-        TEST_MARIADB_DSN='mariadb://127.0.0.1:33061/kv?tls=false' go test ./kv/mariadb -count=1 -race
-        TEST_MARIADB_DSN='mariadb://127.0.0.1:33061/kv?tls=false' go test ./kv/mariadb -count=1 -run WhatAWriteCosts -v | grep 'per write'
+        TEST_MARIADB_PLAINTEXT_ACCEPTED=true TEST_MARIADB_DSN='mariadb://127.0.0.1:33061/kv' go test ./kv/mariadb -count=1 -race
+        TEST_MARIADB_PLAINTEXT_ACCEPTED=true TEST_MARIADB_DSN='mariadb://127.0.0.1:33061/kv' go test ./kv/mariadb -count=1 -run WhatAWriteCosts -v | grep 'per write'
     done
+    echo "==> MariaDB {{newest}} with TLS: the certificate's CA and name, a user that needs a client certificate"
+    docker run -d --name kv-mariadb-test-tls -e MARIADB_ROOT_PASSWORD=test-only -e MARIADB_DATABASE=kv \
+        --tmpfs /var/lib/mysql -v "$certs":/certs:ro \
+        -v "$PWD/kv/kvtest/testdata/tls/mariadb-init.sql":/docker-entrypoint-initdb.d/tls.sql:ro \
+        -p 127.0.0.1:33062:3306 "mariadb:{{newest}}" \
+        --ssl-cert=/certs/server.pem --ssl-key=/certs/server-key.pem --ssl-ca=/certs/ca.pem >/dev/null
+    until docker exec kv-mariadb-test-tls healthcheck.sh --connect >/dev/null 2>&1; do sleep 1; done
+    TEST_MARIADB_TLS_DSN='mariadb://127.0.0.1:33062/kv' TEST_MARIADB_TLS_DIR="$certs" \
+        go test ./kv/mariadb -count=1 -race -run 'Rule29' -v | grep -E '^(--- |ok|FAIL|PASS)'
     echo "==> Galera, three writing nodes, MariaDB {{newest}}"
     MARIADB_VERSION={{newest}} $compose up -d --wait
     nodes=""
-    for port in 33071 33072 33073; do nodes="$nodes,mariadb://127.0.0.1:$port/kv?tls=false"; done
-    TEST_MARIADB_GALERA_DSNS="${nodes#,}" go test ./kv/mariadb -count=1 -race -run Galera -v | grep -v '^=== '
+    for port in 33071 33072 33073; do nodes="$nodes,mariadb://127.0.0.1:$port/kv"; done
+    TEST_MARIADB_PLAINTEXT_ACCEPTED=true TEST_MARIADB_GALERA_DSNS="${nodes#,}" go test ./kv/mariadb -count=1 -race -run Galera -v | grep -v '^=== '
 
 # OpenID Federation against the master in OIDF_FEDMASTER_URL
 oidf-test:

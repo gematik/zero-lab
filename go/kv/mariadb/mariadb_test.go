@@ -46,21 +46,31 @@ import (
 // The database of the tests is named by three variables, as a deployment has it: the address, and the user
 // and the password beside it.
 const (
-	dsnEnv      = "TEST_MARIADB_DSN"
-	userEnv     = "TEST_MARIADB_USER"
-	passwordEnv = "TEST_MARIADB_PASSWORD"
+	dsnEnv       = "TEST_MARIADB_DSN"
+	userEnv      = "TEST_MARIADB_USER"
+	passwordEnv  = "TEST_MARIADB_PASSWORD"
+	plaintextEnv = "TEST_MARIADB_PLAINTEXT_ACCEPTED"
 )
 
+// plain is the acceptance of plaintext as an option, where the tests' database has no TLS and the one who
+// runs them says so.
+func plain(opts ...mariadb.Option) []mariadb.Option {
+	if os.Getenv(plaintextEnv) == "true" {
+		opts = append(opts, mariadb.WithPlaintextAccepted())
+	}
+	return opts
+}
+
 func openDB(dsn string) (*sql.DB, error) {
-	return mariadb.OpenDB(dsn, os.Getenv(userEnv), os.Getenv(passwordEnv))
+	return mariadb.OpenDB(dsn, os.Getenv(userEnv), os.Getenv(passwordEnv), plain()...)
 }
 
 func openKV(ctx context.Context, dsn string, opts ...mariadb.Option) (kv.Store, error) {
-	return mariadb.Open(ctx, dsn, os.Getenv(userEnv), os.Getenv(passwordEnv), opts...)
+	return mariadb.Open(ctx, dsn, os.Getenv(userEnv), os.Getenv(passwordEnv), plain(opts...)...)
 }
 
 func openSteps(ctx context.Context, dsn string, steps []mariadb.Step, opts ...mariadb.Option) (kv.Store, error) {
-	return mariadb.OpenSteps(ctx, dsn, os.Getenv(userEnv), os.Getenv(passwordEnv), steps, opts...)
+	return mariadb.OpenSteps(ctx, dsn, os.Getenv(userEnv), os.Getenv(passwordEnv), steps, plain(opts...)...)
 }
 
 // The tests share the database of TEST_MARIADB_DSN, which a migrator has to have prepared: Open applies no
@@ -385,7 +395,7 @@ func TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema(t *test
 	}
 	t.Cleanup(func() { _, _ = db.Exec("DROP USER IF EXISTS '" + user + "'@'%'") })
 
-	asUser, err := mariadb.OpenDB(dsn, user, password)
+	asUser, err := mariadb.OpenDB(dsn, user, password, plain()...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +406,7 @@ func TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema(t *test
 		}
 	}
 
-	s, err := mariadb.Open(ctx, dsn, user, password, mariadb.WithMark(func(string, []byte) string { return "m" }))
+	s, err := mariadb.Open(ctx, dsn, user, password, plain(mariadb.WithMark(func(string, []byte) string { return "m" }))...)
 	if err != nil {
 		t.Fatalf("Open with a user without schema rights: %v", err)
 	}
@@ -439,7 +449,7 @@ func TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema(t *test
 	if latest, err := s.(kv.Feed).Latest(ctx, "changes"); err != nil || latest != 1 {
 		t.Fatalf("Latest: %d, err %v", latest, err)
 	}
-	cache, err := mariadb.Open(ctx, dsn, user, password, mariadb.WithEphemeral())
+	cache, err := mariadb.Open(ctx, dsn, user, password, plain(mariadb.WithEphemeral())...)
 	if err != nil {
 		t.Fatalf("the ephemeral store with a user without schema rights: %v", err)
 	}

@@ -23,6 +23,7 @@ package mariadb_test
 
 import (
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"strings"
 	"testing"
@@ -40,7 +41,7 @@ func password(t *testing.T) string {
 	return hex.EncodeToString(b)
 }
 
-func TestConfig_ADSNIsAnAddressWithTLSUnlessItSaysNot(t *testing.T) {
+func TestConfig_ADSNIsAnAddressAndTheConnectionIsTLS(t *testing.T) {
 	secret := password(t)
 	addr, database, user, with, tlsOn, params, err := mariadb.Config("mariadb://db.example:3307/store", "kv", secret)
 	if err != nil || addr != "db.example:3307" || database != "store" || !tlsOn {
@@ -52,12 +53,38 @@ func TestConfig_ADSNIsAnAddressWithTLSUnlessItSaysNot(t *testing.T) {
 	if params["time_zone"] != "'+00:00'" || !strings.Contains(params["sql_mode"], "STRICT_ALL_TABLES") {
 		t.Errorf("the session is not in UTC and strict mode: %v", params)
 	}
-	addr, _, _, _, tlsOn, _, err = mariadb.Config("mariadb://db.example/store?tls=false", "kv", secret)
-	if err != nil || addr != "db.example:3306" || tlsOn {
-		t.Fatalf("tls=false and no port: addr %q, tls %v, err %v", addr, tlsOn, err)
+	if name, err := mariadb.ServerName("mariadb://db.example/store"); err != nil || name != "db.example" {
+		t.Errorf("the certificate is verified for %q, err %v", name, err)
 	}
-	if _, _, _, _, tlsOn, _, err := mariadb.Config("mysql://[::1]:3306/store?tls=true", "kv", secret); err != nil || !tlsOn {
-		t.Fatalf("the scheme mysql and an IPv6 host: tls %v, err %v", tlsOn, err)
+	if addr, _, _, _, tlsOn, _, err := mariadb.Config("mysql://[::1]/store", "kv", secret); err != nil || addr != "[::1]:3306" || !tlsOn {
+		t.Fatalf("the scheme mysql, an IPv6 host and no port: addr %q, tls %v, err %v", addr, tlsOn, err)
+	}
+}
+
+// Server rule 29: plaintext is the operator's explicit acceptance, an option the host sets, and nothing in
+// the address can stand in for it or weaken the connection.
+func TestConfig_Rule29PlaintextOnlyWhenAccepted(t *testing.T) {
+	const dsn = "mariadb://db.example/store"
+	if _, _, _, _, tlsOn, _, err := mariadb.Config(dsn, "kv", "", mariadb.WithPlaintextAccepted()); err != nil || tlsOn {
+		t.Fatalf("accepted plaintext: tls %v, err %v", tlsOn, err)
+	}
+	for name, parameter := range map[string]string{"tls=false": "tls=false", "tls=skip-verify": "tls=skip-verify", "tls=preferred": "tls=preferred"} {
+		if _, _, _, _, _, _, err := mariadb.Config(dsn+"?"+parameter, "kv", ""); err == nil {
+			t.Errorf("%s in the DSN: accepted", name)
+		}
+	}
+	own := &tls.Config{MinVersion: tls.VersionTLS12}
+	if name, err := mariadb.ServerName(dsn, mariadb.WithTLS(own)); err != nil || name != "db.example" {
+		t.Errorf("a configuration of the host's own without a name is verified for %q, err %v", name, err)
+	}
+	if name, err := mariadb.ServerName(dsn, mariadb.WithTLS(&tls.Config{ServerName: "db.internal", MinVersion: tls.VersionTLS12})); err != nil || name != "db.internal" {
+		t.Errorf("a configuration that names the server is verified for %q, err %v", name, err)
+	}
+	if _, err := mariadb.ServerName(dsn, mariadb.WithTLS(&tls.Config{InsecureSkipVerify: true})); err == nil { //nolint:gosec // G402: the configuration that is refused
+		t.Error("a configuration that skips verification: accepted")
+	}
+	if _, err := mariadb.ServerName(dsn, mariadb.WithTLS(own), mariadb.WithPlaintextAccepted()); err == nil {
+		t.Error("a TLS configuration beside accepted plaintext: accepted")
 	}
 }
 
@@ -96,7 +123,7 @@ func TestConfig_Rule17RefusesWhatItDoesNotKnow(t *testing.T) {
 		"no host":              "mariadb:///store",
 		"a path below":         "mariadb://db.example/store/more",
 		"an unknown parameter": "mariadb://db.example/store?allowAllFiles=true",
-		"tls of another word":  "mariadb://db.example/store?tls=skip-verify",
+		"a TLS switch":         "mariadb://db.example/store?tls=false",
 		"not a URL":            "mariadb://db.example:port/store",
 	} {
 		if _, _, _, _, _, _, err := mariadb.Config(dsn, "kv", "beside"); err == nil {
