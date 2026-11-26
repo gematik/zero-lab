@@ -4,7 +4,7 @@ title: 'ti-pki: spike – gematik''s PKI test suite as a conformance test, Docke
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:09'
-updated_date: '2026-11-24 10:09'
+updated_date: '2026-11-26 12:35'
 labels:
   - ti-pki
   - tests
@@ -32,3 +32,9 @@ Find out whether, and how far, gematik's app-PkiTestsuite (https://github.com/ge
 - [ ] #3 The result of the script-mode attempt with ti pki verify is recorded
 - [ ] #4 Every gap found has its own follow-up task
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26: parked until gematik releases an updated PKI test suite (AIA of the internet certificates pointing at the suite's responder, /ocsp/internet; .sig next to the TSL). Work so far is on branch spike/pkits (doc-8, Dockerfile, compose); the suite changes are prepared in gematik's repository, not merged.
+<!-- SECTION:NOTES:END -->

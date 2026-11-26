@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:31'
-updated_date: '2026-11-26 12:18'
+updated_date: '2026-11-26 12:35'
 labels:
   - ti-pki
   - tests
@@ -60,4 +60,6 @@ Suite 8.1.1: target test object type IntermediaerServerInternet; its ecc-interne
 gemLibPki check (TASK-437 notes): gematik's SUT simulators, the internet variant included, take the OCSP address from the TSL SSP, not the AIA. TASK-437 blocks this task again.
 
 2026-11-26: the maintainer keeps the AIA as the OCSP address source; TASK-437 is archived and no longer blocks this task. The host depends on the suite's certificates carrying an AIA to its responder (TASK-438).
+
+2026-11-26: parked until gematik releases an updated PKI test suite (AIA of the internet certificates pointing at the suite's responder, /ocsp/internet; .sig next to the TSL). Work so far is on branch spike/pkits (doc-8, Dockerfile, compose); the suite changes are prepared in gematik's repository, not merged.
 <!-- SECTION:NOTES:END -->

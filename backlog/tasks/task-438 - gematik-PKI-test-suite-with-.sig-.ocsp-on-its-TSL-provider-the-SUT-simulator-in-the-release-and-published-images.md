@@ -6,7 +6,7 @@ title: >-
 status: To Do
 assignee: []
 created_date: '2026-11-24 10:18'
-updated_date: '2026-11-24 12:55'
+updated_date: '2026-11-26 12:35'
 labels:
   - ti-pki
   - tests
@@ -38,4 +38,6 @@ Found in the PKI test suite spike (TASK-436, doc-8). app-PkiTestsuite 8.1.0 serv
 2026-11-24: the maintainer reports that gematik makes the AIA change in the suite: its test certificates get an AIA OCSP URI. ti-pki takes the OCSP address from the AIA (rust/ti-pki/src/ocsp.rs:1075), so with it the suite's OCSP cases reach the core without TASK-437.
 
 2026-11-24, release 8.1.1 (zip sha256 7b5186c0d208d29d3dee7007f42029e8e55fd85045891076ba155e948832ee71): new test object type IntermediaerServerInternet (WIP) with test data under testDataTemplates/certificates/ecc-internet/ (smcbClient, tsl-signer) and a SUT simulator pkits-sut-server-sim-internet (TSL from the provider only, no backup URL; OCSP at a configured service-url). Its SMC-B certificates (GEM.SMCB-CA58 TEST-ONLY, valid 2026-10-20 to 2031-10-19, EKU clientAuth) carry AIA OCSP http://127.0.0.1:8083/ocsp/, the suite's responder. Open points: the responder serves only POST /ocsp/{seqNr}, so the AIA path without a sequence number does not match it yet; the address is fixed to 127.0.0.1, so a host must share the responder's network namespace. Correction: the certificates of the ecc tree already carried an AIA in 8.1.0, but to http://ehca.gematik.de/ecc-ocsp, not to the suite's responder. TSLs are still XMLDSig signed (TslSignerNonQes), no .sig/.ocsp; the internet SUT simulator is in the source, not checked whether in the zip.
+
+2026-11-26: parked until gematik releases an updated PKI test suite (AIA of the internet certificates pointing at the suite's responder, /ocsp/internet; .sig next to the TSL). Work so far is on branch spike/pkits (doc-8, Dockerfile, compose); the suite changes are prepared in gematik's repository, not merged.
 <!-- SECTION:NOTES:END -->
