@@ -111,9 +111,10 @@ var (
 	// ErrEvent is a topic or an event a feed does not take: an empty or too long topic, too long a payload,
 	// no retention.
 	ErrEvent = errors.New("kv: the feed does not take this topic or event")
-	// ErrNotTransactor and ErrNotFeed are what a wrapping store returns when the store below is neither.
+	// ErrNotTransactor is what a wrapping store returns when the store below runs no transactions.
 	ErrNotTransactor = errors.New("kv: the store runs no transactions")
-	ErrNotFeed       = errors.New("kv: the store keeps no feed")
+	// ErrNotFeed is what a wrapping store returns when the store below keeps no feed.
+	ErrNotFeed = errors.New("kv: the store keeps no feed")
 )
 
 // CheckEvent reports whether a feed takes an event: what every backend checks before it writes one.

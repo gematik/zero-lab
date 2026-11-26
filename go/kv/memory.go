@@ -57,8 +57,12 @@ func (e memEntry) expired(now time.Time) bool {
 // process alone, and it is lost on exit. Several replicas need a database backend (kv/postgres, kv/mariadb).
 // The store is also a [Swapper], a [Transactor] and a [Feed].
 func NewMemory(opts ...MemoryOption) Store {
-	s := &memoryStore{items: make(map[string]memEntry), now: time.Now,
-		topics: make(map[string]*memTopic), changed: make(chan struct{})}
+	s := &memoryStore{
+		items:   make(map[string]memEntry),
+		now:     time.Now,
+		topics:  make(map[string]*memTopic),
+		changed: make(chan struct{}),
+	}
 	for _, opt := range opts {
 		opt(s)
 	}

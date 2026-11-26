@@ -285,7 +285,7 @@ func (s *store) follow(ctx context.Context, topic string, cursor kv.Cursor, out 
 	var listener *pgx.Conn
 	defer func() {
 		if listener != nil {
-			_ = listener.Close(context.Background())
+			_ = listener.Close(context.WithoutCancel(ctx))
 		}
 	}()
 	for ctx.Err() == nil {
@@ -295,7 +295,7 @@ func (s *store) follow(ctx context.Context, topic string, cursor kv.Cursor, out 
 			conn, err := pgx.ConnectConfig(ctx, s.listen.Copy())
 			if err == nil {
 				if _, err = conn.Exec(ctx, `LISTEN `+feedChannel); err != nil {
-					_ = conn.Close(context.Background())
+					_ = conn.Close(context.WithoutCancel(ctx))
 				} else {
 					listener = conn
 				}
@@ -329,7 +329,7 @@ func (s *store) follow(ctx context.Context, topic string, cursor kv.Cursor, out 
 			<-wait.Done()
 		} else if _, err := listener.WaitForNotification(wait); err != nil && wait.Err() == nil {
 			// The connection broke; the next round makes a new one.
-			_ = listener.Close(context.Background())
+			_ = listener.Close(context.WithoutCancel(ctx))
 			listener = nil
 		}
 		cancel()

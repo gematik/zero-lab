@@ -31,6 +31,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -437,7 +438,7 @@ func Feed(t *testing.T, open func(t *testing.T) kv.Store) {
 			t.Fatal(err)
 		}
 		for i := 1; i <= 5; i++ {
-			if e := next(t, all); e.Cursor != kv.Cursor(i) || string(e.Payload) != fmt.Sprint(i) || e.At.IsZero() {
+			if e := next(t, all); e.Cursor != kv.Cursor(i) || string(e.Payload) != strconv.Itoa(i) || e.At.IsZero() {
 				t.Fatalf("event %d: number %d, %q, at %v", i, e.Cursor, e.Payload, e.At)
 			}
 		}
@@ -699,7 +700,7 @@ func Tx(t *testing.T, open func(t *testing.T) kv.Store) {
 		for err := range errs {
 			t.Error(err)
 		}
-		if got, _, _ := s.Get(ctx, p+"count"); string(got) != fmt.Sprint(concurrent) {
+		if got, _, _ := s.Get(ctx, p+"count"); string(got) != strconv.Itoa(concurrent) {
 			t.Fatalf("%d transactions counted up to %q", concurrent, got)
 		}
 	})
@@ -721,7 +722,7 @@ func Tx(t *testing.T, open func(t *testing.T) kv.Store) {
 					if len(members) >= room {
 						return nil
 					}
-					member := fmt.Sprint(i)
+					member := strconv.Itoa(i)
 					if err := tx.Set(ctx, p+"member:"+member, []byte("m"), 0); err != nil {
 						return err
 					}

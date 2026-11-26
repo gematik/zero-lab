@@ -190,10 +190,11 @@ func (s *memoryStore) publish(topic string, event []byte, retention time.Duratio
 		}
 	}
 	t.seq++
-	t.events = append(kept, memEvent{
+	kept = append(kept, memEvent{
 		Event:     Event{Cursor: Cursor(t.seq), Payload: clone(event), At: now},
 		expiresAt: now.Add(retention),
 	})
+	t.events = kept
 	return Cursor(t.seq)
 }
 
