@@ -34,6 +34,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/kv/schema"
 )
@@ -186,7 +187,7 @@ func TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema(t *test
 	password := hex.EncodeToString(secret)
 	for _, stmt := range []string{
 		`CREATE ROLE ` + role + ` LOGIN PASSWORD '` + password + `'`,
-		`GRANT SELECT, INSERT, UPDATE, DELETE ON kv TO ` + role,
+		`GRANT SELECT, INSERT, UPDATE, DELETE ON kv, kv_feed, kv_topic TO ` + role,
 		`GRANT SELECT ON kv_schema TO ` + role,
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -229,6 +230,20 @@ func TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema(t *test
 	}
 	if _, err := s.Cleanup(ctx); err != nil {
 		t.Fatalf("Cleanup: %v", err)
+	}
+	if err := s.(kv.Transactor).Tx(ctx, func(tx kv.Tx) error {
+		if _, _, err := tx.Get(ctx, "root"); err != nil {
+			return err
+		}
+		if err := tx.Set(ctx, "root", []byte("r"), time.Minute); err != nil {
+			return err
+		}
+		return tx.Publish(ctx, "changes", []byte("e"), time.Minute)
+	}); err != nil {
+		t.Fatalf("a transaction that reads, writes and publishes: %v", err)
+	}
+	if latest, err := s.(kv.Feed).Latest(ctx, "changes"); err != nil || latest != 1 {
+		t.Fatalf("Latest: %d, err %v", latest, err)
 	}
 }
 

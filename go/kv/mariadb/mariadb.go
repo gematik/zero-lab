@@ -84,6 +84,8 @@ type store struct {
 	migrate  bool
 	syncWait SyncWait
 	tls      *tls.Config
+	// poll is how often a follower of the feed looks (feed.go).
+	poll time.Duration
 }
 
 // Option adjusts the store [Open] returns.
@@ -150,6 +152,9 @@ func config(dsn, user, password string, custom *tls.Config) (*mysql.Config, erro
 	}
 	cfg.Addr = net.JoinHostPort(u.Hostname(), port)
 	cfg.DBName = database
+	// Times are read as times, in UTC, which is what every session writes them in.
+	cfg.ParseTime = true
+	cfg.Loc = time.UTC
 	cfg.Params = map[string]string{
 		"time_zone": "'+00:00'",
 		"sql_mode":  "'STRICT_ALL_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'",
@@ -207,16 +212,19 @@ func OpenDB(dsn, user, password string, opts ...Option) (*sql.DB, error) {
 // address in its configuration and the two in a secret. It runs no DDL: it refuses a
 // database that lacks a step this release needs, or on which a contract step it does not know was applied
 // (an error that is a schema.ErrVersion and names the versions). The steps are applied by [Migrate], or by
-// Open itself with [WithMigrate]. The user needs SELECT, INSERT, UPDATE and DELETE on the table kv
-// and SELECT on kv_schema, and with [WithMigrate] CREATE and ALTER on the database.
+// Open itself with [WithMigrate]. The user needs SELECT, INSERT, UPDATE and DELETE on the tables kv, kv_feed
+// and kv_topic and SELECT on kv_schema, and with [WithMigrate] CREATE and ALTER on the database.
 func Open(ctx context.Context, dsn, user, password string, opts ...Option) (kv.Store, error) {
 	return open(ctx, dsn, user, password, steps, opts...)
 }
 
 func open(ctx context.Context, dsn, user, password string, steps []step, opts ...Option) (kv.Store, error) {
-	s := &store{}
+	s := &store{poll: defaultFeedPoll}
 	for _, opt := range opts {
 		opt(s)
+	}
+	if s.poll <= 0 {
+		return nil, errors.New("kv/mariadb: the feed's followers look every positive duration")
 	}
 	cfg, err := config(dsn, user, password, s.tls)
 	if err != nil {
@@ -273,12 +281,35 @@ const (
 	errLockDeadlock     = 1213
 	errQueryInterrupted = 1317
 	errNoSuchTable      = 1146
+	errDuplicateEntry   = 1062
 )
 
-// attempts bounds how often an operation is tried.
-const attempts = 8
+// lostError marks an error that is not one of those above by its number but means the same where it
+// arose: the transaction lost against another and is right to run again.
+type lostError struct{ err error }
+
+func (e *lostError) Error() string { return e.err.Error() }
+func (e *lostError) Unwrap() error { return e.err }
+
+// attempts bounds how often an operation is tried, and maxPause the pause between two tries. In a cluster
+// with several writing nodes every writer of one row but one loses at each commit, so many writers of one
+// row (the publishers of one topic) each lose many times before they have all committed: with fewer tries
+// some of 16 publishers through three nodes gave up.
+const (
+	attempts = 32
+	maxPause = 64
+)
+
+// isDatabase reports whether an error is one the database returned.
+func isDatabase(err error) bool {
+	var my *mysql.MySQLError
+	return errors.As(err, &my)
+}
 
 func lost(err error) bool {
+	if _, marked := errors.AsType[*lostError](err); marked {
+		return true
+	}
 	var my *mysql.MySQLError
 	return errors.As(err, &my) &&
 		(my.Number == errLockDeadlock || my.Number == errLockWaitTimeout || my.Number == errQueryInterrupted)
@@ -292,7 +323,7 @@ func again(ctx context.Context, do func() error) error {
 		if err = do(); !lost(err) {
 			return err
 		}
-		pause := time.Duration(1+jitter(4*(try+1))) * time.Millisecond
+		pause := time.Duration(1+jitter(min(4*(try+1), maxPause))) * time.Millisecond
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -448,8 +479,12 @@ func (s *store) SetIfAbsent(ctx context.Context, key string, value []byte, ttl t
 
 // inTx runs do in one transaction and repeats the whole of it when it lost against another writer.
 func (s *store) inTx(ctx context.Context, do func(tx *sql.Tx) error) error {
+	return s.inTxAt(ctx, sql.LevelReadCommitted, do)
+}
+
+func (s *store) inTxAt(ctx context.Context, level sql.IsolationLevel, do func(tx *sql.Tx) error) error {
 	return again(ctx, func() error {
-		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+		tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: level})
 		if err != nil {
 			return err
 		}
@@ -588,7 +623,11 @@ func (s *store) Cleanup(ctx context.Context) (int, error) {
 		if err != nil {
 			return err
 		}
-		n, err = res.RowsAffected()
+		if n, err = res.RowsAffected(); err != nil {
+			return err
+		}
+		// The events of the feed whose retention is over go too; they are not counted.
+		_, err = s.db.ExecContext(ctx, `DELETE FROM kv_feed WHERE expires_at <= NOW(6)`)
 		return err
 	})
 	if err != nil {

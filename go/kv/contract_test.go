@@ -37,3 +37,11 @@ func TestMemory_MarkerContract(t *testing.T) {
 		return kv.NewMemory(kv.WithMemoryMark(mark))
 	})
 }
+
+func TestMemory_FeedContract(t *testing.T) {
+	kvtest.Feed(t, func(*testing.T) kv.Store { return kv.NewMemory() })
+}
+
+func TestMemory_TxContract(t *testing.T) {
+	kvtest.Tx(t, func(*testing.T) kv.Store { return kv.NewMemory() })
+}

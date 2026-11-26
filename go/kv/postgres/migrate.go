@@ -45,6 +45,7 @@ type step struct {
 var steps = []step{
 	{schema.Step{Version: 1, Name: "the kv table with expiry and marks"}, schemaSQL},
 	{schema.Step{Version: 2, Name: "an index of the keys by their bytes, for prefixes and order"}, keyIndexSQL},
+	{schema.Step{Version: 3, Name: "the feed: events and the counter of each topic"}, feedSQL},
 }
 
 // schemaTableSQL creates the record of applied steps. It is the one statement outside the steps: it has to

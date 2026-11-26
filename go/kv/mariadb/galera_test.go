@@ -118,6 +118,22 @@ func (s *spread) Marks(ctx context.Context, prefix string) (map[string]int, erro
 	return s.node().(kv.Marker).Marks(ctx, prefix)
 }
 
+func (s *spread) Tx(ctx context.Context, fn func(tx kv.Tx) error) error {
+	return s.node().(kv.Transactor).Tx(ctx, fn)
+}
+
+func (s *spread) Publish(ctx context.Context, topic string, event []byte, retention time.Duration) (kv.Cursor, error) {
+	return s.node().(kv.Feed).Publish(ctx, topic, event, retention)
+}
+
+func (s *spread) Follow(ctx context.Context, topic string, from kv.Cursor) (<-chan kv.Event, error) {
+	return s.node().(kv.Feed).Follow(ctx, topic, from)
+}
+
+func (s *spread) Latest(ctx context.Context, topic string) (kv.Cursor, error) {
+	return s.node().(kv.Feed).Latest(ctx, topic)
+}
+
 func (s *spread) Close() error {
 	for _, node := range s.nodes {
 		_ = node.Close()
@@ -148,6 +164,67 @@ func TestGalera_Task429TheMarkerContractHoldsThroughDifferentWritingNodes(t *tes
 	kvtest.Marker(t, func(t *testing.T, mark func(string, []byte) string) kv.Store {
 		return openSpread(t, dsns, mariadb.WithMark(mark))
 	})
+}
+
+// The feed holds through different writing nodes: publishers on three nodes raise one counter, and the
+// cluster lets one of them commit at a time, so that the numbers have no gap and a follower on any node
+// steps over no event.
+func TestGalera_Task432TheFeedContractHoldsThroughDifferentWritingNodes(t *testing.T) {
+	dsns := migratedCluster(t)
+	kvtest.Feed(t, func(t *testing.T) kv.Store { return openSpread(t, dsns, mariadb.WithFeedPoll(testPoll)) })
+}
+
+// Transactions hold through different writing nodes for what they write: of many that read a record and
+// write it, none is lost, and records under a root that every transaction reads first and writes last
+// change together. The cluster refuses all but one of the transactions that wrote the same record, and
+// the others run again.
+func TestGalera_Task432TheTxContractHoldsThroughDifferentWritingNodes(t *testing.T) {
+	dsns := migratedCluster(t)
+	kvtest.Tx(t, func(t *testing.T) kv.Store { return openSpread(t, dsns) })
+}
+
+// What a transaction only read is not protected across writing nodes: the lock of Get is one node's, and
+// the cluster checks writes against writes. Two transactions that each read a record the other writes,
+// through different nodes, can both commit: neither wrote what the other wrote. This is why records that
+// change together hang under a root that is written. Measured, not asserted: how often it happens here.
+func TestGalera_Task432ARecordOnlyReadIsNotProtectedAcrossNodes(t *testing.T) {
+	ctx := context.Background()
+	dsns := migratedCluster(t)
+	s := openSpread(t, dsns)
+	defer s.Close()
+	const rounds = 100
+	both := 0
+	for i := range rounds {
+		a := fmt.Sprintf("skew:%d:%d:a", time.Now().UnixNano(), i)
+		b := fmt.Sprintf("skew:%d:%d:b", time.Now().UnixNano(), i)
+		// Each takes the place only if the other has not: read the other's record, write one's own.
+		claim := func(node kv.Store, mine, other string) func() error {
+			return func() error {
+				return node.(kv.Transactor).Tx(ctx, func(tx kv.Tx) error {
+					if _, found, err := tx.Get(ctx, other); err != nil || found {
+						return err
+					}
+					return tx.Set(ctx, mine, []byte("taken"), time.Minute)
+				})
+			}
+		}
+		errs := make(chan error, 2)
+		go func() { errs <- claim(s.nodes[0], a, b)() }()
+		go func() { errs <- claim(s.nodes[1], b, a)() }()
+		for range 2 {
+			if err := <-errs; err != nil {
+				t.Fatal(err)
+			}
+		}
+		_, hasA, _ := s.nodes[2].Get(ctx, a)
+		_, hasB, _ := s.nodes[2].Get(ctx, b)
+		if hasA && hasB {
+			both++
+		}
+		_ = s.nodes[0].Delete(ctx, a)
+		_ = s.nodes[0].Delete(ctx, b)
+	}
+	t.Logf("of %d pairs of transactions that each read what the other wrote, through two nodes, both committed in %d", rounds, both)
 }
 
 // A node applies what the cluster committed a moment after the commit. A session that waits for it
@@ -220,7 +297,7 @@ func TestGalera_Task429MigratorsThroughDifferentNodesAtOnceSucceedForAll(t *test
 		}
 		migrateTogether(t, all, 9)
 		for _, dsn := range all {
-			if got := appliedVersions(t, adminOf(t, dsn)); fmt.Sprint(got) != "[1 2 3 4]" {
+			if got := appliedVersions(t, adminOf(t, dsn)); fmt.Sprint(got) != upTo(released+3) {
 				t.Errorf("applied %v", got)
 			}
 		}
