@@ -48,6 +48,7 @@ var steps = []step{
 	{schema.Step{Version: 1, Name: "the kv table with expiry and marks"}, kvTableSQL},
 	{schema.Step{Version: 2, Name: "the feed: the counter of each topic"}, topicTableSQL},
 	{schema.Step{Version: 3, Name: "the feed: events"}, feedTableSQL},
+	{schema.Step{Version: 4, Name: "the table of ephemeral records"}, cacheTableSQL},
 }
 
 // The key is binary: it compares byte by byte, as keys do in memory and in Postgres, and a prefix scan

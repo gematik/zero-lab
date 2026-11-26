@@ -776,3 +776,76 @@ func Tx(t *testing.T, open func(t *testing.T) kv.Store) {
 		}
 	})
 }
+
+// Ephemeral runs what an ephemeral store does besides the contract of kv.Store, against the store open
+// returns: it says its class, runs transactions over its records, and publishes no events.
+func Ephemeral(t *testing.T, open func(t *testing.T) kv.Store) {
+	t.Helper()
+	ctx := context.Background()
+	s := open(t)
+	t.Cleanup(func() { _ = s.Close() })
+	p := prefix(t, s)
+	if got := kv.DurabilityOf(s); got != kv.Ephemeral {
+		t.Fatalf("the store says it is %v", got)
+	}
+	tr, ok := s.(kv.Transactor)
+	if !ok {
+		t.Fatal("the store is no kv.Transactor")
+	}
+
+	t.Run("a transaction of ephemeral records takes effect, or not at all", func(t *testing.T) {
+		failed := errors.New("the operation failed")
+		write := func(end error) func(kv.Tx) error {
+			return func(tx kv.Tx) error {
+				if _, _, err := tx.Get(ctx, p+"root"); err != nil {
+					return err
+				}
+				if err := tx.Set(ctx, p+"member", []byte("m"), time.Minute); err != nil {
+					return err
+				}
+				if err := tx.Set(ctx, p+"root", []byte("member"), time.Minute); err != nil {
+					return err
+				}
+				return end
+			}
+		}
+		if err := tr.Tx(ctx, write(failed)); !errors.Is(err, failed) {
+			t.Fatalf("got %v", err)
+		}
+		if keys, _ := s.Keys(ctx, p); len(keys) != 0 {
+			t.Fatalf("records of the failed transaction are there: %v", keys)
+		}
+		if err := tr.Tx(ctx, write(nil)); err != nil {
+			t.Fatal(err)
+		}
+		if got, _, _ := s.Get(ctx, p+"root"); string(got) != "member" {
+			t.Fatalf("the root holds %q", got)
+		}
+	})
+
+	t.Run("events are not published: the feed is durable", func(t *testing.T) {
+		err := tr.Tx(ctx, func(tx kv.Tx) error {
+			if err := tx.Set(ctx, p+"with-event", []byte("v"), time.Minute); err != nil {
+				return err
+			}
+			return tx.Publish(ctx, topic("ephemeral"), []byte("e"), time.Minute)
+		})
+		if !errors.Is(err, kv.ErrEphemeralEvent) {
+			t.Fatalf("a transaction that publishes: %v", err)
+		}
+		if _, found, _ := s.Get(ctx, p+"with-event"); found {
+			t.Error("the record of the refused transaction is there")
+		}
+		if f, ok := s.(kv.Feed); ok {
+			if _, err := f.Publish(ctx, topic("ephemeral"), []byte("e"), time.Minute); !errors.Is(err, kv.ErrEphemeralEvent) {
+				t.Errorf("Publish: %v", err)
+			}
+			if _, err := f.Follow(ctx, topic("ephemeral"), 0); !errors.Is(err, kv.ErrEphemeralEvent) {
+				t.Errorf("Follow: %v", err)
+			}
+			if _, err := f.Latest(ctx, topic("ephemeral")); !errors.Is(err, kv.ErrEphemeralEvent) {
+				t.Errorf("Latest: %v", err)
+			}
+		}
+	})
+}

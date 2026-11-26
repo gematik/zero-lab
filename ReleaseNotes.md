@@ -1,5 +1,40 @@
 # Release Notes
 
+# Release 2026-11-26: go/kv v0.11.0, go/kv/postgres v0.12.0, go/kv/mariadb v0.3.0
+
+Two classes of records: durable, for what must not be lost, and ephemeral, for what a loss only costs a fetch
+(TASK-431, the sixth step of the kv plan in backlog doc-7; servers.md rules 11 and 12). Verified on the release
+branch: `just check` across all Go modules passed; kv on Postgres (Postgres 18, `TEST_DATABASE_URL`, with
+`-race`) and `just kv-mariadb-test` (MariaDB 10.11 and 12.3, and a Galera cluster of three writing nodes) passed
+on 2026-11-26.
+
+# Release go/kv v0.11.0
+
+### added
+- `Durability` (`Durable`, `Ephemeral`), `Classed` and `DurabilityOf(store)`: a consumer of what must not be lost
+  checks the class of the store it is given, at start. A store that does not say its class is durable.
+- `WithMemoryEphemeral()`: the memory store as an ephemeral one.
+- `ErrEphemeralEvent`: an ephemeral store publishes no events, in a transaction or outside one.
+- `kv/kvtest`: `Ephemeral`.
+
+### changed
+- A sealed store is of the class of the store below. Over an ephemeral store it seals for that class: a record
+  sealed for one class does not open in the other. Durable records are sealed and opened as before.
+
+# Release go/kv/postgres v0.12.0
+
+### added
+- `WithEphemeral()`: a store of ephemeral records in the table `kv_cache`, which is `UNLOGGED`; its
+  transactions do not wait for their commit to be flushed. Schema step 4: run `Migrate` before the rollout, or
+  keep `WithMigrate()`. The server's role needs on `kv_cache` what it needs on `kv`.
+
+# Release go/kv/mariadb v0.3.0
+
+### added
+- `WithEphemeral()`: a store of ephemeral records in the table `kv_cache`. Schema step 4, with the same rights
+  for the server's user. MariaDB writes it no faster than `kv` (measured); the class is the same as in the
+  other backends.
+
 # Release 2026-11-26: go/kv v0.10.0, go/kv/postgres v0.11.0, go/kv/mariadb v0.2.0
 
 Transactions over records that belong together, and an ordered feed of events per topic that replicas follow

@@ -158,6 +158,9 @@ func (tx *memTx) Publish(_ context.Context, topic string, event []byte, retentio
 	if err := tx.ops.Count(); err != nil {
 		return err
 	}
+	if tx.s.ephemeral {
+		return ErrEphemeralEvent
+	}
 	if err := CheckEvent(topic, event, retention); err != nil {
 		return err
 	}
@@ -206,6 +209,9 @@ func (s *memoryStore) wake() {
 
 // Publish implements [Feed].
 func (s *memoryStore) Publish(_ context.Context, topic string, event []byte, retention time.Duration) (Cursor, error) {
+	if s.ephemeral {
+		return 0, ErrEphemeralEvent
+	}
 	if err := CheckEvent(topic, event, retention); err != nil {
 		return 0, err
 	}
@@ -221,6 +227,9 @@ func (s *memoryStore) Publish(_ context.Context, topic string, event []byte, ret
 
 // Latest implements [Feed].
 func (s *memoryStore) Latest(_ context.Context, topic string) (Cursor, error) {
+	if s.ephemeral {
+		return 0, ErrEphemeralEvent
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -234,6 +243,9 @@ func (s *memoryStore) Latest(_ context.Context, topic string) (Cursor, error) {
 
 // Follow implements [Feed].
 func (s *memoryStore) Follow(ctx context.Context, topic string, from Cursor) (<-chan Event, error) {
+	if s.ephemeral {
+		return nil, ErrEphemeralEvent
+	}
 	s.mu.Lock()
 	closed := s.closed
 	s.mu.Unlock()

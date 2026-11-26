@@ -3,12 +3,12 @@ github.com/fxamacker/cbor/v2 v2.10.0 h1:HVF3T5vYwLqO81ebPirWEPNv2SMrUMD3HLnKgEr6
 github.com/fxamacker/cbor/v2 v2.10.0/go.mod h1:uSwlToFuT9BZAKRxxVm3qQC8DR4tlWl7D6pf20iRYH4=
 github.com/gematik/zero-lab/go/brainpool v1.4.1 h1:JICIWCZhxO+S/1LS0CyFUPZjQj0djgWfuDptiz7smL4=
 github.com/gematik/zero-lab/go/brainpool v1.4.1/go.mod h1:Xnlw3vNWuuX7zZEGAYS9JOAuQPd/iNz0QVl8y/91Q7g=
-github.com/gematik/zero-lab/go/egress v0.0.0-20261126175533-197c7a923733 h1:/dCD4oYZiQ5bgxBHQZnMSsAOF0avWKdPq2Rzcqodj70=
-github.com/gematik/zero-lab/go/egress v0.0.0-20261126175533-197c7a923733/go.mod h1:vN3SZsf9yAGPEsy9ugsdQTjUts2KAPLlL3G0DIzAu9o=
+github.com/gematik/zero-lab/go/egress v0.0.0-20261126181311-25dffb5b17cb h1:BAvZiR78NAm8ARTANNPlbc5EE2WCa9gfja4iElTyTC0=
+github.com/gematik/zero-lab/go/egress v0.0.0-20261126181311-25dffb5b17cb/go.mod h1:vN3SZsf9yAGPEsy9ugsdQTjUts2KAPLlL3G0DIzAu9o=
 github.com/gematik/zero-lab/go/httpguard v0.2.0 h1:ltwgxNXVFqE2Y/RNuSQ3tAdXCCfdEPX5qE+SOLmtlfQ=
 github.com/gematik/zero-lab/go/httpguard v0.2.0/go.mod h1:bNxQ/6ooOHI8M1KWUgxoDhNj7BVHty0/slAv2pndPLE=
-github.com/gematik/zero-lab/go/tipki v0.33.1-0.20261126175533-197c7a923733 h1:zrehKgNUShty0RvIvm412pO27svRGj/7hjuv8xaaEXg=
-github.com/gematik/zero-lab/go/tipki v0.33.1-0.20261126175533-197c7a923733/go.mod h1:xlscOJXIvSBxQE65ByJeM5KUNdFarJboBnOVUY0oM0E=
+github.com/gematik/zero-lab/go/tipki v0.33.1-0.20261126181311-25dffb5b17cb h1:bEOwRpU3mPXcwbf9N7x3wf+SS5X7PhbOYqD+OztKLuI=
+github.com/gematik/zero-lab/go/tipki v0.33.1-0.20261126181311-25dffb5b17cb/go.mod h1:xlscOJXIvSBxQE65ByJeM5KUNdFarJboBnOVUY0oM0E=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=

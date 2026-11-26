@@ -24,6 +24,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"strings"
 
 	"github.com/gematik/zero-lab/go/kv"
 	"github.com/gematik/zero-lab/go/kv/schema"
@@ -55,10 +56,27 @@ func OpenSteps(ctx context.Context, dsn, user, password string, steps []Step, op
 }
 
 // The statements that read by prefix, for tests that ask the database for their plan.
-const (
-	KeysSQL        = keysSQL
-	MarkedOtherSQL = markedOtherSQL
+var (
+	KeysSQL        = strings.ReplaceAll(keysSQL, "@kv", "kv")
+	MarkedOtherSQL = strings.ReplaceAll(markedOtherSQL, "@kv", "kv")
 )
+
+// CommitOfWrites is the synchronous_commit setting a write of the store runs under: the write path is asked
+// to return it instead of writing.
+func CommitOfWrites(ctx context.Context, s kv.Store) (string, error) {
+	var setting string
+	err := s.(*store).writeRow(ctx, `SELECT current_setting('synchronous_commit')`, nil, &setting)
+	return setting, err
+}
+
+// CommitOfTx is the same for a transaction of the store.
+func CommitOfTx(ctx context.Context, s kv.Store) (string, error) {
+	var setting string
+	err := s.(kv.Transactor).Tx(ctx, func(tx kv.Tx) error {
+		return tx.(*pgTx).tx.QueryRow(ctx, `SELECT current_setting('synchronous_commit')`).Scan(&setting)
+	})
+	return setting, err
+}
 
 // LikePrefix is the LIKE pattern of a literal prefix.
 func LikePrefix(prefix string) string { return likePrefix(prefix) }

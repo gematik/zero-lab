@@ -374,6 +374,7 @@ func TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema(t *test
 		"GRANT SELECT, INSERT, UPDATE, DELETE ON " + database + ".kv TO '" + user + "'@'%'",
 		"GRANT SELECT, INSERT, UPDATE, DELETE ON " + database + ".kv_feed TO '" + user + "'@'%'",
 		"GRANT SELECT, INSERT, UPDATE, DELETE ON " + database + ".kv_topic TO '" + user + "'@'%'",
+		"GRANT SELECT, INSERT, UPDATE, DELETE ON " + database + ".kv_cache TO '" + user + "'@'%'",
 		"GRANT SELECT ON " + database + ".kv_schema TO '" + user + "'@'%'",
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -435,6 +436,17 @@ func TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema(t *test
 	}
 	if latest, err := s.(kv.Feed).Latest(ctx, "changes"); err != nil || latest != 1 {
 		t.Fatalf("Latest: %d, err %v", latest, err)
+	}
+	cache, err := mariadb.Open(ctx, dsn, user, password, mariadb.WithEphemeral())
+	if err != nil {
+		t.Fatalf("the ephemeral store with a user without schema rights: %v", err)
+	}
+	defer cache.Close()
+	if err := cache.Set(ctx, "document", []byte("d"), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if got, found, err := cache.Take(ctx, "document"); err != nil || !found || string(got) != "d" {
+		t.Fatalf("the ephemeral store: %q, found %v, err %v", got, found, err)
 	}
 }
 
@@ -550,5 +562,96 @@ func TestMigrate_Task429AFailedStepIsNotRecorded(t *testing.T) {
 	}
 	if got := appliedVersions(t, db); fmt.Sprint(got) != upTo(released) {
 		t.Fatalf("applied %v", got)
+	}
+}
+
+func TestMariaDB_EphemeralContract(t *testing.T) {
+	dsn := testDSN(t)
+	open := func(t *testing.T) kv.Store {
+		s, err := openKV(context.Background(), dsn, mariadb.WithEphemeral())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	kvtest.Store(t, open)
+	kvtest.Ephemeral(t, open)
+	kvtest.Marker(t, func(t *testing.T, mark func(string, []byte) string) kv.Store {
+		s, err := openKV(context.Background(), dsn, mariadb.WithEphemeral(), mariadb.WithMark(mark))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+// The two classes are two tables: a record of one is not a record of the other.
+func TestMariaDB_Task431TheClassesKeepTheirRecordsApart(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshDatabase(t, testDSN(t))
+	db := adminOf(t, dsn)
+	if _, err := mariadb.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	durable, err := openKV(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer durable.Close()
+	ephemeral, err := openKV(ctx, dsn, mariadb.WithEphemeral())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ephemeral.Close()
+	if kv.DurabilityOf(durable) != kv.Durable || kv.DurabilityOf(ephemeral) != kv.Ephemeral {
+		t.Fatalf("the stores say they are %v and %v", kv.DurabilityOf(durable), kv.DurabilityOf(ephemeral))
+	}
+	if err := durable.Set(ctx, "k", []byte("a session"), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := ephemeral.Set(ctx, "k", []byte("a document"), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	for table, want := range map[string]string{"kv": "a session", "kv_cache": "a document"} {
+		var got []byte
+		if err := db.QueryRow("SELECT value FROM " + table + " WHERE `key`='k'").Scan(&got); err != nil || string(got) != want {
+			t.Errorf("table %s holds %q, err %v", table, got, err)
+		}
+	}
+	if err := ephemeral.Delete(ctx, "k"); err != nil {
+		t.Fatal(err)
+	}
+	if got, found, _ := durable.Get(ctx, "k"); !found || string(got) != "a session" {
+		t.Error("deleting the ephemeral record changed the durable one")
+	}
+}
+
+// Measured, not asserted: what a write costs in each class on this database. MariaDB has no cheaper table
+// for the ephemeral class, so the two are expected to cost the same.
+func TestMariaDB_Task431WhatAWriteCostsInEachClass(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshDatabase(t, testDSN(t))
+	if _, err := mariadb.Migrate(ctx, adminOf(t, dsn)); err != nil {
+		t.Fatal(err)
+	}
+	const writes = 2000
+	value := make([]byte, 512)
+	for _, class := range []string{"durable", "ephemeral"} {
+		var opts []mariadb.Option
+		if class == "ephemeral" {
+			opts = append(opts, mariadb.WithEphemeral())
+		}
+		s, err := openKV(ctx, dsn, opts...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		for i := range writes {
+			if err := s.Set(ctx, "k"+string(rune('a'+i%26)), value, time.Minute); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Logf("%s: %v per write of %d bytes, one after another", class, time.Since(start)/writes, len(value))
+		_ = s.Close()
 	}
 }

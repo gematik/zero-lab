@@ -569,7 +569,26 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
   look. **MariaDB looks** every second.
 - **A sealed store runs transactions** (records sealed and opened one by one) and refuses to publish in them:
   an event it passed on would be in the clear. That is `NewSealedFeed`, TASK-433.
-- Not built here: one class per transaction, which needs the classes of TASK-431.
+- One class per transaction came with the classes of TASK-431 (below).
+
+## Built with TASK-431 (2026-11-26)
+
+- `kv.Durability` (`Durable`, `Ephemeral`), `kv.Classed`, `kv.DurabilityOf`. A store that does not say its class
+  is durable, as every store was before; a wrapper passes the class on, and `NewSealed` does.
+- An ephemeral store is opened with `WithEphemeral()` (`WithMemoryEphemeral()` in memory) and keeps its records
+  in `kv_cache`, a step of each backend's schema. It passes the same contract suite, runs transactions over its
+  records and refuses events (`ErrEphemeralEvent`): the feed is durable, and a transaction is of one class.
+- **Postgres**: `kv_cache` is `UNLOGGED`, and each transaction of the ephemeral store sets `synchronous_commit`
+  off for itself (`SET LOCAL`, sent with the statement in one round trip), not for its session: that holds
+  behind a pooler in transaction mode, where a session setting would not. Measured on Postgres 18 in a
+  container with its data in memory, one writer, 512 bytes: 0.75 ms a durable write, 0.34 ms an ephemeral one.
+- **MariaDB**: `kv_cache` is InnoDB like `kv`. Measured the same way on 10.11 and 12.3: 0.45 to 0.71 ms for
+  either class, no difference beyond the noise of the runs. The class costs nothing there and gains nothing; it
+  is the same class so that a host runs alike on each database.
+- **Sealing**: a sealed store over an ephemeral one extends its purpose, which enters the derived key and the
+  associated data, so a record sealed for one class does not open in the other, under the same key or another.
+  Durable records are sealed as before.
+- The numbers are from a laptop and say which way and roughly how much, not what a deployment will see.
 
 ## Tasks
 
