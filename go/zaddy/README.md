@@ -201,6 +201,11 @@ Postgres DSN of the kv store zero-pep-proxy keeps them in (its `PEP_DATABASE_URL
 }
 ```
 
+The connection to that database is TLS with the server's certificate verified (servers.md rule 29), and the
+URL names no `sslmode`. `revocations_database_tls_ca_path <file>` names a CA bundle of the deployment's own
+instead of the system's roots; `revocations_database_plaintext_accepted true` is the operator's acceptance of
+a database without TLS, which the deployment then protects. One or the other, never both.
+
 The DSN carries a password, so give it from a mounted file through Caddy's `{file.…}` placeholder rather than in
 the Caddyfile. When the app starts, zaddy connects to the store, loads the revocations stored under
 `pep:revoked:` and follows new ones on the `pep_revoked` channel (Postgres `LISTEN`/`NOTIFY`), reading the store

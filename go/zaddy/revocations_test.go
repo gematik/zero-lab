@@ -41,6 +41,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 
 	"github.com/gematik/zero-lab/go/kv"
+	"github.com/gematik/zero-lab/go/kv/postgres"
 	"github.com/gematik/zero-lab/go/pep"
 )
 
@@ -89,7 +90,7 @@ func startedApp(t *testing.T, store kv.Store, bus kv.Bus) *App {
 		JWKSPath:               "test_jwks.json",
 		RevocationsDatabaseURL: "postgres://revocations.example/kv",
 		logger:                 slog.New(slog.DiscardHandler),
-		openRevocations: func(context.Context, string) (kv.Store, kv.Bus, error) {
+		openRevocations: func(context.Context, string, ...postgres.Option) (kv.Store, kv.Bus, error) {
 			return store, bus, nil
 		},
 	}
@@ -213,10 +214,10 @@ func (keylessStore) Keys(context.Context, string) ([]string, error) {
 // admit sessions signed out elsewhere.
 func TestServerRule17_ZaddyDoesNotStartWithoutItsRevocations(t *testing.T) {
 	for name, open := range map[string]openRevocationsFunc{
-		"unreachable": func(context.Context, string) (kv.Store, kv.Bus, error) {
+		"unreachable": func(context.Context, string, ...postgres.Option) (kv.Store, kv.Bus, error) {
 			return nil, nil, errors.New("connection refused")
 		},
-		"unreadable": func(context.Context, string) (kv.Store, kv.Bus, error) {
+		"unreadable": func(context.Context, string, ...postgres.Option) (kv.Store, kv.Bus, error) {
 			return keylessStore{kv.NewMemory()}, kv.NewMemBus(), nil
 		},
 	} {
@@ -236,5 +237,54 @@ func TestServerRule17_ZaddyDoesNotStartWithoutItsRevocations(t *testing.T) {
 				t.Fatal("started without its revocations")
 			}
 		})
+	}
+}
+
+// Server rule 29: the database of the revocations is reached with TLS unless the operator accepted
+// plaintext, in the Caddyfile as an agreement of one exact value, and never with a CA for TLS beside it.
+func TestServerRule29_TheRevocationsDatabaseIsPlaintextOnlyByAcceptance(t *testing.T) {
+	parse := func(lines string) (*App, error) {
+		value, err := parseCaddyfilePEP(caddyfile.NewTestDispenser("pep {\n resource https://api.example.com\n jwks_path jwks.json\n revocations_database_url postgres://revocations.example/kv\n"+lines+"}"), nil)
+		if err != nil {
+			return nil, err
+		}
+		var a App
+		if err := json.Unmarshal(value.(httpcaddyfile.App).Value, &a); err != nil {
+			return nil, err
+		}
+		return &a, nil
+	}
+	a, err := parse("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transport, err := a.revocationsTransport(); err != nil || len(transport) != 0 {
+		t.Errorf("without a setting: %d options, err %v", len(transport), err)
+	}
+	a, err = parse(" revocations_database_plaintext_accepted true\n")
+	if err != nil || !a.RevocationsDatabasePlaintextAccepted {
+		t.Fatalf("accepted: %v", err)
+	}
+	if transport, err := a.revocationsTransport(); err != nil || len(transport) != 1 {
+		t.Errorf("accepted plaintext: %d options, err %v", len(transport), err)
+	}
+	for _, line := range []string{" revocations_database_plaintext_accepted\n", " revocations_database_plaintext_accepted yes\n", " revocations_database_plaintext_accepted false\n"} {
+		if _, err := parse(line); err == nil {
+			t.Errorf("%q was read as something", strings.TrimSpace(line))
+		}
+	}
+	a, err = parse(" revocations_database_plaintext_accepted true\n revocations_database_tls_ca_path /ca.pem\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.revocationsTransport(); err == nil {
+		t.Error("a CA for TLS beside accepted plaintext was accepted")
+	}
+	a, err = parse(" revocations_database_tls_ca_path /no/such/ca.pem\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.revocationsTransport(); err == nil {
+		t.Error("a CA file that is not there was accepted")
 	}
 }

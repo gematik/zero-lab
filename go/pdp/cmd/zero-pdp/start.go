@@ -183,7 +183,17 @@ func openStore(dsn, keyPath string) (kv.Store, nonce.Keys, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("open postgres kv store: %w", err)
 	}
-	store, err := postgres.Open(context.Background(), address, user, password, postgres.WithMigrate())
+	// The database is reached with TLS unless the operator accepted plaintext (servers.md rule 29). zero-pdp
+	// is frozen: it gets the acceptance and no setting for a CA of the deployment's own.
+	opts := []postgres.Option{postgres.WithMigrate()}
+	switch os.Getenv("DATABASE_PLAINTEXT_ACCEPTED") {
+	case "":
+	case "true":
+		opts = append(opts, postgres.WithPlaintextAccepted())
+	default:
+		return nil, nil, errors.New("DATABASE_PLAINTEXT_ACCEPTED: true, or not set")
+	}
+	store, err := postgres.Open(context.Background(), address, user, password, opts...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open postgres kv store: %w", err)
 	}

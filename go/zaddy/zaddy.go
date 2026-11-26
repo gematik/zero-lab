@@ -83,6 +83,11 @@ type App struct {
 	// in. The SessionCookie enforcer admits zero-pep-proxy's session snapshots only while their session is not
 	// revoked, so a policy using it is refused without this.
 	RevocationsDatabaseURL string `json:"revocations_database_url,omitempty"`
+	// RevocationsDatabasePlaintextAccepted is the operator's acceptance of a connection to that database
+	// without TLS (servers.md rule 29); without it the connection is TLS with the server's certificate
+	// verified. RevocationsDatabaseTLSCAPath names a CA bundle for it instead of the system's roots.
+	RevocationsDatabasePlaintextAccepted bool   `json:"revocations_database_plaintext_accepted,omitempty"`
+	RevocationsDatabaseTLSCAPath         string `json:"revocations_database_tls_ca_path,omitempty"`
 	// EgressProxyCredentialsPath names the file with the forward proxy's user:password; the proxy itself comes
 	// from HTTPS_PROXY, HTTP_PROXY and NO_PROXY in the environment, as for every egress client (servers.md rule 30).
 	EgressProxyCredentialsPath string `json:"egress_proxy_credentials_path,omitempty"`
@@ -386,6 +391,17 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.RevocationsDatabaseURL = d.Val()
+		case "revocations_database_plaintext_accepted":
+			// Read as an agreement: one exact value, so that nothing else reads as consent.
+			if !d.NextArg() || d.Val() != "true" {
+				return nil, d.Errf("revocations_database_plaintext_accepted: true, or not set")
+			}
+			a.RevocationsDatabasePlaintextAccepted = true
+		case "revocations_database_tls_ca_path":
+			if !d.NextArg() {
+				return nil, d.ArgErr()
+			}
+			a.RevocationsDatabaseTLSCAPath = d.Val()
 		case "egress_proxy_credentials_path":
 			if !d.NextArg() {
 				return nil, d.ArgErr()

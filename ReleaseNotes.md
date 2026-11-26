@@ -1,5 +1,48 @@
 # Release Notes
 
+# Release 2026-11-26: go/kv/postgres v0.14.0, go/kv/mariadb v0.5.0
+
+The connection to the database is protected as every other connection of a server: TLS unless the operator
+accepted plaintext (TASK-441; servers.md rule 29). Verified on the release branch: `just check` across all Go
+modules passed; `just kv-postgres-test` (Postgres 18 without and with TLS) and `just kv-mariadb-test` (MariaDB
+10.11 and 12.3, one with TLS, and a Galera cluster of three writing nodes) passed on 2026-11-26.
+
+# Release go/kv/postgres v0.14.0
+
+### breaking
+- The connection is TLS with the server's certificate verified for the host of the DSN, under the system's
+  roots. Before, the DSN's `sslmode` decided, and without one pgx's default `prefer` fell back to plaintext
+  without saying so. Now the driver's fallbacks are not used, nor `PGSSLMODE` from the environment.
+- A DSN that names `sslmode` or another parameter of TLS (`ssl…`, `gssencmode`, `channel_binding`) is refused. A
+  host with `?sslmode=disable` in its URL removes it and, for a database without TLS, passes
+  `WithPlaintextAccepted()`.
+
+### added
+- `WithTLS(config)`: a CA of the deployment's own, another name to verify, a client certificate. A configuration
+  that skips verification is refused.
+- `WithPlaintextAccepted()`: the operator's acceptance of a connection without TLS, logged at `Open`.
+- `OpenDB` and `OpenBus` take both options.
+- `just kv-postgres-test`.
+
+# Release go/kv/mariadb v0.5.0
+
+### breaking
+- A DSN with any parameter is refused; `?tls=false` is gone. For a database without TLS a host passes
+  `WithPlaintextAccepted()`.
+
+### added
+- `WithPlaintextAccepted()`. `WithTLS` refuses a configuration that skips verification.
+
+# Hosts of this repository
+
+### breaking
+- zero-pep-proxy: `PEP_DATABASE_URL` names no `sslmode`. `PEP_DATABASE_TLS_CA_PATH` names a CA bundle for the
+  database's certificate; `PEP_DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS.
+- zaddy: `revocations_database_tls_ca_path` and `revocations_database_plaintext_accepted true` in the global
+  `pep` block, for the database of `revocations_database_url`.
+- zero-pdp (frozen): `DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS; it has no setting for a
+  CA of the deployment's own.
+
 # Release 2026-11-26: go/kv v0.12.0, go/kv/postgres v0.13.0, go/kv/mariadb v0.4.0
 
 Sealed events, and a guide for hosts (TASK-433 and TASK-434, the last steps of the kv plan in backlog doc-7).

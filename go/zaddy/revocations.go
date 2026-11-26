@@ -23,8 +23,11 @@ package zaddy
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"time"
 
@@ -44,26 +47,49 @@ const (
 )
 
 // openRevocationsFunc connects to the store and bus zero-pep-proxy shares its session revocations over.
-type openRevocationsFunc func(ctx context.Context, dsn string) (kv.Store, kv.Bus, error)
+type openRevocationsFunc func(ctx context.Context, dsn string, transport ...postgres.Option) (kv.Store, kv.Bus, error)
 
 // openPostgresRevocations opens the Postgres kv store and its LISTEN/NOTIFY bus at dsn, as zero-pep-proxy does.
 // The store is not sealed: only its keys are read, which a sealed store leaves in clear, so zaddy needs no
 // share of zero-pep-proxy's store keys.
-func openPostgresRevocations(ctx context.Context, dsn string) (kv.Store, kv.Bus, error) {
+func openPostgresRevocations(ctx context.Context, dsn string, transport ...postgres.Option) (kv.Store, kv.Bus, error) {
 	// revocations_database_url is one URL with the user and the password in it; the store takes them apart.
 	address, user, password, err := postgres.SplitURL(dsn)
 	if err != nil {
 		return nil, nil, err
 	}
-	store, err := postgres.Open(ctx, address, user, password, postgres.WithMigrate())
+	store, err := postgres.Open(ctx, address, user, password, append([]postgres.Option{postgres.WithMigrate()}, transport...)...)
 	if err != nil {
 		return nil, nil, err
 	}
-	bus, err := postgres.OpenBus(ctx, address, user, password)
+	bus, err := postgres.OpenBus(ctx, address, user, password, transport...)
 	if err != nil {
 		return nil, nil, errors.Join(err, store.Close())
 	}
 	return store, bus, nil
+}
+
+// revocationsTransport is how the database of the revocations is reached (servers.md rule 29): TLS with the
+// server's certificate verified under the system's roots, or under the CA bundle the configuration names,
+// or plaintext when the operator accepted it. Never two of them.
+func (a *App) revocationsTransport() ([]postgres.Option, error) {
+	switch {
+	case a.RevocationsDatabasePlaintextAccepted && a.RevocationsDatabaseTLSCAPath != "":
+		return nil, errors.New("revocations_database_plaintext_accepted beside revocations_database_tls_ca_path: one or the other")
+	case a.RevocationsDatabasePlaintextAccepted:
+		return []postgres.Option{postgres.WithPlaintextAccepted()}, nil
+	case a.RevocationsDatabaseTLSCAPath != "":
+		pem, err := os.ReadFile(a.RevocationsDatabaseTLSCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("revocations_database_tls_ca_path: %w", err)
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(pem) {
+			return nil, errors.New("revocations_database_tls_ca_path: the file holds no certificate")
+		}
+		return []postgres.Option{postgres.WithTLS(&tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12})}, nil
+	}
+	return nil, nil
 }
 
 // followRevocations opens the session revocations zero-pep-proxy writes and follows them until Stop. Without
@@ -79,7 +105,11 @@ func (a *App) followRevocations() (pep.SessionRevocations, error) {
 	}
 	openCtx, cancel := context.WithTimeout(context.Background(), revocationsOpenTimeout)
 	defer cancel()
-	store, bus, err := open(openCtx, a.RevocationsDatabaseURL)
+	transport, err := a.revocationsTransport()
+	if err != nil {
+		return nil, err
+	}
+	store, bus, err := open(openCtx, a.RevocationsDatabaseURL, transport...)
 	if err != nil {
 		return nil, fmt.Errorf("open: %w", err)
 	}

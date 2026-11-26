@@ -24,6 +24,7 @@ package main
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,21 +40,29 @@ func TestRevocations_ReachTheOtherReplicaOverPostgres(t *testing.T) {
 		t.Skip("PEP_PG_DSN not set — skipping Postgres LISTEN/NOTIFY integration test")
 	}
 	ctx := context.Background()
-	address, user, password, err := postgres.SplitURL(dsn)
+	// The test's database is one without TLS: the variable says so with sslmode=disable, which becomes the
+	// acceptance the server takes from PEP_DATABASE_PLAINTEXT_ACCEPTED.
+	db, err := databaseOf(strings.Replace(dsn, "?sslmode=disable", "", 1), func(name string) string {
+		if name == databasePlaintextEnv && strings.Contains(dsn, "sslmode=disable") {
+			return "true"
+		}
+		return ""
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := postgres.Open(ctx, address, user, password, postgres.WithMigrate())
+	address, user, password := db.address, db.user, db.password
+	store, err := postgres.Open(ctx, address, user, password, append([]postgres.Option{postgres.WithMigrate()}, db.transport...)...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	busA, err := postgres.OpenBus(ctx, address, user, password)
+	busA, err := postgres.OpenBus(ctx, address, user, password, db.transport...)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer busA.Close()
-	busB, err := postgres.OpenBus(ctx, address, user, password)
+	busB, err := postgres.OpenBus(ctx, address, user, password, db.transport...)
 	if err != nil {
 		t.Fatal(err)
 	}

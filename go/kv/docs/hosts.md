@@ -38,9 +38,24 @@ case "mariadb", "mysql":
 
 | | PostgreSQL | MariaDB |
 |---|---|---|
-| DSN | `postgres://host:port/database?sslmode=verify-full` | `mariadb://host:port/database` |
-| TLS | by `sslmode`; pgx's default, `prefer`, falls back to plaintext without saying so: set it | on unless the DSN says `?tls=false`; `WithTLS` for a CA of one's own |
+| DSN | `postgres://host:port/database` | `mariadb://host:port/database` |
 | Topologies | a primary, with or without replicas | one node, a primary with replicas, Galera with one or several writing nodes |
+
+The connection is protected as every other connection of a server (rule 29), alike in both
+backends:
+
+- **TLS by default**, with the server's certificate verified for the host of the DSN under
+  the system's roots. `WithTLS` gives a CA of the deployment's own, another name to verify,
+  or a client certificate; a configuration that skips verification is refused.
+- **Plaintext only by the operator's acceptance**: `WithPlaintextAccepted()`, which the host
+  sets from a setting of its own beside the DSN (`…_PLAINTEXT_ACCEPTED=true`, read as one
+  exact value) and the backend logs at `Open`. There is no trying TLS and carrying on
+  without it.
+- **The DSN says nothing of it.** One that names `sslmode`, `tls` or another parameter of
+  the transport is refused, so nothing in an address can weaken the connection, and the
+  driver's own settings in the environment (`PGSSLMODE`) are not used.
+
+`OpenDB` and `OpenBus` take the same two options.
 
 The host reads the address from its configuration and the user and password from files
 (rule 6 and [naming and configuration](../../../docs/conventions/naming-and-config.md)).
@@ -276,6 +291,8 @@ three writing nodes (`just kv-mariadb-test`).
 |---|---|
 | The stores behave alike: values, expiry, one winner for `Take`, `SetIfAbsent` and `Swap`, keys by a literal prefix in the order of their bytes | `kvtest.Store`; through Galera nodes `TestGalera_Task429TheContractHoldsThroughDifferentWritingNodes` |
 | A DSN with a user or a password, or one the backend does not understand in full, is refused | `TestConfig_ADSNWithAUserOrAPasswordIsRefused`, `TestConfig_Rule17RefusesWhatItDoesNotKnow` |
+| The connection is TLS without a fallback; plaintext only when accepted; no transport parameter in the DSN | `TestConfig_Rule29TheConnectionIsTLSWithoutAFallback`, `TestConfig_Rule29PlaintextOnlyWhenAccepted`, `TestOpen_Rule29ADatabaseWithoutTLSIsRefusedUnlessPlaintextIsAccepted`, `TestOpen_Rule29ADatabaseIsNotReachedInPlaintextUnlessAccepted` |
+| The server's certificate is verified for its CA and its name, and a client certificate is presented | `TestOpen_Rule29TheServersCertificateIsVerifiedForItsCAAndItsName`, `TestOpen_Rule29AClientCertificateIsPresentedWhenTheConfigurationHasOne` (`just kv-postgres-test`, `just kv-mariadb-test`) |
 | A key over 1024 bytes is refused on MariaDB | `TestMariaDB_AKeyLongerThanTheBoundIsRefusedNotCutShort` |
 | Many migrators at once all succeed | `TestMigrate_Task428ByManyAtOnceAppliesEachStepOnce`, `TestMigrate_Task429ByManyAtOnceSucceedsForAll`, `TestGalera_Task429MigratorsThroughDifferentNodesAtOnceSucceedForAll` |
 | `Open` runs no DDL and works with a user without schema rights | `TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema`, `TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema` |

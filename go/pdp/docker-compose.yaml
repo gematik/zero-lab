@@ -35,7 +35,9 @@ services:
         condition: service_healthy
     environment:
       PDP_NON_PROD: "true"
-      DATABASE_URL: "postgres://zero:zero@postgres:5432/zero?sslmode=disable"
+      DATABASE_URL: "postgres://zero:zero@postgres:5432/zero"
+      # The compose network's Postgres has no TLS: accepted here, never in a deployment.
+      DATABASE_PLAINTEXT_ACCEPTED: "true"
       PDP_STORE_KEY_PATH: "/etc/pdp/store.key"
     volumes:
       - ./config:/etc/pdp:ro # pdp.yaml (mock_idp + non_prod) + openid-providers.yaml + sign.jwk + store.key
