@@ -706,3 +706,101 @@ func TestPostgres_MarkerContract(t *testing.T) {
 		return s
 	})
 }
+
+func TestPostgres_FeedContract(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	kvtest.Feed(t, func(t *testing.T) kv.Store {
+		s, err := openKV(context.Background(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+func TestPostgres_TxContract(t *testing.T) {
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	kvtest.Tx(t, func(t *testing.T) kv.Store {
+		s, err := openKV(context.Background(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+// A notification can be lost: the listener's connection breaks, a pooler does not pass it on. A follower
+// looks by itself every so often, so what is lost is time, not the event.
+func TestPostgres_Task432AnEventWithoutItsNotificationStillArrives(t *testing.T) {
+	ctx := context.Background()
+	dsn := freshDatabase(t)
+	db := adminOf(t, dsn)
+	if _, err := postgres.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	s, err := openKV(ctx, dsn, postgres.WithFeedPoll(200*time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	follow, cancel := context.WithCancel(ctx)
+	defer cancel()
+	events, err := s.(kv.Feed).Follow(follow, "untold", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Written as a publisher writes it, without the notification.
+	if _, err := db.Exec(`INSERT INTO kv_topic(topic, seq) VALUES('untold', 1);
+		INSERT INTO kv_feed(topic, seq, payload, expires_at) VALUES('untold', 1, 'e', now() + interval '1 minute')`); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case e := <-events:
+		if e.Cursor != 1 || string(e.Payload) != "e" {
+			t.Fatalf("number %d, %q", e.Cursor, e.Payload)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the event did not arrive without its notification")
+	}
+}
+
+// With its notification an event arrives at once, long before the follower would look by itself.
+func TestPostgres_Task432AnEventArrivesByItsNotification(t *testing.T) {
+	ctx := context.Background()
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("TEST_DATABASE_URL not set — skipping Postgres kv test (see pdp/docker-compose.yaml)")
+	}
+	s, err := openKV(ctx, dsn, postgres.WithFeedPoll(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	f := s.(kv.Feed)
+	topic := fmt.Sprintf("told-%d", time.Now().UnixNano())
+	follow, cancel := context.WithCancel(ctx)
+	defer cancel()
+	events, err := f.Follow(follow, topic, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The follower has to listen before the event is published, or only its hourly look would find it.
+	time.Sleep(500 * time.Millisecond)
+	if _, err := f.Publish(ctx, topic, []byte("e"), time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case e := <-events:
+		if e.Cursor != 1 {
+			t.Fatalf("number %d", e.Cursor)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the event did not arrive by its notification")
+	}
+}

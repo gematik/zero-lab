@@ -126,6 +126,31 @@ func TestMariaDB_Contract(t *testing.T) {
 	})
 }
 
+// The followers of the tests look often, so that the suite does not wait a second for each event.
+const testPoll = 50 * time.Millisecond
+
+func TestMariaDB_FeedContract(t *testing.T) {
+	dsn := testDSN(t)
+	kvtest.Feed(t, func(t *testing.T) kv.Store {
+		s, err := openKV(context.Background(), dsn, mariadb.WithFeedPoll(testPoll))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
+func TestMariaDB_TxContract(t *testing.T) {
+	dsn := testDSN(t)
+	kvtest.Tx(t, func(t *testing.T) kv.Store {
+		s, err := openKV(context.Background(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s
+	})
+}
+
 func TestMariaDB_MarkerContract(t *testing.T) {
 	dsn := testDSN(t)
 	kvtest.Marker(t, func(t *testing.T, mark func(string, []byte) string) kv.Store {
@@ -218,11 +243,23 @@ func TestMariaDB_ExpiryFromTheDatabaseClock(t *testing.T) {
 // ahead are the steps of releases to come, after the one of this release: an expand step, a contract step
 // that undoes it, and an expand step after that. Each is one statement that can run again.
 func ahead() []mariadb.Step {
-	return slices.Concat(mariadb.ReleasedSteps()[:1], []mariadb.Step{
-		mariadb.NewStep(2, "a probe column", false, `ALTER TABLE kv ADD COLUMN IF NOT EXISTS probe TEXT`),
-		mariadb.NewStep(3, "the probe column goes", true, `ALTER TABLE kv DROP COLUMN IF EXISTS probe`),
-		mariadb.NewStep(4, "a probe table", false, `CREATE TABLE IF NOT EXISTS kv_probe (id INT PRIMARY KEY)`),
+	return slices.Concat(mariadb.ReleasedSteps(), []mariadb.Step{
+		mariadb.NewStep(released+1, "a probe column", false, `ALTER TABLE kv ADD COLUMN IF NOT EXISTS probe TEXT`),
+		mariadb.NewStep(released+2, "the probe column goes", true, `ALTER TABLE kv DROP COLUMN IF EXISTS probe`),
+		mariadb.NewStep(released+3, "a probe table", false, `CREATE TABLE IF NOT EXISTS kv_probe (id INT PRIMARY KEY)`),
 	})
+}
+
+// released is how many steps this release has; the steps of ahead come after them.
+var released = len(mariadb.ReleasedSteps())
+
+// upTo is the versions 1 to n as appliedVersions prints them.
+func upTo(n int) string {
+	versions := make([]int, n)
+	for i := range versions {
+		versions[i] = i + 1
+	}
+	return fmt.Sprint(versions)
 }
 
 func appliedVersions(t *testing.T, db *sql.DB) []int {
@@ -267,7 +304,7 @@ func migrateTogether(t *testing.T, dsns []string, migrators int) {
 			if err == nil {
 				var version int
 				version, err = mariadb.MigrateSteps(ctx, db, ahead(), mariadb.Contract())
-				if err == nil && version != 4 {
+				if err == nil && version != released+3 {
 					err = fmt.Errorf("at version %d", version)
 				}
 				_ = db.Close()
@@ -290,7 +327,7 @@ func TestMigrate_Task429ByManyAtOnceSucceedsForAll(t *testing.T) {
 	for range 5 {
 		dsn := freshDatabase(t, admin)
 		migrateTogether(t, []string{dsn}, 8)
-		if got := appliedVersions(t, adminOf(t, dsn)); fmt.Sprint(got) != "[1 2 3 4]" {
+		if got := appliedVersions(t, adminOf(t, dsn)); fmt.Sprint(got) != upTo(released+3) {
 			t.Errorf("applied %v", got)
 		}
 	}
@@ -335,6 +372,8 @@ func TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema(t *test
 	for _, stmt := range []string{
 		"CREATE USER '" + user + "'@'%' IDENTIFIED BY '" + password + "'",
 		"GRANT SELECT, INSERT, UPDATE, DELETE ON " + database + ".kv TO '" + user + "'@'%'",
+		"GRANT SELECT, INSERT, UPDATE, DELETE ON " + database + ".kv_feed TO '" + user + "'@'%'",
+		"GRANT SELECT, INSERT, UPDATE, DELETE ON " + database + ".kv_topic TO '" + user + "'@'%'",
 		"GRANT SELECT ON " + database + ".kv_schema TO '" + user + "'@'%'",
 	} {
 		if _, err := db.Exec(stmt); err != nil {
@@ -383,6 +422,20 @@ func TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema(t *test
 	if _, err := s.Cleanup(ctx); err != nil {
 		t.Fatalf("Cleanup: %v", err)
 	}
+	if err := s.(kv.Transactor).Tx(ctx, func(tx kv.Tx) error {
+		if _, _, err := tx.Get(ctx, "root"); err != nil {
+			return err
+		}
+		if err := tx.Set(ctx, "root", []byte("r"), time.Minute); err != nil {
+			return err
+		}
+		return tx.Publish(ctx, "changes", []byte("e"), time.Minute)
+	}); err != nil {
+		t.Fatalf("a transaction that reads, writes and publishes: %v", err)
+	}
+	if latest, err := s.(kv.Feed).Latest(ctx, "changes"); err != nil || latest != 1 {
+		t.Fatalf("Latest: %d, err %v", latest, err)
+	}
 }
 
 // Server rule 17: a release that needs a step the database lacks does not start, and says both versions.
@@ -391,15 +444,15 @@ func TestOpen_Rule17RefusesADatabaseThatLacksAStepItNeeds(t *testing.T) {
 	dsn := freshDatabase(t, testDSN(t))
 	_, err := openKV(ctx, dsn)
 	var v *schema.VersionError
-	if !errors.As(err, &v) || v.Found != 0 || v.Needs != 1 {
+	if !errors.As(err, &v) || v.Found != 0 || v.Needs != released {
 		t.Fatalf("an empty database: %v", err)
 	}
-	steps := ahead()[:2]
-	if _, err := mariadb.MigrateSteps(ctx, adminOf(t, dsn), steps, mariadb.To(1)); err != nil {
+	steps := ahead()[:released+1]
+	if _, err := mariadb.MigrateSteps(ctx, adminOf(t, dsn), steps, mariadb.To(released)); err != nil {
 		t.Fatal(err)
 	}
 	_, err = openSteps(ctx, dsn, steps)
-	if !errors.As(err, &v) || !errors.Is(err, schema.ErrVersion) || v.Found != 1 || v.Needs != 2 {
+	if !errors.As(err, &v) || !errors.Is(err, schema.ErrVersion) || v.Found != released || v.Needs != released+1 {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -409,7 +462,7 @@ func TestOpen_Rule17RefusesADatabaseThatLacksAStepItNeeds(t *testing.T) {
 func TestOpen_Rule22StartsOnExpandStepsOfANewerRelease(t *testing.T) {
 	ctx := context.Background()
 	dsn := freshDatabase(t, testDSN(t))
-	if _, err := mariadb.MigrateSteps(ctx, adminOf(t, dsn), ahead()[:2]); err != nil {
+	if _, err := mariadb.MigrateSteps(ctx, adminOf(t, dsn), ahead()[:released+1]); err != nil {
 		t.Fatal(err)
 	}
 	s, err := openKV(ctx, dsn)
@@ -432,7 +485,7 @@ func TestOpen_Rule17RefusesADatabaseWithAContractStepItDoesNotKnow(t *testing.T)
 	}
 	_, err := openKV(ctx, dsn)
 	var v *schema.VersionError
-	if !errors.As(err, &v) || v.Contract != 3 || v.Found != 4 || v.Knows != 1 {
+	if !errors.As(err, &v) || v.Contract != released+2 || v.Found != released+3 || v.Knows != released {
 		t.Fatalf("got %v", err)
 	}
 }
@@ -444,12 +497,12 @@ func TestOpen_Task429WithMigrateAppliesExpandStepsAndNeverAContractStep(t *testi
 	dsn := freshDatabase(t, testDSN(t))
 	db := adminOf(t, dsn)
 
-	s, err := openSteps(ctx, dsn, ahead()[:3], mariadb.WithMigrate())
+	s, err := openSteps(ctx, dsn, ahead()[:released+2], mariadb.WithMigrate())
 	if err != nil {
 		t.Fatalf("a release whose last step is a contract step: %v", err)
 	}
 	_ = s.Close()
-	if got := appliedVersions(t, db); fmt.Sprint(got) != "[1 2]" {
+	if got := appliedVersions(t, db); fmt.Sprint(got) != upTo(released+1) {
 		t.Fatalf("applied %v", got)
 	}
 	if !hasProbe(t, db) {
@@ -458,7 +511,7 @@ func TestOpen_Task429WithMigrateAppliesExpandStepsAndNeverAContractStep(t *testi
 
 	_, err = openSteps(ctx, dsn, ahead(), mariadb.WithMigrate())
 	var v *schema.VersionError
-	if !errors.As(err, &v) || v.Found != 2 || v.Needs != 4 {
+	if !errors.As(err, &v) || v.Found != released+1 || v.Needs != released+3 {
 		t.Fatalf("got %v", err)
 	}
 	if !hasProbe(t, db) {
@@ -470,13 +523,13 @@ func TestOpen_Task429WithMigrateAppliesExpandStepsAndNeverAContractStep(t *testi
 func TestMigrate_Task429AppliesAContractStepOnlyWhenAsked(t *testing.T) {
 	ctx := context.Background()
 	db := adminOf(t, freshDatabase(t, testDSN(t)))
-	if version, err := mariadb.MigrateSteps(ctx, db, ahead(), mariadb.To(1)); err != nil || version != 1 {
+	if version, err := mariadb.MigrateSteps(ctx, db, ahead(), mariadb.To(released)); err != nil || version != released {
 		t.Fatalf("to 1: version %d, err %v", version, err)
 	}
-	if version, err := mariadb.MigrateSteps(ctx, db, ahead()); err != nil || version != 2 {
+	if version, err := mariadb.MigrateSteps(ctx, db, ahead()); err != nil || version != released+1 {
 		t.Fatalf("without contract: version %d, err %v", version, err)
 	}
-	if version, err := mariadb.MigrateSteps(ctx, db, ahead(), mariadb.Contract()); err != nil || version != 4 {
+	if version, err := mariadb.MigrateSteps(ctx, db, ahead(), mariadb.Contract()); err != nil || version != released+3 {
 		t.Fatalf("with contract: version %d, err %v", version, err)
 	}
 	if hasProbe(t, db) {
@@ -488,14 +541,14 @@ func TestMigrate_Task429AppliesAContractStepOnlyWhenAsked(t *testing.T) {
 func TestMigrate_Task429AFailedStepIsNotRecorded(t *testing.T) {
 	ctx := context.Background()
 	db := adminOf(t, freshDatabase(t, testDSN(t)))
-	steps := slices.Concat(mariadb.ReleasedSteps()[:1], []mariadb.Step{
-		mariadb.NewStep(2, "a step that fails", false, `ALTER TABLE no_such_table ADD COLUMN probe TEXT`),
+	steps := slices.Concat(mariadb.ReleasedSteps(), []mariadb.Step{
+		mariadb.NewStep(released+1, "a step that fails", false, `ALTER TABLE no_such_table ADD COLUMN probe TEXT`),
 	})
 	version, err := mariadb.MigrateSteps(ctx, db, steps)
-	if err == nil || version != 1 || !strings.Contains(err.Error(), "step 2 (a step that fails)") {
+	if err == nil || version != released || !strings.Contains(err.Error(), fmt.Sprintf("step %d (a step that fails)", released+1)) {
 		t.Fatalf("version %d, err %v", version, err)
 	}
-	if got := appliedVersions(t, db); fmt.Sprint(got) != "[1]" {
+	if got := appliedVersions(t, db); fmt.Sprint(got) != upTo(released) {
 		t.Fatalf("applied %v", got)
 	}
 }

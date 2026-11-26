@@ -1,5 +1,51 @@
 # Release Notes
 
+# Release 2026-11-26: go/kv v0.10.0, go/kv/postgres v0.11.0, go/kv/mariadb v0.2.0
+
+Transactions over records that belong together, and an ordered feed of events per topic that replicas follow
+(TASK-432, the fifth step of the kv plan in backlog doc-7). Verified on the release branch: `just check` across
+all Go modules passed; kv on Postgres (Postgres 18, `TEST_DATABASE_URL`, with `-race`) and `just kv-mariadb-test`
+(MariaDB 10.11 and 12.3, and a Galera cluster of three writing nodes) passed on 2026-11-26.
+
+# Release go/kv v0.10.0
+
+### added
+- `Transactor` and `Tx`: a function runs in one transaction; what it reads with `Get` stays as read, and what it
+  writes and publishes takes effect together or not at all. The function may run more than once; records are
+  named, not searched; at most `MaxTxOps` (256) calls. Records that change together hang under a root record
+  that every transaction reads first and writes last: across the writing nodes of a cluster a record that was
+  only read is not protected.
+- `Feed`: `Publish(topic, event, retention)`, `Follow(topic, from)`, `Latest(topic)`. Events of a topic are
+  numbered from 1 without a gap in the order of their commits, delivered at least once and in order, and gone
+  after their retention.
+- The memory store is both. A sealed store is a `Transactor` that seals and opens record by record; its
+  transactions refuse to publish (`ErrSealedEvent`), since the event would not be sealed.
+- `kv/kvtest`: `Feed` and `Tx`.
+
+# Release go/kv/postgres v0.11.0
+
+### added
+- `Tx` and the feed. Schema step 3 (`kv_topic`, `kv_feed`): run `Migrate` before the rollout, or keep
+  `WithMigrate()`; a replica of v0.10.0 keeps working on a database that has it. The server's role needs
+  `SELECT, INSERT, UPDATE, DELETE` on `kv_feed` and `kv_topic` as on `kv`.
+- A follower listens for notifications on a connection of its own and looks every 30 seconds without one
+  (`WithFeedPoll`): a notification that is lost costs time, not an event.
+
+### changed
+- `Cleanup` also removes the events whose retention is over.
+
+# Release go/kv/mariadb v0.2.0
+
+### added
+- `Tx` and the feed. Schema steps 2 and 3 (`kv_topic`, `kv_feed`), with the same rights for the server's user.
+  A follower looks every second (`WithFeedPoll`).
+
+### changed
+- A statement or transaction that lost against another writer is tried up to 32 times, with pauses up to 64 ms
+  (before: 8 times): the publishers of one topic through several writing nodes of a cluster each lose many
+  times before all have committed.
+- `Cleanup` also removes the events whose retention is over.
+
 # Release 2026-11-25: go/kv/postgres v0.10.0, go/kv v0.9.1
 
 The Postgres backend takes user and password beside its DSN, reads by prefix over an index, cleans in batches

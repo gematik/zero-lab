@@ -37,6 +37,10 @@ type memoryStore struct {
 	closed bool
 	now    func() time.Time
 	mark   func(key string, value []byte) string
+	// topics are the feed of the store (memory_feed.go); changed is closed, and made anew, whenever an
+	// event was published, so that followers look again.
+	topics  map[string]*memTopic
+	changed chan struct{}
 }
 
 type memEntry struct {
@@ -50,9 +54,11 @@ func (e memEntry) expired(now time.Time) bool {
 
 // NewMemory returns an in-memory Store — the default backend for tests and development. It is single-replica
 // only: nothing in it reaches another process, so nonce, replay and session state in it holds for this
-// process alone, and it is lost on exit. Several replicas need the Postgres backend (kv/postgres).
+// process alone, and it is lost on exit. Several replicas need a database backend (kv/postgres, kv/mariadb).
+// The store is also a [Swapper], a [Transactor] and a [Feed].
 func NewMemory(opts ...MemoryOption) Store {
-	s := &memoryStore{items: make(map[string]memEntry), now: time.Now}
+	s := &memoryStore{items: make(map[string]memEntry), now: time.Now,
+		topics: make(map[string]*memTopic), changed: make(chan struct{})}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -249,8 +255,14 @@ func (s *memoryStore) Cleanup(_ context.Context) (int, error) {
 func (s *memoryStore) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
 	s.closed = true
 	s.items = nil
+	s.topics = nil
+	// Followers end with the store.
+	close(s.changed)
 	return nil
 }
 

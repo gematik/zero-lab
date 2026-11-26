@@ -46,6 +46,8 @@ type step struct {
 // The steps of this backend, in order. A released step never changes; what changes is a new step.
 var steps = []step{
 	{schema.Step{Version: 1, Name: "the kv table with expiry and marks"}, kvTableSQL},
+	{schema.Step{Version: 2, Name: "the feed: the counter of each topic"}, topicTableSQL},
+	{schema.Step{Version: 3, Name: "the feed: events"}, feedTableSQL},
 }
 
 // The key is binary: it compares byte by byte, as keys do in memory and in Postgres, and a prefix scan

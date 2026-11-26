@@ -89,7 +89,7 @@ func DurabilityOf(s Store) Durability // via an optional method; wrappers pass i
 // Feed is a reliable, ordered stream of small events per topic: at least once, resumable from a cursor, with
 // an optional retention. It replaces "Bus + full rescan".
 type Feed interface {
-    Publish(ctx context.Context, topic string, event []byte) (Cursor, error)
+    Publish(ctx context.Context, topic string, event []byte, retention time.Duration) (Cursor, error)
     Follow(ctx context.Context, topic string, from Cursor) (<-chan Event, error) // closes when ctx ends
     Latest(ctx context.Context, topic string) (Cursor, error)
 }
@@ -109,7 +109,7 @@ type Tx interface {
     SetIfAbsent(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
     Take(ctx context.Context, key string) ([]byte, bool, error)
     Delete(ctx context.Context, key string) error
-    Publish(ctx context.Context, topic string, event []byte) error
+    Publish(ctx context.Context, topic string, event []byte, retention time.Duration) error
 }
 ```
 
@@ -136,6 +136,8 @@ What the contract says, so that it holds on every backend:
 - **fn may run more than once.** A backend repeats it when the database reports a conflict (a deadlock, a
   serialization failure, a certification failure in Galera), a bounded number of times. fn therefore has no effect
   outside tx and decides anew from what it reads each time.
+- **A record that is only read is held on one node only** (proven with TASK-432, below): what a transaction
+  needs unchanged, it writes.
 - **Records are named, not searched.** `Tx` has no `Keys(prefix)`: a scan inside a transaction locks or validates a
   range, differently in every database. What belongs together is reached by key: a record names its relatives, or
   an index record lists them (as `userClients` does). How a host lays out such relations (a client under its user,
@@ -538,8 +540,36 @@ zero-pep-proxy's login states and replay sets, zeta-authserver-go's seen-once an
 1. **zeta-authserver-go and the Feed**: does it adopt Feed for its revocations (its Revocations(since) iterator
    maps onto Follow), and when? Not decided (maintainer, 2026-11-25). Nothing in the libraries waits for the
    answer; it decides how soon the Feed is proven by a real host.
-2. **`Get` across Galera's writing nodes**: whether writing a read record again is enough to make a decision safe,
-   and what it costs; to be answered by the contract tests on a cluster before the contract of `Tx` is final.
+
+## Answered with TASK-432 (2026-11-26)
+
+`Feed` and `Tx` are built in memory, Postgres and MariaDB and pass one contract suite each (`kvtest.Feed`,
+`kvtest.Tx`), on MariaDB also with every call through another writing node of a Galera cluster of three.
+
+- **`Get` across Galera's writing nodes** (the question that was open): a record a transaction only read is not
+  protected there. Of 100 pairs of transactions that each read the record the other writes, through two nodes,
+  75 to 93 both committed, in five runs. A record a transaction read and wrote is protected: of 16 transactions
+  through three nodes that count one record up, none is lost, and records under a root that each transaction
+  reads first and writes last change together. So the root-record pattern is not advice but the contract, and
+  it is written into `kv.Transactor`. Its cost is that the losers run again, which the backend does.
+- **The counter row per topic holds**: 160 events of 16 publishers through three nodes get the numbers 1 to 160
+  without a gap, and a follower that reads while they publish steps over none. Two things had to be added. A
+  publisher can find its number taken (error 1062 on the event) before its commit is refused; that is a lost
+  transaction like the others and runs again. And 8 tries were not enough: with them 17 to 32 of 160 publishes
+  gave up; with 32 tries and pauses up to 64 ms none did in five runs. A topic with many publishers on several
+  writing nodes is slow by design, as the plan says of busy topics.
+- **`Get` of a record that is not there** has to hold too, or the first transactions under a new root all find
+  nothing and all write. Postgres takes a transaction's advisory lock on the key besides the row lock. MariaDB
+  runs `Tx` at REPEATABLE READ, where a locking read locks the place of a missing record, and two that then
+  write it end in a deadlock that one of them repeats.
+- **Retention** is given with each event (`Publish(…, retention)`), must be positive, and is what a follower's
+  gap shows: numbers have no gap, so a number that is not the next one means that events before it are gone.
+- **Postgres delivers by notification** (one channel, the topic as payload, nothing of the event) and looks
+  every 30 seconds without one (`WithFeedPoll`); an event written without its notification arrives by the
+  look. **MariaDB looks** every second.
+- **A sealed store runs transactions** (records sealed and opened one by one) and refuses to publish in them:
+  an event it passed on would be in the clear. That is `NewSealedFeed`, TASK-433.
+- Not built here: one class per transaction, which needs the classes of TASK-431.
 
 ## Tasks
 

@@ -100,6 +100,9 @@ type store struct {
 	pool    *pgxpool.Pool
 	mark    func(key string, value []byte) string
 	migrate bool
+	// listen is what a follower's own connection is made from, poll how often it looks untold (feed.go).
+	listen *pgx.ConnConfig
+	poll   time.Duration
 }
 
 // Option adjusts the store [Open] returns.
@@ -136,21 +139,25 @@ func (s *store) markOf(key string, value []byte) any {
 // secret. It runs no DDL: it refuses a database that lacks a step this release needs, or on which a
 // contract step it does not know was applied (an error that is a schema.ErrVersion and names the versions).
 // The steps are applied by [Migrate], or by Open itself with [WithMigrate]. The role needs SELECT, INSERT,
-// UPDATE and DELETE on the table kv and SELECT on kv_schema, and with [WithMigrate] the right to create and
+// UPDATE and DELETE on the tables kv, kv_feed and kv_topic and SELECT on kv_schema, and with [WithMigrate] the right to create and
 // alter tables in the schema.
 func Open(ctx context.Context, dsn, user, password string, opts ...Option) (kv.Store, error) {
 	return open(ctx, dsn, user, password, steps, opts...)
 }
 
 func open(ctx context.Context, dsn, user, password string, steps []step, opts ...Option) (kv.Store, error) {
-	s := &store{}
+	s := &store{poll: defaultFeedPoll}
 	for _, opt := range opts {
 		opt(s)
+	}
+	if s.poll <= 0 {
+		return nil, errors.New("kv/postgres: the feed's followers look every positive duration")
 	}
 	cfg, err := poolConfig(dsn, user, password)
 	if err != nil {
 		return nil, err
 	}
+	s.listen = cfg.ConnConfig.Copy()
 	// The schema is read, and with WithMigrate changed, over a connection of its own, which is closed
 	// before the store serves.
 	db := stdlib.OpenDB(*cfg.ConnConfig)
@@ -319,11 +326,11 @@ const cleanupLock = 0x6b765f636c65616e // "kv_clean"
 
 // Cleanup deletes the records whose time is over, batch by batch. Every replica calls it; only one at a
 // time deletes, and one that finds another at it returns with what it has removed so far, which may be
-// nothing: the records are gone all the same.
+// nothing: the records are gone all the same. It returns how many records it removed.
 func (s *store) Cleanup(ctx context.Context) (int, error) {
 	total := 0
 	for {
-		var removed int64
+		var removed, events int64
 		var held bool
 		err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 			if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, int64(cleanupLock)).Scan(&held); err != nil || !held {
@@ -331,14 +338,21 @@ func (s *store) Cleanup(ctx context.Context) (int, error) {
 			}
 			tag, err := tx.Exec(ctx, `DELETE FROM kv WHERE ctid IN (
 				SELECT ctid FROM kv WHERE `+expired+` LIMIT $1 FOR UPDATE SKIP LOCKED)`, cleanupBatch)
+			if err != nil {
+				return err
+			}
 			removed = tag.RowsAffected()
+			// The events of the feed whose retention is over go the same way; they are not counted.
+			tag, err = tx.Exec(ctx, `DELETE FROM kv_feed WHERE ctid IN (
+				SELECT ctid FROM kv_feed WHERE expires_at <= now() LIMIT $1 FOR UPDATE SKIP LOCKED)`, cleanupBatch)
+			events = tag.RowsAffected()
 			return err
 		})
 		if err != nil {
 			return total, fmt.Errorf("kv/postgres: cleanup: %w", err)
 		}
 		total += int(removed)
-		if !held || removed < int64(cleanupBatch) {
+		if !held || (removed < int64(cleanupBatch) && events < int64(cleanupBatch)) {
 			return total, nil
 		}
 	}
