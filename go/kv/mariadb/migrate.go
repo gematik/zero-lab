@@ -89,7 +89,8 @@ func Contract() MigrateOption { return func(o *migrateOptions) { o.contract = tr
 // Migrate applies the schema steps a database lacks and returns the version it is at afterwards. It is what
 // a migration job runs before a rollout, over connections opened with credentials that may change the
 // schema ([OpenDB]); a server's own user then needs no such rights, and [Open] only checks the version. Any
-// number of migrators may run at once, through any nodes of a cluster: a step run twice changes nothing.
+// number of migrators may run at once, through any nodes of a cluster: a step run twice changes nothing, and
+// a step that arrives after the ones that follow it is repaired by running those again (replayAfter).
 // Without [Contract] it stops before the first contract step.
 func Migrate(ctx context.Context, db *sql.DB, opts ...MigrateOption) (version int, err error) {
 	var o migrateOptions
@@ -154,7 +155,44 @@ func migrate(ctx context.Context, db *sql.DB, steps []step, o migrateOptions) (i
 		if recorded > 0 {
 			slog.InfoContext(ctx, "kv/mariadb: schema step applied", "version", next.Version, "name", next.Name, "contract", next.Contract)
 		}
+		if err := replayAfter(ctx, db, steps, next.Version); err != nil {
+			return version, err
+		}
 	}
+}
+
+// replayAfter runs again the steps after version that the database records as applied. A step's statement
+// can reach the database late, after another migrator has applied the steps that follow it: an expand step
+// that arrives after the contract step that undoes it puts back what that step removed, while kv_schema
+// says it is gone. No lock prevents that across the nodes of a cluster, and DDL commits at once, so the
+// migrator repairs it instead. Every step can run again without changing what it did, so running the
+// recorded steps after the one it sent, in order, brings the schema back to what kv_schema says, contract
+// steps included; this is not applying a contract step, which only Contract() does, but restoring one.
+// Whichever migrator's statement arrives last runs this after it, so the last word is always the recorded
+// steps in order. Steps a newer release recorded and this one does not know cannot be run again: that is
+// said in the log, and the newer release's migrator runs them.
+func replayAfter(ctx context.Context, db *sql.DB, steps []step, version int) error {
+	applied, err := readApplied(ctx, db)
+	if err != nil {
+		return err
+	}
+	highest, err := schema.Version(applied)
+	if err != nil || highest <= version {
+		return err
+	}
+	for _, later := range steps[version:min(highest, len(steps))] {
+		if err := again(ctx, func() error {
+			_, err := db.ExecContext(ctx, later.sql)
+			return err
+		}); err != nil {
+			return fmt.Errorf("step %d (%s), run again after step %d arrived late: %w", later.Version, later.Name, version, err)
+		}
+	}
+	if highest > len(steps) {
+		slog.WarnContext(ctx, "kv/mariadb: steps of a newer release are recorded; this migrator cannot run them again after a late step",
+			"late", version, "known", len(steps), "recorded", highest)
+	}
+	return nil
 }
 
 // readApplied reads the steps the database records. A database without the record has none applied.

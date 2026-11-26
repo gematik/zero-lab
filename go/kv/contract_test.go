@@ -22,6 +22,7 @@
 package kv_test
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/gematik/zero-lab/go/kv"
@@ -54,4 +55,71 @@ func TestMemory_ResealerContract(t *testing.T) {
 	kvtest.Resealer(t, func(_ *testing.T, mark func(string, []byte) string) kv.Store {
 		return kv.NewMemory(kv.WithMemoryMark(mark))
 	})
+}
+
+// memory is everything a store of this package is.
+type memory interface {
+	kv.Store
+	kv.Swapper
+	kv.Marker
+	kv.Transactor
+	kv.Feed
+	kv.NumberedFeed
+	kv.Classed
+}
+
+// shared is the one memory store of a test as each of its pods has it: a pod that closes its store closes
+// its own connections, not the database.
+type shared struct{ memory }
+
+func (shared) Close() error { return nil }
+
+// memoryPods is a database in memory for the suites that run several pods: one store per class, which
+// keeps the marks of sealed records for every pod, also for one that asks for none.
+func memoryPods() kvtest.Open {
+	var mu sync.Mutex
+	stores := map[bool]kv.Store{}
+	return func(pod kvtest.Pod) (kv.Store, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if stores[pod.Ephemeral] == nil {
+			opts := []kv.MemoryOption{kv.WithMemoryMark(kv.SealedMarker(nil))}
+			if pod.Ephemeral {
+				opts = append(opts, kv.WithMemoryEphemeral())
+			}
+			stores[pod.Ephemeral] = kv.NewMemory(opts...)
+		}
+		return shared{stores[pod.Ephemeral].(memory)}, nil
+	}
+}
+
+func TestMemory_PodsRule5SealedRecordsOpenOnlyWhereAndAsWhatTheyWereSealed(t *testing.T) {
+	kvtest.Sealing(t, memoryPods())
+}
+
+func TestMemory_PodsRule5UnsealedRecordsOfBeforeAreNotTakenForSealedOnes(t *testing.T) {
+	kvtest.Unsealed(t, memoryPods())
+}
+
+func TestMemory_PodsRule22TheKeysChangeWhilePodsHoldDifferentFiles(t *testing.T) {
+	kvtest.Rotation(t, memoryPods())
+}
+
+func TestMemory_PodsRule22SealedEventsAcrossAChangeOfKeys(t *testing.T) {
+	kvtest.SealedEvents(t, memoryPods())
+}
+
+func TestMemory_PodsRule11ARevocationReachesTheFollowersOfOtherPods(t *testing.T) {
+	kvtest.Revocations(t, memoryPods())
+}
+
+func TestMemory_PodsRule11LoginsOfOneUserThroughSeveralPods(t *testing.T) {
+	kvtest.Logins(t, memoryPods())
+}
+
+// The contract of kv.Transactor: what a transaction read with Get stays as read until its end, against a
+// writer outside a transaction as against another transaction, for a record that is there and one that is
+// not.
+func TestMemory_WhatATransactionReadIsHeldAgainstWritersOutsideIt(t *testing.T) {
+	kvtest.TxOutside(t, func(*testing.T) kv.Store { return kv.NewMemory() })
 }

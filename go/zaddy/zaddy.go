@@ -79,21 +79,15 @@ type App struct {
 	// AcceptUntypedAccessTokens takes access tokens whose typ is not at+jwt (RFC 9068 Section 4), for an
 	// authorization server known to omit it; without it such a token is refused.
 	AcceptUntypedAccessTokens bool `json:"accept_untyped_access_tokens,omitempty"`
-	// RevocationsDatabaseURL is the Postgres DSN of the kv store zero-pep-proxy keeps its session revocations
-	// in. The SessionCookie enforcer admits zero-pep-proxy's session snapshots only while their session is not
-	// revoked, so a policy using it is refused without this.
-	RevocationsDatabaseURL string `json:"revocations_database_url,omitempty"`
 	// EgressProxyCredentialsPath names the file with the forward proxy's user:password; the proxy itself comes
 	// from HTTPS_PROXY, HTTP_PROXY and NO_PROXY in the environment, as for every egress client (servers.md rule 30).
 	EgressProxyCredentialsPath string `json:"egress_proxy_credentials_path,omitempty"`
 
-	logger          *slog.Logger
-	nonceKeys       nonce.Keys
-	storage         certmagic.Storage
-	stopReplays     context.CancelFunc
-	openRevocations openRevocationsFunc
-	stopRevocations func()
-	stopKeys        context.CancelFunc
+	logger      *slog.Logger
+	nonceKeys   nonce.Keys
+	storage     certmagic.Storage
+	stopReplays context.CancelFunc
+	stopKeys    context.CancelFunc
 	// egressClient reaches the authorization server; nil means egress.NewClient, and tests set one that trusts
 	// their server.
 	egressClient *http.Client
@@ -108,17 +102,12 @@ func (App) CaddyModule() caddy.ModuleInfo {
 	}
 }
 
-// Start follows the session revocations and builds the PEP from the app's configuration; Caddy does not start
-// if either fails (server rule 17): a replica that cannot follow the revocations would admit signed-out sessions.
+// Start builds the PEP from the app's configuration; Caddy does not start if that fails (server rule 17).
 func (a *App) Start() error {
 	a.logger.Info("Starting Zero app")
 	nonces, err := a.dpopNonces()
 	if err != nil {
 		return fmt.Errorf("DPoP nonces: %w", err)
-	}
-	revocations, err := a.followRevocations()
-	if err != nil {
-		return fmt.Errorf("session revocations: %w", err)
 	}
 	builder := pep.NewBuilder()
 	if a.AcceptUntypedAccessTokens {
@@ -139,7 +128,6 @@ func (a *App) Start() error {
 		PublicOrigin(a.PublicOrigin).
 		WithDPoPNonces(nonces).
 		WithDPoPReplays(a.dpopReplays()).
-		WithSessionRevocations(revocations).
 		WithSlogger(a.logger).
 		Build()
 	if err != nil {
@@ -279,7 +267,7 @@ const (
 	dpopNonceTTL = 5 * time.Minute
 )
 
-// Stop ends the sweep of DPoP replays and the following of revocations, and closes the PEP.
+// Stop ends the sweep of DPoP replays and the following of the authorization server's keys, and closes the PEP.
 func (a *App) Stop() error {
 	a.logger.Info("Stopping Zero app")
 	a.stopBackground()
@@ -289,9 +277,6 @@ func (a *App) Stop() error {
 func (a *App) stopBackground() {
 	if a.stopReplays != nil {
 		a.stopReplays()
-	}
-	if a.stopRevocations != nil {
-		a.stopRevocations()
 	}
 	if a.stopKeys != nil {
 		a.stopKeys()
@@ -381,11 +366,8 @@ func parseCaddyfilePEP(d *caddyfile.Dispenser, existingVal any) (any, error) {
 				return nil, d.ArgErr()
 			}
 			a.DPoPReplays = d.Val()
-		case "revocations_database_url":
-			if !d.NextArg() {
-				return nil, d.ArgErr()
-			}
-			a.RevocationsDatabaseURL = d.Val()
+		case "revocations_database_url", "revocations_database_plaintext_accepted", "revocations_database_tls_ca_path":
+			return nil, d.Errf("%s: zaddy keeps no database, and the SessionCookie enforcer that read the revocations there is not available (TASK-443)", d.Val())
 		case "egress_proxy_credentials_path":
 			if !d.NextArg() {
 				return nil, d.ArgErr()

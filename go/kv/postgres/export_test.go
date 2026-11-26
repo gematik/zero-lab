@@ -94,11 +94,25 @@ func SetCleanupBatch(n int) (restore func()) {
 
 // Config is what a DSN and the credentials beside it become: the host, the database, and the user and the
 // password the driver logs in with.
-func Config(dsn, user, password string) (host, database, asUser, withPassword string, err error) {
-	cfg, err := poolConfig(dsn, user, password)
+func Config(dsn, user, password string, opts ...Option) (host, database, asUser, withPassword string, err error) {
+	cfg, err := poolConfig(dsn, user, password, transportOf(opts))
 	if err != nil {
 		return "", "", "", "", err
 	}
 	c := cfg.ConnConfig
 	return c.Host, c.Database, c.User, c.Password, nil
+}
+
+// Transport is how a DSN with options is reached: whether with TLS, the name its certificate is verified
+// for, and how many other ways the driver would fall back to.
+func Transport(dsn string, opts ...Option) (withTLS bool, serverName string, fallbacks int, err error) {
+	cfg, err := poolConfig(dsn, "kv", "", transportOf(opts))
+	if err != nil {
+		return false, "", 0, err
+	}
+	c := cfg.ConnConfig
+	if c.TLSConfig != nil {
+		serverName = c.TLSConfig.ServerName
+	}
+	return c.TLSConfig != nil, serverName, len(c.Fallbacks), nil
 }

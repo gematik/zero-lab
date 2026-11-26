@@ -44,8 +44,11 @@ import (
 )
 
 // The tests share the database of TEST_DATABASE_URL, which a migrator has to have prepared: Open applies no
-// schema.
+// schema. A test binary that was started as a pod of a deployment test serves as that pod instead.
 func TestMain(m *testing.M) {
+	if kvtest.IsPod() {
+		os.Exit(kvtest.ServePod(openPod))
+	}
 	if dsn := os.Getenv("TEST_DATABASE_URL"); dsn != "" {
 		db, err := sql.Open("pgx", dsn)
 		if err == nil {
@@ -63,7 +66,7 @@ func TestMain(m *testing.M) {
 // openKV opens the store of a connection URL that carries its user and password, as TEST_DATABASE_URL does:
 // the store takes the address and the two apart.
 func openKV(ctx context.Context, dsn string, opts ...postgres.Option) (kv.Store, error) {
-	address, user, password, err := postgres.SplitURL(dsn)
+	address, user, password, opts, err := apart(dsn, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -71,11 +74,32 @@ func openKV(ctx context.Context, dsn string, opts ...postgres.Option) (kv.Store,
 }
 
 func openSteps(ctx context.Context, dsn string, steps []postgres.Step, opts ...postgres.Option) (kv.Store, error) {
-	address, user, password, err := postgres.SplitURL(dsn)
+	address, user, password, opts, err := apart(dsn, opts)
 	if err != nil {
 		return nil, err
 	}
 	return postgres.OpenSteps(ctx, address, user, password, steps, opts...)
+}
+
+// apart takes a connection URL of the tests apart as the store wants it: the address, the user and the
+// password, and, where the URL says sslmode=disable as the test database's does, the acceptance of
+// plaintext as an option instead.
+func apart(dsn string, opts []postgres.Option) (address, user, password string, with []postgres.Option, err error) {
+	address, user, password, err = postgres.SplitURL(dsn)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	u, err := url.Parse(address)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	query := u.Query()
+	if query.Get("sslmode") == "disable" {
+		opts = append(opts, postgres.WithPlaintextAccepted())
+	}
+	query.Del("sslmode")
+	u.RawQuery = query.Encode()
+	return u.String(), user, password, opts, nil
 }
 
 // testStore opens the Postgres store from TEST_DATABASE_URL (skipping when unset) and namespaces all

@@ -56,10 +56,27 @@ func OpenSteps(ctx context.Context, dsn, user, password string, steps []Step, op
 
 // Config is what a DSN and the credentials beside it become: the address, the database, the user and the
 // password the driver logs in with, whether TLS is on, and the session parameters.
-func Config(dsn, user, password string) (addr, database, asUser, withPassword string, tlsOn bool, params map[string]string, err error) {
-	cfg, err := config(dsn, user, password, nil)
+func Config(dsn, user, password string, opts ...Option) (addr, database, asUser, withPassword string, tlsOn bool, params map[string]string, err error) {
+	s := &store{}
+	for _, opt := range opts {
+		opt(s)
+	}
+	cfg, err := s.config(dsn, user, password)
 	if err != nil {
 		return "", "", "", "", false, nil, err
 	}
 	return cfg.Addr, cfg.DBName, cfg.User, cfg.Passwd, cfg.TLS != nil, cfg.Params, nil
+}
+
+// ServerName is the name a DSN's certificate is verified for.
+func ServerName(dsn string, opts ...Option) (string, error) {
+	s := &store{}
+	for _, opt := range opts {
+		opt(s)
+	}
+	cfg, err := s.config(dsn, "kv", "")
+	if err != nil || cfg.TLS == nil {
+		return "", err
+	}
+	return cfg.TLS.ServerName, nil
 }

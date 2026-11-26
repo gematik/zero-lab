@@ -94,7 +94,7 @@ file its row names.
 | [`go/idpd`](go/idpd) | library | Client of the IDP-Dienst: relying party of its code flow, and the Authenticator that answers its challenge | brainpool, egress, openid, pkcs12, tipki | `client.go` |
 | [`go/pep`](go/pep) | library | Policy enforcement point for HTTP: enforcers on access token, DPoP proof or session cookie, denials as OAuth errors | dpop | `pep.go` |
 | [`go/pep/proxy`](go/pep/proxy) | command | `zero-pep-proxy`, an oauth2-proxy-style login gateway that keeps tokens on the server | pep, oidf, idpd, openid, kv, dpop, egress, httpguard, tipki, brainpool | [design](go/pep/proxy/docs/DESIGN.md) |
-| [`go/zaddy`](go/zaddy) | command | `zero-caddy`, a Caddy build with pep as its handlers (`enforce_policy`, `protected_resource_metadata`) and the ZETA PEP headers | pep, dpop, kv, nonce, egress, httpguard | [README](go/zaddy/README.md) |
+| [`go/zaddy`](go/zaddy) | command | `zero-caddy`, a Caddy build with pep as its handlers (`enforce_policy`, `protected_resource_metadata`) and the ZETA PEP headers | pep, dpop, nonce, egress, httpguard | [README](go/zaddy/README.md) |
 | [`go/epa`](go/epa) | command | `zero-epa`, a client of ePA für alle: the VAU channel (`vau`), authorization, a proxy with a developer portal; drives the Rust `ti` for brainpool identities and PKI (`ti`) | brainpool, egress, httpguard, tipki | `authz.go` |
 | [`go/pdp`](go/pdp) | command | `zero-pdp`, a prototype policy decision point (OAuth authorization server); frozen, it gets no features, fixes or releases | most libraries | [e2e](go/docs/e2e.md) |
 | [`go/metsubushi`](go/metsubushi) | command | A pod smoke-test endpoint that echoes the request and shows pod information | | [README](go/metsubushi/README.md) |

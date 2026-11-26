@@ -15,7 +15,7 @@ resources. It is what the pep gateway acts as a client of.
 
 ```sh
 docker run -p 8011:8011 \
-  -e DATABASE_URL='postgres://user:pass@db:5432/zero?sslmode=disable' \
+  -e DATABASE_URL='postgres://user:pass@db:5432/zero' -e DATABASE_PLAINTEXT_ACCEPTED=true \
   -e PDP_STORE_KEY_PATH=/etc/pdp/store.key \
   -v "$PWD/config:/etc/pdp:ro" \
   spilikin/zero-pdp:latest start

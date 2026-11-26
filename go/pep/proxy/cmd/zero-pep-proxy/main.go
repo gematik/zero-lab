@@ -52,8 +52,15 @@
 //	PEP_SESSION_STORE_KEY_PATH  key file (`<id> <base64 of 32 bytes>` per line) → seals everything in the kv store,
 //	                         read at start; a changed file takes effect with a rollout. Required with
 //	                         PEP_DATABASE_URL. See docs/at-rest-encryption.md.
-//	PEP_DATABASE_URL         Postgres DSN for the session store; durable + shared across replicas. When unset,
-//	                         an in-memory store is used (dev only — sessions are lost on restart, not shared).
+//	PEP_DATABASE_URL         Postgres URL of the session store (postgres://user:password@host:port/database);
+//	                         durable + shared across replicas. When unset, an in-memory store is used (dev only —
+//	                         sessions are lost on restart, not shared). The connection is TLS with the server's
+//	                         certificate verified, under the system's roots or the CA bundle of
+//	                         PEP_DATABASE_TLS_CA_PATH; plaintext only with PEP_DATABASE_PLAINTEXT_ACCEPTED=true
+//	                         (servers.md rule 29). The URL names no sslmode. The schema is applied before a
+//	                         rollout by `zero-pep-proxy migrate` (`migrate contract` once no older replica is
+//	                         left), with a URL whose user may change it; PEP_DATABASE_MIGRATE=true lets the
+//	                         server apply it itself (servers.md rule 22).
 //
 // Usage: zero-pep-proxy [-w workdir]
 //
@@ -207,12 +214,18 @@ func openStore() kv.Store {
 		slog.Warn("PEP_DATABASE_URL not set — using in-memory kv store, for a single replica only (sessions are lost on restart and not shared across replicas)")
 		store = kv.NewMemory()
 	} else {
-		// PEP_DATABASE_URL is one URL with the user and the password in it; the store takes them apart.
-		address, user, password, err := postgres.SplitURL(dsn)
+		db, err := databaseOf(dsn, os.Getenv, readOperatorFile)
 		if err != nil {
 			log.Fatalf("open postgres kv store: %v", err)
 		}
-		if store, err = postgres.Open(context.Background(), address, user, password, postgres.WithMigrate()); err != nil {
+		// The schema is applied by a migration job (zero-pep-proxy migrate) unless the operator lets the
+		// server do it (servers.md rule 22).
+		opts := db.transport
+		if db.migrate {
+			slog.Warn("the session store's schema is applied by this server: its database user may change the schema (" + databaseMigrateEnv + ")")
+			opts = append(opts, postgres.WithMigrate())
+		}
+		if store, err = postgres.Open(context.Background(), db.address, db.user, db.password, opts...); err != nil {
 			log.Fatalf("open postgres kv store: %v", err)
 		}
 		slog.Info("using postgres kv store for sessions")
@@ -236,11 +249,11 @@ func openRevocations(store kv.Store, ttl time.Duration) proxy.Revocations {
 		slog.Warn("PEP_DATABASE_URL not set — revocations held in memory, for a single replica only")
 		return proxy.NewMemoryRevocations(nil)
 	}
-	address, user, password, err := postgres.SplitURL(dsn)
+	db, err := databaseOf(dsn, os.Getenv, readOperatorFile)
 	if err != nil {
 		log.Fatalf("open revocation bus: %v", err)
 	}
-	bus, err := postgres.OpenBus(context.Background(), address, user, password)
+	bus, err := postgres.OpenBus(context.Background(), db.address, db.user, db.password, db.transport...)
 	if err != nil {
 		log.Fatalf("open revocation bus: %v", err)
 	}
@@ -258,6 +271,12 @@ func openRevocations(store kv.Store, ttl time.Duration) proxy.Revocations {
 func main() {
 	workdir := flag.String("w", "", "working directory: chdir here")
 	flag.Parse()
+	if flag.Arg(0) == "migrate" {
+		if err := migrateCommand(context.Background(), flag.Args()[1:], os.Getenv, os.Stdout); err != nil {
+			log.Fatalf("migrate: %v", err)
+		}
+		return
+	}
 
 	// Resolve an explicitly-set PEP_OPENID_PROVIDERS_PATH against the invocation directory now, before -w
 	// changes the cwd, so the providers file's own relative paths (OIDF keys/secrets) stay anchored to its

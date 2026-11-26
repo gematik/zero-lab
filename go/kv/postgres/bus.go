@@ -46,12 +46,15 @@ type pgBus struct {
 }
 
 // OpenBus connects to Postgres at dsn as user for publishing notifications; subscribers dial their own
-// listener connection. DSN, user and password are as for [Open]. Returns a kv.Bus.
-func OpenBus(ctx context.Context, dsn, user, password string) (kv.Bus, error) {
-	cfg, err := poolConfig(dsn, user, password)
+// listener connection. DSN, user and password are as for [Open], and of the options it takes [WithTLS] and
+// [WithPlaintextAccepted]. Returns a kv.Bus.
+func OpenBus(ctx context.Context, dsn, user, password string, opts ...Option) (kv.Bus, error) {
+	t := transportOf(opts)
+	cfg, err := poolConfig(dsn, user, password, t)
 	if err != nil {
 		return nil, err
 	}
+	logPlaintext(ctx, "the connection of the bus", t, cfg)
 	cfg.MaxConns = 2
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {

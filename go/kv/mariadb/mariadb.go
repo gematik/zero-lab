@@ -38,6 +38,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strings"
@@ -84,6 +85,8 @@ type store struct {
 	migrate  bool
 	syncWait SyncWait
 	tls      *tls.Config
+	// plaintext is the operator's acceptance of a connection without TLS.
+	plaintext bool
 	// poll is how often a follower of the feed looks (feed.go).
 	poll time.Duration
 	// ephemeral is the class of the store, table the table of its records (ephemeral.go).
@@ -112,12 +115,23 @@ func WithSyncWait(mode SyncWait) Option {
 	return func(s *store) { s.syncWait = mode }
 }
 
-// WithTLS sets the TLS configuration of the connections, for a server whose certificate the system's roots
-// do not vouch for. Without it the server's certificate is verified against the system's roots and the
-// host of the DSN, unless the DSN says tls=false.
+// WithTLS sets the TLS configuration of the connections: a CA of the deployment's own, a client
+// certificate. Without it the server's certificate is verified against the system's roots. The name the
+// certificate is verified for is the host of the DSN unless the configuration names another. A
+// configuration that skips verification is refused.
 func WithTLS(config *tls.Config) Option {
 	return func(s *store) { s.tls = config }
 }
+
+// WithPlaintextAccepted lets the store connect without TLS: the operator's statement that the deployment
+// protects the connection (server rule 29). A host sets it from a setting of its own beside the DSN, never
+// by default; the backend logs it at Open. Without it a database that offers no TLS is refused.
+func WithPlaintextAccepted() Option {
+	return func(s *store) { s.plaintext = true }
+}
+
+// tlsCurves are the curves offered to the database: the NIST curves gemSpec_Krypt names for TLS.
+var tlsCurves = []tls.CurveID{tls.CurveP256, tls.CurveP384}
 
 // config makes the driver's configuration from a DSN of the form
 //
@@ -125,10 +139,13 @@ func WithTLS(config *tls.Config) Option {
 //
 // with the port 3306 when none is given, and from the user and the password, which are not part of it: a
 // DSN is an address, written into configuration and logs, and a password in a URL has to be escaped to be
-// read as it is meant. A DSN that carries a user or a password is refused. The connection is TLS unless the
-// DSN says ?tls=false, the operator's statement that the deployment protects it. Every session runs in UTC
-// and in strict mode: a value that does not fit a column is an error, never cut short.
-func config(dsn, user, password string, custom *tls.Config) (*mysql.Config, error) {
+// read as it is meant. A DSN that carries a user or a password is refused, and so is one with any
+// parameter: nothing in an address says how the connection is protected, or changes the driver. The
+// connection is TLS, with the server's certificate verified for the host of the DSN, unless the store was
+// told that the operator accepted plaintext (server rule 29); there is no trying one and falling back to
+// the other. Every session runs in UTC and in strict mode: a value that does not fit a column is an error,
+// never cut short.
+func (s *store) config(dsn, user, password string) (*mysql.Config, error) {
 	u, err := url.Parse(dsn)
 	if err != nil {
 		// What is not a URL may still hold a secret someone put there: the parse error, which quotes it,
@@ -144,6 +161,9 @@ func config(dsn, user, password string, custom *tls.Config) (*mysql.Config, erro
 	database := strings.TrimPrefix(u.Path, "/")
 	if u.Hostname() == "" || database == "" || strings.Contains(database, "/") {
 		return nil, errors.New("kv/mariadb: the DSN names no host or no database")
+	}
+	for name := range u.Query() {
+		return nil, fmt.Errorf("kv/mariadb: the DSN has a parameter, %s: it is the address alone", name)
 	}
 	cfg := mysql.NewConfig()
 	cfg.User = user
@@ -162,24 +182,22 @@ func config(dsn, user, password string, custom *tls.Config) (*mysql.Config, erro
 		"time_zone": "'+00:00'",
 		"sql_mode":  "'STRICT_ALL_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'",
 	}
-	query := u.Query()
-	for name := range query {
-		if name != "tls" {
-			return nil, fmt.Errorf("kv/mariadb: the DSN has a parameter this backend does not know: %s", name)
-		}
-	}
-	switch query.Get("tls") {
-	case "", "true":
-		cfg.TLS = custom
-		if cfg.TLS == nil {
-			cfg.TLS = &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12}
-		}
-	case "false":
-		if custom != nil {
-			return nil, errors.New("kv/mariadb: a TLS configuration beside tls=false in the DSN")
-		}
+	switch {
+	case s.plaintext && s.tls != nil:
+		return nil, errors.New("kv/mariadb: a TLS configuration beside accepted plaintext")
+	case s.plaintext:
+	case s.tls == nil:
+		cfg.TLS = &tls.Config{ServerName: u.Hostname(), MinVersion: tls.VersionTLS12, CurvePreferences: tlsCurves}
+	case s.tls.InsecureSkipVerify:
+		return nil, errors.New("kv/mariadb: a TLS configuration that skips verification")
 	default:
-		return nil, errors.New("kv/mariadb: tls in the DSN is true or false")
+		cfg.TLS = s.tls.Clone()
+		if cfg.TLS.ServerName == "" {
+			cfg.TLS.ServerName = u.Hostname()
+		}
+		if cfg.TLS.MinVersion < tls.VersionTLS12 {
+			cfg.TLS.MinVersion = tls.VersionTLS12
+		}
 	}
 	return cfg, nil
 }
@@ -193,13 +211,13 @@ func connect(cfg *mysql.Config) (*sql.DB, error) {
 }
 
 // OpenDB opens connections to the database of dsn as this package's sessions are: for [Migrate], which
-// takes a user that may change the schema.
+// takes a user that may change the schema. Of the options it takes [WithTLS] and [WithPlaintextAccepted].
 func OpenDB(dsn, user, password string, opts ...Option) (*sql.DB, error) {
 	s := &store{}
 	for _, opt := range opts {
 		opt(s)
 	}
-	cfg, err := config(dsn, user, password, s.tls)
+	cfg, err := s.config(dsn, user, password)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +230,8 @@ func OpenDB(dsn, user, password string, opts ...Option) (*sql.DB, error) {
 
 // Open connects to MariaDB at dsn as user, checks the schema and returns a kv.Store. The DSN is the address
 // alone (mariadb://host:port/database); user and password are given beside it, as a deployment has them: an
-// address in its configuration and the two in a secret. It runs no DDL: it refuses a
+// address in its configuration and the two in a secret. The connection is TLS with the server's certificate
+// verified ([WithTLS] for a CA of one's own), or plaintext only with [WithPlaintextAccepted]. It runs no DDL: it refuses a
 // database that lacks a step this release needs, or on which a contract step it does not know was applied
 // (an error that is a schema.ErrVersion and names the versions). The steps are applied by [Migrate], or by
 // Open itself with [WithMigrate]. The user needs SELECT, INSERT, UPDATE and DELETE on the tables kv, kv_feed
@@ -229,9 +248,13 @@ func open(ctx context.Context, dsn, user, password string, steps []step, opts ..
 	if s.poll <= 0 {
 		return nil, errors.New("kv/mariadb: the feed's followers look every positive duration")
 	}
-	cfg, err := config(dsn, user, password, s.tls)
+	cfg, err := s.config(dsn, user, password)
 	if err != nil {
 		return nil, err
+	}
+	if s.plaintext {
+		slog.WarnContext(ctx, "kv/mariadb: the connection to the database is in plaintext, accepted by the operator",
+			"address", cfg.Addr, "database", cfg.DBName)
 	}
 	db, err := connect(cfg)
 	if err != nil {

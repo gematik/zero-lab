@@ -136,23 +136,25 @@ func (t *pgTx) queryRow(ctx context.Context, query string, args ...any) pgx.Row 
 	return t.tx.QueryRow(ctx, t.s.q(query), args...)
 }
 
-// keyLock is the seed of the advisory locks Get takes on keys, so that they are no other lock of this
-// package's by chance of a hash.
-const keyLock = 0x6b765f6b6579 // "kv_key"
-
-// Get holds the record until the transaction ends, also a record that is not there: a transaction's
-// advisory lock on the key makes the transactions that read one key wait for each other, and the row lock
-// keeps a writer outside a transaction from changing a record that is there.
+// Get holds the record until the transaction ends, also a record that is not there. A record that is there
+// is locked by FOR UPDATE. One that is not has no row to lock, and an advisory lock would hold only callers
+// that take it too, which a write outside a transaction does not; so Get puts a placeholder in its place:
+// a row whose time is over, which every read takes for absent and Cleanup removes. Its lock makes every
+// writer of the key wait for the transaction, outside it too (an upsert waits on the row of its key), and
+// a second transaction that reads the key waits on the placeholder's insert and then finds what the first
+// one left. When the transaction ends without writing the key, the placeholder stays behind, absent, until
+// Cleanup; when it rolls back, the placeholder goes with it.
 func (t *pgTx) Get(ctx context.Context, key string) ([]byte, bool, error) {
 	if err := t.ops.Count(); err != nil {
 		return nil, false, err
 	}
-	if _, err := t.tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, $2))`, key, int64(keyLock)); err != nil {
+	if _, err := t.exec(ctx, `INSERT INTO @kv(key, value, expires_at) VALUES($1, '', '-infinity') ON CONFLICT(key) DO NOTHING`, key); err != nil {
 		return nil, false, err
 	}
 	var v []byte
-	err := t.queryRow(ctx, `SELECT value FROM @kv WHERE key=$1 AND `+live+` FOR UPDATE`, key).Scan(&v)
-	if errors.Is(err, pgx.ErrNoRows) {
+	var isLive bool
+	err := t.queryRow(ctx, `SELECT value, `+live+` FROM @kv WHERE key=$1 FOR UPDATE`, key).Scan(&v, &isLive)
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && !isLive {
 		return nil, false, nil
 	}
 	if err != nil {

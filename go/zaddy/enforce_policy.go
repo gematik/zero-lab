@@ -62,7 +62,7 @@ func (EnforcePolicyMiddleware) CaddyModule() caddy.ModuleInfo {
 }
 
 // Provision resolves the logger and the app "zero" whose PEP the handler uses; it fails if that app is
-// not configured, or if the policy uses a SessionCookie enforcer and the app follows no session revocations.
+// not configured, or if the policy uses a SessionCookie enforcer, which zaddy cannot hold (refuseSessionCookie).
 func (m *EnforcePolicyMiddleware) Provision(ctx caddy.Context) error {
 	m.logger = ctx.Slogger()
 
@@ -71,7 +71,7 @@ func (m *EnforcePolicyMiddleware) Provision(ctx caddy.Context) error {
 		return err
 	}
 
-	return requireRevocations(m.Enforcer, m.app)
+	return refuseSessionCookie(m.Enforcer)
 }
 
 // Validate implements caddy.Validator.

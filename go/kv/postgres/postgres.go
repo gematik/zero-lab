@@ -106,6 +106,8 @@ type store struct {
 	// ephemeral is the class of the store, table the table of its records (ephemeral.go).
 	ephemeral bool
 	table     string
+	// transport is how the database is reached (conn.go).
+	transport transport
 }
 
 // Option adjusts the store [Open] returns.
@@ -137,9 +139,9 @@ func (s *store) markOf(key string, value []byte) any {
 }
 
 // Open connects to Postgres at dsn as user, checks the schema and returns a kv.Store. The DSN is the
-// address alone (postgres://host:port/database, with sslmode and the like as its parameters); user and
-// password are given beside it, as a deployment has them: an address in its configuration and the two in a
-// secret. It runs no DDL: it refuses a database that lacks a step this release needs, or on which a
+// address alone (postgres://host:port/database); user and password are given beside it, as a deployment has
+// them: an address in its configuration and the two in a secret. The connection is TLS with the server's
+// certificate verified ([WithTLS] for a CA of one's own), or plaintext only with [WithPlaintextAccepted]. It runs no DDL: it refuses a database that lacks a step this release needs, or on which a
 // contract step it does not know was applied (an error that is a schema.ErrVersion and names the versions).
 // The steps are applied by [Migrate], or by Open itself with [WithMigrate]. The role needs SELECT, INSERT,
 // UPDATE and DELETE on the tables kv, kv_feed and kv_topic and SELECT on kv_schema, and with [WithMigrate] the right to create and
@@ -156,10 +158,11 @@ func open(ctx context.Context, dsn, user, password string, steps []step, opts ..
 	if s.poll <= 0 {
 		return nil, errors.New("kv/postgres: the feed's followers look every positive duration")
 	}
-	cfg, err := poolConfig(dsn, user, password)
+	cfg, err := poolConfig(dsn, user, password, s.transport)
 	if err != nil {
 		return nil, err
 	}
+	logPlaintext(ctx, "the connection to the database", s.transport, cfg)
 	s.listen = cfg.ConnConfig.Copy()
 	// The schema is read, and with WithMigrate changed, over a connection of its own, which is closed
 	// before the store serves.

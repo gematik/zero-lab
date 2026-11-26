@@ -38,9 +38,24 @@ case "mariadb", "mysql":
 
 | | PostgreSQL | MariaDB |
 |---|---|---|
-| DSN | `postgres://host:port/database?sslmode=verify-full` | `mariadb://host:port/database` |
-| TLS | by `sslmode`; pgx's default, `prefer`, falls back to plaintext without saying so: set it | on unless the DSN says `?tls=false`; `WithTLS` for a CA of one's own |
+| DSN | `postgres://host:port/database` | `mariadb://host:port/database` |
 | Topologies | a primary, with or without replicas | one node, a primary with replicas, Galera with one or several writing nodes |
+
+The connection is protected as every other connection of a server (rule 29), alike in both
+backends:
+
+- **TLS by default**, with the server's certificate verified for the host of the DSN under
+  the system's roots. `WithTLS` gives a CA of the deployment's own, another name to verify,
+  or a client certificate; a configuration that skips verification is refused.
+- **Plaintext only by the operator's acceptance**: `WithPlaintextAccepted()`, which the host
+  sets from a setting of its own beside the DSN (`…_PLAINTEXT_ACCEPTED=true`, read as one
+  exact value) and the backend logs at `Open`. There is no trying TLS and carrying on
+  without it.
+- **The DSN says nothing of it.** One that names `sslmode`, `tls` or another parameter of
+  the transport is refused, so nothing in an address can weaken the connection, and the
+  driver's own settings in the environment (`PGSSLMODE`) are not used.
+
+`OpenDB` and `OpenBus` take the same two options.
 
 The host reads the address from its configuration and the user and password from files
 (rule 6 and [naming and configuration](../../../docs/conventions/naming-and-config.md)).
@@ -270,26 +285,41 @@ and is found by the test that makes it.
 
 `kvtest.X` is a suite of `kv/kvtest` that memory, PostgreSQL and MariaDB all run; the
 others are tests of one backend. The Galera tests send every call through another of
-three writing nodes (`just kv-mariadb-test`).
+three writing nodes (`just kv-mariadb-test`). The suites that take pods run several
+stores, each with connections of its own, against one database, and through the nodes of
+the cluster as `TestGalera_Pods` (`just kv-e2e-test`); in `kvtest.StartTogether` and
+`kvtest.RollingMigration` each pod is a process, so they run on the databases alone.
 
 | Statement | Test |
 |---|---|
 | The stores behave alike: values, expiry, one winner for `Take`, `SetIfAbsent` and `Swap`, keys by a literal prefix in the order of their bytes | `kvtest.Store`; through Galera nodes `TestGalera_Task429TheContractHoldsThroughDifferentWritingNodes` |
-| A DSN with a user or a password, or one the backend does not understand in full, is refused | `TestConfig_ADSNWithAUserOrAPasswordIsRefused`, `TestConfig_Rule17RefusesWhatItDoesNotKnow` |
+| A DSN with a user or a password, or one the backend does not understand in full, is refused | `TestConfig_ADSNWithAUserOrAPasswordIsRefused`, `TestConfig_Rule17RefusesWhatItDoesNotKnow`; on PostgreSQL `TestConfig_Rule17ADSNThatSetsTheSessionOrNamesAnotherHostIsRefused`, `TestPostgres_Rule11AnAddressCannotTakeTheFlushFromTheDurableClass` |
+| The connection is TLS without a fallback; plaintext only when accepted; no transport parameter in the DSN | `TestConfig_Rule29TheConnectionIsTLSWithoutAFallback`, `TestConfig_Rule29PlaintextOnlyWhenAccepted`, `TestOpen_Rule29ADatabaseWithoutTLSIsRefusedUnlessPlaintextIsAccepted`, `TestOpen_Rule29ADatabaseIsNotReachedInPlaintextUnlessAccepted` |
+| The server's certificate is verified for its CA and its name, and a client certificate is presented | `TestOpen_Rule29TheServersCertificateIsVerifiedForItsCAAndItsName`, `TestOpen_Rule29AClientCertificateIsPresentedWhenTheConfigurationHasOne` (`just kv-postgres-test`, `just kv-mariadb-test`) |
 | A key over 1024 bytes is refused on MariaDB | `TestMariaDB_AKeyLongerThanTheBoundIsRefusedNotCutShort` |
-| Many migrators at once all succeed | `TestMigrate_Task428ByManyAtOnceAppliesEachStepOnce`, `TestMigrate_Task429ByManyAtOnceSucceedsForAll`, `TestGalera_Task429MigratorsThroughDifferentNodesAtOnceSucceedForAll` |
+| Many migrators at once all succeed | `TestMigrate_Task428ByManyAtOnceAppliesEachStepOnce`, `TestMigrate_Task429ByManyAtOnceSucceedsForAll`, `TestGalera_Task429MigratorsThroughDifferentNodesAtOnceSucceedForAll`; a step of one that arrives after another applied the contract step that undoes it: `TestMigrate_AStepThatArrivesAfterTheContractStepThatUndoesItDoesNotPutBackWhatWasRemoved` |
 | `Open` runs no DDL and works with a user without schema rights | `TestOpen_Task428RunsNoDDLAndWorksWithARoleThatMayNotChangeTheSchema`, `TestOpen_Task429RunsNoDDLAndWorksWithAUserThatMayNotChangeTheSchema` |
 | `Open` refuses a missing step and an unknown contract step, and starts on a newer release's expand steps | `TestOpen_Rule17RefusesADatabaseThatLacksAStepItNeeds`, `TestOpen_Rule17RefusesADatabaseWithAContractStepItDoesNotKnow`, `TestOpen_Rule22StartsOnExpandStepsOfANewerRelease` |
 | `WithMigrate()` never applies a contract step; `Migrate` only when asked | `TestOpen_Task428WithMigrateAppliesExpandStepsAndNeverAContractStep`, `TestMigrate_Task428AppliesAContractStepOnlyWhenAsked`, `TestOpen_Task429WithMigrateAppliesExpandStepsAndNeverAContractStep`, `TestMigrate_Task429AppliesAContractStepOnlyWhenAsked` |
 | The classes keep their records apart and say which they are | `kvtest.Ephemeral`, `TestPostgres_Task431TheClassesKeepTheirRecordsApart`, `TestMariaDB_Task431TheClassesKeepTheirRecordsApart` |
-| PostgreSQL's ephemeral writes are unlogged and do not wait for the flush; what each class costs | `TestPostgres_Task431EphemeralWritesAreUnloggedAndDoNotWaitForTheFlush`, `TestPostgres_Task431WhatAWriteCostsInEachClass`, `TestMariaDB_Task431WhatAWriteCostsInEachClass` |
+| PostgreSQL's ephemeral writes are unlogged and do not wait for the flush; what each class costs | `TestPostgres_Task431EphemeralWritesAreUnloggedAndDoNotWaitForTheFlush`, `TestPostgres_Rule11EveryWriteOfTheDurableClassWaitsForTheFlushAndNoneOfTheEphemeral`, `TestPostgres_Task431WhatAWriteCostsInEachClass`, `TestMariaDB_Task431WhatAWriteCostsInEachClass` |
 | A sealed record of one class does not open in the other | `TestSealed_ARecordOfOneClassDoesNotOpenInTheOther` |
 | The database holds no record and no event in the clear, and the notification carries the topic alone | `TestPostgres_Rule5TheDatabaseHoldsNoRecordAndNoEventInTheClear`, `TestMariaDB_Rule5TheDatabaseHoldsNoRecordAndNoEventInTheClear` |
 | The records of a key of before are found and taken along, in each class | `kvtest.Marker`, `kvtest.Resealer` |
-| A transaction takes effect as a whole or not at all, holds what it read, and is bounded | `kvtest.Tx`; through Galera nodes `TestGalera_Task432TheTxContractHoldsThroughDifferentWritingNodes` |
+| A transaction takes effect as a whole or not at all, holds what it read, also against writers outside it, and is bounded | `kvtest.Tx`, `kvtest.TxOutside`; through Galera nodes `TestGalera_Task432TheTxContractHoldsThroughDifferentWritingNodes` |
 | A record only read is not protected across writing nodes | `TestGalera_Task432ARecordOnlyReadIsNotProtectedAcrossNodes` |
 | Events are numbered without a gap, in order, resumable, and gone after their retention | `kvtest.Feed`; through Galera nodes `TestGalera_Task432TheFeedContractHoldsThroughDifferentWritingNodes` |
-| On PostgreSQL an event arrives by its notification, and without it by the look | `TestPostgres_Task432AnEventArrivesByItsNotification`, `TestPostgres_Task432AnEventWithoutItsNotificationStillArrives` |
+| On PostgreSQL an event arrives by its notification, and without it by the look | `TestPostgres_Task432AnEventArrivesByItsNotification`, `TestPostgres_Task432AnEventWithoutItsNotificationStillArrives`, `TestPostgres_Task432AnEventWrittenWhileTheFollowerWaitsUntoldArrivesByItsLook` |
 | A sealed event opens only where and as what it was sealed | `kvtest.SealedFeed`; through Galera nodes `TestGalera_Task433TheSealedFeedContractHoldsThroughDifferentWritingNodes` |
 | In a cluster a value written through one node is found through another at once | `TestGalera_Task429AValueWrittenThroughOneNodeIsFoundThroughAnotherAtOnce` |
-| On PostgreSQL `Cleanup` deletes in batches, one replica at a time, and prefixes read a range of an index | `TestPostgres_Task430CleanupDeletesABacklogInBatches`, `TestPostgres_Task430OnlyOneReplicaCleansAtATime`, `TestPostgres_Task430KeysAndMarksByPrefixReadARangeOfAnIndex` |
+| The pods of a first installation start at once, after a migration job or each applying the schema itself, and refuse without either | `kvtest.StartTogether` |
+| A deployment goes to the next release while its pods serve: expand steps under running pods, restarts, pods of both releases side by side, the contract step after the last old pod, and the refusal of an old pod after it | `kvtest.RollingMigration` |
+| Sealed records open only under their key, purpose and class, by every way of reading, and end when their seal says | `kvtest.Sealing` |
+| Unsealed records of a release before sealing are never taken for sealed ones, and are found and taken along by the host, which seals only what it knows as such a record | `kvtest.Unsealed`; a database of before the steps with its sealed records: `TestPods_Rule22ADatabaseOfBeforeTheStepsIsAdoptedWithItsSealedRecords` |
+| The keys change by the four steps of "When the keys change", with a keyring and with a keychain, while pods hold different files; a pod a stage too far fails closed | `kvtest.Rotation` |
+| Sealed events across a change of the feed's keys, for a follower that holds the feed's keys alone | `kvtest.SealedEvents` |
+| A revocation published with its change reaches the followers of other pods; a follower restarts at its cursor, and sees a gap after the retention | `kvtest.Revocations`; on PostgreSQL by notification alone and with the listeners cut off: `TestPods_Rule11ARevocationReachesTheFollowersOfOtherPodsByItsNotification`, `TestPods_Rule11ARevocationReachesTheFollowersWhoseListenersAreCutOff` |
+| The worked case: logins of one user through several pods | `kvtest.Logins` |
+| `Cleanup` removes the events whose retention is over | `TestPostgres_CleanupRemovesTheEventsWhoseRetentionIsOver`, `TestMariaDB_CleanupRemovesTheEventsWhoseRetentionIsOver` |
+| A transaction that lost against another runs again | `TestPostgres_ATransactionThatLosesAgainstAnotherRunsAgain`, `TestMariaDB_ATransactionThatLosesAgainstAnotherRunsAgain` |
+| On PostgreSQL `Cleanup` deletes in batches, one replica at a time, and prefixes read a range of an index | `TestPostgres_Task430CleanupDeletesABacklogInBatches`, `TestPostgres_Task430NoStatementOfCleanupDeletesMoreThanABatch`, `TestPostgres_Task430OnlyOneReplicaCleansAtATime`, `TestPostgres_Task430KeysAndMarksByPrefixReadARangeOfAnIndex` |

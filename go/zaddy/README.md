@@ -184,31 +184,14 @@ certificates: whoever can delete a record can replay that proof.
 }
 ```
 
-## Session cookies and revocations
+## Session cookies
 
-A `SessionCookie` enforcer (JSON `{"type": "SessionCookie", "cookie_name": …, "key_path": …}`) admits a
-request on zero-pep-proxy's session snapshot. A snapshot stays valid until it expires (8 hours by default),
-also after its session was signed out or rotated, so the enforcer asks zero-pep-proxy's revocations too and
-refuses a snapshot whose session is revoked. Set `revocations_database_url` in the global `pep` block to the
-Postgres DSN of the kv store zero-pep-proxy keeps them in (its `PEP_DATABASE_URL`):
+zaddy keeps no database and has no session revocations (TASK-443). A `SessionCookie` enforcer, which admits a
+request on zero-pep-proxy's session snapshot, is therefore refused: a snapshot stays valid until it expires (8
+hours by default), also after its session was signed out or rotated, and without the revocations a signed-out
+session would pass for that long. A configuration whose `enforce_policy` uses a `SessionCookie` enforcer at any
+depth does not start, and neither does one that still names `revocations_database_url`,
+`revocations_database_plaintext_accepted` or `revocations_database_tls_ca_path`.
 
-```caddyfile
-{
-	pep {
-		resource https://api.example.com
-		revocations_database_url {file./run/secrets/pep-database-url}
-	}
-}
-```
-
-The DSN carries a password, so give it from a mounted file through Caddy's `{file.…}` placeholder rather than in
-the Caddyfile. When the app starts, zaddy connects to the store, loads the revocations stored under
-`pep:revoked:` and follows new ones on the `pep_revoked` channel (Postgres `LISTEN`/`NOTIFY`), reading the store
-again every 30 seconds for what the channel dropped. It reads keys only, so it needs no share of
-zero-pep-proxy's store keys; it opens the store as zero-pep-proxy does, which creates the kv table if it is
-missing. Requests are judged against the set in memory, without a database read.
-
-zaddy fails closed. It does not start when it cannot connect or read the revocations, and a configuration whose
-`enforce_policy` uses a `SessionCookie` enforcer at any depth is refused without `revocations_database_url`. If
-the store cannot be read for 90 seconds while zaddy runs, every snapshot whose session it does not already know
-to be revoked is refused until a read succeeds again.
+A route that is to admit zero-pep-proxy's sessions asks zero-pep-proxy for each request with Caddy's
+`forward_auth` to its `/oauth2/auth`, which knows the sign-outs.

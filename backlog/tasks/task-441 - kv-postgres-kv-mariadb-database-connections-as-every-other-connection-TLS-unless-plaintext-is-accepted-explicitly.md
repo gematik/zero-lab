@@ -3,9 +3,10 @@ id: TASK-441
 title: >-
   kv/postgres, kv/mariadb: database connections as every other connection: TLS
   unless plaintext is accepted explicitly
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-26T19:06:00Z'
+updated_date: '2026-11-26T19:27:00Z'
 labels:
   - go
   - security
@@ -22,10 +23,16 @@ Decided by the maintainer on 2026-11-26: always uniform with the other connectio
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Without an option both backends connect with TLS and verify the server's certificate and name; a server without TLS, with a certificate of another name or of an unknown CA is refused, shown by tests against a database with TLS
-- [ ] #2 Plaintext only with WithPlaintextAccepted, logged at Open; a DSN that names sslmode, tls or another TLS parameter is refused
-- [ ] #3 WithTLS takes a CA of the deployment's own in both backends, and a client certificate for mTLS
-- [ ] #4 OpenBus and OpenDB follow the same rule
-- [ ] #5 zero-pdp, zero-pep-proxy and zaddy take the acceptance from a setting beside their database URL and refuse plaintext without it; docs, compose files and the e2e guide follow
-- [ ] #6 go/kv/docs/hosts.md and the release notes say what a host changes
+- [x] #1 Without an option both backends connect with TLS and verify the server's certificate and name; a server without TLS, with a certificate of another name or of an unknown CA is refused, shown by tests against a database with TLS
+- [x] #2 Plaintext only with WithPlaintextAccepted, logged at Open; a DSN that names sslmode, tls or another TLS parameter is refused
+- [x] #3 WithTLS takes a CA of the deployment's own in both backends, and a client certificate for mTLS
+- [x] #4 OpenBus and OpenDB follow the same rule
+- [x] #5 zero-pdp, zero-pep-proxy and zaddy take the acceptance from a setting beside their database URL and refuse plaintext without it; docs, compose files and the e2e guide follow
+- [x] #6 go/kv/docs/hosts.md and the release notes say what a host changes
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-26, on feat/kv-db-tls. Both backends: TLS with the server's certificate verified for the host of the DSN under the system's roots; WithTLS for a CA, another name or a client certificate (a configuration that skips verification is refused); WithPlaintextAccepted as the one way to plaintext, logged at Open; the DSN carries no transport parameter (Postgres refuses ssl…, gssencmode, channel_binding; MariaDB refuses every parameter, tls=false is gone); pgx's fallback configurations are dropped and PGSSLMODE has no effect (tested with it set to disable, prefer, allow). OpenDB and OpenBus take the two options. Tests against real databases with a TEST-ONLY CA made per run (kv/kvtest/testdata/tls/tlscerts.go; just kv-postgres-test, new, and just kv-mariadb-test): a database without TLS refused by default and opened with the acceptance; with TLS, opened with the CA and the certificate's name, refused under the system's roots, with the address as the name, with another name and with another CA; a role that needs a client certificate refused without and let in with one; the follower's own connection and the bus work over TLS. Hosts: zero-pep-proxy PEP_DATABASE_PLAINTEXT_ACCEPTED and PEP_DATABASE_TLS_CA_PATH; zaddy revocations_database_plaintext_accepted and revocations_database_tls_ca_path; zero-pdp (frozen) DATABASE_PLAINTEXT_ACCEPTED only. Examples, compose file, CONFIG.md, DOCKERHUB.md, zaddy's README, go/kv/docs/hosts.md and the release notes follow. just lint golangci modernize exits 0; the full check and the release are still to come. Raised by the maintainer on the way: zaddy should not have a database at all (see the task to come).
+<!-- SECTION:NOTES:END -->

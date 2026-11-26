@@ -1,5 +1,84 @@
 # Release Notes
 
+# Release 2026-11-27: go/kv v0.13.0, go/kv/postgres v0.14.0, go/kv/mariadb v0.5.0
+
+The connection to the database is protected as every other connection of a server: TLS unless the operator
+accepted plaintext (TASK-441; servers.md rule 29). The hosts of this repository no longer change their schema
+by default (TASK-442), and zaddy keeps no database. Tests of a deployment with several pods found three defects,
+fixed here. Verified on the release branch: `just check` across all Go modules passed; `just kv-postgres-test`
+(Postgres 18 without and with TLS), `just kv-mariadb-test` (MariaDB 10.11 and 12.3, one with TLS, and a Galera
+cluster of three writing nodes) and `just kv-e2e-test` (pods as processes against Postgres, MariaDB and Galera)
+passed.
+
+# Release go/kv v0.13.0
+
+### added
+- `kv/kvtest`: suites of a deployment with several pods (`StartTogether`, `RollingMigration`, `Sealing`,
+  `Unsealed`, `Rotation`, `SealedEvents`, `Revocations`, `Logins`), some running each pod as a process of its
+  own, and `TxOutside`: what a transaction read is held against writers outside it.
+- `just kv-e2e-test`.
+
+### fixed
+- Tests of the suites that could not fail now can (Cleanup counting what it removed, a reseal that lengthens a
+  record's life, a forged record that a host's walk would seal).
+
+# Release go/kv/postgres v0.14.0
+
+### breaking
+- The connection is TLS with the server's certificate verified for the host of the DSN, under the system's
+  roots. Before, the DSN's `sslmode` decided, and without one pgx's default `prefer` fell back to plaintext
+  without saying so. Now the driver's fallbacks are not used, nor `PGSSLMODE` from the environment.
+- A DSN that names `sslmode` or another parameter of TLS (`ssl…`, `gssencmode`, `channel_binding`) is refused. A
+  host with `?sslmode=disable` in its URL removes it and, for a database without TLS, passes
+  `WithPlaintextAccepted()`.
+
+### added
+- `WithTLS(config)`: a CA of the deployment's own, another name to verify, a client certificate. A configuration
+  that skips verification is refused.
+- `WithPlaintextAccepted()`: the operator's acceptance of a connection without TLS, logged at `Open`.
+- `OpenDB` and `OpenBus` take both options.
+- `just kv-postgres-test`.
+
+### fixed
+- A DSN takes no parameter at all. Before, `?synchronous_commit=off` turned off the flush of every durable write,
+  and `?host=` sent the connection to another host.
+- A transaction holds a record it found absent against writers outside it, as `kv.Tx.Get` promises: it puts an
+  expired placeholder in the record's place and locks it. Before, a `Set` outside could write the record under
+  the transaction.
+
+# Release go/kv/mariadb v0.5.0
+
+### breaking
+- A DSN with any parameter is refused; `?tls=false` is gone. For a database without TLS a host passes
+  `WithPlaintextAccepted()`.
+
+### added
+- `WithPlaintextAccepted()`. `WithTLS` refuses a configuration that skips verification.
+
+### fixed
+- A migrator whose step reached the database after another migrator had applied the steps that follow it runs
+  those steps again: an expand step that arrived after the contract step undoing it put back what was removed,
+  while `kv_schema` said it was gone.
+
+# Hosts of this repository
+
+### breaking
+- zero-pep-proxy: `PEP_DATABASE_URL` names no `sslmode`. `PEP_DATABASE_TLS_CA_PATH` names a CA bundle for the
+  database's certificate; `PEP_DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS.
+- zero-pep-proxy no longer applies the session store's schema at start (servers.md rule 22, TASK-442): run
+  `zero-pep-proxy migrate` before the rollout, with a `PEP_DATABASE_URL` whose user may change the schema, or set
+  `PEP_DATABASE_MIGRATE=true` to let the server do it as before. Without either it does not start on a database
+  whose schema lacks a step, and says so. Its own user then needs `SELECT, INSERT, UPDATE, DELETE` on `kv`,
+  `kv_cache`, `kv_feed`, `kv_topic` and `SELECT` on `kv_schema`.
+- zaddy keeps no database (maintainer, 2026-11-26): `revocations_database_url` is gone, and with it the session
+  revocations of TASK-313. An `enforce_policy` with a `SessionCookie` enforcer is refused at start, as it would
+  admit a signed-out session until its snapshot expires; a route that admits zero-pep-proxy's sessions uses
+  `forward_auth` to its `/oauth2/auth`. A Caddyfile that names `revocations_database_url` does not start.
+  Revocations without a database are TASK-443. zaddy no longer requires go/kv.
+- zero-pdp (frozen): `DATABASE_PLAINTEXT_ACCEPTED=true` accepts a database without TLS; it has no setting for a
+  CA of the deployment's own. It keeps applying its schema at start, recorded as the exception of a frozen
+  host (TASK-442).
+
 # Release 2026-11-26: go/kv v0.12.0, go/kv/postgres v0.13.0, go/kv/mariadb v0.4.0
 
 Sealed events, and a guide for hosts (TASK-433 and TASK-434, the last steps of the kv plan in backlog doc-7).
