@@ -6,10 +6,10 @@ require (
 	github.com/caddyserver/caddy/v2 v2.11.9
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/gematik/zero-lab/go/dpop v1.0.0-beta.4
-	github.com/gematik/zero-lab/go/egress v0.0.0-20261127121746-8af4cefae778
+	github.com/gematik/zero-lab/go/egress v0.0.0-20261127122311-cc48cd8ca2b1
 	github.com/gematik/zero-lab/go/httpguard v0.2.0
 	github.com/gematik/zero-lab/go/nonce v0.24.0
-	github.com/gematik/zero-lab/go/pep v0.29.1-0.20261127121746-8af4cefae778
+	github.com/gematik/zero-lab/go/pep v0.29.1-0.20261127122311-cc48cd8ca2b1
 	github.com/go-jose/go-jose/v4 v4.1.9
 )
 
