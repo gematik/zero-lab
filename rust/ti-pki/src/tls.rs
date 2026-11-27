@@ -34,7 +34,7 @@ use std::sync::Arc;
 use const_oid::ObjectIdentifier;
 
 use crate::cert_type::detect_certificate_type;
-use crate::ocsp::{ResponseCheck, verify_response};
+use crate::ocsp::{ResponseCheck, TimeRule, verify_response};
 use crate::revocation::{RevocationChecker, RevocationMode, RevocationStatus};
 use crate::{
     Certificate, CertificateType, ErrorCode, Timestamp, TrustConfig, TrustStore, ValidationError,
@@ -301,8 +301,11 @@ impl ServerCheck {
         let issuer = &result.chain[1];
         let mut warnings = Vec::new();
         if let Some(der) = stapled {
+            // TUC_PKI_018's grace period judges a stapled answer by GS-A_5215's times; A_23225
+            // leaves what a server sends along to the TLS profile.
             let check = ResponseCheck {
                 max_response_age: self.ocsp_grace,
+                rule: TimeRule::GsA5215,
                 store: Some(store),
                 ..ResponseCheck::new(now, &self.config.algorithms)
             };

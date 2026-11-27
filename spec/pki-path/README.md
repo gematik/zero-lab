@@ -48,7 +48,7 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
 ## OCSP
 
 - **OCSP-001** A response counts only if a single response carries the certificate's CertID, an authorized
-  responder signed it, its certHash hashes this very certificate, and it lies within the TUC_PKI_006 window;
+  responder signed it, its certHash hashes this very certificate, and it lies within its time window (OCSP-006);
   outside that the status is `unknown`. The errors are `ocsp_unavailable`, `ocsp_response_invalid` and
   `ocsp_responder_untrusted`. Authorized are, in this order:
   1. the issuing CA, or a delegate it certified directly with id-kp-OCSPSigning that is valid now within the clock
@@ -69,7 +69,18 @@ Each rule has one identifier, and tests cite them. MUST and MUST NOT are used as
   may differ.
 - **OCSP-003** A request is one SHA-1 CertID, unsigned and without a nonce, the same bytes in both.
 - **OCSP-005** A status error is repeated three times, then the responder rests for five minutes. Good and revoked
-  results are reused for an hour at most, and to nextUpdate at most; unknown and errors never are.
+  results are reused while they are valid in time, and the responder is not asked meanwhile: a nonQES certificate's
+  until `producedAt` plus D (A_23225), a QES certificate's for an hour at most, and to `nextUpdate` at most. Unknown
+  results and errors never are: A_23225 names revocation information of every kind, but the status of a certificate
+  just issued may be known minutes later, and an hour of `unknown` would refuse it. A checker that is asked drops the
+  results that ended at least hourly; one that is not asked keeps them, unused, as the core runs no timer.
+- **OCSP-006** The time window of a fetched response follows the certificate. For a nonQES certificate it is A_23225's:
+  `producedAt` at most D in the past (one hour unless the caller sets longer) and at most five minutes in the future;
+  `thisUpdate` and `nextUpdate` are not looked at. For a QES certificate (`C.CH.QES`, `C.HP.QES`), which A_23225 does
+  not cover, it is GS-A_5215's: `producedAt` within 37.5 s on either side, `thisUpdate` at most 37.5 s in the future,
+  `nextUpdate` at most 37.5 s in the past. A caller whose specification keeps GS-A_5215 may name it with its own
+  maximum age (TUC_PKI_018's stapled answers, TSLDET-020, A_24624). A response supplied with the object is valid at
+  the reference time, without tolerance (A_30046 (7)). A refusal names the rule and the limit.
 
 OCSP is not air-gapped: the bundle makes the chain independent of the network, and revocation is asked online through
 the caller's transport. Without a route to the responder there is no verification.
@@ -163,7 +174,7 @@ under scripted revocation outcomes in both modes, among them a responder only th
 every CA, with CAs revoked in the list, a CA expired under the Kompromissmodell, and a real SMC-B under the real list.
 Every verdict records whom the responder was asked about.
 
-[`testdata/ocsp.json`](testdata/ocsp.json) holds every response fixture against four certificates, at eight times, online
+[`testdata/ocsp.json`](testdata/ocsp.json) holds every response fixture against five certificates, a QES one among them, at twelve times, online
 and stapled, with three stores: none, the list's CAs, and the same with three responders listed (one another CA
 certified, one without id-kp-OCSPSigning, one expired); a good response with each byte flipped; requests; and two real responses.
 
@@ -181,7 +192,8 @@ anchors, and every cross certificate against every root by the step that fails.
 | ROOTS-003 | `roots_001_the_corpus_is_what_ti_pki_says` | `TestROOTS003TheStepThatFailsIsThatOfTiPki` |
 | ROOTS-004 | | `TestROOTS004ABundleForAnotherAnchorIsRefused` |
 | OCSP-001 to 003 | `ocsp_001_the_corpus_is_what_ti_pki_says`, `ocsp_001_a_responder_the_tsl_lists_is_authorized_by_the_listing`, `ocsp_001_a_listed_responder_needs_ocsp_signing_and_validity`, `ocsp_002_what_no_signature_covers_is_read_strictly` | `TestOCSP001EveryResponseIsJudgedAsInTiPki`, `TestOCSP002AFlippedByteIsJudgedAsInTiPki`, `TestOCSP003ARequestIsThatOfTiPki`, `TestOCSP004RealResponsesAreJudgedAsInTiPki`, `FuzzVerifyResponse` |
-| OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds` |
+| OCSP-005 | unit tests in `ocsp.rs` | `TestOCSPStatusErrorsAreRepeatedThenTheResponderRests`, `TestOCSPResultsAreCachedWithinTheirBounds`, `TestA23225ResultsAreReusedPastNextUpdateAndSwept` |
+| OCSP-006 | `ocsp_001_the_corpus_is_what_ti_pki_says`, unit tests in `ocsp.rs` named after A_23225 and GS-A_5215 | `TestOCSP001EveryResponseIsJudgedAsInTiPki`, `TestA23225ANonQESResponseIsValidAnHourAfterProducedAt`, `TestA23225ANonQESResponseMayComeFiveMinutesFromTheFuture`, `TestA23225NextUpdateIsNotLookedAt`, `TestGSA5215AQESResponseKeepsTheTolerance`, `TestGSA5215NamedByTheCallerReadsNextUpdate` |
 | VALID-001 to 003 | `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID001EveryVerdictIsThatOfTiPki` |
 | VALID-008 | `valid_001_the_corpus_is_what_ti_pki_says`, `valid_008_ocsp_for_the_end_entity_alone` | `TestVALID001EveryVerdictIsThatOfTiPki`, `TestVALID008ACAExpiredUnderTheKompromissmodellIsNotAsked` |
 | VALID-007 | `valid_007_the_tsl_states_the_types_a_ca_may_issue`, `valid_001_the_corpus_is_what_ti_pki_says` | `TestVALID007TheTypesTheListStates`, `TestVALID007TheRealListDecidesWhatACAMayIssue` |

@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: 2026-11-27 11:47
-updated_date: '2026-11-27T11:55:00Z'
+updated_date: '2026-11-27T12:13:00Z'
 labels:
   - go
   - ti-pki
@@ -32,9 +32,9 @@ QES certificates and the TSL signer's OCSP may keep a stricter check; which rule
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 For a nonQES certificate tipki and ti-pki accept a response whose producedAt lies up to D in the past (default one hour, configurable) and up to five minutes in the future, and refuse one outside that window
-- [ ] #2 A response valid in time is taken from the cache, not asked anew, for the same certificate (A_23225 2.); a test shows a second check within the hour makes no request
-- [ ] #3 The times of GS-A_5215 are not checked for a nonQES certificate's OCSP response; tests with responses 50 s and 59 min old (accepted) and 61 min old and 6 min ahead (refused), each citing A_23225
+- [x] #1 For a nonQES certificate tipki and ti-pki accept a response whose producedAt lies up to D in the past (default one hour, configurable) and up to five minutes in the future, and refuse one outside that window
+- [x] #2 A response valid in time is taken from the cache, not asked anew, for the same certificate (A_23225 2.); a test shows a second check within the hour makes no request
+- [x] #3 The times of GS-A_5215 are not checked for a nonQES certificate's OCSP response; tests with responses 50 s and 59 min old (accepted) and 61 min old and 6 min ahead (refused), each citing A_23225
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -67,4 +67,6 @@ Scope: go/tipki and rust ti-pki, same design in both; ti-client/ti-cli and the G
 
 <!-- SECTION:NOTES:BEGIN -->
 Decisions 2026-11-27: unknown stays uncached (deviation from A_23225's 'Sperrinformationen', documented: a new certificate's status may appear minutes later); epa/vau keeps the strict GS-A_5215 window with its 24 h, by naming the rule; a process that checks nothing does not sweep its in-memory cache (no timer in a sans-I/O core), documented, expired entries are never used.
+
+Built on feat/ocsp-a23225: go/tipki and ti-pki judge a fetched response by TimeRule (ByCertificate: A_23225 for nonQES, GS-A_5215 for C.CH.QES/C.HP.QES; GsA5215 named by TUC_PKI_018 stapling, TSLDET-020 and epa/vau A_24624). Cache until producedAt + D for nonQES, swept hourly while asked. spec/pki-path OCSP-006 new, OCSP-005 rewritten; corpus widened (QES certificate, short nextUpdate, 12 offsets) and blessed, Go matches it. Fixtures qes-good, short-next-update. rust check-changed and go check-changed + lint golangci modernize green.
 <!-- SECTION:NOTES:END -->

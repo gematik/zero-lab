@@ -154,8 +154,9 @@ network. The revocation line reports the end entity's outcome (`not revoked`,
 `revoked`, `unknown`, `failed`); `revocation_mode` in JSON names the
 policy. `--ocsp-responder URL` sends the OCSP request to one responder,
 e.g. a relay where the TI responders are not reachable, and `--ocsp-max-age DURATION`
-(`500ms`, `30s`, `5m`, `1h`) accepts responses older than the default 37.5 s, for
-responders that answer from a cache; the TSL signer's check keeps the defaults.
+(`500ms`, `30s`, `5m`, `1h`) sets how old a nonQES certificate's response may be and how
+long it is reused, `D` of A_23225, one hour by default; a QES certificate's response keeps
+GS-A_5215's 37.5 s, and the TSL signer's check keeps the defaults.
 
 `--offline` makes no request: it uses the cached material, or the embedded roots
 without a TSL when nothing usable is cached (then pass the issuing CA with `--issuer`),

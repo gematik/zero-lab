@@ -91,15 +91,25 @@ use crate::revocation::{
 use crate::time::Timestamp;
 use crate::{Certificate, TrustStore};
 
-/// The clock skew TUC_PKI_006 grants an OCSP responder (gemSpec_PKI GS-A_5215: 37.5 s):
-/// `thisUpdate` and `producedAt` may lie this far in the future, `nextUpdate` this far
-/// in the past.
+/// The tolerance `t` of GS-A_5215, 37.5 s: under that rule `producedAt` may lie this far
+/// in the past or the future, `thisUpdate` this far in the future, `nextUpdate` this far in
+/// the past.
 pub const DEFAULT_CLOCK_TOLERANCE: Duration = Duration::from_millis(37_500);
 
-/// How old `producedAt` may be. TI responders sign every response on demand, so the
-/// gematik reference implementation applies the clock tolerance here too; raise it
-/// only when responses are served from a cache.
-pub const DEFAULT_MAX_RESPONSE_AGE: Duration = DEFAULT_CLOCK_TOLERANCE;
+/// `D` of A_23225: how old a nonQES certificate's response may be, one hour unless an
+/// application's specification allows longer. Under [`TimeRule::GsA5215`] named by the
+/// caller, how old `producedAt` may be.
+pub const DEFAULT_MAX_RESPONSE_AGE: Duration = Duration::from_secs(3600);
+
+/// How far a nonQES certificate's response may lie in the future (A_23225: five minutes,
+/// since not every system keeps its clock synchronized).
+pub const RESPONSE_FUTURE_TOLERANCE: Duration = Duration::from_secs(300);
+
+/// How often [`OcspChecker`] drops the results it may no longer use: an active checker keeps
+/// none past A_23225's 24 hours. A checker that is not asked keeps them, unused, as a sans-I/O
+/// core runs no timer.
+#[cfg(feature = "load")]
+pub const OCSP_CACHE_SWEEP: Duration = Duration::from_secs(3600);
 
 /// How often `OcspChecker` repeats a query after an OCSP status error: a transport
 /// failure or an answer other than `successful` (A_30044 (4), A_30046 (3) of C_12791).
@@ -109,9 +119,26 @@ pub const OCSP_STATUS_RETRIES: u32 = 3;
 /// repetitions failed (A_30044 (4), A_30046 (3) of C_12791).
 pub const OCSP_STATUS_PAUSE: Duration = Duration::from_secs(300);
 
-/// How long `OcspChecker` reuses a `good` or `revoked` result, at most until the
-/// response's `nextUpdate` (A_30046 (6) of C_12791, after A_23225: one hour by default).
+/// How long `OcspChecker` reuses a `good` or `revoked` result for a QES certificate, at most
+/// until the response's `nextUpdate`. A nonQES certificate's result is reused for as long as
+/// A_23225 counts it valid, until `producedAt` plus the maximum response age.
 pub const OCSP_CACHE_TTL: Duration = Duration::from_secs(3600);
+
+/// The time rule a fetched response is judged by.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TimeRule {
+    /// A_23225 for a nonQES certificate: `producedAt` at most the maximum response age in the
+    /// past and [`RESPONSE_FUTURE_TOLERANCE`] in the future; `thisUpdate` and `nextUpdate`
+    /// are not looked at. GS-A_5215 for a QES certificate (`C.CH.QES`, `C.HP.QES`), with the
+    /// clock tolerance as the maximum age.
+    #[default]
+    ByCertificate,
+    /// GS-A_5215 whatever the certificate, for a specification that keeps it: `producedAt` at
+    /// most the maximum response age in the past and the clock tolerance in the future,
+    /// `thisUpdate` at most the clock tolerance in the future, `nextUpdate` at most the clock
+    /// tolerance in the past.
+    GsA5215,
+}
 
 /// `Content-Type` of an OCSP request.
 pub const CONTENT_TYPE_REQUEST: &str = "application/ocsp-request";
@@ -130,10 +157,13 @@ pub const CERT_HASH: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.36.8.3
 pub struct ResponseCheck<'a> {
     /// The instant the time window is anchored at.
     pub now: Timestamp,
-    /// How old `producedAt` may be.
+    /// How old `producedAt` may be: `D` of A_23225 ([`DEFAULT_MAX_RESPONSE_AGE`]), or the age
+    /// under [`TimeRule::GsA5215`].
     pub max_response_age: Duration,
-    /// The skew allowed between the responder's clock and ours.
+    /// The tolerance `t` of GS-A_5215 ([`DEFAULT_CLOCK_TOLERANCE`]).
     pub clock_tolerance: Duration,
+    /// The rule the times are judged by; a stapled response has its own.
+    pub rule: TimeRule,
     /// Accept a response without the certHash extension. A certHash that is present is
     /// checked regardless.
     pub allow_missing_cert_hash: bool,
@@ -156,6 +186,7 @@ impl<'a> ResponseCheck<'a> {
             now,
             max_response_age: DEFAULT_MAX_RESPONSE_AGE,
             clock_tolerance: DEFAULT_CLOCK_TOLERANCE,
+            rule: TimeRule::ByCertificate,
             allow_missing_cert_hash: false,
             algorithms,
             store: None,
@@ -333,7 +364,7 @@ fn verify(
     result.authorization = Some(authorization);
     signer.subject_cn().clone_into(&mut result.responder_name);
     der.clone_into(&mut result.raw_response);
-    Ok(with_status(result, &single.cert_status, check))
+    Ok(with_status(result, &single.cert_status, check, cert))
 }
 
 /// Fills in what the response says, unless it lies outside the time window, which
@@ -342,8 +373,9 @@ fn with_status(
     mut result: RevocationResult,
     status: &CertStatus,
     check: &ResponseCheck<'_>,
+    cert: &Certificate,
 ) -> RevocationResult {
-    if let Some(reason) = outside_window(&result, check) {
+    if let Some(reason) = outside_window(&result, check, applied_rule(cert, check)) {
         result.reason = reason;
         return result;
     }
@@ -582,10 +614,42 @@ fn verify_cert_hash(
     Ok(())
 }
 
-/// The TUC_PKI_006 window (GS-A_5215): `producedAt` within `[now - max age, now + tolerance]`,
-/// `thisUpdate` at most the tolerance in the future, `nextUpdate` (if set) at most the
-/// tolerance in the past. `None` inside it.
-fn outside_window(result: &RevocationResult, check: &ResponseCheck<'_>) -> Option<String> {
+/// The rule a fetched response about `cert` is judged by, with the maximum age it allows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Applied {
+    A23225 { max_age: Duration },
+    GsA5215 { max_age: Duration },
+}
+
+/// [`TimeRule::ByCertificate`] resolved for `cert`: GS-A_5215 for a QES certificate, whose
+/// responses A_23225 does not cover, A_23225 for every other.
+pub(crate) fn applied_rule(cert: &Certificate, check: &ResponseCheck<'_>) -> Applied {
+    match check.rule {
+        TimeRule::GsA5215 => Applied::GsA5215 {
+            max_age: check.max_response_age,
+        },
+        TimeRule::ByCertificate if is_qes(cert) => Applied::GsA5215 {
+            max_age: check.clock_tolerance,
+        },
+        TimeRule::ByCertificate => Applied::A23225 {
+            max_age: check.max_response_age,
+        },
+    }
+}
+
+/// A QES certificate: `C.CH.QES` or `C.HP.QES`.
+fn is_qes(cert: &Certificate) -> bool {
+    use crate::cert_type::{CertificateType as T, detect_certificate_type};
+    matches!(detect_certificate_type(cert), Some(T::ChQes | T::HpQes))
+}
+
+/// The time window of a response: a stapled one valid at the reference time (A_30046 (7)),
+/// otherwise the window of `rule`. `None` inside it.
+fn outside_window(
+    result: &RevocationResult,
+    check: &ResponseCheck<'_>,
+    rule: Applied,
+) -> Option<String> {
     if check.stapled {
         let this_update = result.this_update?;
         if this_update > check.now {
@@ -605,24 +669,35 @@ fn outside_window(result: &RevocationResult, check: &ResponseCheck<'_>) -> Optio
         return None;
     }
     let millis = |t: Timestamp| i128::from(t.0) * 1000;
+    let duration = |d: Duration| i128::try_from(d.as_millis()).unwrap_or(i128::MAX);
     let now = millis(check.now);
-    let max_age = i128::try_from(check.max_response_age.as_millis()).unwrap_or(i128::MAX);
-    let skew = i128::try_from(check.clock_tolerance.as_millis()).unwrap_or(i128::MAX);
     let seconds = |ms: i128| ms / 1000;
     let produced = millis(result.produced_at?);
+    let (name, max_age, ahead) = match rule {
+        Applied::A23225 { max_age } => ("A_23225", max_age, RESPONSE_FUTURE_TOLERANCE),
+        Applied::GsA5215 { max_age } => ("GS-A_5215", max_age, check.clock_tolerance),
+    };
+    let (max_age, ahead) = (duration(max_age), duration(ahead));
     if now - produced > max_age {
         return Some(format!(
-            "OCSP response is {} s old, more than the {} s allowed",
+            "OCSP response is {} s old, more than the {} s {name} allows",
             seconds(now - produced),
             seconds(max_age)
         ));
     }
-    if produced - now > skew {
+    if produced - now > ahead {
         return Some(format!(
-            "OCSP producedAt lies {} s in the future",
-            seconds(produced - now)
+            "OCSP producedAt lies {} s in the future, more than the {} s {name} allows",
+            seconds(produced - now),
+            seconds(ahead)
         ));
     }
+    if matches!(rule, Applied::A23225 { .. }) {
+        // A_23225 takes the responder's state at producedAt; thisUpdate and nextUpdate,
+        // left from OCSP's origin in CRLs, say nothing it counts.
+        return None;
+    }
+    let skew = duration(check.clock_tolerance);
     let this_update = millis(result.this_update?);
     if this_update - now > skew {
         return Some(format!(
@@ -751,9 +826,9 @@ mod checker {
     use der::Decode as _;
 
     use super::{
-        CONTENT_TYPE_REQUEST, CONTENT_TYPE_RESPONSE, DEFAULT_MAX_RESPONSE_AGE, OCSP_CACHE_TTL,
-        OCSP_STATUS_PAUSE, OCSP_STATUS_RETRIES, OcspResponse, ResponseCheck, ResponseStatus,
-        request, verify_response,
+        Applied, CONTENT_TYPE_REQUEST, CONTENT_TYPE_RESPONSE, DEFAULT_MAX_RESPONSE_AGE,
+        OCSP_CACHE_SWEEP, OCSP_CACHE_TTL, OCSP_STATUS_PAUSE, OCSP_STATUS_RETRIES, OcspResponse,
+        ResponseCheck, ResponseStatus, TimeRule, applied_rule, request, verify_response,
     };
     use crate::algorithms::AlgorithmSet;
     use crate::error::{ErrorCode, ValidationError};
@@ -773,9 +848,15 @@ mod checker {
     /// [`OCSP_STATUS_RETRIES`] times; after that the responder rests for
     /// [`OCSP_STATUS_PAUSE`], shared by the checker's clones.
     ///
-    /// `good` and `revoked` results are reused for [`OCSP_CACHE_TTL`], at most until the
-    /// response's `nextUpdate`; the cache is shared by the clones too. An `unknown` result
-    /// or an error is never cached.
+    /// `good` and `revoked` results are reused while they are valid in time, and the
+    /// responder is not asked meanwhile: a nonQES certificate's until `producedAt` plus the
+    /// maximum response age (A_23225), a QES certificate's for [`OCSP_CACHE_TTL`], at most
+    /// until the response's `nextUpdate`. The cache is shared by the clones too. An
+    /// `unknown` result or an error is never cached, a deliberate departure from A_23225,
+    /// which names revocation information of every kind: the status of a certificate just
+    /// issued may be known minutes later, and an hour of `unknown` would refuse it. Results
+    /// no longer valid are dropped at most [`OCSP_CACHE_SWEEP`] after they end, while the
+    /// checker is asked; one that is not asked keeps them, never using them.
     ///
     /// [`with_store`](Self::with_store) also keeps them in a [`CacheStore`], so separate
     /// processes share them. The store holds the DER response, not the verdict: what is
@@ -794,6 +875,7 @@ mod checker {
         resting: Arc<Mutex<HashMap<String, Timestamp>>>,
         cache_ttl: core::time::Duration,
         cache: Arc<Mutex<ResultCache>>,
+        swept: Arc<Mutex<Option<Timestamp>>>,
         store: S,
     }
 
@@ -838,6 +920,7 @@ mod checker {
                 resting: Arc::default(),
                 cache_ttl: OCSP_CACHE_TTL,
                 cache: Arc::default(),
+                swept: Arc::default(),
                 store: NoStore,
             }
         }
@@ -859,12 +942,13 @@ mod checker {
                 resting: self.resting,
                 cache_ttl: self.cache_ttl,
                 cache: self.cache,
+                swept: self.swept,
                 store,
             }
         }
 
-        /// Reuses `good` and `revoked` results for `ttl` instead of [`OCSP_CACHE_TTL`];
-        /// zero turns the cache off.
+        /// Reuses a QES certificate's `good` and `revoked` results for `ttl` instead of
+        /// [`OCSP_CACHE_TTL`]; zero turns the cache off for every certificate.
         #[must_use]
         pub fn with_cache_ttl(mut self, ttl: core::time::Duration) -> Self {
             self.cache_ttl = ttl;
@@ -879,7 +963,9 @@ mod checker {
             self
         }
 
-        /// Accepts responses up to `age` old, for responses served from a cache.
+        /// Accepts a nonQES certificate's responses up to `age` old instead of
+        /// [`DEFAULT_MAX_RESPONSE_AGE`], where an application's specification allows longer
+        /// (`D` of A_23225); results are reused for as long.
         #[must_use]
         pub fn with_max_response_age(mut self, age: core::time::Duration) -> Self {
             self.max_response_age = age;
@@ -909,8 +995,14 @@ mod checker {
             }
         }
 
-        /// Until when `result`, obtained at `now`, may be reused; `None` if not at all.
-        fn reusable_until(&self, result: &RevocationResult, now: Timestamp) -> Option<Timestamp> {
+        /// Until when `result` about `cert`, obtained at `now`, may be reused; `None` if not
+        /// at all.
+        fn reusable_until(
+            &self,
+            result: &RevocationResult,
+            cert: &Certificate,
+            now: Timestamp,
+        ) -> Option<Timestamp> {
             if self.cache_ttl.is_zero()
                 || !matches!(
                     result.status,
@@ -919,9 +1011,57 @@ mod checker {
             {
                 return None;
             }
-            let ttl_end = Timestamp(now.0 + self.cache_ttl.as_secs());
-            let until = result.next_update.map_or(ttl_end, |next| next.min(ttl_end));
+            let until = match applied_rule(cert, &self.check(now, None)) {
+                Applied::A23225 { max_age } => {
+                    Timestamp(result.produced_at?.0.saturating_add(max_age.as_secs()))
+                }
+                Applied::GsA5215 { .. } => {
+                    let ttl_end = Timestamp(now.0 + self.cache_ttl.as_secs());
+                    result.next_update.map_or(ttl_end, |next| next.min(ttl_end))
+                }
+            };
             (until > now).then_some(until)
+        }
+
+        /// The check of a fetched response at `now`.
+        fn check<'s>(&'s self, now: Timestamp, store: Option<&'s TrustStore>) -> ResponseCheck<'s> {
+            ResponseCheck {
+                now,
+                max_response_age: self.max_response_age,
+                clock_tolerance: self.clock_tolerance,
+                rule: TimeRule::ByCertificate,
+                allow_missing_cert_hash: self.allow_missing_cert_hash,
+                algorithms: &self.algorithms,
+                store,
+                stapled: false,
+            }
+        }
+
+        #[cfg(all(test, feature = "brainpool"))]
+        pub(super) fn cached_results(&self) -> usize {
+            self.cache
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .len()
+        }
+
+        /// Drops the results and rests that ended, once per [`OCSP_CACHE_SWEEP`].
+        fn sweep(&self, now: Timestamp) {
+            {
+                let mut swept = self.swept.lock().unwrap_or_else(PoisonError::into_inner);
+                if swept.is_some_and(|at| now.0 < at.0.saturating_add(OCSP_CACHE_SWEEP.as_secs())) {
+                    return;
+                }
+                *swept = Some(now);
+            }
+            self.cache
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .retain(|_, (_, until)| *until > now);
+            self.resting
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .retain(|_, until| *until > now);
         }
 
         fn remember(&self, key: Vec<u8>, result: &RevocationResult, until: Timestamp) {
@@ -948,18 +1088,10 @@ mod checker {
             if fetched > now || until <= now {
                 return None;
             }
-            let check = ResponseCheck {
-                now: fetched,
-                max_response_age: self.max_response_age,
-                clock_tolerance: self.clock_tolerance,
-                allow_missing_cert_hash: self.allow_missing_cert_hash,
-                algorithms: &self.algorithms,
-                store: Some(store),
-                stapled: false,
-            };
+            let check = self.check(fetched, Some(store));
             let result = verify_response(&entry.body, cert, issuer, &check).ok()?;
             // The stored bounds are the writer's; the response's own bound them again.
-            let bound = self.reusable_until(&result, fetched)?;
+            let bound = self.reusable_until(&result, cert, fetched)?;
             (bound > now).then_some((
                 RevocationResult {
                     from_cache: true,
@@ -1083,6 +1215,7 @@ mod checker {
                 ));
             };
             let body = request(cert, issuer);
+            self.sweep((self.now)());
             if let Some(result) = self.cached(&body, (self.now)()) {
                 return Ok(result);
             }
@@ -1101,18 +1234,10 @@ mod checker {
                 .with_subject(cert.subject_cn()));
             }
             let response = self.query(url, &body, cert).await?;
-            let check = ResponseCheck {
-                now: (self.now)(),
-                max_response_age: self.max_response_age,
-                clock_tolerance: self.clock_tolerance,
-                allow_missing_cert_hash: self.allow_missing_cert_hash,
-                algorithms: &self.algorithms,
-                store: Some(store),
-                stapled: false,
-            };
+            let check = self.check((self.now)(), Some(store));
             let mut result = verify_response(&response, cert, issuer, &check)?;
             url.clone_into(&mut result.responder_url);
-            if let Some(until) = self.reusable_until(&result, check.now) {
+            if let Some(until) = self.reusable_until(&result, cert, check.now) {
                 self.keep(&body, response, check.now, until).await;
                 self.remember(body, &result, until);
             }
@@ -1377,12 +1502,16 @@ mod tests {
         assert_eq!(result.produced_at, Some(produced));
         assert_eq!(result.next_update, None);
 
+        // A CA is no QES certificate: A_23225's hour applies.
         let late = ResponseCheck::new(Timestamp(produced.0 + 60), algorithms::DEFAULT);
-        let stale = verify_response(der, &ca, &root, &late).unwrap();
+        let late = verify_response(der, &ca, &root, &late).unwrap();
+        assert_eq!(late.status, RevocationStatus::Good);
+        let stale = ResponseCheck::new(Timestamp(produced.0 + 3601), algorithms::DEFAULT);
+        let stale = verify_response(der, &ca, &root, &stale).unwrap();
         assert_eq!(stale.status, RevocationStatus::Unknown);
         assert_eq!(
             stale.reason,
-            "OCSP response is 60 s old, more than the 37 s allowed"
+            "OCSP response is 3601 s old, more than the 3600 s A_23225 allows"
         );
 
         // The same question with the SHA-1 CertID the request builder sends.
@@ -1786,42 +1915,119 @@ mod tests {
             );
         }
 
-        /// GS-A_5215, TUC_PKI_006: producedAt, thisUpdate and nextUpdate are read with 37.5 s
-        /// of tolerance.
+        /// A_23225: a nonQES certificate's response counts from an hour in the past to five
+        /// minutes in the future of producedAt, the 50 s of a responder whose clock lags
+        /// among them (zeta-go.t20r.cloud, 2026-11-27).
         #[test]
-        fn gs_a_5215_time_window() {
+        fn a_23225_a_nonqes_response_is_valid_an_hour_after_produced_at() {
             let pki = TestPki::new();
             let (ee, ca) = (&pki.ee_arzt, &pki.sub_ca_hba);
-            let window = |now: Timestamp| {
-                let result = verify_at(response!("good"), ee, ca, now).unwrap();
-                (result.status == RevocationStatus::Good)
-                    .then_some(())
-                    .ok_or(result.reason)
+            let status = |now: u64| verify_at(response!("good"), ee, ca, Timestamp(now)).unwrap();
+            let now = TestPki::NOW.0;
+            for age in [0, 50, 59 * 60, 3600] {
+                assert_eq!(status(now + age).status, RevocationStatus::Good, "{age} s");
+            }
+            let old = status(now + 61 * 60);
+            assert_eq!(old.status, RevocationStatus::Unknown);
+            assert_eq!(
+                old.reason,
+                "OCSP response is 3660 s old, more than the 3600 s A_23225 allows"
+            );
+        }
+
+        /// A_23225: up to five minutes in the future, since not every system keeps its clock
+        /// synchronized; six are too many. Ahead of NOW the delegates' certificates are not
+        /// valid yet, so an answer the CA signed itself shows the window alone.
+        #[test]
+        fn a_23225_a_nonqes_response_may_come_five_minutes_from_the_future() {
+            let pki = TestPki::new();
+            let status = |now: u64| {
+                verify_at(
+                    response!("issuer-signed"),
+                    &pki.sub_ca_hba,
+                    &pki.rca1,
+                    Timestamp(now),
+                )
+                .unwrap()
             };
             let now = TestPki::NOW.0;
-            window(Timestamp(now + 37)).unwrap();
-            window(Timestamp(now - 37)).unwrap();
+            assert_eq!(status(now - 300).status, RevocationStatus::Good);
+            let ahead = status(now - 360);
+            assert_eq!(ahead.status, RevocationStatus::Unknown);
             assert_eq!(
-                window(Timestamp(now + 38)).unwrap_err(),
-                "OCSP response is 38 s old, more than the 37 s allowed"
+                ahead.reason,
+                "OCSP producedAt lies 360 s in the future, more than the 300 s A_23225 allows"
             );
-            // Ahead of NOW the delegate's own certificate is not valid yet; an answer the
-            // CA signed itself shows the window alone.
-            let early = verify_at(
+        }
+
+        /// A_23225: thisUpdate and nextUpdate are not looked at for a nonQES certificate; an
+        /// answer whose nextUpdate passed a minute ago still counts within the hour.
+        #[test]
+        fn a_23225_next_update_is_not_looked_at() {
+            let pki = TestPki::new();
+            let result = verify_at(
+                response!("short-next-update"),
+                &pki.ee_arzt,
+                &pki.sub_ca_hba,
+                Timestamp(TestPki::NOW.0 + 120),
+            )
+            .unwrap();
+            assert_eq!(result.status, RevocationStatus::Good, "{}", result.reason);
+        }
+
+        /// GS-A_5215: a QES certificate's response, which A_23225 does not cover, is read
+        /// with 37.5 s of tolerance.
+        #[test]
+        fn gs_a_5215_a_qes_response_keeps_the_tolerance() {
+            let pki = TestPki::new();
+            let qes = crate::testing::typed("type-ch-qes");
+            let status = |now: u64| {
+                verify_at(
+                    response!("qes-good"),
+                    &qes,
+                    &pki.sub_ca_komp,
+                    Timestamp(now),
+                )
+                .unwrap()
+            };
+            let now = TestPki::NOW.0;
+            assert_eq!(status(now + 37).status, RevocationStatus::Good);
+            let old = status(now + 50);
+            assert_eq!(old.status, RevocationStatus::Unknown);
+            assert_eq!(
+                old.reason,
+                "OCSP response is 50 s old, more than the 37 s GS-A_5215 allows"
+            );
+        }
+
+        /// GS-A_5215 named by the caller, for a specification that keeps it (TUC_PKI_018's
+        /// stapled answers, TSLDET-020): its own maximum age, and thisUpdate and nextUpdate
+        /// with 37.5 s of tolerance.
+        #[test]
+        fn gs_a_5215_named_by_the_caller_reads_next_update() {
+            let pki = TestPki::new();
+            let (ee, ca) = (&pki.ee_arzt, &pki.sub_ca_hba);
+            let now = TestPki::NOW.0;
+            let strict = |now: u64| ResponseCheck {
+                max_response_age: Duration::from_hours(72),
+                rule: TimeRule::GsA5215,
+                ..ResponseCheck::new(Timestamp(now), algorithms::DEFAULT)
+            };
+            let result = verify_response(response!("good"), ee, ca, &strict(now + 86_400 + 37));
+            assert_eq!(result.unwrap().status, RevocationStatus::Good);
+            let result = verify_response(response!("good"), ee, ca, &strict(now + 86_400 + 38));
+            assert_eq!(result.unwrap().reason, "OCSP nextUpdate passed 38 s ago");
+            let early = verify_response(
                 response!("issuer-signed"),
                 &pki.sub_ca_hba,
                 &pki.rca1,
-                Timestamp(now - 38),
+                &strict(now - 38),
             )
             .unwrap();
-            assert_eq!(early.reason, "OCSP producedAt lies 38 s in the future");
-
-            let cached = ResponseCheck {
-                max_response_age: Duration::from_hours(72),
-                ..ResponseCheck::new(Timestamp(now + 86_400 + 38), algorithms::DEFAULT)
-            };
-            let result = verify_response(response!("good"), ee, ca, &cached).unwrap();
-            assert_eq!(result.reason, "OCSP nextUpdate passed 38 s ago");
+            assert_eq!(
+                early.reason,
+                "OCSP producedAt lies 38 s in the future, more than the 37 s GS-A_5215 allows"
+            );
         }
 
         #[test]
@@ -1967,19 +2173,14 @@ mod tests {
             );
 
             clock.advance(Duration::from_secs(1));
-            // The answer is from NOW; five minutes on it is too old for the window.
             let result = check().unwrap();
-            assert_eq!(transport.posts().len(), 8);
-            assert_eq!(result.status, RevocationStatus::Unknown);
-            assert!(
-                result.reason.ends_with("more than the 37 s allowed"),
-                "{}",
-                result.reason
-            );
+            assert_eq!(transport.posts().len(), 8, "the rest is over");
+            assert_eq!(result.status, RevocationStatus::Good);
         }
 
-        /// A_30046 (6): good and revoked results are reused for an hour, at most until
-        /// nextUpdate; unknown results and errors are not.
+        /// A_23225 (2., 3.), A_30046 (6): a nonQES certificate's good and revoked results are
+        /// reused until producedAt plus an hour, and the responder is not asked meanwhile;
+        /// unknown results and errors are not reused.
         #[cfg(feature = "load")]
         #[test]
         fn ocsp_005_results_are_cached() {
@@ -2025,6 +2226,57 @@ mod tests {
                 transport.posts().len(),
                 3,
                 "an unknown result is not reused"
+            );
+        }
+
+        /// A_23225: nextUpdate does not end a nonQES result's reuse, producedAt does; a QES
+        /// result keeps the bound of nextUpdate. Results that ended are dropped by the next
+        /// check after the sweep interval (A_23225 5.).
+        #[cfg(feature = "load")]
+        #[test]
+        fn a_23225_results_are_reused_past_next_update_and_swept() {
+            use crate::load::MockTransport;
+            use crate::revocation::RevocationChecker;
+            use crate::time::FixedClock;
+
+            let pki = TestPki::new();
+            let qes = crate::testing::typed("type-ch-qes");
+            let config = crate::TrustConfig::for_anchor(pki.rca1.der().to_vec());
+            let store = TrustStore::new([pki.rca1.clone()]);
+            let transport = MockTransport::posting([
+                Ok(response!("short-next-update").to_vec()),
+                Ok(response!("qes-good").to_vec()),
+                Ok(response!("short-next-update").to_vec()),
+            ]);
+            let clock = FixedClock::new(TestPki::NOW);
+            let checker = OcspChecker::new(&config, &transport, || clock.now())
+                .with_responder_url("http://ocsp.test/");
+            let check = |ee: &Certificate, ca: &Certificate| {
+                futures_lite::future::block_on(checker.check(ee, ca, &store)).unwrap()
+            };
+
+            assert!(!check(&pki.ee_arzt, &pki.sub_ca_hba).from_cache);
+            assert!(!check(&qes, &pki.sub_ca_komp).from_cache);
+            clock.advance(Duration::from_secs(30));
+            assert!(check(&pki.ee_arzt, &pki.sub_ca_hba).from_cache);
+            assert!(check(&qes, &pki.sub_ca_komp).from_cache);
+            clock.advance(Duration::from_mins(30));
+            assert!(
+                check(&pki.ee_arzt, &pki.sub_ca_hba).from_cache,
+                "past its nextUpdate, within the hour"
+            );
+            assert_eq!(transport.posts().len(), 2);
+            assert_eq!(checker.cached_results(), 2);
+
+            clock.advance(Duration::from_mins(31));
+            assert_eq!(
+                check(&pki.ee_arzt, &pki.sub_ca_hba).status,
+                RevocationStatus::Unknown
+            );
+            assert_eq!(transport.posts().len(), 3, "asked again after the hour");
+            assert!(
+                checker.cached_results() == 0,
+                "the QES result, past its hour, was swept with the other"
             );
         }
 
