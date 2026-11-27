@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-27T06:20:00Z'
-updated_date: '2026-11-27T06:20:00Z'
+updated_date: '2026-11-27T06:22:00Z'
 labels: []
 dependencies: []
 ordinal: 453000
@@ -20,7 +20,13 @@ The repository's examples mount configuration and secrets at /etc/pdp, /tls, /co
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 naming-and-config.md names the locations for configuration, secrets, TLS, trust material, PKCS#11 modules, sockets, state, cache and temporary files
-- [ ] #2 servers.md rule 27 gives the permissions and mount settings for Secrets and ConfigMaps, and why each is so under restricted-v2
-- [ ] #3 zeta-authserver-go is told the result
+- [x] #1 naming-and-config.md names the locations for configuration, secrets, TLS, trust material, PKCS#11 modules, sockets, state, cache and temporary files
+- [x] #2 servers.md rule 27 gives the permissions and mount settings for Secrets and ConfigMaps, and why each is so under restricted-v2
+- [x] #3 zeta-authserver-go is told the result
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Locations in naming-and-config.md 'Paths in a container'; permissions and the start check in servers.md rule 27. The start check is TASK-446, aligning the examples TASK-445. zeta-authserver-go told by its task-214 (no running session of it was listed).
+<!-- SECTION:NOTES:END -->
