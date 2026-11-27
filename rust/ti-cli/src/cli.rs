@@ -567,8 +567,8 @@ pub struct VerifyArgs {
     /// own, e.g. a relay where the TI responders are not reachable directly
     #[arg(long, value_name = "URL", value_parser = http_url, conflicts_with = "offline")]
     pub ocsp_responder: Option<String>,
-    /// Accept OCSP responses up to this old (ms, s, m or h, e.g. 5m), for responders
-    /// that answer from a cache; default 37.5s
+    /// Accept and reuse a nonQES certificate's OCSP responses up to this old (ms, s, m or
+    /// h, e.g. 2h; D of A_23225); default 1h
     #[arg(long, value_name = "DURATION", value_parser = duration, conflicts_with = "offline")]
     pub ocsp_max_age: Option<Duration>,
 }

@@ -138,7 +138,9 @@ fn matrix() -> Vec<Value> {
         "issuer-signed",
         "no-cert-hash",
         "no-eku",
+        "qes-good",
         "revoked",
+        "short-next-update",
         "unknown-no-cert-hash",
         "unknown",
         "wrong-cert-hash",
@@ -148,8 +150,12 @@ fn matrix() -> Vec<Value> {
         ("ee-revoked.pem", "sub-ca-hba.pem"),
         ("sub-ca-hba.pem", "rca1.pem"),
         ("types/type-ch-aut.pem", "sub-ca-komp.pem"),
+        ("types/type-ch-qes.pem", "sub-ca-komp.pem"),
     ];
-    let offsets: [i64; 8] = [0, 37, 38, -37, -38, 3600, 90_000, -90_000];
+    // GS-A_5215's 37.5 s and A_23225's hour and five minutes, each from both sides.
+    let offsets: [i64; 12] = [
+        0, 37, 38, -37, -38, 120, -300, -360, 3600, 3601, 90_000, -90_000,
+    ];
     let stores = stores();
     let mut cases = Vec::new();
     for response in responses {

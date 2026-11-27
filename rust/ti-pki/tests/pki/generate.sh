@@ -37,6 +37,10 @@
 #   unknown-no-cert-hash          unknown for ee-arzt without certHash (A_30046 (2))
 #   egk-no-cert-hash              good for types/type-ch-aut without certHash, by
 #                                 ocsp-signer-komp (stapled eGK answers, A_30046 (7))
+#   short-next-update             good for ee-arzt with nextUpdate a minute after NOW: a
+#                                 nonQES answer that A_23225 takes after nextUpdate
+#   qes-good                      good for types/type-ch-qes by ocsp-signer-komp: a QES
+#                                 certificate's answer, judged by GS-A_5215
 #   issuer-signed                 sub-ca-hba at its root, signed by rca1, no certificates
 #   no-eku, foreign-responder, expired-responder
 #                                 ee-arzt, signed by the responder of that name
@@ -267,6 +271,7 @@ ocsp_response no-eku ee-arzt sub-ca-hba ocsp-signer-no-eku good ee-arzt - embed
 ocsp_response foreign-responder ee-arzt sub-ca-hba ocsp-signer-komp good ee-arzt - embed
 ocsp_response expired-responder ee-arzt sub-ca-hba ocsp-signer-expired good ee-arzt - embed
 ocsp_response unknown-no-cert-hash ee-arzt sub-ca-hba ocsp-signer-hba unknown - - embed
+ocsp_response short-next-update ee-arzt sub-ca-hba ocsp-signer-hba good ee-arzt 20260101000100Z embed
 
 # --- Certificate types ------------------------------------------------------------------
 
@@ -369,5 +374,7 @@ typed none-unrelated-admission $ds "" "" 1.2.3.4.5
 
 # An eGK certificate's answer needs the type above.
 ocsp_response egk-no-cert-hash types/type-ch-aut sub-ca-komp ocsp-signer-komp good - 20260102000000Z embed
+# A QES certificate's answer needs its type too.
+ocsp_response qes-good types/type-ch-qes sub-ca-komp ocsp-signer-komp good types/type-ch-qes 20260102000000Z embed
 
 echo "wrote $(find "$out" -name '*.pem' | wc -l | tr -d ' ') certificates and $(find "$out/ocsp" -name '*.der' | wc -l | tr -d ' ') OCSP responses to $out"

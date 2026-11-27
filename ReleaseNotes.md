@@ -1,5 +1,25 @@
 # Release Notes
 
+# Release go/tipki v0.34.0
+
+A fetched OCSP response about a nonQES certificate is judged by gemSpec_PKI A_23225, not GS-A_5215 (TASK-448,
+OCSP-006 of `spec/pki-path`). Found on zeta-go.t20r.cloud, where a reference responder whose clock lagged about
+50 s made every SMC-B unknown for ten minutes. Verified: `just check` across all Go modules and the corpus of
+`spec/pki-path` that ti-pki writes; tipki has no gated suite of its own.
+
+### changed
+- A nonQES certificate's response counts while its `producedAt` lies at most an hour in the past
+  (`DefaultMaxResponseAge`, was 37.5 s) and at most five minutes in the future (`ResponseFutureTolerance`);
+  `thisUpdate` and `nextUpdate` are not looked at. A QES certificate's (`C.CH.QES`, `C.HP.QES`) keeps GS-A_5215's
+  37.5 s on every side. A refusal names the rule and its limit.
+- `ResponseCheck.Rule` (`RuleByCertificate`, the default, or `RuleGSA5215`) names GS-A_5215 where a
+  specification keeps it, with `MaxResponseAge` as its maximum age: `ServerCheck`'s stapled answers
+  (TUC_PKI_018) and the supplied TSL signer status (TSLDET-020) do.
+- `OCSPChecker` reuses a nonQES certificate's good and revoked results until `producedAt` plus `MaxResponseAge`,
+  past `nextUpdate`, and asks no responder meanwhile (A_23225); `CacheTTL` bounds only a QES certificate's.
+  Unknown results stay uncached, a documented departure from A_23225. Results that ended are dropped at most
+  `OCSPCacheSweep` (an hour) after, while the checker is asked.
+
 # Release 2026-11-27: go/kv v0.13.0, go/kv/postgres v0.14.0, go/kv/mariadb v0.5.0
 
 The connection to the database is protected as every other connection of a server: TLS unless the operator

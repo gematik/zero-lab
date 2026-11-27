@@ -41,15 +41,27 @@ import (
 )
 
 const (
-	// DefaultClockTolerance is the skew TUC_PKI_006 grants a responder (gemSpec_PKI: 37.5 s).
+	// DefaultClockTolerance is the tolerance t of GS-A_5215, 37.5 s: under that rule producedAt may lie this far
+	// in the past or the future, thisUpdate this far in the future, nextUpdate this far in the past.
 	DefaultClockTolerance = 37500 * time.Millisecond
-	// DefaultMaxResponseAge is how old producedAt may be. TI responders sign on demand.
-	DefaultMaxResponseAge = DefaultClockTolerance
+	// DefaultMaxResponseAge is D of A_23225: how old a nonQES certificate's response may be, one hour unless an
+	// application's specification allows longer. Under [RuleGSA5215] named by the caller, how old producedAt
+	// may be.
+	DefaultMaxResponseAge = time.Hour
+	// ResponseFutureTolerance is how far a nonQES certificate's response may lie in the future (A_23225: five
+	// minutes, since not every system keeps its clock synchronized).
+	ResponseFutureTolerance = 5 * time.Minute
+	// OCSPCacheSweep is how often an [OCSPChecker] drops the results it may no longer use: an active checker
+	// keeps none past A_23225's 24 hours. A checker that is not asked keeps them, unused, as the core runs no
+	// timer.
+	OCSPCacheSweep = time.Hour
 	// OCSPStatusRetries is how often a query is repeated after a status error (A_30044 (4)).
 	OCSPStatusRetries = 3
 	// OCSPStatusPause is how long a responder rests once the query and its repetitions failed.
 	OCSPStatusPause = 300 * time.Second
-	// OCSPCacheTTL is how long a good or revoked result is reused, at most until nextUpdate.
+	// OCSPCacheTTL is how long a QES certificate's good or revoked result is reused, at most until nextUpdate. A
+	// nonQES certificate's is reused for as long as A_23225 counts it valid, until producedAt plus the maximum
+	// response age.
 	OCSPCacheTTL = time.Hour
 	// OCSPCacheLimit bounds the results an [OCSPChecker] keeps: more certificates than a host checks within
 	// an hour, few enough that one meeting endless certificates does not grow without limit.
@@ -140,14 +152,31 @@ const (
 	defectCertHashMismatch
 )
 
+// TimeRule is the rule a fetched response's times are judged by.
+type TimeRule int
+
+const (
+	// RuleByCertificate is A_23225 for a nonQES certificate: producedAt at most the maximum response age in the
+	// past and [ResponseFutureTolerance] in the future; thisUpdate and nextUpdate are not looked at. For a QES
+	// certificate (C.CH.QES, C.HP.QES) it is GS-A_5215, with the clock tolerance as the maximum age.
+	RuleByCertificate TimeRule = iota
+	// RuleGSA5215 is GS-A_5215 whatever the certificate, for a specification that keeps it: producedAt at most
+	// the maximum response age in the past and the clock tolerance in the future, thisUpdate at most the clock
+	// tolerance in the future, nextUpdate at most the clock tolerance in the past.
+	RuleGSA5215
+)
+
 // ResponseCheck is what [VerifyResponse] checks against.
 type ResponseCheck struct {
 	// Now is the instant the time window is anchored at.
 	Now time.Time
-	// MaxResponseAge is how old producedAt may be.
+	// MaxResponseAge is how old producedAt may be: D of A_23225 ([DefaultMaxResponseAge]), or the age under
+	// [RuleGSA5215].
 	MaxResponseAge time.Duration
-	// ClockTolerance is the skew allowed between the responder's clock and ours.
+	// ClockTolerance is the tolerance t of GS-A_5215 ([DefaultClockTolerance]).
 	ClockTolerance time.Duration
+	// Rule is the rule the times are judged by; a stapled response has its own.
+	Rule TimeRule
 	// AllowMissingCertHash accepts a response without the extension. One present is checked anyway.
 	AllowMissingCertHash bool
 	// Store is the trust store whose verified list may authorize a responder by naming it as an OCSP
@@ -591,7 +620,7 @@ func verifyResponse(der []byte, cert, issuer *x509.Certificate, check ResponseCh
 		NextUpdate: single.nextUpdate, Responder: responder, ResponderName: signer.Subject.CommonName,
 		Authorization: authorization, RawResponse: der,
 	}
-	if reason := outsideWindow(result, check); reason != "" {
+	if reason := outsideWindow(result, check, appliedRule(cert, check)); reason != "" {
 		result.Reason = reason
 		return result, nil
 	}
@@ -740,9 +769,33 @@ func verifyCertHash(extensions []asn1.RawValue, cert *x509.Certificate, allowMis
 	return &OCSPError{Code: CodeOCSPResponseInvalid, defect: defectCertHashMissing, Message: "OCSP response carries no certHash extension"}
 }
 
-// outsideWindow is the TUC_PKI_006 window: producedAt within [now - max age, now + tolerance], thisUpdate at
-// most the tolerance in the future, nextUpdate at most the tolerance in the past.
-func outsideWindow(result *RevocationResult, check ResponseCheck) string {
+// timeRule is a rule resolved for a certificate, with the maximum age it allows.
+type timeRule struct {
+	a23225 bool
+	maxAge time.Duration
+}
+
+// appliedRule resolves [RuleByCertificate] for cert: GS-A_5215 for a QES certificate, whose responses A_23225
+// does not cover, A_23225 for every other.
+func appliedRule(cert *x509.Certificate, check ResponseCheck) timeRule {
+	switch {
+	case check.Rule == RuleGSA5215:
+		return timeRule{maxAge: check.MaxResponseAge}
+	case isQES(cert):
+		return timeRule{maxAge: check.ClockTolerance}
+	default:
+		return timeRule{a23225: true, maxAge: check.MaxResponseAge}
+	}
+}
+
+func isQES(cert *x509.Certificate) bool {
+	t, ok := DetectCertificateType(cert)
+	return ok && (t == CertChQes || t == CertHpQes)
+}
+
+// outsideWindow is the time window of a response: a stapled one valid at the reference time (A_30046 (7)),
+// otherwise the window of rule.
+func outsideWindow(result *RevocationResult, check ResponseCheck, rule timeRule) string {
 	format := func(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 	now := check.Now.Truncate(time.Second)
 	if check.Stapled {
@@ -755,14 +808,23 @@ func outsideWindow(result *RevocationResult, check ResponseCheck) string {
 		return ""
 	}
 	seconds := func(d time.Duration) int64 { return int64(d / time.Second) }
-	if age := now.Sub(result.ProducedAt); age > check.MaxResponseAge {
-		return fmt.Sprintf("OCSP response is %d s old, more than the %d s allowed", seconds(age), seconds(check.MaxResponseAge))
+	name, ahead := "GS-A_5215", check.ClockTolerance
+	if rule.a23225 {
+		name, ahead = "A_23225", ResponseFutureTolerance
 	}
-	if ahead := result.ProducedAt.Sub(now); ahead > check.ClockTolerance {
-		return fmt.Sprintf("OCSP producedAt lies %d s in the future", seconds(ahead))
+	if age := now.Sub(result.ProducedAt); age > rule.maxAge {
+		return fmt.Sprintf("OCSP response is %d s old, more than the %d s %s allows", seconds(age), seconds(rule.maxAge), name)
 	}
-	if ahead := result.ThisUpdate.Sub(now); ahead > check.ClockTolerance {
-		return fmt.Sprintf("OCSP thisUpdate lies %d s in the future", seconds(ahead))
+	if early := result.ProducedAt.Sub(now); early > ahead {
+		return fmt.Sprintf("OCSP producedAt lies %d s in the future, more than the %d s %s allows", seconds(early), seconds(ahead), name)
+	}
+	if rule.a23225 {
+		// A_23225 takes the responder's state at producedAt; thisUpdate and nextUpdate, left from OCSP's origin in
+		// CRLs, say nothing it counts.
+		return ""
+	}
+	if early := result.ThisUpdate.Sub(now); early > check.ClockTolerance {
+		return fmt.Sprintf("OCSP thisUpdate lies %d s in the future", seconds(early))
 	}
 	if !result.NextUpdate.IsZero() {
 		if past := now.Sub(result.NextUpdate); past > check.ClockTolerance {
@@ -796,17 +858,25 @@ type OCSPTransport interface {
 
 // OCSPChecker queries a certificate's responder through a transport and verifies the answer. A status error,
 // which is a failed transport or an answer other than successful, is repeated [OCSPStatusRetries] times;
-// after that the responder rests for [OCSPStatusPause]. Good and revoked results are reused for CacheTTL, at
-// most until the response's nextUpdate; unknown and errors never are. Results live in memory only, at most
-// [OCSPCacheLimit] of them, and at most [OCSPRestingLimit] responders rest at once.
+// after that the responder rests for [OCSPStatusPause].
+//
+// Good and revoked results are reused while they are valid in time, and the responder is not asked meanwhile:
+// a nonQES certificate's until producedAt plus MaxResponseAge (A_23225), a QES certificate's for CacheTTL, at
+// most until the response's nextUpdate. Unknown results and errors never are, a deliberate departure from
+// A_23225, which names revocation information of every kind: the status of a certificate just issued may be
+// known minutes later, and an hour of unknown would refuse it. Results live in memory only, at most
+// [OCSPCacheLimit] of them, and at most [OCSPRestingLimit] responders rest at once. Those that ended are dropped
+// at most [OCSPCacheSweep] after, while the checker is asked; one that is not asked keeps them, never using
+// them.
 type OCSPChecker struct {
 	Transport OCSPTransport
 	// Now is the clock.
 	Now func() time.Time
-	// ClockTolerance and MaxResponseAge are those of [ResponseCheck].
+	// ClockTolerance and MaxResponseAge are those of [ResponseCheck]: MaxResponseAge is D of A_23225, set
+	// longer where an application's specification allows it, and results are reused for as long.
 	ClockTolerance time.Duration
 	MaxResponseAge time.Duration
-	// CacheTTL of zero turns the cache off.
+	// CacheTTL bounds a QES certificate's reuse; zero turns the cache off for every certificate.
 	CacheTTL time.Duration
 	// ResponderURL sends every request there instead of the certificate's own responder.
 	ResponderURL string
@@ -816,6 +886,7 @@ type OCSPChecker struct {
 	mu      sync.Mutex
 	resting map[string]time.Time
 	cache   map[string]cachedResult
+	swept   time.Time
 }
 
 type cachedResult struct {
@@ -847,6 +918,7 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate,
 		return nil, &OCSPError{Code: CodeOCSPUnavailable, Subject: cert.Subject.CommonName, Message: err.Error()}
 	}
 	now := c.Now()
+	c.sweep(now)
 	if cached := c.cached(string(body), now); cached != nil {
 		return cached, nil
 	}
@@ -869,7 +941,7 @@ func (c *OCSPChecker) Check(ctx context.Context, cert, issuer *x509.Certificate,
 		return nil, err
 	}
 	result.ResponderURL = url
-	if until, ok := c.reusableUntil(result, check.Now); ok {
+	if until, ok := c.reusableUntil(result, cert, check); ok {
 		c.mu.Lock()
 		if c.cache == nil {
 			c.cache = make(map[string]cachedResult)
@@ -897,15 +969,39 @@ func (c *OCSPChecker) cached(key string, now time.Time) *RevocationResult {
 	return &result
 }
 
-func (c *OCSPChecker) reusableUntil(result *RevocationResult, now time.Time) (time.Time, bool) {
+func (c *OCSPChecker) reusableUntil(result *RevocationResult, cert *x509.Certificate, check ResponseCheck) (time.Time, bool) {
 	if c.CacheTTL <= 0 || (result.Status != RevocationGood && result.Status != RevocationRevoked) {
 		return time.Time{}, false
 	}
-	until := now.Add(c.CacheTTL)
+	if rule := appliedRule(cert, check); rule.a23225 {
+		until := result.ProducedAt.Add(rule.maxAge)
+		return until, until.After(check.Now)
+	}
+	until := check.Now.Add(c.CacheTTL)
 	if !result.NextUpdate.IsZero() && result.NextUpdate.Before(until) {
 		until = result.NextUpdate
 	}
-	return until, until.After(now)
+	return until, until.After(check.Now)
+}
+
+// sweep drops the results and rests that ended, once per [OCSPCacheSweep].
+func (c *OCSPChecker) sweep(now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.swept.IsZero() && now.Before(c.swept.Add(OCSPCacheSweep)) {
+		return
+	}
+	c.swept = now
+	for key, entry := range c.cache {
+		if !entry.until.After(now) {
+			delete(c.cache, key)
+		}
+	}
+	for url, until := range c.resting {
+		if !until.After(now) {
+			delete(c.resting, url)
+		}
+	}
 }
 
 func (c *OCSPChecker) restingUntil(url string, now time.Time) (time.Time, bool) {
@@ -1046,8 +1142,9 @@ func (v *VerifiedTSL) CheckSignerStatus(ctx context.Context, checker RevocationC
 // once adopted. False if it is older than [MaxSuppliedSignerStatusAge], which leaves the status unqueried
 // for a network query to replace. A signed revoked stays true whatever its age, so that is still an error.
 func (v *VerifiedTSL) CheckSignerStatusSupplied(response []byte, now time.Time) (bool, error) {
+	// TSLDET-020 keeps GS-A_5215's times for the published response, with its own age.
 	check := NewResponseCheck(now)
-	check.MaxResponseAge = MaxSuppliedSignerStatusAge
+	check.MaxResponseAge, check.Rule = MaxSuppliedSignerStatusAge, RuleGSA5215
 	result, err := VerifyResponse(response, v.Signer, v.Anchor, check)
 	if err != nil {
 		return false, statusError(err)

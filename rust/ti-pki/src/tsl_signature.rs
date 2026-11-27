@@ -525,8 +525,10 @@ impl VerifiedTsl {
         now: Timestamp,
         algorithms: &AlgorithmSet,
     ) -> Result<bool, TslError> {
+        // TSLDET-020 keeps GS-A_5215's times for the published response, with its own age.
         let check = crate::ocsp::ResponseCheck {
             max_response_age: MAX_SUPPLIED_SIGNER_STATUS_AGE,
+            rule: crate::ocsp::TimeRule::GsA5215,
             ..crate::ocsp::ResponseCheck::new(now, algorithms)
         };
         let result = crate::ocsp::verify_response(response, &self.signer, &self.anchor, &check)
@@ -2268,10 +2270,11 @@ mod tests {
 
         #[test]
         fn tslsig_042_an_answer_too_old() {
+            // The signer's certificate is nonQES: A_23225 counts its answer for an hour.
             let (result, _) = checked(
                 "prod",
                 &TrustConfig::preset_prod(),
-                "2026-10-03T18:20:21Z",
+                "2026-10-03T19:10:22Z",
                 vec![Ok(PU.to_vec())],
             );
             fails(result, TslCode::OcspCheckRevocationError, "TSLSIG-042");

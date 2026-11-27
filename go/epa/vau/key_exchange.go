@@ -625,7 +625,7 @@ func checkStapledOCSP(response []byte, certData *CertData, now time.Time) string
 		return "ocsp_response: not checked, the CertData CA did not issue the certificate"
 	}
 	result, err := tipki.VerifyResponse(response, cert, issuer, tipki.ResponseCheck{
-		Now: now, MaxResponseAge: maxOCSPAge, ClockTolerance: tipki.DefaultClockTolerance,
+		Now: now, MaxResponseAge: maxOCSPAge, ClockTolerance: tipki.DefaultClockTolerance, Rule: tipki.RuleGSA5215,
 	})
 	switch {
 	case err != nil:

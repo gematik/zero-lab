@@ -436,6 +436,21 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
   missing (`FORCE=1` rebuilds everything from the same keys). Adding a certificate changes that
   certificate and its corpus entries only.
 
+#### changed
+- A fetched OCSP response about a nonQES certificate is judged by A_23225, not GS-A_5215
+  (TASK-448, OCSP-006 of spec/pki-path): it counts while its `producedAt` lies at most an hour
+  in the past (`DEFAULT_MAX_RESPONSE_AGE`, was 37.5 s) and at most five minutes in the future
+  (`RESPONSE_FUTURE_TOLERANCE`); `thisUpdate` and `nextUpdate` are not looked at. A QES
+  certificate's (`C.CH.QES`, `C.HP.QES`) keeps GS-A_5215. A reference responder whose clock lags
+  50 s no longer makes every SMC-B unknown. `ResponseCheck::rule` (`TimeRule`, breaking for
+  struct literals) names GS-A_5215 where a specification keeps it: TUC_PKI_018's stapled
+  answers in `tls` and the supplied TSL signer status (TSLDET-020) do. A refusal names the rule.
+- `OcspChecker` reuses a nonQES certificate's `good` and `revoked` results until `producedAt`
+  plus the maximum response age, past `nextUpdate`, and asks no responder meanwhile (A_23225);
+  `with_max_response_age` sets that `D`, and `ti pki verify --ocsp-max-age` with it. Unknown
+  results stay uncached, a documented departure. Results that ended are dropped at most
+  `OCSP_CACHE_SWEEP` (an hour) after, while the checker is asked.
+
 #### security
 - `rsa` 0.10.0, the release, instead of the release candidate 0.10.0-rc.19, with `pkcs1` 0.8.0
   (TASK-12). 0.10.0 fixes RUSTSEC-2023-0071 (the Marvin timing attack on private-key

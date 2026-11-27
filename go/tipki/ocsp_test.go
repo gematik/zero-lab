@@ -553,3 +553,128 @@ func FuzzVerifyResponse(f *testing.F) {
 		}
 	})
 }
+
+func ocspFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	der, err := os.ReadFile("../../rust/ti-pki/tests/pki/ocsp/" + name + ".der")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return der
+}
+
+func verifyAt(t *testing.T, response, cert, issuer string, offset time.Duration) *RevocationResult {
+	t.Helper()
+	result, err := VerifyResponse(ocspFixture(t, response), pkiCert(t, cert), pkiCert(t, issuer), NewResponseCheck(time.Unix(ocspNow, 0).Add(offset)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+// A_23225: a nonQES certificate's response counts from an hour in the past of producedAt, the 50 s of a
+// responder whose clock lags among them (zeta-go.t20r.cloud, 2026-11-27).
+func TestA23225ANonQESResponseIsValidAnHourAfterProducedAt(t *testing.T) {
+	for _, age := range []time.Duration{0, 50 * time.Second, 59 * time.Minute, time.Hour} {
+		if result := verifyAt(t, "good", "ee-arzt.pem", "sub-ca-hba.pem", age); result.Status != RevocationGood {
+			t.Errorf("%v old: %s", age, result.Reason)
+		}
+	}
+	old := verifyAt(t, "good", "ee-arzt.pem", "sub-ca-hba.pem", 61*time.Minute)
+	if want := "OCSP response is 3660 s old, more than the 3600 s A_23225 allows"; old.Status != RevocationUnknown || old.Reason != want {
+		t.Errorf("%v %q", old.Status, old.Reason)
+	}
+}
+
+// A_23225: up to five minutes in the future, six are too many. Ahead of the fixtures' time the delegates'
+// certificates are not valid yet, so an answer the CA signed itself shows the window alone.
+func TestA23225ANonQESResponseMayComeFiveMinutesFromTheFuture(t *testing.T) {
+	if result := verifyAt(t, "issuer-signed", "sub-ca-hba.pem", "rca1.pem", -5*time.Minute); result.Status != RevocationGood {
+		t.Errorf("five minutes ahead: %s", result.Reason)
+	}
+	ahead := verifyAt(t, "issuer-signed", "sub-ca-hba.pem", "rca1.pem", -6*time.Minute)
+	if want := "OCSP producedAt lies 360 s in the future, more than the 300 s A_23225 allows"; ahead.Status != RevocationUnknown || ahead.Reason != want {
+		t.Errorf("%v %q", ahead.Status, ahead.Reason)
+	}
+}
+
+// A_23225: thisUpdate and nextUpdate are not looked at for a nonQES certificate; an answer whose nextUpdate
+// passed a minute ago still counts within the hour.
+func TestA23225NextUpdateIsNotLookedAt(t *testing.T) {
+	if result := verifyAt(t, "short-next-update", "ee-arzt.pem", "sub-ca-hba.pem", 2*time.Minute); result.Status != RevocationGood {
+		t.Error(result.Reason)
+	}
+}
+
+// GS-A_5215: a QES certificate's response, which A_23225 does not cover, is read with 37.5 s of tolerance.
+func TestGSA5215AQESResponseKeepsTheTolerance(t *testing.T) {
+	if result := verifyAt(t, "qes-good", "types/type-ch-qes.pem", "sub-ca-komp.pem", 37*time.Second); result.Status != RevocationGood {
+		t.Errorf("37 s old: %s", result.Reason)
+	}
+	old := verifyAt(t, "qes-good", "types/type-ch-qes.pem", "sub-ca-komp.pem", 50*time.Second)
+	if want := "OCSP response is 50 s old, more than the 37 s GS-A_5215 allows"; old.Status != RevocationUnknown || old.Reason != want {
+		t.Errorf("%v %q", old.Status, old.Reason)
+	}
+}
+
+// GS-A_5215 named by the caller, for a specification that keeps it (TUC_PKI_018's stapled answers,
+// TSLDET-020, A_24624): its own maximum age, and nextUpdate with 37.5 s of tolerance.
+func TestGSA5215NamedByTheCallerReadsNextUpdate(t *testing.T) {
+	strict := func(offset time.Duration) ResponseCheck {
+		check := NewResponseCheck(time.Unix(ocspNow, 0).Add(offset))
+		check.MaxResponseAge, check.Rule = 72*time.Hour, RuleGSA5215
+		return check
+	}
+	leaf, issuer := pkiCert(t, "ee-arzt.pem"), pkiCert(t, "sub-ca-hba.pem")
+	result, err := VerifyResponse(goodFixture(t), leaf, issuer, strict(24*time.Hour+37*time.Second))
+	if err != nil || result.Status != RevocationGood {
+		t.Fatalf("%+v %v", result, err)
+	}
+	result, err = VerifyResponse(goodFixture(t), leaf, issuer, strict(24*time.Hour+38*time.Second))
+	if err != nil || result.Reason != "OCSP nextUpdate passed 38 s ago" {
+		t.Fatalf("%+v %v", result, err)
+	}
+	result, err = VerifyResponse(ocspFixture(t, "issuer-signed"), issuer, pkiCert(t, "rca1.pem"), strict(-38*time.Second))
+	if want := "OCSP producedAt lies 38 s in the future, more than the 37 s GS-A_5215 allows"; err != nil || result.Reason != want {
+		t.Fatalf("%+v %v", result, err)
+	}
+}
+
+// A_23225: nextUpdate does not end a nonQES result's reuse, producedAt does; a QES result keeps the bound of
+// nextUpdate. Results that ended are dropped by the next check after the sweep interval (A_23225 5.).
+func TestA23225ResultsAreReusedPastNextUpdateAndSwept(t *testing.T) {
+	leaf, issuer := pkiCert(t, "ee-arzt.pem"), pkiCert(t, "sub-ca-hba.pem")
+	qes, komp := pkiCert(t, "types/type-ch-qes.pem"), pkiCert(t, "sub-ca-komp.pem")
+	now := time.Unix(ocspNow, 0)
+	transport := &fakeTransport{answers: [][]byte{ocspFixture(t, "short-next-update"), ocspFixture(t, "qes-good"), ocspFixture(t, "short-next-update")}}
+	checker := checkerAt(transport, &now)
+	check := func(cert, issuer *x509.Certificate) *RevocationResult {
+		t.Helper()
+		result, err := checker.Check(context.Background(), cert, issuer, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	if check(leaf, issuer).FromCache || check(qes, komp).FromCache {
+		t.Fatal("the first answers came from the cache")
+	}
+	now = now.Add(30 * time.Second)
+	if !check(leaf, issuer).FromCache || !check(qes, komp).FromCache {
+		t.Error("not reused within their bounds")
+	}
+	now = now.Add(30 * time.Minute)
+	if !check(leaf, issuer).FromCache {
+		t.Error("not reused past its nextUpdate, within the hour")
+	}
+	if len(transport.posts) != 2 || len(checker.cache) != 2 {
+		t.Errorf("%d posts, %d cached", len(transport.posts), len(checker.cache))
+	}
+	now = now.Add(31 * time.Minute)
+	if result := check(leaf, issuer); result.Status != RevocationUnknown || len(transport.posts) != 3 {
+		t.Errorf("not asked again after the hour: %v, %d posts", result.Status, len(transport.posts))
+	}
+	if len(checker.cache) != 0 {
+		t.Errorf("the QES result, past its hour, was not swept: %d cached", len(checker.cache))
+	}
+}

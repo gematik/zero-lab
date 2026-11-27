@@ -178,8 +178,10 @@ func (c *ServerCheck) Verify(ctx context.Context, chain []*x509.Certificate, hos
 	issuer := result.Chain[1]
 	var warnings []string
 	if len(stapled) > 0 {
+		// TUC_PKI_018's grace period judges a stapled answer by GS-A_5215's times; A_23225 leaves what a server
+		// sends along to the TLS profile.
 		check := NewResponseCheck(now)
-		check.MaxResponseAge, check.Store = c.OCSPGrace, c.Store
+		check.MaxResponseAge, check.Rule, check.Store = c.OCSPGrace, RuleGSA5215, c.Store
 		// An answer outside the grace period comes back as unknown with the reason; it is no answer, and the
 		// responder is asked as if nothing had been stapled.
 		status, err := VerifyResponse(stapled, leaf, issuer, check)
