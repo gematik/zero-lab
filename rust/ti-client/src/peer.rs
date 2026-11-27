@@ -56,11 +56,17 @@ const BRAINPOOL_P256_TLS13: u16 = 0x081a;
 const BRAINPOOL_P384_TLS13: u16 = 0x081b;
 
 /// Signature schemes and the ti-pki algorithms behind them. TLS 1.2's ECDSA schemes name
-/// a hash, not a curve, so the brainpool variant of each is a candidate too.
+/// a hash, not a curve, so the brainpool variant of each is a candidate too, and so is
+/// the other NIST curve with the same hash, as servers of the Web-PKI sign (a P-384 key
+/// with SHA-256). TLS 1.3's schemes bind the curve, and rustls takes the first entry for
+/// them. The handshake proves only that the server holds the key; trust in the chain is
+/// ti-pki's decision afterwards.
 static SCHEMES: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
     all: &[
         algorithms::ECDSA_P256_SHA256,
         algorithms::ECDSA_P384_SHA384,
+        algorithms::ECDSA_P384_SHA256,
+        algorithms::ECDSA_P256_SHA384,
         brainpool::ECDSA_BP256R1_SHA256,
         brainpool::ECDSA_BP384R1_SHA384,
         rsa::RSA_PSS_SHA256,
@@ -75,6 +81,7 @@ static SCHEMES: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
             SignatureScheme::ECDSA_NISTP256_SHA256,
             &[
                 algorithms::ECDSA_P256_SHA256,
+                algorithms::ECDSA_P384_SHA256,
                 brainpool::ECDSA_BP256R1_SHA256,
             ],
         ),
@@ -82,6 +89,7 @@ static SCHEMES: WebPkiSupportedAlgorithms = WebPkiSupportedAlgorithms {
             SignatureScheme::ECDSA_NISTP384_SHA384,
             &[
                 algorithms::ECDSA_P384_SHA384,
+                algorithms::ECDSA_P256_SHA384,
                 brainpool::ECDSA_BP384R1_SHA384,
             ],
         ),
@@ -463,4 +471,175 @@ fn tcp(host: &str, port: u16, net: &Net) -> Result<TcpStream, String> {
         }
     }
     Err(last)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::TcpListener;
+    use std::time::Duration;
+
+    use p384::ecdsa::signature::hazmat::PrehashSigner as _;
+    use pkcs8::DecodePrivateKey as _;
+    use rustls::pki_types::PrivateKeyDer;
+    use rustls::pki_types::pem::PemObject as _;
+    use rustls::server::{ClientHello, ResolvesServerCert};
+    use rustls::sign::{CertifiedKey, Signer, SigningKey};
+    use rustls::{ServerConfig, ServerConnection, SignatureAlgorithm, SupportedProtocolVersion};
+    use sha2::Digest as _;
+
+    use super::*;
+
+    const CA: &[u8] = include_bytes!("../../ti-cli/tests/fixtures/tls/web/ca.pem");
+    const P384: &[u8] = include_bytes!("../../ti-cli/tests/fixtures/tls/web/p384.pem");
+    const P384_KEY: &[u8] = include_bytes!("../../ti-cli/tests/fixtures/tls/web/p384.key");
+    const P256: &[u8] = include_bytes!("../../ti-cli/tests/fixtures/tls/web/p256.pem");
+    const P256_KEY: &[u8] = include_bytes!("../../ti-cli/tests/fixtures/tls/web/p256.key");
+
+    /// A key that signs under one scheme whatever its curve, as a TLS 1.2 server may: the
+    /// ECDSA schemes of TLS 1.2 name the hash and leave the curve to the certificate
+    /// (RFC 8422 section 5.4, RFC 5246 section 7.4.1.4.1).
+    #[derive(Debug, Clone, Copy)]
+    enum Mixed {
+        P384Sha256,
+        P256Sha384,
+    }
+
+    impl Mixed {
+        fn pkcs8(self) -> Vec<u8> {
+            let key = match self {
+                Self::P384Sha256 => P384_KEY,
+                Self::P256Sha384 => P256_KEY,
+            };
+            match PrivateKeyDer::from_pem_slice(key).unwrap() {
+                PrivateKeyDer::Pkcs8(der) => der.secret_pkcs8_der().to_vec(),
+                other => panic!("not PKCS#8: {other:?}"),
+            }
+        }
+    }
+
+    impl SigningKey for Mixed {
+        fn choose_scheme(&self, offered: &[SignatureScheme]) -> Option<Box<dyn Signer>> {
+            offered
+                .contains(&self.scheme())
+                .then(|| Box::new(*self) as Box<dyn Signer>)
+        }
+
+        fn algorithm(&self) -> SignatureAlgorithm {
+            SignatureAlgorithm::ECDSA
+        }
+    }
+
+    impl Signer for Mixed {
+        fn sign(&self, message: &[u8]) -> Result<Vec<u8>, rustls::Error> {
+            let pkcs8 = self.pkcs8();
+            let der = match self {
+                Self::P384Sha256 => {
+                    let key = p384::ecdsa::SigningKey::from_pkcs8_der(&pkcs8).unwrap();
+                    let signature: p384::ecdsa::Signature =
+                        key.sign_prehash(&sha2::Sha256::digest(message)).unwrap();
+                    signature.to_der().as_bytes().to_vec()
+                }
+                Self::P256Sha384 => {
+                    let key = p256::ecdsa::SigningKey::from_pkcs8_der(&pkcs8).unwrap();
+                    let signature: p256::ecdsa::Signature =
+                        key.sign_prehash(&sha2::Sha384::digest(message)).unwrap();
+                    signature.to_der().as_bytes().to_vec()
+                }
+            };
+            Ok(der)
+        }
+
+        fn scheme(&self) -> SignatureScheme {
+            match self {
+                Self::P384Sha256 => SignatureScheme::ECDSA_NISTP256_SHA256,
+                Self::P256Sha384 => SignatureScheme::ECDSA_NISTP384_SHA384,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct Fixed(Arc<CertifiedKey>);
+
+    impl ResolvesServerCert for Fixed {
+        fn resolve(&self, _: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
+            Some(Arc::clone(&self.0))
+        }
+    }
+
+    /// A server on a port of its own that completes one handshake under `version`,
+    /// signing it with `key`.
+    fn serve(key: Mixed, version: &'static SupportedProtocolVersion) -> u16 {
+        let leaf = match key {
+            Mixed::P384Sha256 => P384,
+            Mixed::P256Sha384 => P256,
+        };
+        let chain = vec![
+            CertificateDer::from_pem_slice(leaf).unwrap(),
+            CertificateDer::from_pem_slice(CA).unwrap(),
+        ];
+        let config =
+            ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+                .with_protocol_versions(&[version])
+                .unwrap()
+                .with_no_client_auth()
+                .with_cert_resolver(Arc::new(Fixed(Arc::new(CertifiedKey::new(
+                    chain,
+                    Arc::new(key),
+                )))));
+        let config = Arc::new(config);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut conn = ServerConnection::new(config).unwrap();
+                let _ = conn.complete_io(&mut stream);
+                let _ = conn.complete_io(&mut stream);
+            }
+        });
+        port
+    }
+
+    fn net() -> Net {
+        Net {
+            insecure: false,
+            cacert: Vec::new(),
+            capath: None,
+            proxy: Some(String::new()),
+            noproxy: None,
+            connect_timeout: Duration::from_secs(5),
+            max_time: Duration::from_secs(10),
+            retry: 0,
+            user_agent: "test".into(),
+        }
+    }
+
+    #[test]
+    fn tls12_ecdsa_scheme_names_the_hash_p384_key_signs_sha256() {
+        let port = serve(Mixed::P384Sha256, &rustls::version::TLS12);
+        let chain = server_chain(&net(), "127.0.0.1", port).unwrap();
+        assert_eq!(
+            chain[0],
+            CertificateDer::from_pem_slice(P384).unwrap().to_vec()
+        );
+    }
+
+    #[test]
+    fn tls12_ecdsa_scheme_names_the_hash_p256_key_signs_sha384() {
+        let port = serve(Mixed::P256Sha384, &rustls::version::TLS12);
+        let chain = server_chain(&net(), "127.0.0.1", port).unwrap();
+        assert_eq!(
+            chain[0],
+            CertificateDer::from_pem_slice(P256).unwrap().to_vec()
+        );
+    }
+
+    #[test]
+    fn tls13_ecdsa_scheme_binds_the_curve_p384_key_signing_sha256_refused() {
+        let port = serve(Mixed::P384Sha256, &rustls::version::TLS13);
+        let error = server_chain(&net(), "127.0.0.1", port).unwrap_err();
+        assert!(
+            matches!(&error, Error::ServerUnreachable(what) if what.contains("UnsupportedSignatureAlgorithmForPublicKeyContext")),
+            "{error:?}"
+        );
+    }
 }

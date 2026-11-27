@@ -5,6 +5,8 @@
 #   root (P-256) ── ca (P-256, signs the OCSP responses itself)
 #     ├─ p256       DNS www.web.test, OCSP and CRL addresses; ocsp/p256-good.der to staple
 #     ├─ rsa2048    the same on an RSA-2048 key (TLSV-041's warning); ocsp/rsa2048-good.der
+#     ├─ p384       the same on a P-384 key, no OCSP response: a TLS 1.2 server that signs
+#     │             its handshake with SHA-256 (ti-client's chain capture)
 #     ├─ no-status  DNS www.web.test, no OCSP or CRL address (TLSV-044's warning)
 #     └─ ti-type    C.FD.TLS-S's policies, DNS svc.ti.test: a TI certificate type, which
 #                   --validation-profile auto takes to the TI's validation
@@ -79,6 +81,7 @@ key root p256
 key ca p256
 key p256 p256
 key rsa2048 rsa2048
+key p384 P-384
 key no-status p256
 key ti-type p256
 
@@ -86,6 +89,7 @@ cert root "TLSV Web Root TEST-ONLY" self "$TEN_YEARS" ca
 cert ca "TLSV Web CA TEST-ONLY" root "$TEN_YEARS" ca
 cert p256 www.web.test ca "$NINETY_DAYS" web
 cert rsa2048 www.web.test ca "$NINETY_DAYS" web
+cert p384 www.web.test ca "$NINETY_DAYS" web
 cert no-status www.web.test ca "$NINETY_DAYS" web_no_status
 cert ti-type svc.ti.test ca "$NINETY_DAYS" ti_type
 
