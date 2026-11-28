@@ -3,10 +3,10 @@ id: TASK-448
 title: >-
   tipki, ti-pki: a nonQES certificate's OCSP response is valid for an hour after
   producedAt (A_23225), not 37.5 s
-status: In Progress
+status: Done
 assignee: []
 created_date: 2026-11-27 11:47
-updated_date: '2026-11-27T17:12:00Z'
+updated_date: '2026-11-28T10:25:00Z'
 labels:
   - go
   - ti-pki
@@ -70,3 +70,9 @@ Decisions 2026-11-27: unknown stays uncached (deviation from A_23225's 'Sperrinf
 
 Built on feat/ocsp-a23225: go/tipki and ti-pki judge a fetched response by TimeRule (ByCertificate: A_23225 for nonQES, GS-A_5215 for C.CH.QES/C.HP.QES; GsA5215 named by TUC_PKI_018 stapling, TSLDET-020 and epa/vau A_24624). Cache until producedAt + D for nonQES, swept hourly while asked. spec/pki-path OCSP-006 new, OCSP-005 rewritten; corpus widened (QES certificate, short nextUpdate, 12 offsets) and blessed, Go matches it. Fixtures qes-good, short-next-update. rust check-changed and go check-changed + lint golangci modernize green.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+go/tipki and ti-pki judge a fetched OCSP response by TimeRule. ByCertificate: A_23225 for nonQES (s - D <= producedAt <= s + 5 min, D one hour by default, thisUpdate and nextUpdate not read), GS-A_5215 with exactly 37.5 s for C.CH.QES and C.HP.QES. GsA5215 is named by TUC_PKI_018 stapling, TSLDET-020 and epa/vau A_24624. A nonQES result is reused until producedAt + D and the cache is swept hourly while asked; unknown stays uncached (documented deviation). spec/pki-path OCSP-006 new, OCSP-005 rewritten, the shared corpus widened and blessed. Released as go/tipki v0.34.0 with the hosts pinned; ti-pki ships with the next ti release. zeta-authserver-go told to bump (its TASK-230).
+<!-- SECTION:FINAL_SUMMARY:END -->
