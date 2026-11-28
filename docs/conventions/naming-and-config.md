@@ -67,3 +67,45 @@
   production tier, in one place, which rejects TEST-ONLY anchors and relaxed policies.
 - Production refuses insecure configuration at start-up
   ([servers](../design/servers.md), rule 17).
+
+## Paths in a container
+
+A server image finds what it reads, and writes what it writes, in the same places in
+Docker Compose, Kubernetes and OpenShift. `<component>` is the binary's name
+(`zero-pep-proxy`, `hsm-proxy`). The variables still name each file (`…_PATH`, `…_DIR`).
+These are the defaults that charts, Compose files and examples use. No server hard-codes
+them. The permissions on each path are [servers](../design/servers.md) rule 27's.
+
+| What | Where | Mounted from |
+|---|---|---|
+| Configuration that is not secret | `/etc/<component>/` | ConfigMap, read-only |
+| A secret: key, password, client secret, API key | `/run/secrets/<component>/<secret>/<key>` | Secret, read-only, one volume per Secret |
+| TLS of a listener or peer | `/run/secrets/<component>/<name>-tls/tls.crt`, `tls.key`, `ca.crt` | Secret of type `kubernetes.io/tls` (cert-manager, OpenShift's service CA) |
+| CA bundle that is not secret | `/etc/<component>/ca/<name>.crt` | ConfigMap (OpenShift's `inject-cabundle`, trust-manager) |
+| TI trust material from the producer (rule 8) | `/etc/telematik/` | volume the producer writes, read-only for consumers |
+| PKCS#11 module of the HSM (rule 4) | `/opt/pkcs11/<vendor>/` | the operator's volume, read-only |
+| Unix socket shared between containers | `/run/<component>/<name>.sock` | `emptyDir`, shared by the pod's containers |
+| State that outlives a restart | `/var/lib/<component>/` | PVC |
+| Cache | `/var/cache/<component>/` | `emptyDir` |
+| Temporary files | `/tmp` | `emptyDir` |
+
+- **Why these:** they are the Filesystem Hierarchy Standard's places, and Docker
+  Compose's own `secrets:` mount under `/run/secrets`. In distroless and most base images
+  `/var/run` links to `/run`. A read-only root filesystem (rule 8) then needs a volume
+  only at the paths above.
+- **Never at `/run/secrets` itself.** Kubernetes mounts the service account's token at
+  `/var/run/secrets/kubernetes.io/serviceaccount`. OpenShift adds its service CA
+  there. A volume at `/run/secrets` hides both. Each Secret is its own volume one
+  level further down.
+- **Secrets and configuration apart.** A secret is never in a ConfigMap, in `/etc`
+  or in a variable's value. A value that is not secret is never in a Secret either, so
+  `kubectl get configmap` shows the whole configuration and nothing that has to be
+  rotated.
+- **Whole directories, no `subPath`.** A Secret or ConfigMap is mounted as a directory,
+  with the key names as file names. A `subPath` mount loses the atomic swap of the
+  volume's `..data` link and the ownership OpenShift sets through `fsGroup`. Compose's
+  long `secrets:` syntax gives the same file path with `target:`.
+- **The volume types `restricted-v2` admits:** `configMap`, `secret`, `projected`,
+  `downwardAPI`, `emptyDir`, `persistentVolumeClaim`, `ephemeral` and `csi`. A `hostPath`
+  is not among them, and no default needs one. A `projected` volume combines several
+  Secrets under one directory where a reader takes one directory.

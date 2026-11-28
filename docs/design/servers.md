@@ -363,11 +363,29 @@ everything outside the workload untrusted.
       `supplementalGroups` to the platform. Where plain Kubernetes needs one (a volume
       type without ownership management), it sits in an overlay or value that one
       setting removes for OpenShift; a chart that sets IDs removes them on an explicit
-      `null`, because Helm merges maps and a left-out key inherits the default. Mounted
-      Secrets and ConfigMaps are readable without a known UID (`defaultMode` `0440` with
-      `fsGroup`, or `0444`), and a Unix socket shared between containers is
-      group-accessible through the shared `fsGroup`, with the peer check of rule 8 as the
-      control rather than the UID.
+      `null`, because Helm merges maps and a left-out key inherits the default. A Unix
+      socket shared between containers is group-accessible through the shared `fsGroup`,
+      with the peer check of rule 8 as the control rather than the UID.
+    - **Mounted files are readable without a known UID.** The paths are
+      [naming and configuration](../conventions/naming-and-config.md#paths-in-a-container)'s.
+      Every Secret and ConfigMap volume is mounted `readOnly: true`. The kubelet then
+      makes the files owned by `root` and by the pod's `fsGroup`, which `restricted-v2`
+      sets from the namespace's range and puts among the process's groups.
+      - A Secret has `defaultMode: 0440`: the `fsGroup` reads it, and others do not. On
+        plain Kubernetes, the chart's overlay sets an `fsGroup` for this (the exception
+        above).
+      - A ConfigMap has `0444`, because nothing in it is secret.
+      - A PVC under `/var/lib/<component>` is written through the `fsGroup` too. A
+        PVC whose storage ignores `fsGroup` (some NFS) is not used for state.
+      - No mode in a manifest grants write on a mounted Secret or ConfigMap. No server
+        writes to one, and none changes its mode at start.
+    - **Checked at start.** A server refuses a secret file that group or others can
+      write: someone other than the platform could have replaced it. It logs a warning,
+      with the file and its mode, for a secret file that others can read. That is
+      Kubernetes' `0644` when `defaultMode` is left out, and the usual mode of a
+      Compose file secret, which keeps the host file's mode and owner. Inside one
+      container it exposes the secret to no other process, so it is a warning and not
+      a refusal. Neither message says anything of the file's content.
     - **Bundled third-party parts** (ingress controller, operators, collectors) are
       either shown to run under `restricted-v2` with the deployment's values or left to
       the platform on OpenShift; ones that create cluster-scoped resources are optional.
