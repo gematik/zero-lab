@@ -186,6 +186,11 @@ per crate under "Unreleased"; a release moves its crate's entries into a section
 - The web and Konnektor transports read every `Cache-Control` field line, joined as RFC 9110
   §5.3 combines them, where they read only the first: a second line such as `no-cache` now
   counts (TASK-274).
+- `peer::server_chain`, under `ti pki verify --connect`, takes a TLS 1.2 server whose
+  handshake signature pairs the other NIST curve with the hash its scheme names: a P-384 key
+  with SHA-256 (idp-ref.app.ti-dienste.de), a P-256 key with SHA-384. It refused them with
+  `UnsupportedSignatureAlgorithmForPublicKeyContext`. TLS 1.3's schemes stay bound to their
+  curve (TASK-449).
 
 ### ti-tls
 
